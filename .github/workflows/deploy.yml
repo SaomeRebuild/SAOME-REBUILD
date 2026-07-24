@@ -21,6 +21,6 @@ jobs:
         with:
           version: latest
 
-      - run: supabase db push --project-ref $PROJECT_REF
+      - run: supabase db push --project-ref $PROJECT_REF --workdir supabase
         env:
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
