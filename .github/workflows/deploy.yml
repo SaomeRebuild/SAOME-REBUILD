@@ -27,6 +27,8 @@ jobs:
       - run: |
           supabase login --token $SUPABASE_ACCESS_TOKEN
           supabase link --project-ref $SUPABASE_PROJECT_REF
+          supabase migration repair --status reverted 20260724161048
+          supabase migration repair --status reverted 20260724175605
           supabase db pull
           supabase db push
         working-directory: supabase
