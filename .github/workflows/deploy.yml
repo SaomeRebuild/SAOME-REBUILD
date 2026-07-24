@@ -27,13 +27,8 @@ jobs:
       - run: |
           supabase login --token $SUPABASE_ACCESS_TOKEN
           supabase link --project-ref $SUPABASE_PROJECT_REF
-          echo "=== .supabase dir ==="
-          find . -name ".supabase" -type d 2>/dev/null || echo "not found"
-          echo "=== .supabase contents ==="
-          find . -path "*/.supabase/*" 2>/dev/null || echo "no files"
-          echo "=== supabase status ==="
-          supabase status || echo "status failed"
-          supabase db push
+          supabase migration repair --status applied 202507250001
+          supabase db push --include-all
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
