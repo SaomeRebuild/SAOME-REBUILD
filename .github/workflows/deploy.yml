@@ -22,8 +22,11 @@ jobs:
         with:
           version: latest
 
-      - run: supabase login --token $SUPABASE_ACCESS_TOKEN
-
-      - run: supabase link --project-ref $SUPABASE_PROJECT_REF
-
-      - run: supabase db push --workdir supabase
+      - run: |
+          supabase login --token $SUPABASE_ACCESS_TOKEN
+          supabase link --project-ref $SUPABASE_PROJECT_REF
+          supabase db push --workdir supabase
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
