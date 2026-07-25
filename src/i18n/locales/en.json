@@ -3,6 +3,9 @@
     "about": "About",
     "features": "Features",
     "pricing": "Pricing",
+    "pricingCompare": "Detailed Pricing",
+    "product": "Product",
+    "demo": "Demo",
     "login": "Login",
     "getStarted": "Get Started"
   },
@@ -10,8 +13,15 @@
     "badge": "Digital Membership Card Marketing Plan",
     "title": "More returning customers = higher revenue",
     "subtitle": "Increase customer retention by 2x%, boost revenue by over 30%",
+    "subtitleDisclaimer": "* Internal estimate only, actual results may vary.",
     "ctaPrimary": "Start Free Trial",
-    "ctaSecondary": "Watch Demo"
+    "ctaSecondary": "Watch Demo",
+    "passPreviewAlt": "Digital stamp card preview",
+    "passDescription": "Works with Google Wallet and Apple Wallet — members collect stamps anywhere",
+    "passBottomText": "Members collect stamps, merchants run marketing — one tap to add to wallet, zero friction",
+    "featureNoApp": "No app download needed, members use phone wallet directly",
+    "featureRealtime": "Real-time stamp progress updates, encouraging return visits",
+    "featureCoupon": "Automatic coupon push, increasing customer return rate"
   },
   "socialProof": {
     "trustedBy": "Trusted by over 500 merchants",
@@ -29,17 +39,63 @@
     "pointsDesc": "Flexible reward rules supporting stamps, points, and custom rewards.",
     "scannerTitle": "Scanner System",
     "scannerDesc": "Staff-only scanner tool for quick transaction and point recording.",
-    "multiTenantTitle": "Multi-tenant Management",
-    "multiTenantDesc": "Manage multiple locations from one platform with complete data isolation."
+    "multiTenantTitle": "Customizable Card Design",
+    "multiTenantDesc": "Define your card's appearance yourself",
+    "geoTitle": "Location-Based Triggers",
+    "geoDesc": "Pass automatically appears on the lockscreen when the user is near a defined location or when the relevant date is reached — ready to open instantly.",
+    "memberTitle": "Member Management System",
+    "memberDesc": "Communicate with members via email and manage the member lifecycle, tracking each member's journey.",
+    "emailTitle": "Email Marketing System",
+    "emailDesc": "Automated emails triggered by events — never miss a customer's birthday. Flexible templates, design your own email layouts.",
+    "standTitle": "Desktop Stand Design",
+    "standDesc": "Design your own desktop stand, print anytime, let customers register as members and download cards on the spot."
+  },
+  "cardTypes": {
+    "title": "8 Card Types Supported",
+    "subtitle": "Every marketing scenario, covered",
+    "stamp": {
+      "name": "Stamp Card",
+      "desc": "Earn stamps per visit, spend, or manual — automatic progress tracking with reward redemption."
+    },
+    "point": {
+      "name": "Point Card",
+      "desc": "Accumulate points with every purchase. Configure tier thresholds for escalating rewards."
+    },
+    "reward": {
+      "name": "Reward Card",
+      "desc": "Automatic tier upgrades based on total spend — unlock exclusive discounts or cashback."
+    },
+    "membership": {
+      "name": "Membership Card",
+      "desc": "Monthly or annual subscription tiers with benefit limits per period."
+    },
+    "cashback": {
+      "name": "Cashback Card",
+      "desc": "Unlimited cashback scaling with spend. Higher tiers earn higher percentages automatically."
+    },
+    "coupon": {
+      "name": "Coupon",
+      "desc": "Single-use coupons that auto-apply at checkout and void immediately after redemption."
+    },
+    "giftCard": {
+      "name": "Gift Card",
+      "desc": "Preload funds onto the card. Redeem at checkout — balance never expires."
+    },
+    "discount": {
+      "name": "Discount Card",
+      "desc": "Set spending thresholds with corresponding discounts — auto-applied when reached."
+    }
   },
   "howItWorks": {
-    "title": "Launch your loyalty program in 3 steps",
+    "title": "Launch your loyalty membership program in 4 steps",
     "step1Title": "Register and set up your business",
     "step1Desc": "Fill in basic info and configure your brand and locations.",
     "step2Title": "Customize your reward rules",
     "step2Desc": "Define point calculation, redemption rules, and VIP thresholds.",
-    "step3Title": "Members start earning immediately",
-    "step3Desc": "Members claim their digital card via QR code and start earning rewards."
+    "step3Title": "Design your membership card template",
+    "step3Desc": "Customize your card appearance to create a unique brand experience.",
+    "step4Title": "Members start earning immediately",
+    "step4Desc": "Members claim their digital card via QR code and start earning rewards."
   },
   "cta": {
     "title": "Ready to boost member engagement?",
@@ -49,8 +105,15 @@
   "pricing": {
     "title": "Simple, transparent pricing",
     "subtitle": "Choose the plan that fits your business size",
+    "monthly": "Monthly",
+    "yearly": "Yearly",
     "perMonth": "/mo",
+    "perMonthBilledYearly": "/mo, billed yearly",
+    "saveAmount": "Save ${{amount}}/mo",
+    "currencyNote": "Prices in New Taiwan Dollar (NTD)",
+    "popular": "Most Popular",
     "cta": "Start Free Trial",
+    "viewComparison": "View full feature comparison",
     "green": {
       "name": "Green",
       "description": "Perfect for small merchants getting started",
@@ -87,5 +150,199 @@
     "terms": "Terms of Service",
     "gdpr": "Data Processing Agreement",
     "securePayments": "Secure payments"
+  },
+  "login": {
+    "title": "Login",
+    "comingSoon": "Coming soon. Please check back later."
+  },
+  "product": {
+    "hero": {
+      "title": "Product Introduction",
+      "subtitle": "Simple registration! Effortlessly create cards for your customers"
+    },
+    "intro": {
+      "title": "Simple Registration!",
+      "subtitle": "Effortlessly create cards for your customers",
+      "form": {
+        "title": "Web Form",
+        "desc": "Create your own card issuance form with fields for name, phone number, and date of birth."
+      },
+      "duplicate": {
+        "title": "Duplicate Check",
+        "desc": "Our system automatically scans our existing customer database to avoid duplicates."
+      },
+      "crm": {
+        "title": "CRM",
+        "desc": "After the card form is completed, customer data is sent to our CRM system."
+      },
+      "compliance": "Compliant with Personal Data Protection Act and GDPR"
+    },
+    "custom": {
+      "title": "Fully Customizable Cards",
+      "subtitle": "Change your cards anytime",
+      "design": {
+        "title": "Design",
+        "desc": "You can modify colors, logos, promotional terms, and any information on the card without reissuing."
+      },
+      "description": {
+        "title": "Card Description",
+        "desc": "Any information updates are immediately reflected on the card, keeping customers informed."
+      },
+      "links": {
+        "title": "Links",
+        "desc": "You can also add and edit social media links, website URLs, online booking options, and more."
+      }
+    },
+    "engage": {
+      "title": "Efficient Engagement",
+      "subtitle": "Perfect communication with customers",
+      "survey": {
+        "title": "Satisfaction Survey",
+        "desc": "The card description can include a link to a satisfaction survey."
+      },
+      "referral": {
+        "title": "Referral Program",
+        "desc": "Customers can share cards with friends and earn points. Expand your customer base."
+      },
+      "call": {
+        "title": "One-Tap Call",
+        "desc": "Customers can make a call with just one tap!"
+      },
+      "map": {
+        "title": "Map Link",
+        "desc": "Place map links in the card info to make it easier for customers to find you!"
+      },
+      "social": {
+        "title": "Social Links",
+        "desc": "Add Instagram, Facebook, or other social links so customers can follow you anytime!"
+      },
+      "website": {
+        "title": "Website Link",
+        "desc": "Adding your website link is no problem at all!"
+      }
+    },
+    "builder": {
+      "title": "Card Builder",
+      "subtitle": "111 card templates - just choose the one that fits best!",
+      "templates": {
+        "title": "Card Templates",
+        "desc": "Choose from preset templates to quickly create membership cards that meet your needs."
+      },
+      "custom": {
+        "title": "Design Your Own",
+        "desc": "Add your logo and icons, customize colors. Create cards in your brand style."
+      },
+      "marketing": {
+        "title": "Marketing Plans",
+        "desc": "Add marketing condition rules. Show customers how easy it is to earn rewards."
+      }
+    },
+    "campaign": {
+      "title": "Marketing Campaigns",
+      "subtitle": "Add marketing conditions",
+      "questionnaire": {
+        "title": "Questionnaire Form",
+        "desc": "Add questionnaires to the card form to always care about what customers really want!"
+      },
+      "push": {
+        "title": "Promotional Campaigns",
+        "desc": "Send system push notifications to proactively reach customers."
+      }
+    },
+    "share": {
+      "title": "Message Sharing",
+      "subtitle": "Online mode",
+      "online": {
+        "title": "Message Sharing",
+        "desc": "You can share card links via Line, WhatsApp, social platforms, or even Google Maps - completely free!"
+      },
+      "website": {
+        "title": "Website Sharing",
+        "desc": "You can promote using your website."
+      },
+      "referral": {
+        "title": "Share Referrals",
+        "desc": "Your customers can share the card and earn rewards from your company. Expand your customer base."
+      }
+    },
+    "email": {
+      "title": "Email",
+      "subtitle": "Import customer lists",
+      "import": {
+        "title": "Import Customer List",
+        "desc": "You can upload customer list files and issue digital cards within minutes."
+      },
+      "push": {
+        "title": "Send Push",
+        "desc": "Send system push notifications to proactively engage with customers."
+      },
+      "status": {
+        "title": "Card Status",
+        "desc": "Use SAOME to control the status of installed cards."
+      }
+    },
+    "offline": {
+      "title": "Offline Mode",
+      "subtitle": "Print support!",
+      "print": {
+        "title": "Print Support",
+        "desc": "You can easily print cards and place them in stands anywhere visible!"
+      },
+      "scanner": {
+        "title": "Card Scanner APP",
+        "desc": "Use computer, tablet, or even phone to reward points to customers! Just choose the one that suits you best!"
+      }
+    },
+    "cta": {
+      "title": "Ready to get started?",
+      "subtitle": "14-day free trial, no credit card required",
+      "button": "Start Free Trial",
+      "pricing": "View Detailed Pricing"
+    }
+  },
+  "demo": {
+    "title": "Coming Soon",
+    "subtitle": "Demo video coming soon, stay tuned"
+  },
+  "pricingCompare": {
+    "title": "Detailed Pricing",
+    "subtitle": "Compare features across all plans",
+    "feature": "Feature",
+    "billedYearly": "Billed yearly",
+    "footer": "Have more questions? Contact our sales team.",
+    "startTrial": "Start Free Trial",
+    "card": {
+      "templates": "Card templates",
+      "addresses": "Store addresses per template",
+      "customDesign": "Custom card design",
+      "links": "Social/website links"
+    },
+    "crm": {
+      "duplicateCheck": "Duplicate data check",
+      "memberManagement": "Member management",
+      "subAccounts": "Sub-accounts"
+    },
+    "marketing": {
+      "emailMonthly": "Monthly free email allowance",
+      "emailOverage": "Excess email fee",
+      "survey": "Satisfaction survey",
+      "pushNotification": "Push notifications",
+      "campaign": "Marketing campaigns"
+    },
+    "share": {
+      "line": "Line/WhatsApp sharing",
+      "website": "Website embed",
+      "referral": "Referral rewards"
+    },
+    "offline": {
+      "print": "Print support",
+      "scanner": "Scanner APP",
+      "qrCode": "QR Code generation"
+    },
+    "support": {
+      "email": "Email support",
+      "priority": "Priority support",
+      "sla": "SLA guarantee"
+    }
   }
 }

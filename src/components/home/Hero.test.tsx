@@ -48,10 +48,10 @@ describe('Hero', () => {
   });
 
   describe('visual elements', () => {
-    it('renders mock dashboard preview area', () => {
+    it('renders the hero section with content', () => {
       const { container } = renderHero();
-      const preview = container.querySelector('.aspect-\\[16\\/9\\]');
-      expect(preview).toBeInTheDocument();
+      const img = container.querySelector('img');
+      expect(img).toBeInTheDocument();
     });
   });
 });

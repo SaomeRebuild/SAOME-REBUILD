@@ -75,7 +75,7 @@ describe('BDD: Homepage Gherkin 場景對應', () => {
       fireEvent.scroll(window);
       const header = screen.getByRole('banner');
       expect(header.className).toContain('shadow-sm');
-      expect(header.className).toContain('bg-white/95');
+      expect(header.className).toContain('bg-header-bg');
     });
 
     it('sc06: 開啟手機選單後 body overflow 鎖定', () => {
@@ -105,22 +105,23 @@ describe('BDD: Homepage Gherkin 場景對應', () => {
   });
 
   describe('Features', () => {
-    it('sc09: 顯示標題 + 4 個 Feature Cards', () => {
+    it('sc09: 顯示標題 + 8 個 Feature Cards', () => {
       renderHomepage();
       expect(screen.getByRole('heading', { level: 2, name: '為您的店家打造的完整解決方案' })).toBeInTheDocument();
       expect(screen.getByRole('heading', { level: 3, name: '數位會員卡' })).toBeInTheDocument();
       expect(screen.getByRole('heading', { level: 3, name: '印章與點數' })).toBeInTheDocument();
       expect(screen.getByRole('heading', { level: 3, name: '掃碼系統' })).toBeInTheDocument();
-      expect(screen.getByRole('heading', { level: 3, name: '多租戶管理' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { level: 3, name: '自由設計卡片' })).toBeInTheDocument();
     });
   });
 
   describe('HowItWorks', () => {
-    it('sc10: 顯示標題 + 3 步驟', () => {
+    it('sc10: 顯示標題 + 4 步驟', () => {
       renderHomepage();
-      expect(screen.getByRole('heading', { level: 2, name: '3 步驟啟動您的忠誠計劃' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { level: 2, name: '4 步驟啟動您的忠誠會員計畫' })).toBeInTheDocument();
       expect(screen.getByRole('heading', { level: 3, name: '註冊並建立店家資料' })).toBeInTheDocument();
       expect(screen.getByRole('heading', { level: 3, name: '自訂會員獎勵規則' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { level: 3, name: '設計會員卡片模板' })).toBeInTheDocument();
       expect(screen.getByRole('heading', { level: 3, name: '會員立即開始集點' })).toBeInTheDocument();
     });
   });
@@ -134,7 +135,7 @@ describe('BDD: Homepage Gherkin 場景對應', () => {
       expect(screen.getByText('$900')).toBeInTheDocument();
       expect(screen.getByText('$1500')).toBeInTheDocument();
       expect(screen.getByText('$2500')).toBeInTheDocument();
-      expect(screen.getByText('Most Popular')).toBeInTheDocument();
+      expect(screen.getByText('最受歡迎')).toBeInTheDocument();
     });
 
     it('sc12: 3 個 CTA 按鈕皆連結到 /register', () => {
@@ -151,7 +152,7 @@ describe('BDD: Homepage Gherkin 場景對應', () => {
     it('sc13: 顯示標題 + 副文字 + CTA 按鈕', () => {
       renderHomepage();
       expect(screen.getByRole('heading', { level: 2, name: '準備好提升會員參與度了嗎？' })).toBeInTheDocument();
-      expect(screen.getByText(/14 天免費試用/)).toBeInTheDocument();
+      expect(screen.getByText(/14.?天免費試用/)).toBeInTheDocument();
       expect(screen.getByText(/無需信用卡/)).toBeInTheDocument();
     });
   });
@@ -162,11 +163,9 @@ describe('BDD: Homepage Gherkin 場景對應', () => {
       const footer = screen.getByRole('contentinfo');
       expect(footer).toHaveTextContent('SAOME');
       expect(footer).toHaveTextContent('更多回頭的客戶=更高的營收');
-      expect(footer).toHaveTextContent('關於我們');
-      expect(footer).toHaveTextContent('功能');
-      expect(footer).toHaveTextContent('定價');
-      expect(footer).toHaveTextContent('部落格');
-      expect(footer).toHaveTextContent('聯絡我們');
+      expect(footer).toHaveTextContent('商品細節');
+      expect(footer).toHaveTextContent('演示');
+      expect(footer).toHaveTextContent('詳細定價');
       expect(screen.getByRole('link', { name: 'hello@saome.org' })).toHaveAttribute('href', 'mailto:hello@saome.org');
       expect(screen.getByRole('link', { name: 'Instagram' })).toBeInTheDocument();
       expect(screen.getByRole('link', { name: 'Facebook' })).toBeInTheDocument();
@@ -186,11 +185,10 @@ describe('BDD: Homepage Gherkin 場景對應', () => {
   describe('i18n', () => {
     it('sc16: 預設語言為繁體中文（zh-TW），UI 文字為繁體中文', () => {
       renderHomepage();
-      // 透過 Footer 全文檢查 5 個鏈接都為繁體中文
       const footer = screen.getByRole('contentinfo');
-      expect(footer).toHaveTextContent('關於我們');
-      expect(footer).toHaveTextContent('部落格');
-      expect(footer).toHaveTextContent('聯絡我們');
+      expect(footer).toHaveTextContent('商品細節');
+      expect(footer).toHaveTextContent('演示');
+      expect(footer).toHaveTextContent('詳細定價');
     });
   });
 });

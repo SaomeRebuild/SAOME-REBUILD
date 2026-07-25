@@ -1,0 +1,1 @@
+export { DetailedPricingPage } from './DetailedPricingPage';

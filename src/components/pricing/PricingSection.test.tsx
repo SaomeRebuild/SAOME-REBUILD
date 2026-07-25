@@ -29,25 +29,22 @@ describe('PricingSection', () => {
       renderPricing();
       expect(screen.getByText('綠卡')).toBeInTheDocument();
       expect(screen.getByText('$900')).toBeInTheDocument();
-      expect(screen.getByText('適合小型店家起步')).toBeInTheDocument();
     });
 
-    it('renders Gold tier with "Most Popular" badge', () => {
+    it('renders Gold tier with Most Popular badge', () => {
       renderPricing();
       expect(screen.getByText('金卡')).toBeInTheDocument();
       expect(screen.getByText('$1500')).toBeInTheDocument();
-      expect(screen.getByText('適合成長中的店家')).toBeInTheDocument();
-      expect(screen.getByText('Most Popular')).toBeInTheDocument();
+      expect(screen.getByText('最受歡迎')).toBeInTheDocument();
     });
 
     it('renders Platinum tier', () => {
       renderPricing();
       expect(screen.getByText('白金卡')).toBeInTheDocument();
       expect(screen.getByText('$2500')).toBeInTheDocument();
-      expect(screen.getByText('適合大型連鎖店家')).toBeInTheDocument();
     });
 
-    it('renders "/月" period label', () => {
+    it('renders /月 period label', () => {
       renderPricing();
       const periods = screen.getAllByText('/月');
       expect(periods.length).toBe(3);

@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { Check } from 'lucide-react';
+import type { TFunction } from 'i18next';
 
 export type PricingTier = 'green' | 'gold' | 'platinum';
 
@@ -12,27 +13,33 @@ export interface PricingCardProps {
   features: string[];
   isPopular?: boolean;
   ctaLabel: string;
+  savings?: number;
+  t: TFunction;
 }
 
-const tierStyles: Record<PricingTier, {
+const tierColors: Record<PricingTier, {
   border: string;
-  badge: string;
-  button: string;
+  badgeBg: string;
+  badgeText: string;
+  buttonBg: string;
 }> = {
   green: {
-    border: 'border-border',
-    badge: 'bg-green-100 text-green-800',
-    button: 'bg-primary text-on-primary hover:bg-primary/90',
+    border: 'var(--color-border)',
+    badgeBg: 'rgba(34, 197, 94, 0.15)',
+    badgeText: '#22C55E',
+    buttonBg: 'var(--color-primary)',
   },
   gold: {
-    border: 'border-accent',
-    badge: 'bg-accent text-on-accent',
-    button: 'bg-accent text-on-accent hover:bg-accent/90',
+    border: 'var(--color-accent)',
+    badgeBg: 'var(--color-accent)',
+    badgeText: 'var(--color-on-accent)',
+    buttonBg: 'var(--color-accent)',
   },
   platinum: {
-    border: 'border-border',
-    badge: 'bg-muted text-primary',
-    button: 'bg-primary text-on-primary hover:bg-primary/90',
+    border: 'var(--color-border)',
+    badgeBg: 'var(--color-muted)',
+    badgeText: 'var(--color-foreground)',
+    buttonBg: 'var(--color-primary)',
   },
 };
 
@@ -45,30 +52,66 @@ export function PricingCard({
   features,
   isPopular,
   ctaLabel,
+  savings,
+  t,
 }: PricingCardProps) {
-  const styles = tierStyles[tier];
+  const colors = tierColors[tier];
 
   return (
-    <div className={`relative flex flex-col rounded-xl border-2 ${styles.border} bg-white p-6 shadow-sm`}>
+    <div
+      className="relative flex flex-col rounded-xl border-2 p-6 shadow-sm card-hover"
+      style={{
+        borderColor: colors.border,
+        backgroundColor: 'var(--color-card)',
+      }}
+    >
       {isPopular && (
-        <div className={`absolute -top-3 left-1/2 -translate-x-1/2 rounded-full px-3 py-1 text-xs font-semibold ${styles.badge}`}>
-          Most Popular
+        <div
+          className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full px-3 py-1 text-xs font-semibold"
+          style={{ backgroundColor: colors.badgeBg, color: colors.badgeText }}
+        >
+          {t('pricing.popular')}
         </div>
       )}
 
       <div className="mb-4">
-        <p className="text-sm font-medium text-secondary">{name}</p>
+        <p className="text-sm font-medium" style={{ color: 'var(--color-muted-foreground)' }}>
+          {name}
+        </p>
         <div className="mt-2 flex items-baseline gap-1">
-          <span className="text-3xl font-bold text-primary">${price}</span>
-          {period && <span className="text-sm text-secondary">{period}</span>}
+          <span
+            className="text-3xl font-bold"
+            style={{ color: 'var(--color-primary)', fontFamily: 'var(--font-family-heading)' }}
+          >
+            ${price}
+          </span>
+          {period && (
+            <span className="text-sm" style={{ color: 'var(--color-muted-foreground)' }}>
+              {period}
+            </span>
+          )}
         </div>
-        <p className="mt-2 text-sm text-secondary">{description}</p>
+        {savings !== undefined && (
+          <p className="mt-1 text-sm font-medium" style={{ color: '#22C55E' }}>
+            {t('pricing.saveAmount', { amount: savings })}
+          </p>
+        )}
+        <p className="mt-1 text-xs" style={{ color: 'var(--color-muted-foreground)' }}>
+          {t('pricing.currencyNote')}
+        </p>
+        <p className="mt-2 text-sm" style={{ color: 'var(--color-muted-foreground)' }}>
+          {description}
+        </p>
       </div>
 
       <ul className="mb-6 flex flex-col gap-2.5">
         {features.map((feature, i) => (
-          <li key={i} className="flex items-start gap-2 text-sm text-secondary">
-            <Check size={16} className="mt-0.5 shrink-0 text-accent" />
+          <li
+            key={i}
+            className="flex items-start gap-2 text-sm"
+            style={{ color: 'var(--color-muted-foreground)' }}
+          >
+            <Check size={16} className="mt-0.5 shrink-0" style={{ color: 'var(--color-accent)' }} />
             {feature}
           </li>
         ))}
@@ -76,7 +119,11 @@ export function PricingCard({
 
       <Link
         to="/register"
-        className={`mt-auto w-full rounded-lg px-4 py-2.5 text-center text-sm font-medium transition-all ${styles.button}`}
+        className="mt-auto w-full rounded-lg px-4 py-2.5 text-center text-sm font-medium transition-all interactive-scale"
+        style={{
+          backgroundColor: colors.buttonBg,
+          color: 'var(--color-on-primary)',
+        }}
       >
         {ctaLabel}
       </Link>

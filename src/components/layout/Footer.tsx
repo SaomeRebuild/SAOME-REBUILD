@@ -1,15 +1,16 @@
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { LanguageSwitcher } from '../shared/LanguageSwitcher';
 
 export function Footer() {
   const { t } = useTranslation();
 
   const footerLinks = [
-    { href: '#about', label: t('footer.about') },
-    { href: '#features', label: t('footer.features') },
-    { href: '#pricing', label: t('footer.pricing') },
-    { href: '#blog', label: t('footer.blog') },
-    { href: '#contact', label: t('footer.contact') },
+    { href: '/product', label: t('nav.product') },
+    { href: '/demo', label: t('nav.demo') },
+    { href: '/pricing/compare', label: t('nav.pricingCompare') },
+    { href: '/#about', label: t('footer.about') },
+    { href: '/#features', label: t('footer.features') },
   ];
 
   const legalLinks = [
@@ -19,13 +20,17 @@ export function Footer() {
   ];
 
   return (
-    <footer className="mt-auto border-t border-border bg-white">
+    <footer
+      className="mt-auto border-t"
+      style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-card)' }}
+    >
       <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
           <div className="flex flex-col gap-4">
             <Link
               to="/"
-              className="flex items-center gap-2 font-bold text-xl text-primary"
+              className="flex items-center gap-2 font-bold text-xl"
+              style={{ color: 'var(--color-primary)' }}
             >
               <svg
                 width="32"
@@ -44,7 +49,7 @@ export function Footer() {
               </svg>
               SAOME
             </Link>
-            <p className="text-sm text-secondary">
+            <p className="text-sm" style={{ color: 'var(--color-muted-foreground)' }}>
               {t('footer.slogan')}
             </p>
           </div>
@@ -54,7 +59,8 @@ export function Footer() {
               <a
                 key={link.href}
                 href={link.href}
-                className="text-sm text-secondary transition-colors hover:text-primary"
+                className="text-sm transition-colors hover:opacity-80"
+                style={{ color: 'var(--color-muted-foreground)' }}
               >
                 {link.label}
               </a>
@@ -62,19 +68,24 @@ export function Footer() {
           </nav>
 
           <div className="flex flex-col gap-4">
-            <p className="text-sm font-medium text-primary">
+            <p
+              className="text-sm font-medium"
+              style={{ color: 'var(--color-foreground)' }}
+            >
               {t('footer.contact')}
             </p>
             <a
               href="mailto:hello@saome.org"
-              className="text-sm text-secondary transition-colors hover:text-primary"
+              className="text-sm transition-colors hover:opacity-80"
+              style={{ color: 'var(--color-muted-foreground)' }}
             >
               hello@saome.org
             </a>
             <div className="flex gap-4">
               <a
                 href="#"
-                className="text-secondary transition-colors hover:text-primary"
+                className="transition-colors hover:opacity-80"
+                style={{ color: 'var(--color-muted-foreground)' }}
                 aria-label="Instagram"
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -83,7 +94,8 @@ export function Footer() {
               </a>
               <a
                 href="#"
-                className="text-secondary transition-colors hover:text-primary"
+                className="transition-colors hover:opacity-80"
+                style={{ color: 'var(--color-muted-foreground)' }}
                 aria-label="Facebook"
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -92,7 +104,8 @@ export function Footer() {
               </a>
               <a
                 href="#"
-                className="text-secondary transition-colors hover:text-primary"
+                className="transition-colors hover:opacity-80"
+                style={{ color: 'var(--color-muted-foreground)' }}
                 aria-label="X"
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -101,7 +114,7 @@ export function Footer() {
               </a>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-secondary">{t('footer.securePayments')}</span>
+              <span className="text-xs" style={{ color: 'var(--color-muted-foreground)' }}>{t('footer.securePayments')}</span>
               <div className="flex items-center gap-1">
                 <svg width="38" height="24" viewBox="0 0 38 24" fill="none" aria-label="Visa" role="img">
                   <rect width="38" height="24" rx="4" fill="#1A1F71" />
@@ -115,11 +128,15 @@ export function Footer() {
                 </svg>
               </div>
             </div>
+            <LanguageSwitcher />
           </div>
         </div>
 
-        <div className="mt-8 flex flex-col items-center justify-between gap-4 border-t border-border pt-8 md:flex-row">
-          <p className="text-sm text-secondary">
+        <div
+          className="mt-8 flex flex-col items-center justify-between gap-4 border-t pt-8 md:flex-row"
+          style={{ borderColor: 'var(--color-border)' }}
+        >
+          <p className="text-sm" style={{ color: 'var(--color-muted-foreground)' }}>
             {t('footer.copyright')}
           </p>
           <div className="flex gap-6">
@@ -127,7 +144,8 @@ export function Footer() {
               <Link
                 key={link.to}
                 to={link.to}
-                className="text-sm text-secondary transition-colors hover:text-primary"
+                className="text-sm transition-colors hover:opacity-80"
+                style={{ color: 'var(--color-muted-foreground)' }}
               >
                 {link.label}
               </Link>

@@ -116,7 +116,7 @@ describe('Header', () => {
       });
       const header = screen.getByRole('banner');
       expect(header.className).toContain('shadow-sm');
-      expect(header.className).toContain('bg-white/95');
+      expect(header.className).toContain('bg-header-bg');
     });
 
     it('removes shadow when scrolled back to top', () => {

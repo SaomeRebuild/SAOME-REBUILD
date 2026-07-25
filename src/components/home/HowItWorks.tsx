@@ -1,38 +1,60 @@
 import { useTranslation } from 'react-i18next';
-import { UserPlus, Settings, Smartphone } from 'lucide-react';
+import { UserPlus, Settings, Palette, Smartphone } from 'lucide-react';
 
 const steps = [
   { icon: UserPlus, titleKey: 'step1Title', descKey: 'step1Desc' },
   { icon: Settings, titleKey: 'step2Title', descKey: 'step2Desc' },
-  { icon: Smartphone, titleKey: 'step3Title', descKey: 'step3Desc' },
+  { icon: Palette, titleKey: 'step3Title', descKey: 'step3Desc' },
+  { icon: Smartphone, titleKey: 'step4Title', descKey: 'step4Desc' },
 ];
 
 export function HowItWorks() {
   const { t } = useTranslation();
 
   return (
-    <section id="about" className="bg-muted py-20 lg:py-28">
+    <section id="about" className="py-20 lg:py-28 mt-0" style={{ backgroundColor: 'var(--color-muted)' }}>
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <h2 className="mb-16 text-center text-3xl font-bold text-primary sm:text-4xl">
+        <h2
+          className="text-center text-3xl font-bold sm:text-4xl"
+          style={{
+            marginBottom: '6rem',
+            fontFamily: 'var(--font-family-heading)',
+            color: 'var(--color-foreground)',
+          }}
+        >
           {t('howItWorks.title')}
         </h2>
 
-        <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
-          {steps.map((step, index) => {
+        <div className="grid grid-cols-1 gap-12 md:grid-cols-2 lg:grid-cols-4 lg:gap-16">
+          {steps.map((step) => {
             const Icon = step.icon;
             return (
-              <div key={step.titleKey} className="relative flex flex-col items-center text-center">
-                {index < steps.length - 1 && (
-                  <div className="absolute left-[calc(50%+3rem)] top-10 hidden h-px w-[calc(100%-6rem)] bg-border lg:block" />
-                )}
-                <div className="relative z-10 flex h-20 w-20 items-center justify-center rounded-full bg-white shadow-md">
-                  <Icon size={32} className="text-accent" />
+              <div
+                key={step.titleKey}
+                className="flex flex-col items-center rounded-xl border p-8 text-center"
+                style={{
+                  borderColor: 'var(--color-border)',
+                  backgroundColor: 'var(--color-card)',
+                }}
+              >
+                <div
+                  className="flex h-20 w-20 items-center justify-center rounded-full"
+                  style={{ backgroundColor: 'var(--color-primary)' }}
+                >
+                  <Icon size={32} style={{ color: 'var(--color-on-primary)' }} />
                 </div>
-                <h3 className="mt-6 text-xl font-semibold text-primary">
+                <h3
+                  className="mt-6 text-xl font-semibold"
+                  style={{ fontFamily: 'var(--font-family-heading)', color: 'var(--color-foreground)' }}
+                >
                   {t(`howItWorks.${step.titleKey}`)}
                 </h3>
-                <p className="mt-2 text-sm leading-relaxed text-secondary">
-                  {t(`howItWorks.${step.descKey}`)}
+                <p
+                  className="mt-3 text-sm leading-relaxed"
+                  style={{ color: 'var(--color-muted-foreground)' }}
+                >
+                  {t(`howItWorks.${step.descKey}`)
+                  }
                 </p>
               </div>
             );

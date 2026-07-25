@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Header } from './components/layout/Header';
 import { Footer } from './components/layout/Footer';
 import { Hero } from './components/home/Hero';
@@ -27,11 +28,12 @@ function HomePage() {
 }
 
 function LoginPage() {
+  const { t } = useTranslation();
   return (
     <div className="flex min-h-[60vh] items-center justify-center">
       <div className="w-full max-w-sm rounded-xl border border-border bg-white p-8 text-center shadow-sm">
-        <h1 className="text-2xl font-bold text-primary">登入</h1>
-        <p className="mt-2 text-sm text-secondary">即將推出。請稍候。</p>
+        <h1 className="text-2xl font-bold text-primary">{t('login.title')}</h1>
+        <p className="mt-2 text-sm text-secondary">{t('login.comingSoon')}</p>
       </div>
     </div>
   );

@@ -33,9 +33,11 @@ export function Header({ className }: HeaderProps) {
   }, [isMobileMenuOpen]);
 
   const navLinks = [
-    { href: '#about', label: t('nav.about') },
-    { href: '#features', label: t('nav.features') },
-    { href: '#pricing', label: t('nav.pricing') },
+    { href: '/product', label: t('nav.product') },
+    { href: '/demo', label: t('nav.demo') },
+    { href: '/#pricing', label: t('nav.pricing') },
+    { href: '/#about', label: t('nav.about') },
+    { href: '/#features', label: t('nav.features') },
   ];
 
   return (
@@ -44,7 +46,7 @@ export function Header({ className }: HeaderProps) {
         className={cn(
           'fixed top-0 left-0 right-0 z-50 transition-all duration-150',
           isScrolled
-            ? 'bg-white/95 backdrop-blur-sm shadow-sm'
+            ? 'border-b bg-header-bg/95 backdrop-blur-sm shadow-sm'
             : 'bg-transparent',
           className
         )}
@@ -53,7 +55,8 @@ export function Header({ className }: HeaderProps) {
           <div className="flex h-16 items-center justify-between lg:h-[72px]">
             <Link
               to="/"
-              className="flex items-center gap-2 font-bold text-xl text-primary"
+              className="flex items-center gap-2 font-bold text-xl"
+              style={{ color: 'var(--color-primary)' }}
             >
               <svg
                 width="32"
@@ -78,7 +81,8 @@ export function Header({ className }: HeaderProps) {
                 <a
                   key={link.href}
                   href={link.href}
-                  className="text-sm font-medium text-secondary transition-colors hover:text-primary"
+                  className="text-sm font-medium transition-colors hover:opacity-80"
+                  style={{ color: 'var(--color-muted-foreground)' }}
                 >
                   {link.label}
                 </a>
@@ -88,13 +92,21 @@ export function Header({ className }: HeaderProps) {
             <div className="hidden items-center gap-3 lg:flex">
               <Link
                 to="/login"
-                className="text-sm font-medium text-secondary transition-colors hover:text-primary"
+                className="text-sm font-medium transition-colors hover:opacity-80"
+                style={{ color: 'var(--color-muted-foreground)' }}
               >
                 {t('nav.login')}
               </Link>
               <Link
                 to="/register"
-                className="inline-flex items-center justify-center rounded-md bg-accent px-4 py-2 text-sm font-medium text-on-accent transition-all hover:opacity-90 hover:-translate-y-px active:translate-y-0"
+                className="inline-flex items-center justify-center rounded-md transition-all hover:opacity-90 hover:-translate-y-px active:translate-y-0 interactive-scale"
+                style={{
+                  backgroundColor: 'var(--color-primary)',
+                  color: 'var(--color-on-primary)',
+                  padding: '0.5rem 1rem',
+                  fontSize: '0.875rem',
+                  fontWeight: 500,
+                }}
               >
                 {t('nav.getStarted')}
               </Link>
@@ -102,7 +114,8 @@ export function Header({ className }: HeaderProps) {
 
             <button
               type="button"
-              className="rounded-md p-2 text-secondary transition-colors hover:bg-muted lg:hidden"
+              className="rounded-md p-2 transition-colors hover:bg-muted lg:hidden"
+              style={{ color: 'var(--color-muted-foreground)' }}
               onClick={() => setIsMobileMenuOpen(true)}
               aria-label="Open menu"
             >
@@ -115,15 +128,20 @@ export function Header({ className }: HeaderProps) {
       {isMobileMenuOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div
-            className="absolute inset-0 bg-black/50"
+            className="absolute inset-0"
+            style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
             onClick={() => setIsMobileMenuOpen(false)}
             aria-hidden="true"
           />
-          <nav className="absolute right-0 top-0 flex h-full w-72 flex-col bg-white shadow-xl">
+          <nav
+            className="absolute right-0 top-0 flex h-full w-72 flex-col shadow-xl"
+            style={{ backgroundColor: 'var(--color-card)' }}
+          >
             <div className="flex h-16 items-center justify-end px-4">
               <button
                 type="button"
-                className="rounded-md p-2 text-secondary transition-colors hover:bg-muted"
+                className="rounded-md p-2 transition-colors hover:bg-muted"
+                style={{ color: 'var(--color-muted-foreground)' }}
                 onClick={() => setIsMobileMenuOpen(false)}
                 aria-label="Close menu"
               >
@@ -135,24 +153,36 @@ export function Header({ className }: HeaderProps) {
                 <a
                   key={link.href}
                   href={link.href}
-                  className="rounded-md px-3 py-3 text-base font-medium text-secondary transition-colors hover:bg-muted hover:text-primary"
+                  className="rounded-md px-3 py-3 text-base font-medium transition-colors hover:opacity-80"
+                  style={{ color: 'var(--color-muted-foreground)' }}
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
                   {link.label}
                 </a>
               ))}
             </div>
-            <div className="mt-auto flex flex-col gap-2 border-t border-border p-4">
+            <div
+              className="mt-auto flex flex-col gap-2 border-t p-4"
+              style={{ borderColor: 'var(--color-border)' }}
+            >
               <Link
                 to="/login"
-                className="w-full rounded-md border border-border px-4 py-3 text-center text-sm font-medium text-secondary transition-colors hover:border-primary hover:text-primary"
+                className="w-full rounded-md border px-4 py-3 text-center text-sm font-medium transition-colors hover:opacity-80"
+                style={{
+                  borderColor: 'var(--color-border)',
+                  color: 'var(--color-muted-foreground)',
+                }}
                 onClick={() => setIsMobileMenuOpen(false)}
               >
                 {t('nav.login')}
               </Link>
               <Link
                 to="/register"
-                className="w-full rounded-md bg-accent px-4 py-3 text-center text-sm font-medium text-on-accent transition-all hover:opacity-90"
+                className="w-full rounded-md px-4 py-3 text-center text-sm font-medium transition-all hover:opacity-90"
+                style={{
+                  backgroundColor: 'var(--color-primary)',
+                  color: 'var(--color-on-primary)',
+                }}
                 onClick={() => setIsMobileMenuOpen(false)}
               >
                 {t('nav.getStarted')}

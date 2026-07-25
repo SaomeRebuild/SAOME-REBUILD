@@ -26,14 +26,12 @@ describe('Footer', () => {
   });
 
   describe('navigation links', () => {
-    it('renders 5 footer links: About / Features / Pricing / Blog / Contact', () => {
+    it('renders footer navigation links', () => {
       renderFooter();
       const nav = screen.getByRole('navigation');
-      expect(nav).toHaveTextContent('關於我們');
-      expect(nav).toHaveTextContent('功能');
-      expect(nav).toHaveTextContent('定價');
-      expect(nav).toHaveTextContent('部落格');
-      expect(nav).toHaveTextContent('聯絡我們');
+      expect(nav).toHaveTextContent('商品細節');
+      expect(nav).toHaveTextContent('演示');
+      expect(nav).toHaveTextContent('詳細定價');
     });
   });
 
