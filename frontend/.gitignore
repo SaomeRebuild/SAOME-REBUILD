@@ -7,9 +7,15 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# node_modules
 node_modules
+
+# Build output
 dist
 dist-ssr
+
+# GitHub Actions workflows (do NOT ignore - must be committed)
+!.github/
 *.local
 
 # Editor directories and files
