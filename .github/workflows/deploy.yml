@@ -1,38 +1,37 @@
-name: Deploy Database Migrations
+name: CI
 
 on:
   push:
     branches:
       - main
-  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
 
 jobs:
-  migrate:
+  lint-and-test:
     runs-on: ubuntu-latest
-
-    env:
-      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          path: supabase
 
-      - uses: supabase/setup-cli@v1
+      - uses: pnpm/action-setup@v4
         with:
-          version: latest
+          version: 9
 
-      - run: |
-          supabase login --token $SUPABASE_ACCESS_TOKEN
-          supabase link --project-ref $SUPABASE_PROJECT_REF
-          supabase migration repair --status reverted 20260724161048
-          supabase migration repair --status reverted 20260724175605
-          supabase db pull
-          supabase db push
-        working-directory: supabase
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check
+        run: pnpm tsc --noEmit
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test
+        run: pnpm test run
