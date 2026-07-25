@@ -1,0 +1,91 @@
+{
+  "nav": {
+    "about": "About",
+    "features": "Features",
+    "pricing": "Pricing",
+    "login": "Login",
+    "getStarted": "Get Started"
+  },
+  "hero": {
+    "badge": "Digital Membership Card Marketing Plan",
+    "title": "More returning customers = higher revenue",
+    "subtitle": "Increase customer retention by 2x%, boost revenue by over 30%",
+    "ctaPrimary": "Start Free Trial",
+    "ctaSecondary": "Watch Demo"
+  },
+  "socialProof": {
+    "trustedBy": "Trusted by over 500 merchants",
+    "active_members": "Active Members",
+    "merchants": "Merchants",
+    "passes_issued": "Passes Issued",
+    "avg_engagement": "Avg. Engagement Lift"
+  },
+  "features": {
+    "title": "Everything you need to grow your business",
+    "subtitle": "All-in-one solution for your loyalty program",
+    "passTitle": "Digital Membership Card",
+    "passDesc": "Supports Apple Wallet and Google Wallet. Members don't need physical cards.",
+    "pointsTitle": "Stamps & Points",
+    "pointsDesc": "Flexible reward rules supporting stamps, points, and custom rewards.",
+    "scannerTitle": "Scanner System",
+    "scannerDesc": "Staff-only scanner tool for quick transaction and point recording.",
+    "multiTenantTitle": "Multi-tenant Management",
+    "multiTenantDesc": "Manage multiple locations from one platform with complete data isolation."
+  },
+  "howItWorks": {
+    "title": "Launch your loyalty program in 3 steps",
+    "step1Title": "Register and set up your business",
+    "step1Desc": "Fill in basic info and configure your brand and locations.",
+    "step2Title": "Customize your reward rules",
+    "step2Desc": "Define point calculation, redemption rules, and VIP thresholds.",
+    "step3Title": "Members start earning immediately",
+    "step3Desc": "Members claim their digital card via QR code and start earning rewards."
+  },
+  "cta": {
+    "title": "Ready to boost member engagement?",
+    "subtitle": "14-day free trial. No credit card required. Cancel anytime.",
+    "button": "Start Free Trial"
+  },
+  "pricing": {
+    "title": "Simple, transparent pricing",
+    "subtitle": "Choose the plan that fits your business size",
+    "perMonth": "/mo",
+    "cta": "Start Free Trial",
+    "green": {
+      "name": "Green",
+      "description": "Perfect for small merchants getting started",
+      "f1": "Up to 3 card templates",
+      "f2": "Email marketing: 50 free/mo, $0.5/excess email",
+      "f3": "1 store address per template"
+    },
+    "gold": {
+      "name": "Gold",
+      "description": "For growing businesses",
+      "f1": "Up to 6 card templates",
+      "f2": "Email marketing: 80 free/mo, $0.4/excess email",
+      "f3": "3 store addresses per template",
+      "f4": "1 sub-account"
+    },
+    "platinum": {
+      "name": "Platinum",
+      "description": "For large chain merchants",
+      "f1": "Up to 10 card templates",
+      "f2": "Email marketing: 100 free/mo, $0.3/excess email",
+      "f3": "10 store addresses per template",
+      "f4": "5 sub-accounts"
+    }
+  },
+  "footer": {
+    "slogan": "More returning customers = higher revenue",
+    "about": "About",
+    "features": "Features",
+    "pricing": "Pricing",
+    "blog": "Blog",
+    "contact": "Contact Us",
+    "copyright": "© 2026 SAOME. All rights reserved.",
+    "privacy": "Privacy Policy",
+    "terms": "Terms of Service",
+    "gdpr": "Data Processing Agreement",
+    "securePayments": "Secure payments"
+  }
+}
