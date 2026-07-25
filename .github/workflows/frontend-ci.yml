@@ -1,0 +1,300 @@
+name: Frontend CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend-ci.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend-ci.yml'
+  workflow_dispatch:
+
+# Fail-fast: 任一 job 失敗，cancel 在跑的 job
+concurrency:
+  group: frontend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# 預設權限：唯讀（避免 supply chain 攻擊）
+permissions:
+  contents: read
+
+jobs:
+  # ===========================
+  # Job 1: Build (tsc + vite build)
+  # ===========================
+  build:
+    name: Build (tsc + vite build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript check (tsc -b)
+        run: npx tsc -b --noEmit
+
+      - name: Build (vite build)
+        run: npm run build
+
+      - name: Upload build artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          retention-days: 7
+
+  # ===========================
+  # Job 2: Test (vitest run)
+  # ===========================
+  test:
+    name: Test (vitest run)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+  # ===========================
+  # Job 3: Lint (oxlint)
+  # ===========================
+  lint:
+    name: Lint (oxlint)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run oxlint
+        run: npm run lint
+
+  # ===========================
+  # Job 4: Deslop check (000-deslop.mdc)
+  # ===========================
+  deslop-check:
+    name: Deslop check (AI 痕跡)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+
+      - name: Check console.log / debug / info 殘留
+        run: |
+          if rg "console\.(log|debug|info)" frontend/src; then
+            echo "❌ 發現 console.log/debug/info 殘留，違反 000-log-discipline.mdc"
+            exit 1
+          fi
+          echo "✅ 無 console.log/debug/info 殘留"
+
+      - name: Check logger.debug 殘留
+        run: |
+          if rg "logger\.debug" frontend/src; then
+            echo "❌ 發現 logger.debug 殘留，違反 000-log-discipline.mdc"
+            exit 1
+          fi
+          echo "✅ 無 logger.debug 殘留"
+
+      - name: Check as any / as unknown as
+        run: |
+          if rg "as\s+any\b" frontend/src; then
+            echo "❌ 發現 'as any' 使用，違反 000-deslop.mdc #3"
+            exit 1
+          fi
+          if rg "as\s+unknown\s+as" frontend/src; then
+            echo "❌ 發現 'as unknown as' 使用，違反 000-deslop.mdc #3"
+            exit 1
+          fi
+          echo "✅ 無 as any / as unknown as"
+
+      - name: Check TODO/FIXME 殘留
+        run: |
+          if rg "//\s*(TODO|FIXME)" frontend/src; then
+            echo "⚠️ 發現 TODO/FIXME 標記，請改為 issue 或移除"
+            exit 1
+          fi
+          echo "✅ 無 TODO/FIXME 殘留"
+
+  # ===========================
+  # Job 5: Dynamic-config check (000-dynamic-config.mdc)
+  # ===========================
+  dynamic-config-check:
+    name: Dynamic-config check (寫死)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+
+      - name: Check hardcoded color hex (排除 index.css 設計 token + 品牌標誌)
+        run: |
+          # 設計 token 源頭 (index.css 的 @theme 區) 允許 hex
+          # Footer.tsx 含 VISA/Mastercard 品牌標誌，固定品牌色不可 token 化
+          if rg "#[0-9a-fA-F]{6}" frontend/src --glob '!**/index.css' --glob '!**/Footer.tsx'; then
+            echo "❌ 發現 hardcoded color hex，違反 000-dynamic-config.mdc"
+            exit 1
+          fi
+          echo "✅ 無 hardcoded color hex（已排除 index.css 設計 token 與 Footer 品牌標誌）"
+
+      - name: Check hardcoded API URL (排除 i18n + 設計 token + SVG xmlns + 字型 CDN)
+        run: |
+          # 排除 index.css（設計 token + Google Fonts CDN）
+          # 排除 SVG xmlns（XML namespace 不是 API URL）
+          # 排除 i18n 翻譯
+          if rg "fetch\(\s*['\"]https?://" frontend/src; then
+            echo "❌ 發現 hardcoded API URL，違反 000-dynamic-config.mdc"
+            exit 1
+          fi
+          if rg "axios\.\w+\(\s*['\"]https?://" frontend/src; then
+            echo "❌ 發現 hardcoded API URL，違反 000-dynamic-config.mdc"
+            exit 1
+          fi
+          echo "✅ 無 hardcoded API URL"
+
+      - name: Check hardcoded 中文字串 (排除 i18n、test、文件、法律頁固定條文)
+        run: |
+          # 排除：i18n 翻譯、test 文件、技術 .md（Out of Scope per 003-i18n.mdc）、法律頁固定條文
+          if rg "[\u4e00-\u9fff]" frontend/src --glob '!**/i18n/**' --glob '!**/*.test.tsx' --glob '!**/*.test.ts' --glob '!**/*.md' --glob '!**/pages/legal/**'; then
+            echo "❌ 發現 hardcoded 中文字串，違反 003-i18n.mdc"
+            exit 1
+          fi
+          echo "✅ 無 hardcoded 中文字串（已排除 i18n、test、文件、法律頁）"
+
+      - name: Check localStorage 直接呼叫
+        run: |
+          if rg "localStorage" frontend/src; then
+            echo "❌ 發現 localStorage 直接呼叫，違反 000-dynamic-config.mdc"
+            exit 1
+          fi
+          echo "✅ 無 localStorage 直接呼叫"
+
+  # ===========================
+  # Job 6: Log-discipline check (000-log-discipline.mdc)
+  # ===========================
+  log-discipline-check:
+    name: Log-discipline check (PII 嫌疑)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+
+      - name: Check console + PII (email/password/token)
+        run: |
+          if rg "console\.log.*(email|password|token|phone|信用卡)" frontend/src; then
+            echo "❌ console.log 內含 PII，違反 000-log-discipline.mdc"
+            exit 1
+          fi
+          echo "✅ console.log 無 PII 嫌疑"
+
+      - name: Check catch 區塊是否缺 log
+        run: |
+          # 找 catch 區塊，下 3 行內如果沒 logger.error/warn 視為缺 log
+          MATCHES=$(rg "catch\s*\(" frontend/src -A 3 | rg -v "logger\.(error|warn|info)" | rg "catch\s*\(" || true)
+          if [ -n "$MATCHES" ]; then
+            echo "⚠️ 發現 catch 區塊疑似缺 log 處理（需人工確認）："
+            echo "$MATCHES"
+            exit 1
+          fi
+          echo "✅ catch 區塊皆有 log 處理"
+
+  # ===========================
+  # Job 7: i18n parity check (003-i18n.mdc)
+  # ===========================
+  i18n-parity-check:
+    name: i18n parity check (zh-TW ↔ en)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Check i18n key parity
+        run: |
+          node -e "
+          const fs = require('fs');
+          const path = require('path');
+          
+          const zhTW = JSON.parse(fs.readFileSync('frontend/src/i18n/locales/zh-TW.json', 'utf8'));
+          const en = JSON.parse(fs.readFileSync('frontend/src/i18n/locales/en.json', 'utf8'));
+          
+          function flatten(obj, prefix = '') {
+            const keys = [];
+            for (const [k, v] of Object.entries(obj)) {
+              const key = prefix ? prefix + '.' + k : k;
+              if (v && typeof v === 'object' && !Array.isArray(v)) {
+                keys.push(...flatten(v, key));
+              } else {
+                keys.push(key);
+              }
+            }
+            return keys;
+          }
+          
+          const zhKeys = new Set(flatten(zhTW).sort());
+          const enKeys = new Set(flatten(en).sort());
+          
+          const missingInEn = [...zhKeys].filter(k => !enKeys.has(k));
+          const missingInZh = [...enKeys].filter(k => !zhKeys.has(k));
+          
+          if (missingInEn.length > 0) {
+            console.log('❌ en.json 缺少以下 keys:');
+            missingInEn.forEach(k => console.log('  - ' + k));
+            process.exit(1);
+          }
+          if (missingInZh.length > 0) {
+            console.log('❌ zh-TW.json 缺少以下 keys:');
+            missingInZh.forEach(k => console.log('  - ' + k));
+            process.exit(1);
+          }
+          console.log('✅ zh-TW.json 與 en.json key 對齊，共 ' + zhKeys.size + ' 個 key');
+          "

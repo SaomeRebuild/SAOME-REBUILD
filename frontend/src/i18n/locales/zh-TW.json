@@ -1,0 +1,95 @@
+{
+  "nav": {
+    "about": "關於我們",
+    "features": "功能",
+    "pricing": "定價",
+    "login": "登入",
+    "getStarted": "開始使用"
+  },
+  "hero": {
+    "badge": "數位會員卡行銷計畫",
+    "title": "更多回頭的客戶=更高的營收",
+    "subtitle": "增加2x%客戶保留率，增加30%以上營收",
+    "ctaPrimary": "開始免費試用",
+    "ctaSecondary": "觀看示範"
+  },
+  "socialProof": {
+    "trustedBy": "已受超過 500 店家信任",
+    "active_members": "活躍會員",
+    "merchants": "合作店家",
+    "passes_issued": "已發送 Pass",
+    "avg_engagement": "平均參與度提升"
+  },
+  "features": {
+    "title": "為您的店家打造的完整解決方案",
+    "subtitle": "所有您需要的一切，幫助您發展業務",
+    "passTitle": "數位會員卡",
+    "passDesc": "支援 Apple Wallet 與 Google Wallet，會員無需攜帶實體卡片。",
+    "pointsTitle": "印章與點數",
+    "pointsDesc": "靈活的集點規則，支援印章、點數與自訂獎勵。",
+    "scannerTitle": "掃碼系統",
+    "scannerDesc": "員工專用掃碼工具，快速紀錄會員消費與集點。",
+    "multiTenantTitle": "多租戶管理",
+    "multiTenantDesc": "一個平台管理多個分店，資料完全隔離。"
+  },
+  "howItWorks": {
+    "title": "3 步驟啟動您的忠誠計劃",
+    "step1Title": "註冊並建立店家資料",
+    "step1Desc": "填寫基本資訊，設定您的品牌與分店。",
+    "step2Title": "自訂會員獎勵規則",
+    "step2Desc": "定義點數計算方式、兌換規則與 VIP 門檻。",
+    "step3Title": "會員立即開始集點",
+    "step3Desc": "會員透過 QR Code 領取數位會員卡，開始集點消費。"
+  },
+  "cta": {
+    "title": "準備好提升會員參與度了嗎？",
+    "subtitle": "14 天免費試用。無需信用卡。隨時取消。",
+    "button": "開始免費試用"
+  },
+  "pricing": {
+    "title": "簡單透明，定價合理",
+    "subtitle": "選擇適合您業務規模的方案",
+    "perMonth": "/月",
+    "cta": "開始免費試用",
+    "green": {
+      "name": "綠卡",
+      "description": "適合小型店家起步",
+      "f1": "可儲存 3 個卡片模板",
+      "f2": "Email 行銷，每月 50 封免費，超額 $0.5/封",
+      "f3": "每個模板 1 個店家地址"
+    },
+    "gold": {
+      "name": "金卡",
+      "description": "適合成長中的店家",
+      "f1": "可儲存 6 個卡片模板",
+      "f2": "Email 行銷，每月 80 封免費，超額 $0.4/封",
+      "f3": "每個模板 3 個店家地址",
+      "f4": "1 個子帳號"
+    },
+    "platinum": {
+      "name": "白金卡",
+      "description": "適合大型連鎖店家",
+      "f1": "可儲存 10 個卡片模板",
+      "f2": "Email 行銷，每月 100 封免費，超額 $0.3/封",
+      "f3": "每個模板 10 個店家地址",
+      "f4": "5 個子帳號"
+    }
+  },
+  "footer": {
+    "slogan": "更多回頭的客戶=更高的營收",
+    "about": "關於我們",
+    "features": "功能",
+    "pricing": "定價",
+    "blog": "部落格",
+    "contact": "聯絡我們",
+    "copyright": "© 2026 SAOME. All rights reserved.",
+    "privacy": "隱私權政策",
+    "terms": "服務條款",
+    "gdpr": "資料處理協議",
+    "securePayments": "安全支付"
+  },
+  "login": {
+    "title": "登入",
+    "comingSoon": "即將推出。請稍候。"
+  }
+}
