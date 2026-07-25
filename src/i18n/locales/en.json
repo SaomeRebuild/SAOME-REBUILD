@@ -311,38 +311,46 @@
     "billedYearly": "Billed yearly",
     "footer": "Have more questions? Contact our sales team.",
     "startTrial": "Start Free Trial",
-    "card": {
-      "templates": "Card templates",
-      "addresses": "Store addresses per template",
-      "customDesign": "Custom card design",
-      "links": "Social/website links"
+    "card": { "templates": "Card templates", "addresses": "Store addresses per template", "customDesign": "Custom card design", "links": "Social/website links" },
+    "crm": { "duplicateCheck": "Duplicate data check", "memberManagement": "Member management", "subAccounts": "Sub-accounts" },
+    "marketing": { "emailMonthly": "Monthly free email allowance", "emailOverage": "Excess email fee", "survey": "Satisfaction survey", "pushNotification": "Push notifications", "campaign": "Marketing campaigns" },
+    "share": { "line": "Line/WhatsApp sharing", "website": "Website embed", "referral": "Referral rewards" },
+    "offline": { "print": "Print support", "scanner": "Scanner APP", "qrCode": "QR Code generation" },
+    "support": { "email": "Email support", "priority": "Priority support", "sla": "SLA guarantee" },
+    "category": { "card": "Card Features", "crm": "CRM & Member Management", "marketing": "Marketing Tools", "share": "Sharing Features", "offline": "Offline Mode", "support": "Support Services" }
+  },
+  "legal": {
+    "terms": {
+      "title": "Terms of Service", "date": "Effective Date: 2025/09/29",
+      "s1": "Scope of Services and License", "s1p1": "Service Provision — We agree to provide the Saome platform services according to these terms.",
+      "s1p2": "License Grant — We grant you a limited, non-exclusive, non-transferable license for internal business use only.",
+      "s1p3": "End Users — You are fully responsible for the actions of authorized end users.",
+      "s2": "Customer Obligations and Restrictions", "s2p1": "Customer Data Ownership — You retain ownership of all customer data you upload.",
+      "s2p2": "Usage Restrictions — You shall not resell, reverse engineer, or transmit illegal data.",
+      "s3": "Fees, Payment and Subscription Terms", "s3p1": "Subscription Fees — You agree to pay fees as specified in your order.",
+      "s3p2": "Renewal and Termination — Subscriptions auto-renew unless cancelled 1 day prior.",
+      "s3p3": "Refund Policy — Subscription fees are generally non-refundable.",
+      "s4": "Service Level, Warranty and Disclaimer", "s4p1": "Service Level Agreement — Target availability is 99.9%.",
+      "s4p2": "Disclaimer — Services are provided \"as is\" without warranties.",
+      "s5": "Intellectual Property and Data Protection", "s5p1": "Intellectual Property — All IP in the service belongs to us.",
+      "s5p2": "Data Protection and GDPR — These terms apply together with the DPA.",
+      "s6": "Limitation of Liability and Indemnification", "s6p1": "Limitation of Liability — Our liability is capped at 12 months of payments.",
+      "s6p2": "Exclusion of Indirect Damages — We are not liable for indirect or consequential damages.",
+      "s6p3": "Indemnification — You agree to indemnify us for claims arising from your breach.",
+      "s7": "Termination", "s7p1": "Termination for Cause — Either party may terminate immediately for material breach.",
+      "s7p2": "Effects of Termination — Your rights to use the service cease upon termination.",
+      "s8": "General Provisions", "s8p1": "Governing Law — These terms are governed by the laws of Taiwan.",
+      "s8p2": "Dispute Resolution — Parties shall attempt good faith negotiation first.",
+      "s8p3": "Entire Agreement — These terms, privacy policy, and DPA constitute the complete agreement."
     },
-    "crm": {
-      "duplicateCheck": "Duplicate data check",
-      "memberManagement": "Member management",
-      "subAccounts": "Sub-accounts"
+    "privacy": {
+      "title": "Privacy Policy", "date": "Effective Date: 2025/09/29",
+      "sA": "Contact Information and General Provisions", "sB": "Data Collection, Purpose and Legal Basis", "sC": "Role of Data Processor", "sD": "Data Sharing, International Transfers and Sub-processors", "sE": "Data Subject Rights", "sF": "Data Retention and Security"
     },
-    "marketing": {
-      "emailMonthly": "Monthly free email allowance",
-      "emailOverage": "Excess email fee",
-      "survey": "Satisfaction survey",
-      "pushNotification": "Push notifications",
-      "campaign": "Marketing campaigns"
-    },
-    "share": {
-      "line": "Line/WhatsApp sharing",
-      "website": "Website embed",
-      "referral": "Referral rewards"
-    },
-    "offline": {
-      "print": "Print support",
-      "scanner": "Scanner APP",
-      "qrCode": "QR Code generation"
-    },
-    "support": {
-      "email": "Email support",
-      "priority": "Priority support",
-      "sla": "SLA guarantee"
+    "gdpr": {
+      "title": "Data Processing Agreement (DPA)", "date": "Effective Date: 2025/09/29",
+      "subtitle": "This agreement is an annex to the Master Service Agreement (MSA).",
+      "sA": "Parties", "sB": "Scope and Details of Processing", "sC": "Processor's Obligations and Guarantees", "sD": "Service Termination and Audit"
     }
   }
 }

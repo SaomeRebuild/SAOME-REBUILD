@@ -23,7 +23,7 @@ const FEATURES: Feature[] = [
   { name: 'crm.subAccounts', green: false, gold: '1', platinum: '5' },
   // 行銷功能
   { name: 'marketing.emailMonthly', green: '50', gold: '80', platinum: '100' },
-  { name: 'marketing.emailOverage', green: '$0.5/封', gold: '$0.4/封', platinum: '$0.3/封' },
+  { name: 'marketing.emailOverage', green: '$0.5', gold: '$0.4', platinum: '$0.3' },
   { name: 'marketing.survey', green: true, gold: true, platinum: true },
   { name: 'marketing.pushNotification', green: false, gold: true, platinum: true },
   { name: 'marketing.campaign', green: false, gold: true, platinum: true },
@@ -42,12 +42,12 @@ const FEATURES: Feature[] = [
 ];
 
 const CATEGORIES = [
-  { key: 'card', label: '卡片功能' },
-  { key: 'crm', label: 'CRM 與會員管理' },
-  { key: 'marketing', label: '行銷工具' },
-  { key: 'share', label: '分享功能' },
-  { key: 'offline', label: '線下模式' },
-  { key: 'support', label: '支援服務' },
+  { key: 'card', labelKey: 'pricingCompare.category.card' },
+  { key: 'crm', labelKey: 'pricingCompare.category.crm' },
+  { key: 'marketing', labelKey: 'pricingCompare.category.marketing' },
+  { key: 'share', labelKey: 'pricingCompare.category.share' },
+  { key: 'offline', labelKey: 'pricingCompare.category.offline' },
+  { key: 'support', labelKey: 'pricingCompare.category.support' },
 ];
 
 const PLANS = {
@@ -215,7 +215,7 @@ export function DetailedPricingPage() {
                         backgroundColor: 'var(--color-muted)',
                       }}
                     >
-                      {category.label}
+                      {t(category.labelKey)}
                     </td>
                   </tr>
                   {FEATURES.filter((f) => f.name.startsWith(category.key)).map((feature) => (
