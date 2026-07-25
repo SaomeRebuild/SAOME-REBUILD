@@ -1,0 +1,7 @@
+{
+  "ai": "cursor-agent",
+  "ai_skills": true,
+  "integration": "cursor-agent",
+  "script": "ps",
+  "speckit_version": "0.14.2.dev0"
+}
