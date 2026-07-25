@@ -218,7 +218,7 @@ export function DetailedPricingPage() {
                       {category.label}
                     </td>
                   </tr>
-                  {FEATURES.filter((f) => f.name.startsWith(category.key)).map((feature, idx) => (
+                  {FEATURES.filter((f) => f.name.startsWith(category.key)).map((feature) => (
                     <tr
                       key={feature.name}
                       className="border-b"
