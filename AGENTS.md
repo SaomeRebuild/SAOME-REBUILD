@@ -6,6 +6,10 @@
 
 任何 session 結束前、同樣的錯第二次出現、或使用者要求反省時，必須引用 `.cursor/skills/saome-self-improvement/SKILL.md`。詳見該 skill。
 
+## New Repo SOP（MANDATORY）
+
+任何新建 saome-* repo（saome-backend / saome-api-worker / saome-postgresql …）時，必須引用 `.cursor/skills/saome-new-repo/SKILL.md`，遵守路徑規則、必含檔案、defensive .gitignore 範本、禁止清單。
+
 ## ⚠️ 關於 mu-plugins 的 UI
 
 **禁止沿用 mu-plugins 的任何 UI 內容**：
