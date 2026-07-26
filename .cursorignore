@@ -1,0 +1,18 @@
+﻿# .cursorignore — Cursor IDE personal state that should NOT be committed.
+#
+# This file is read by Cursor IDE to skip personal/transient files.
+# Unlike .gitignore (which controls git tracking), this prevents Cursor from
+# sending personal state to its own indexes while still letting .cursor/
+# rules/ and skills/ be tracked by git as team-shared knowledge.
+
+# Cursor agent transcripts (personal session history)
+agent-transcripts/
+
+# Per-user project state
+projects/
+
+# Local plans (one-off plans during this session)
+plans/
+
+# MCP servers personal config
+mcps/

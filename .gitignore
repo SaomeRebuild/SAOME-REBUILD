@@ -12,25 +12,42 @@ coverage/
 *.log
 logs/
 
-# Env
+# Wrangler / Cloudflare cache
+.wrangler/
+.pnpm-store/
+
+# Legacy assets (now in apps/frontend/public/)
+pic/
+
+# Runtime data — exclude most runtime/ephemeral outputs, but KEEP
+# improvement feedback inside `runs/improvements/` as team knowledge.
+runs/*
+!runs/improvements/
+
+# mu-plugins: read-only reference, never commit
+mu-plugins/
+
+# Environment files
 .env
 .env.local
 .env.*.local
 
-# IDE / OS
+# OS files
 .DS_Store
 Thumbs.db
-.idea/
+
+# IDE / Editor directories
 .vscode/*
 !.vscode/extensions.json
+.idea/
 *.sw?
 *.suo
-
-# Tooling
-.wrangler/
-.pnpm-store/
 
 # Local scratch
 .commit-msg-*.tmp
 .git-rebase-todo
 *.tmp
+
+# NOTE: .cursor/ is NOT ignored — rules/ and skills/ are committed as
+# team-shared documentation. Cursor IDE personal state lives under
+# .cursor/agents/ and .cursor/projects/ which are blocked by .cursorignore.

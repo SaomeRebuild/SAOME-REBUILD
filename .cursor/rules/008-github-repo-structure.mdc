@@ -1,0 +1,91 @@
+---
+description: SAOME GitHub 專案結構標準 — 命名、repo 建立、push 流程。
+alwaysApply: false
+---
+
+# GitHub Repo 結構標準
+
+> **2026-07-26 新增**：標準化 SAOME 所有 GitHub repo 的命名、建立、上傳流程。
+> 觸發時機：建立新 repo、上傳到 GitHub、初始化新專案。
+
+## Repo 命名規範
+
+| Repo 名稱 | 用途 | 本地資料夾 | 技術棧 |
+|-----------|------|-----------|--------|
+| `saome-frontend` | React 應用 | `frontend/` | React 19 / Vite / TypeScript |
+| `saome-backend` | Hono/Workers 後端 | `backend/` | Hono / Cloudflare Workers |
+| `saome-api` | API routes | `api/` | Hono / Edge Functions |
+| `saome_db` | (Supabase，見 supabase skill) | `supabase/` | Supabase |
+
+## 必要檔案（每個 Repo 根目錄）
+
+每個 repo 根目錄**必須**包含：
+
+| 檔案 | 用途 |
+|------|------|
+| `AGENTS.md` | Agent 入口，定義 skill、rules、workflow |
+| `README.md` | 專案說明、安裝、使用方式 |
+| `.gitignore` | 對應技術棧的標準範本 |
+| `package.json` | 專案相依 |
+| `tsconfig.json` | TypeScript 設定 |
+
+## 分支命名
+
+- **預設分支**：`main`（非 master）
+- **功能分支**：`feature/{功能名}` 或 `fix/{問題名}`
+- **禁止**：使用 `development`、`dev`、`staging` 作為長期分支
+
+## Push 流程（Standard Workflow）
+
+```
+1. 初始化（新專案）
+   ├── git init
+   ├── 建立必要檔案（AGENTS.md, README.md, .gitignore, package.json, tsconfig.json）
+   └── git add . && git commit -m "chore: initial commit"
+
+2. GitHub 建立 repo
+   ├── GitHub Web UI 建立（repo 名稱與本地資料夾名稱一致）
+   └── 設定 Default branch = main
+
+3. 關聯並推送
+   ├── git remote add origin https://github.com/SaomeRebuild/{repo名}.git
+   ├── git branch -M main
+   └── git push -u origin main
+
+4. 清理舊分支
+   ├── 確認 main 已同步
+   └── 刪除任何殘留的 master/development 分支
+```
+
+## 預檢查（Pre-push Checklist）
+
+在 `git push` 之前，**必須**確認：
+
+- [ ] `tsc --noEmit` 通過（TypeScript 無錯誤）
+- [ ] `npm run build` 通過（或對應的 build 指令）
+- [ ] 必要檔案已建立（見上方「必要檔案」表格）
+- [ ] `.gitignore` 正確設定（排除 `node_modules/`、`dist/`、`.env`）
+
+## 禁止事項
+
+- ❌ 上傳空 repo（沒有實質程式碼）
+- ❌ 缺少 `AGENTS.md`
+- ❌ 預設分支使用 `master` 而非 `main`
+- ❌ commit 包含 `.env` 或任何 credentials
+- ❌ 未通過 build/test 就 push 到 main
+
+## 與其他規則的關係
+
+- `011-dev.mdc`：每次 commit 需記錄 GitHub sync 狀態
+- `006-verification.mdc`：完成後需驗證 repo 在 GitHub 上可見
+- `saome-github-deploy` skill：詳細的自動化 deploy 流程
+
+## 觸發關鍵字
+
+以下任一關鍵字出現時，**必須**引用此規則：
+
+- 「上傳到 GitHub」
+- 「建立新 repo」
+- 「push 到 origin」
+- 「初始化新專案」
+- 「同步到 GitHub」
