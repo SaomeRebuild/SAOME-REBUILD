@@ -18,8 +18,10 @@ logs/
 # Legacy assets (now in frontend/public/)
 pic/
 
-# Runtime data
-runs/
+# Runtime data — exclude most runtime/ephemeral outputs, but KEEP
+# improvement feedback inside `runs/improvements/` as team knowledge.
+runs/*
+!runs/improvements/
 
 # mu-plugins: read-only reference, never commit
 mu-plugins/
@@ -33,10 +35,16 @@ mu-plugins/
 .DS_Store
 Thumbs.db
 
+# Test coverage
+coverage/
+
 # Editor directories and files
-.cursor/
 .vscode/*
 !.vscode/extensions.json
 .idea
 *.sw?
 *.suo
+
+# NOTE: .cursor/ is NOT ignored — rules/ and skills/ are committed as
+# team-shared documentation. Cursor IDE personal state lives under
+# .cursor/agents/ and .cursor/projects/ which are blocked by .cursorignore.
