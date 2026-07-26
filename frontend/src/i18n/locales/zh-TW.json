@@ -345,12 +345,132 @@
     },
     "privacy": {
       "title": "隱私權政策", "date": "生效日期：2025/09/29",
-      "sA": "聯絡資訊與總則", "sB": "資料收集、目的與法律依據", "sC": "資料處理者的角色", "sD": "資料共享、國際傳輸與次級處理者", "sE": "資料主體的權利", "sF": "資料保留與安全性"
+      "sA": "聯絡資訊與總則",
+      "sB": "資料收集、目的與法律依據",
+      "sC": "資料處理者的角色",
+      "sD": "資料共享、國際傳輸與次級處理者",
+      "sE": "資料主體的權利",
+      "sF": "資料保留與安全性",
+      "controller": {
+        "table": {
+          "controllerLabel": "資料控制者",
+          "controllerValue": "Saome 掃我，地址：[我的公司地址]",
+          "contactLabel": "資料保護聯絡人",
+          "contactValue": "E-mail: rex@saome.org",
+          "effectiveLabel": "生效日期",
+          "effectiveValue": "註冊即生效"
+        }
+      },
+      "collection": {
+        "intro": "我們僅基於明確、合法和特定的目的收集和處理您的個人資料。",
+        "tableHeader": {
+          "type": "資料類型",
+          "purpose": "處理目的",
+          "basis": "法律依據"
+        },
+        "row1": {
+          "type": "帳戶與聯絡資訊",
+          "purpose": "履行契約、帳戶管理、發送服務通知",
+          "basis": "GDPR 第 6(1)(b) 條"
+        },
+        "row2": {
+          "type": "交易與帳單資訊",
+          "purpose": "處理服務費用、履行會計和稅務法律義務",
+          "basis": "GDPR 第 6(1)(c)(b) 條"
+        },
+        "row3": {
+          "type": "產品使用資訊",
+          "purpose": "監控平台安全、改善服務功能、防止欺詐",
+          "basis": "GDPR 第 6(1)(f) 條"
+        }
+      },
+      "processor": {
+        "body": "對於您上傳到我們平台的終端客戶個人資料，我們僅作為資料處理者，依據您作為控制者的指示處理這些資料。我們不會將這些終端客戶資料用於我們自己的任何目的，並受到與您簽訂的 DPA 約束。"
+      },
+      "sharing": {
+        "subProcessors": "次級處理者 — 為了提供服務，我們與協力廠商共享您的資料，包括：雲端託管：Cloudway 和 DigitalOcean。",
+        "intlTransfer": "國際資料傳輸 — 由於我們的託管服務涉及 DigitalOcean（一家美國公司），您的個人資料可能被傳輸到歐洲經濟區以外的國家。我們確保傳輸的合法性：已與服務供應商簽訂最新的歐盟標準契約條款（SCCs）。"
+      },
+      "rights": {
+        "intro": "作為資料主體，您有權向我們行使以下權利：",
+        "accessTitle": "存取權",
+        "accessDesc": "取得我們所持有關於您的資料副本",
+        "rectificationTitle": "更正權",
+        "rectificationDesc": "要求更正不準確或不完整的資料",
+        "erasureTitle": "刪除權",
+        "erasureDesc": "在特定條件下，要求刪除您的個人資料",
+        "restrictionTitle": "限制處理權",
+        "restrictionDesc": "在爭議解決期間，要求限制處理您的資料",
+        "portabilityTitle": "資料可攜權",
+        "portabilityDesc": "接收您以結構化格式提供給我們的資料",
+        "objectionTitle": "反對權",
+        "objectionDesc": "反對基於「合法利益」處理您的個人資料"
+      },
+      "retention": {
+        "dataRetention": "資料保留 — 我們只會將您的個人資料保留在實現本政策所述目的所需的期間內。",
+        "security": "安全性 — 我們實施了嚴格的 TOMS 來保護您的資料免受未經授權的存取、披露或遺失。"
+      }
     },
     "gdpr": {
       "title": "資料處理協議 (DPA)", "date": "生效日期：2025/09/29",
       "subtitle": "本協議是《主服務協議》（MSA）的附件。",
-      "sA": "當事方", "sB": "處理的範圍與細節", "sC": "處理者的義務與保證", "sD": "服務終止與審計"
+      "sA": "當事方",
+      "sB": "處理的範圍與細節",
+      "sC": "處理者的義務與保證",
+      "sD": "服務終止與審計",
+      "parties": {
+        "controllerLabel": "資料控制者 (Controller)",
+        "controllerAddress": "貴寶號，地址：[企業客戶地址]",
+        "processorLabel": "資料處理者 (Processor)",
+        "processorAddress": "Saome.org，地址：[我的公司地址]"
+      },
+      "scope": {
+        "tableHeader": {
+          "item": "項目",
+          "desc": "描述"
+        },
+        "purposeLabel": "處理的目的",
+        "purposeDesc": "透過本平台提供忠誠計畫服務，包括建立、發放、管理和儲存會員卡、點數、消費紀錄。",
+        "dataSubjectsLabel": "資料主體類別",
+        "dataSubjectsDesc": "控制者的終端客戶（即忠誠計畫的會員/參與者）。",
+        "dataCategoriesLabel": "個人資料類別",
+        "dataCategoriesDesc": "姓名、電子郵件地址、電話號碼、會員 ID、消費紀錄、點數歷史等。",
+        "sensitivityLabel": "資料的敏感性",
+        "sensitivityDesc": "非特殊類別個人資料。",
+        "natureLabel": "處理的性質",
+        "natureDesc": "收集、記錄、儲存、組織、分析、檢索、傳輸和刪除。",
+        "durationLabel": "處理期間",
+        "durationDesc": "在主服務協議生效期間，以及協議終止後 30 天內。"
+      },
+      "obligations": {
+        "processingOnly": {
+          "title": "僅依指示處理",
+          "body": "處理者僅依據控制者的書面指示處理個人資料。"
+        },
+        "confidentiality": {
+          "title": "保密承諾",
+          "body": "處理者應確保所有接觸個人資料的人員都已簽署保密協議。"
+        },
+        "toms": {
+          "title": "資訊安全措施 (TOMS)",
+          "body": "處理者應實施符合 GDPR 第 32 條要求的適當技術與組織措施。"
+        },
+        "subProcessors": {
+          "title": "分包處理者",
+          "existing": "現有次級處理者：Cloudway（託管服務）和 DigitalOcean（雲端基礎設施）。",
+          "new": "新增次級處理者：處理者承諾給予控制者 30 天的反對期。"
+        },
+        "assistance": {
+          "title": "協助義務",
+          "dsr": "資料主體權利 (DSR)：協助回應終端客戶行使存取、更正、刪除等 DSR 請求。",
+          "dpia": "影響評估：協助進行資料保護影響評估 (DPIA)。",
+          "breach": "資料外洩通報：一旦發現任何資料安全事件，應立即通知控制者。"
+        }
+      },
+      "termination": {
+        "deletion": "服務終止處理：於服務終止後，處理者應安全刪除或歸還所有個人資料副本。",
+        "audit": "審計與證據：處理者應提供所有必要資訊以證明遵守本 DPA。"
+      }
     }
   }
 }

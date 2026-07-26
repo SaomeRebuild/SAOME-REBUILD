@@ -345,12 +345,132 @@
     },
     "privacy": {
       "title": "Privacy Policy", "date": "Effective Date: 2025/09/29",
-      "sA": "Contact Information and General Provisions", "sB": "Data Collection, Purpose and Legal Basis", "sC": "Role of Data Processor", "sD": "Data Sharing, International Transfers and Sub-processors", "sE": "Data Subject Rights", "sF": "Data Retention and Security"
+      "sA": "Contact Information and General Provisions",
+      "sB": "Data Collection, Purpose and Legal Basis",
+      "sC": "Role of Data Processor",
+      "sD": "Data Sharing, International Transfers and Sub-processors",
+      "sE": "Data Subject Rights",
+      "sF": "Data Retention and Security",
+      "controller": {
+        "table": {
+          "controllerLabel": "Data Controller",
+          "controllerValue": "Saome Scan-Me, address: [Company Address]",
+          "contactLabel": "Data Protection Contact",
+          "contactValue": "E-mail: rex@saome.org",
+          "effectiveLabel": "Effective Date",
+          "effectiveValue": "Effective upon registration"
+        }
+      },
+      "collection": {
+        "intro": "We collect and process your personal data only for explicit, lawful, and specific purposes.",
+        "tableHeader": {
+          "type": "Data Type",
+          "purpose": "Purpose",
+          "basis": "Legal Basis"
+        },
+        "row1": {
+          "type": "Account and contact information",
+          "purpose": "Contract performance, account management, service notifications",
+          "basis": "GDPR Article 6(1)(b)"
+        },
+        "row2": {
+          "type": "Transaction and billing information",
+          "purpose": "Processing service fees, fulfilling accounting and tax obligations",
+          "basis": "GDPR Articles 6(1)(b) and 6(1)(c)"
+        },
+        "row3": {
+          "type": "Product usage information",
+          "purpose": "Monitoring platform security, improving service functionality, preventing fraud",
+          "basis": "GDPR Article 6(1)(f)"
+        }
+      },
+      "processor": {
+        "body": "For end-customer personal data you upload to our platform, we act solely as a Data Processor, processing such data only on your documented instructions as the Controller. We do not use this end-customer data for any of our own purposes, and we are bound by the DPA signed with you."
+      },
+      "sharing": {
+        "subProcessors": "Sub-processors — To provide the service, we share your data with third parties, including: cloud hosting: Cloudway and DigitalOcean.",
+        "intlTransfer": "International Data Transfers — Because our hosting involves DigitalOcean (a U.S. company), your personal data may be transferred to countries outside the European Economic Area. We ensure the lawfulness of such transfers: the latest European Union Standard Contractual Clauses (SCCs) have been signed with the service providers."
+      },
+      "rights": {
+        "intro": "As a data subject, you have the right to exercise the following rights with us:",
+        "accessTitle": "Access",
+        "accessDesc": "Obtain a copy of the data we hold about you",
+        "rectificationTitle": "Rectification",
+        "rectificationDesc": "Request correction of inaccurate or incomplete data",
+        "erasureTitle": "Erasure",
+        "erasureDesc": "Request deletion of your personal data under specific conditions",
+        "restrictionTitle": "Restriction",
+        "restrictionDesc": "Request restriction of processing during dispute resolution",
+        "portabilityTitle": "Data Portability",
+        "portabilityDesc": "Receive data you have provided to us in a structured format",
+        "objectionTitle": "Objection",
+        "objectionDesc": "Object to the processing of your personal data based on legitimate interests"
+      },
+      "retention": {
+        "dataRetention": "Data Retention — We retain your personal data only for the period necessary to fulfill the purposes described in this policy.",
+        "security": "Security — We implement strict TOMS to protect your data from unauthorized access, disclosure, or loss."
+      }
     },
     "gdpr": {
       "title": "Data Processing Agreement (DPA)", "date": "Effective Date: 2025/09/29",
       "subtitle": "This agreement is an annex to the Master Service Agreement (MSA).",
-      "sA": "Parties", "sB": "Scope and Details of Processing", "sC": "Processor's Obligations and Guarantees", "sD": "Service Termination and Audit"
+      "sA": "Parties",
+      "sB": "Scope and Details of Processing",
+      "sC": "Processor's Obligations and Guarantees",
+      "sD": "Service Termination and Audit",
+      "parties": {
+        "controllerLabel": "Data Controller (Controller)",
+        "controllerAddress": "Your Business, address: [Client Address]",
+        "processorLabel": "Data Processor (Processor)",
+        "processorAddress": "Saome.org, address: [Company Address]"
+      },
+      "scope": {
+        "tableHeader": {
+          "item": "Item",
+          "desc": "Description"
+        },
+        "purposeLabel": "Purpose of Processing",
+        "purposeDesc": "Providing loyalty program services through this platform, including creating, issuing, managing and storing membership cards, stamps, and transaction records.",
+        "dataSubjectsLabel": "Categories of Data Subjects",
+        "dataSubjectsDesc": "The Controller's end customers (i.e., loyalty program members / participants).",
+        "dataCategoriesLabel": "Categories of Personal Data",
+        "dataCategoriesDesc": "Name, email address, phone number, member ID, transaction records, points history, etc.",
+        "sensitivityLabel": "Sensitivity of Data",
+        "sensitivityDesc": "Non-special-category personal data.",
+        "natureLabel": "Nature of Processing",
+        "natureDesc": "Collection, recording, storage, organization, analysis, retrieval, transmission and deletion.",
+        "durationLabel": "Duration of Processing",
+        "durationDesc": "During the effective period of the master service agreement, and for 30 days after its termination."
+      },
+      "obligations": {
+        "processingOnly": {
+          "title": "Process Only Per Instructions",
+          "body": "The Processor processes personal data only on the Controller's documented instructions."
+        },
+        "confidentiality": {
+          "title": "Confidentiality",
+          "body": "The Processor ensures that all personnel who access personal data have signed confidentiality agreements."
+        },
+        "toms": {
+          "title": "Information Security Measures (TOMS)",
+          "body": "The Processor implements appropriate technical and organizational measures that meet the requirements of GDPR Article 32."
+        },
+        "subProcessors": {
+          "title": "Sub-processors",
+          "existing": "Existing sub-processors: Cloudway (hosting service) and DigitalOcean (cloud infrastructure).",
+          "new": "New sub-processors: The Processor commits to giving the Controller a 30-day objection period."
+        },
+        "assistance": {
+          "title": "Duty to Assist",
+          "dsr": "Data Subject Rights (DSR): Assist in responding to end-customer requests to access, rectify, or erase their data.",
+          "dpia": "Impact Assessment: Assist in conducting Data Protection Impact Assessments (DPIA).",
+          "breach": "Breach Notification: Notify the Controller immediately upon discovering any data security incident."
+        }
+      },
+      "termination": {
+        "deletion": "Service Termination Handling: Upon termination of the service, the Processor shall securely delete or return all copies of personal data.",
+        "audit": "Audit and Evidence: The Processor shall provide all necessary information to demonstrate compliance with this DPA."
+      }
     }
   }
 }
