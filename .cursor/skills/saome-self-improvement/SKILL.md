@@ -37,11 +37,22 @@
 - 或在 `AGENTS.md` 的強制檢查清單加上對應條目
 
 ### Step 3：commit（不 push）
-SAOME-REBUILD 是 owner-agent 私房，self-improvement 改動永遠 commit 在本地，不推任何 remote。
+SAOME-REBUILD 是 owner-agent 私房，self-improvement **純反思性**改動（feedback、debug log、
+skill 自我改進）commit 在本地，不推任何 remote。
+
+**例外**：當 fix 補上是「補回原本被誤刪的共用規範」（例如遺失的 .cursor/rules/ 補齊、
+被誤覆蓋的 AGENTS.md 重要章節還原）→ 屬於規範本身的修復，**可 push**，但是 commit
+message 必須明確標 `Self-improvement:` 並連到本 feedback。
 
 ```bash
-git add .cursor/ runs/improvements/
-git commit -m "chore(self-improvement): record <topic> and update <rule|skill>"
+# 純反思（不 push）
+git add .cursor/skills/saome-self-improvement/ runs/improvements/
+git commit -m "chore(self-improvement): reflect ..."
+
+# 規範修復（可 push）
+git add .cursor/rules/000-modular-design.mdc AGENTS.md
+git commit -m "chore(self-improvement): restore ..."
+git push origin main
 ```
 
 ### Step 4：建立下一個 session 的起點
@@ -57,5 +68,6 @@ git commit -m "chore(self-improvement): record <topic> and update <rule|skill>"
 
 - 寫得太長（AI 痕跡風險）
 - 寫進 emoji
-- 把規範推到任何 remote（owner-agent 私房）
-- 跳過 Step 1 直接改 rules（沒有 feedback 的規則改動是無根的）
+- 純反思 commit 推任何 remote（owner-agent 私房）
+- 規範修復 push 卻沒標 `Self-improvement:` 與 feedback 連結
+- 跳過 Step 1 直接改 rules
