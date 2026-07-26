@@ -2,6 +2,10 @@
 
 > 繼承根目錄 `AGENTS.md` 全部規則，本檔只列補充。
 
+## Self-Improvement（MANDATORY）
+
+任何 session 結束前、同樣的錯第二次出現、或使用者要求反省時，必須引用 `.cursor/skills/saome-self-improvement/SKILL.md`。詳見該 skill。
+
 ## ⚠️ 關於 mu-plugins 的 UI
 
 **禁止沿用 mu-plugins 的任何 UI 內容**：
