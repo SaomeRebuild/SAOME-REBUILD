@@ -37,7 +37,7 @@ jobs:
 
   # ============================================================
   # 第二階段：CI（typecheck / lint / unit-test）
-  # Cloudflare Pages/Workers deploy 由 D.3 OAuth 全自動處理
+  # Cloudflare Pages/Workers deploy 由 CF webhook 自動處理
   # ============================================================
   typecheck:
     needs: changes
@@ -47,12 +47,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with: { version: 9 }
       - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: 'pnpm' }
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm -r run typecheck
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci
+        working-directory: apps/frontend
+      - run: npx tsc -b --noEmit
+        working-directory: apps/frontend
 
   lint:
     needs: changes
@@ -60,12 +60,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with: { version: 9 }
       - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: 'pnpm' }
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter frontend run lint
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci
+        working-directory: apps/frontend
+      - run: npm run lint
+        working-directory: apps/frontend
 
   test:
     needs: changes
@@ -73,9 +73,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with: { version: 9 }
       - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: 'pnpm' }
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter frontend run test
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci
+        working-directory: apps/frontend
+      - run: npm test
+        working-directory: apps/frontend

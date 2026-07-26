@@ -29,3 +29,8 @@ Thumbs.db
 # Tooling
 .wrangler/
 .pnpm-store/
+
+# Local scratch
+.commit-msg-*.tmp
+.git-rebase-todo
+*.tmp
