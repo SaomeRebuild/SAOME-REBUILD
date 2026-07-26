@@ -1,0 +1,28 @@
+name: Sync Public Docs to SAOME
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/public/**'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout SAOME-REBUILD
+        uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - name: Push docs/public/ to SAOME (public)
+        uses: cpina/github-action-push-to-another-repository@v1
+        with:
+          username: ${{ secrets.SAOME_PUBLIC_DEPLOY_USER }}
+          password: ${{ secrets.SAOME_PUBLIC_DEPLOY_TOKEN }}
+          repository: SaomeRebuild/SAOME
+          branch: main
+          directory: docs/public
+          target_directory: .
+          message: "docs: sync from SAOME-REBUILD ({sha})"

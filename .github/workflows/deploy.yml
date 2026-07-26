@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ============================================================
+  # 第一階段：偵測變更範圍
+  # ============================================================
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      backend: ${{ steps.filter.outputs.backend }}
+      shared: ${{ steps.filter.outputs.shared }}
+      docs_public: ${{ steps.filter.outputs.docs_public }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v2
+        id: filter
+        with:
+          filters: |
+            frontend:
+              - 'apps/frontend/**'
+              - 'packages/shared/**'
+              - 'wrangler.jsonc'
+            backend:
+              - 'apps/backend-workers/**'
+              - 'packages/shared/**'
+            shared:
+              - 'packages/shared/**'
+            docs_public:
+              - 'docs/public/**'
+
+  # ============================================================
+  # 第二階段：CI（typecheck / lint / unit-test）
+  # Cloudflare Pages/Workers deploy 由 D.3 OAuth 全自動處理
+  # ============================================================
+  typecheck:
+    needs: changes
+    if: |
+      needs.changes.outputs.frontend == 'true' ||
+      needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r run typecheck
+
+  lint:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter frontend run lint
+
+  test:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter frontend run test

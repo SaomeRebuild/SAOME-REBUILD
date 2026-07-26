@@ -71,7 +71,7 @@ components/business/<scope>/<Name>/
 ## Config 結構（MANDATORY）
 
 ```
-frontend/src/config/
+apps/frontend/src/config/
 ├── index.ts            ← 對外暴露
 ├── env.ts              ← 環境變數 + zod 驗證
 ├── api.ts              ← API 設定
@@ -85,16 +85,16 @@ frontend/src/config/
 
 ## shared Package 邊界（MANDATORY）
 
-frontend/ **只能放 Web 特定內容**。所有可共用的程式碼必須在 `shared/`：
+apps/frontend/ **只能放 Web 特定內容**。所有可共用的程式碼必須在 `packages/shared/`：
 - ✅ TypeScript 介面、zod schemas、業務邏輯純函式、常數、API contracts、i18n 翻譯檔
-- ❌ 禁止在 frontend/ 內寫任何可共用的業務邏輯
-- ❌ 禁止在 frontend/ 直接呼叫 `fetch` / `localStorage`
+- ❌ 禁止在 apps/frontend/ 內寫任何可共用的業務邏輯
+- ❌ 禁止在 apps/frontend/ 直接呼叫 `fetch` / `localStorage`
 - 詳見 `.cursor/rules/frontend/023-shared-package.mdc`
 
 ## Mobile Future-Proof（MANDATORY）
 
 為未來 React Native 化預先準備。每個 PR 必須能回答「換成 RN 需要改什麼？」：
-- 業務邏輯在 shared/，RN 化零成本遷移
+- 業務邏輯在 packages/shared/，RN 化零成本遷移
 - ❌ 禁止在 component 內寫業務邏輯
 - ❌ 禁止直接使用 Web-only API（localStorage、IntersectionObserver 等）
 - 詳見 `.cursor/rules/frontend/024-mobile-future-proof.mdc`

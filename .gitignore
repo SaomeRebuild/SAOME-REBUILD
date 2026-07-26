@@ -1,45 +1,31 @@
-# Owner-agent private state — 鎖在 SAOME-REBUILD 本地，不推到任何 GitHub repo
-.cursor/
-.cursorignore
-DEV/
-runs/
-mu-plugins/
-specs/
-AGENTS.md
-.shared/
-.shared.*
-
-# Build artifacts
+# Build
 node_modules/
 dist/
 dist-ssr/
 build/
-.wrangler/
-.pnpm-store/
+*.tsbuildinfo
+coverage/
+
+# Cache / Lock-store / Logs
 .turbo/
-
-# Legacy assets (now in frontend/public/)
-pic/
-
-# Logs
+.cache/
 *.log
 logs/
 
-# Environment
+# Env
 .env
 .env.local
 .env.*.local
 
-# OS files
+# IDE / OS
 .DS_Store
 Thumbs.db
-
-# Editor
+.idea/
 .vscode/*
 !.vscode/extensions.json
-.idea
 *.sw?
 *.suo
 
-# Coverage
-coverage/
+# Tooling
+.wrangler/
+.pnpm-store/
