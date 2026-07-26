@@ -1,0 +1,59 @@
+---
+description: 元件重用鐵律 — 新元件前必查 ui/ 與 business/，禁止重複造輪。
+alwaysApply: true
+---
+
+# 元件重用鐵律
+
+> 觸發：任何新 UI 元件
+
+## 強制檢查流程
+
+寫新元件前，**必跑**：
+
+```
+1. grep components/ui/         ← L1 有嗎？
+2. grep components/business/    ← L2 有嗎？
+3. grep components/layout/      ← L3 有嗎？
+4. 確認沒有 → 才能建新元件
+```
+
+## 改既有元件流程
+
+| 層級 | 是否可改 | 改完要做什麼 |
+|------|---------|-------------|
+| L1 (ui) | ✅ 可 | 更新 design-system/MASTER.md |
+| L2 (business) | ⚠️ 須 PR 描述影響範圍 | 通知下游 |
+| L3 (layout) | ⚠️ 須 PR 描述影響範圍 | - |
+
+## 變體擴充（vs 修改）
+
+### ✅ 變體擴充
+
+```tsx
+// ✅ 用 variants 增加新行為
+<Button variant="ghost" size="lg" />
+```
+
+### ❌ 修改既有元件行為
+
+```tsx
+// ❌ 改 Button 原本 props
+<Button primary={false} />   // 若已廢棄
+```
+
+## 禁止事項
+
+- ❌ 同名元件重複存在（`<Card>` 跟 `<MyCard>` 兩者）
+- ❌ 直接修改 L1 shadcn 元件行為（要 clone 進 L2 改）
+- ❌ 跨層引用未透過 barrel
+
+## 與其他 rule 關係
+
+- `000-modular-design.mdc`：每個業務元件必須資料夾
+- `010-uiux-pro-max.mdc`：先有 design token 再寫元件
+- `024-mobile-future-proof.mdc`：元件要能 RN 化
+
+## 觸發關鍵字
+
+「新元件」「新增 component」「需要一個 button」「做一個 dialog」「重用」**必須**引用。

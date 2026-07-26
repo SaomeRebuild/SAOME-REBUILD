@@ -31,9 +31,19 @@ alwaysApply: false
 
 ## 分支命名
 
-- **預設分支**：`main`（非 master）
+- 預設分支：`main`（非 master）
 - **功能分支**：`feature/{功能名}` 或 `fix/{問題名}`
 - **禁止**：使用 `development`、`dev`、`staging` 作為長期分支
+
+## Destructive Operation 守則
+
+任何 `Remove-Item` / `rm -rf` / `git rm` / 整個資料夾覆蓋動作**必須**：
+1. 先 `git ls-tree -r HEAD --name-only <dir>` 列出磁碟實際檔案
+2. 對比「要留下的檔案清單」
+3. 在 terminal 輸出 audit：「刪了什麼、為什麼、保留什麼」
+4. **先看 audit 再執行刪除**
+
+觸發關鍵字：「刪除」「合併」「替換」「覆蓋」「整個」。
 
 ## Push 流程（Standard Workflow）
 

@@ -1,0 +1,62 @@
+---
+description: Mobile Future-Proof — 為未來 React Native 化預先準備，業務邏輯全在 shared/。
+alwaysApply: true
+---
+
+# Mobile Future-Proof（MANDATORY）
+
+> SAOME 未來會做 React Native 化，每個 PR 必須能回答：
+> 「換成 RN 需要改什麼？」
+
+## 預期答案
+
+理想答案：「換成 RN 需要改的只有 platform binding，業務邏輯零成本遷移」。
+
+## 規範
+
+### ✅ 業務邏輯在 shared/
+
+- zod schema → packages/shared/
+- 純函式 → packages/shared/logic/
+- i18n → packages/shared/i18n/
+
+### ✅ Web-only 程式碼明確標示
+
+- 用 `.web.ts` / `.web.tsx` 副檔名
+- 或放在 `apps/frontend/src/web/` 子目錄
+
+### ❌ 禁止在 component 內寫業務邏輯
+
+```tsx
+// ❌ 業務邏輯在 component
+function MemberCard({ email }) {
+  const valid = /^[^\s@]+@[^\s@]+$/.test(email);  // 業務邏輯
+  return ...
+}
+
+// ✅ 抽到 shared/
+// packages/shared/logic/email.ts
+export const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+$/.test(email);
+```
+
+### ❌ 禁止直接使用 Web-only API
+
+| API | 替代方案 |
+|-----|---------|
+| `localStorage` | 用 `useStorage` hook（包裝後） |
+| `IntersectionObserver` | 用 `useInView` hook（包裝後） |
+| `window` | `typeof window !== 'undefined'` 判斷 |
+| `document` | SSR / RN 不能用 |
+
+## 評估 checklist
+
+每個 PR 必檢：
+
+- [ ] 業務邏輯搬進 shared/ 了？
+- [ ] 沒在 component 直接寫商業邏輯？
+- [ ] 沒在 component 直接用 localStorage / window？
+- [ ] i18n key 都在 shared/ i18n/ 內？
+
+## 觸發關鍵字
+
+「React Native」「RN 化」「mobile」「未來手機版」「跨平台」**必須**引用。

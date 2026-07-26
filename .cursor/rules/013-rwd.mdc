@@ -1,0 +1,56 @@
+---
+description: RWD 響應式鐵律 — mobile-first，所有 UI 必須先做 mobile 再增強 desktop。
+alwaysApply: true
+---
+
+# RWD（Responsive Web Design）鐵律
+
+> 所有 UI 元件 mobile-first。
+
+## 三層數字規格
+
+| 指標 | Mobile | Tablet | Desktop |
+|------|--------|--------|---------|
+| 預設樣式起點 | ✅ | ❌ | ❌ |
+| breakpoint 修飾 | 用 sm/md/lg 增強 | 同左 | 同左 |
+| 觸控目標 | ≥ 44pt | ≥ 44pt | ≥ 32pt |
+| 文字 | ≥ 14px | ≥ 14px | ≥ 14px |
+| 內容密度 | 垂直堆疊 | 半垂直半網格 | 網格 |
+
+## Tailwind 寫法
+
+```tsx
+// ✅ 正確：mobile-first
+<div className="flex flex-col md:flex-row gap-2 md:gap-4">
+
+// ❌ 錯誤：先寫 desktop 再改 mobile
+<div className="flex flex-row md:flex-col">
+```
+
+## DataTable 在 mobile 的處理
+
+- **強制改寫為卡片列表**
+- 不要用 horizontal scrollbar
+- 每張卡片 = 1 筆資料
+- 重要欄位 top，副欄位 bottom
+
+## 表單在 mobile 的處理
+
+- input font-size ≥ 16px（避免 iOS 縮放）
+- button height ≥ 44pt
+- label 永遠在 input **上方**（不是左方）
+
+## Modal / Drawer
+
+- mobile: 全螢幕 bottom sheet
+- tablet: 70% 寬度
+- desktop: 50% 寬度（含遮罩）
+
+## Navigation
+
+- mobile: hamburger / bottom tab
+- desktop: top nav 或 sidebar
+
+## 觸發關鍵字
+
+出現「rwd」「responsive」「手機版」「mobile」「pc 版」時**必須**引用此 rule + `014-breakpoints.mdc`。

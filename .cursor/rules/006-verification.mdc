@@ -1,0 +1,39 @@
+---
+description: 完工前驗證鐵律 — 任何宣稱完成、修復、通過的任務，必須先跑驗證指令並看到輸出。
+alwaysApply: true
+---
+
+# 完工前驗證（MANDATORY）
+
+> 觸發：「完成了」「修好了」「跑過了」「可以 push 了」
+
+## 鐵律
+
+**不準在沒看到驗證輸出前說完成**。
+
+### 驗證指令清單（依專案變動）
+
+| 驗證項 | 指令 | 通過條件 |
+|--------|------|---------|
+| TypeScript | `npx tsc -b --noEmit` | exit 0, 無錯誤 |
+| Lint | `npm run lint` | exit 0 |
+| Unit test | `npm test` | 全綠 |
+| BDD test | `npm run test:bdd` | 全綠 |
+| Build | `npm run build` | exit 0 + dist/ 產出 |
+| Coverage | `npm run test:coverage` | ≥ 80% |
+
+## 修復 bug 流程
+
+修完後**必須**執行 systematic-debugging skill：
+1. 確認根因（不是症狀）
+2. 寫 failing test 驗證 repro
+3. 改 code
+4. 重新跑 failing test → 綠
+5. 跑全部 test 確認沒 regression
+6. 再跑 typecheck + lint
+
+## 禁止
+
+- ❌ 「應該好了」→ 必須「確認好了」
+- ❌ 只跑單一測試就聲稱完成 → 必須跑全部
+- ❌ skip coverage 檢查

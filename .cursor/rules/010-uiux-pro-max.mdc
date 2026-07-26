@@ -1,0 +1,49 @@
+---
+description: UI/UX 設計前置流程 — 任何新 UI 元件必須先經此流程，產出 design token 才能寫 component。
+alwaysApply: true
+---
+
+# UI/UX Pro Max 前置流程（MANDATORY）
+
+> 任何 UI 元件實作前必跑。
+> 由於 shadcn/ui + Tailwind + Radix 組合非常多變，**禁止**直接寫 component。
+
+## 流程
+
+```
+Step 1: 載入 ui-ux-pro-max skill
+        → 67 種風格、161 色票、57 字型配對、99 UX guideline
+
+Step 2: 定義 design token
+        → design-system/MASTER.md
+        → 必須含：
+           - 顏色（primitive → semantic → component 三層）
+           - spacing (4px grid)
+           - typography scale
+           - radius
+           - shadow
+
+Step 3: 對齊設計意圖
+        → 業務場景
+        → 使用者輪廓
+        → 平台限制（mobile-first）
+
+Step 4: 寫 design system 文件
+        → design-system/MASTER.md
+        → 不可跳過
+
+Step 5: 才能開始寫 component
+        → L1: shadcn/ui 變體
+        → L2: 業務元件
+```
+
+## 不准做的事
+
+- ❌ 直接 import shadcn Button 就開始寫 page
+- ❌ 寫死 hex 色碼（必走 token）
+- ❌ 寫死 px spacing（必走 4-grid）
+- ❌ shadcn 變體跟 design system 不一致
+
+## 觸發關鍵字
+
+出現「加個 button」「做個 dialog」「切版」「拉一個 component」時**必須**引用此 rule。

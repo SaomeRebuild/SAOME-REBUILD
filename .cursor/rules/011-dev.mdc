@@ -1,0 +1,60 @@
+---
+description: 開發紀錄鐵律 — 每次 commit 必須記錄 GitHub sync 狀態、決策、依賴變更。
+alwaysApply: true
+---
+
+# 開發紀錄規範（MANDATORY）
+
+> 觸發：每次 commit 前。
+
+## Commit 訊息格式
+
+```
+<type>(<scope>): <subject>
+
+<body>
+
+<footer>
+```
+
+| Type | 用途 |
+|------|------|
+| feat | 新功能 |
+| fix | 修 bug |
+| chore | 雜務（gitignore、依賴更新） |
+| refactor | 重構（不變行為） |
+| docs | 文件 |
+| style | format（不變邏輯） |
+| test | 測試 |
+| perf | 效能 |
+
+## 必填欄位（footer）
+
+- `Refs:` 對應 spec / issue / plan
+- `Sync:` GitHub remote URL + commit SHA
+- `Self-improvement:` 若有 runs/improvements/feedback/ 連結
+
+## 同步狀態必須記
+
+- ✅ 本地 commit hash
+- ✅ 對應 remote commit hash（推完之後）
+- ✅ 任何 push 失敗的 reason
+
+## 範例
+
+```
+feat(member): add MemberCard business component
+
+- Implement MemberCard per design-system/MASTER.md
+- All tests green (Vitest + RTL)
+- Coverage 87%
+
+Refs: specs/042-member-card/spec.md
+Sync: https://github.com/SaomeRebuild/SAOME-REBUILD commit abc1234
+```
+
+## 禁止
+
+- ❌ 沒填 body 就 commit（除 trivial chore）
+- ❌ 沒記 GitHub sync 狀態
+- ❌ 把 secrets 寫進 commit message

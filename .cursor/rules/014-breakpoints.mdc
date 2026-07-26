@@ -1,0 +1,55 @@
+---
+description: Breakpoint 規範 — Tailwind 預設 breakpoint 不可改，用 4-grid spacing 對齊 token。
+alwaysApply: true
+---
+
+# Breakpoint 規範
+
+> 觸發：rwd 決策、grid 排版、螢幕尺寸討論。
+
+## Tailwind 預設 Breakpoint（不準改）
+
+| 名稱 | 寬度 | 用途 |
+|------|------|------|
+| (default) | 0–639px | mobile（**預設起點**） |
+| sm | 640px+ | 大手機 / 小平板 |
+| md | 768px+ | 平板 |
+| lg | 1024px+ | 桌機 |
+| xl | 1280px+ | 大桌機 |
+| 2xl | 1536px+ | 超寬 |
+
+## 4-Grid Spacing Token
+
+| Token | px | Tailwind |
+|-------|-----|---------|
+| xs | 4 | p-1, m-1 |
+| sm | 8 | p-2, m-2 |
+| md | 16 | p-4, m-4 |
+| lg | 24 | p-6, m-6 |
+| xl | 32 | p-8, m-8 |
+| 2xl | 48 | p-12, m-12 |
+| 3xl | 64 | p-16, m-16 |
+
+## 寫法規則
+
+```tsx
+// ✅ 4-grid 對齊
+<div className="p-4 md:p-6">         // mobile=16, tablet=24
+
+// ❌ p-3 / p-5 等不在 token 內的值
+<div className="p-3 md:p-5">         // 禁止
+```
+
+## 容器寬度
+
+| 場景 | mobile | tablet | desktop |
+|------|--------|--------|---------|
+| 全文 | w-full px-4 | max-w-screen-md | max-w-screen-lg |
+| 內文 | max-w-prose | max-w-prose | max-w-prose |
+| 後台 | w-full | w-full | max-w-screen-2xl |
+
+## 禁止
+
+- ❌ 自訂 breakpoint（在 tailwind.config 改 sm/md 值）
+- ❌ 用 1px / 3px / 7px 等非 4-grid 數值
+- ❌ mobile / desktop 調換順序寫

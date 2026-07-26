@@ -1,0 +1,63 @@
+---
+description: shared Package 邊界 — frontend/ 只能放 Web 特定內容，可共用的程式碼必須 packages/shared/。
+alwaysApply: true
+---
+
+# shared Package 邊界（MANDATORY）
+
+> frontend/ 與 packages/shared/ 的責任劃分，是 monorepo 的關鍵。
+
+## packages/shared/ 放什麼 ✅
+
+| 類型 | 範例 |
+|------|------|
+| TypeScript 介面 | `Member`, `Order`, `Pass` interface |
+| zod schemas | `memberSchema`, `passSchema` |
+| 業務邏輯純函式 | `validateEmail()`, `calcDiscount()` |
+| 常數 | `MEMBER_ROLE`, `PASS_TIER` |
+| API contracts | request/response types |
+| i18n 翻譯檔 | zh-TW.json, en.json |
+| BDD feature | `.feature` 與 step definitions |
+
+## frontend/（apps/frontend/）放什麼 ✅
+
+| 類型 | 範例 |
+|------|------|
+| React 元件 | `<Button>`, `<MemberCard>` |
+| React Hook | `useAuth`, `useTableQuery` |
+| Web 特定 hook | `useBreakpoint`, `useIntersection` |
+| Vite config | vite.config.ts |
+| Tailwind config | tailwind.config.ts |
+| Storybook | stories |
+
+## 禁止 ❌
+
+- ❌ 在 apps/frontend/ 內寫可共用的業務邏輯
+- ❌ 在 apps/frontend/ 直接呼叫 `fetch` / `localStorage`（要包成 service / hook）
+- ❌ 把 TypeScript 介面定義在 app 內（要搬 packages/shared/）
+- ❌ 把 i18n key 寫在 app 內（要搬 packages/shared/）
+
+## 結構範例
+
+```
+packages/shared/
+├── types/         ← TypeScript 介面
+├── schemas/       ← zod
+├── constants/     ← 常數
+├── logic/         ← 純函式
+├── api/           ← API contract
+├── i18n/          ← 翻譯檔
+└── bdd/           ← Cucumber feature + step
+
+apps/frontend/
+├── src/
+│   ├── components/
+│   ├── hooks/             ← Web 特定 hook
+│   ├── pages/
+│   ├── config/            ← frontend 環境常數
+│   └── services/          ← BFF 呼叫，內部用 packages/shared 的型別
+```
+
+## 觸發關鍵字
+
+「共用」「共用函式」「shared」「type」「interface」「i18n 翻譯」**必須**引用。

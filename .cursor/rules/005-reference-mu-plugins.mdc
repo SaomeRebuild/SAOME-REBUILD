@@ -1,0 +1,44 @@
+---
+description: 關於 mu-plugins / WordPress 既存 UI — 嚴禁沿用任何設計、命名或互動模式。
+alwaysApply: true
+---
+
+# mu-plugins 參照鐵律（MANDATORY）
+
+> mu-plugins 為 SAOME 既有 WordPress PHP plugin，內含完整 jQuery UI。
+> SAOME-REBUILD 是全新前端，**禁止任何形式沿用**。
+
+## 禁止沿用項目（明確清單）
+
+| 類別 | 禁止 |
+|------|------|
+| 視覺風格 | 顏色、字型、版面、間距、圓角、陰影 |
+| CSS class | `.saome-*` 命名空間 |
+| 互動模式 | jQuery event、WordPress media library |
+| UI lib 選擇 | 沒經 ui-ux-pro-max 評估前，shadcn/ui 等禁止套用 |
+| Tailwind 組合 | 沒經 design token 規範前，禁止組合 |
+| i18n 策略 | 不能沿用 PHP i18n pattern |
+
+## UIUX 流程（MANDATORY）
+
+任何 UI 元件實作前：
+1. **先跑** `.cursor/rules/uiux/010-uiux-pro-max.mdc` 流程
+2. **等** `design-system/MASTER.md` 定義出該元件 token
+3. **才能** 開始寫 component
+
+## 例外
+
+- ✅ 可以從 mu-plugins 學習「業務流程」（不是 UI）
+- ✅ 可以參考 mu-plugins 的 data model / DB schema
+
+## 為什麼這條鐵律存在
+
+mu-plugins 是 2024 前的 WordPress 時代產物。SAOME-REBUILD 2026 重建，
+是 React 19 + Vite + shadcn/ui 的全新 stack。沿用 mu-plugins UI 會：
+1. 把 WordPress/jQuery 的技術債複製到新系統
+2. 阻礙 future React Native migration
+3. 違反 mobile-first 鐵律
+
+## 觸發關鍵字
+
+出現「mu-plugins」「原本的 UI」「舊系統」「WordPress」時**必須**引用此 rule。

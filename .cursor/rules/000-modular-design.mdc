@@ -1,0 +1,41 @@
+---
+description: 模組化設計鐵律 — 每個業務元件為獨立資料夾，禁止 flat 結構、禁止跨層引用。
+alwaysApply: true
+---
+
+# 模組化設計（MANDATORY）
+
+> 觸發：寫新元件、改舊元件、code review。
+
+## 鐵律
+
+| 鐵律 | 適用層 | 細節 |
+|------|--------|------|
+| 業務元件必須是一個資料夾 | L2 | `components/business/<scope>/<Name>/` |
+| 主組件 ≤ 100 行 | L2 | 只做組裝，邏輯拆 sub-component / hook |
+| L2 不能直接修改 L1 | L1 / L2 | 用變體擴充，不要 fork |
+| 業務邏輯不能在 component 內 | 全部 | 拆到 hook 或 service |
+| 跨層引用禁止 | 全部 | L2 引用 L3 / L4 / L5 必須透過 barrel |
+
+## 資料夾結構（MANDATORY）
+
+```
+components/business/<scope>/<Name>/
+├── index.ts                  ← barrel export
+├── <Name>.tsx                ← 主組件（<= 100 行）
+├── <Name>Header.tsx          ← sub
+├── <Name>Stats.tsx
+├── <Name>Actions.tsx
+├── <Name>Skeleton.tsx
+├── <Name>.types.ts
+├── <Name>.hooks.ts
+├── <Name>.test.tsx           ← Vitest + RTL
+└── <Name>.stories.tsx        ← Storybook
+```
+
+## 禁止
+
+- ❌ 把 L2 業務元件寫成單一 .tsx（必須資料夾）
+- ❌ 主組件超過 100 行
+- ❌ L2 直接修改 shadcn L1 元件
+- ❌ 把業務邏輯寫在 JSX / event handler 裡

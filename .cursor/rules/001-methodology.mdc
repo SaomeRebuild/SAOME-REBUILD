@@ -1,0 +1,50 @@
+---
+description: 方法論規範 — SDD/BDD/TDD/superpowers 整合，Agent 必須先走 spec 後寫 code。
+alwaysApply: true
+---
+
+# 方法論（MANDATORY）
+
+> 任何 breaking change、新功能、跨多檔案改動 **必須** 走這份流程。
+
+## 三層流程
+
+```
+1. SDD  Spec-Driven Development
+   ↳ 先用 .specify 寫 spec（specify → plan → tasks）
+   ↳ 產出 specs/<NNN>-<feature>/spec.md, plan.md, tasks.md
+
+2. BDD  Behavior-Driven Development
+   ↳ 從 spec 抽出 .feature（@cucumber/cucumber）
+   ↳ step definitions 放在 packages/shared/bdd/
+   ↳ 跑 npm run test:bdd 必須綠
+
+3. TDD  Test-Driven Development
+   ↳ 寫 Vitest/RTL 失敗測試 → 實作 → 綠
+   ↳ coverage 門檻 ≥ 80%
+```
+
+## 觸發時機
+
+| 改動類型 | 必須走 SDD | 必須走 BDD | 必須走 TDD |
+|----------|-----------|-----------|-----------|
+| 新功能（多檔） | ✅ | ✅ | ✅ |
+| 新功能（單檔） | ✅ | ❌ | ✅ |
+| L1 UI 元件 | ❌ | ❌ | ✅ |
+| L2 業務元件 | ✅ | ✅ | ✅ |
+| bug fix | ❌ | 視情況 | ✅ |
+| breaking refactor | ✅ | ✅ | ✅ |
+
+## 與 superpowers 整合
+
+- 開始新功能前：`brainstorming` skill
+- 規劃 spec 前：`writing-plans` skill
+- 實作前：`test-driven-development` skill
+- 完工前：`verification-before-completion` skill
+
+## 禁止
+
+- ❌ 沒 spec 就寫 code
+- ❌ 沒 .feature 就寫業務邏輯
+- ❌ 沒 failing test 就寫實作
+- ❌ coverage < 80% 就 merge
