@@ -238,6 +238,7 @@ Deploy 完成後，**必須**確認：
 | package.json deploy script | 確認使用 `npx wrangler deploy`（非直接 `wrangler deploy`） |
 | lockfile 無 pnpm entries | 檢查 `package-lock.json` 不含 `.pnpm/... link entries` |
 | 雙 lockfile 衝突 | 確認使用單一 lockfile（root 或 apps/frontend/，不要兩者都有） |
+| lockfile 跨平台 audit | `node scripts/audit-lockfile-bindings.cjs` 確認 10 個關鍵 Linux binding（oxlint / rollup / rolldown / tailwindcss-oxide / esbuild / workerd 等）皆存在 |
 
 ### Cloudflare Pages 設定
 
@@ -255,6 +256,9 @@ Deploy 完成後，**必須**確認：
 | `sh: 1: tsc: not found` | `.bin/tsc` 未建立 | 檢查 lockfile 無 pnpm-style entries |
 | `Cannot read properties of undefined (reading 'extraneous')` | npm Arborist 分析損壞的 dependency tree | 重建 lockfile |
 | `error TS2688: Cannot find type definition file for 'node'` | @types/node 位置錯誤 | 統一 lockfile 策略 |
+| `Cannot find module '@oxlint/binding-linux-x64-gnu'` | lockfile 缺 Linux binding | 重新生成 lockfile 帶 `--include=optional` |
+| `Cannot find module '@rollup/rollup-linux-x64-gnu'` | 同上 | 同上 |
+| `Cannot find module '@rolldown/binding-linux-x64-gnu'` | 同上 | 同上 |
 
 詳見：`runs/improvements/feedback/20260727-cloudflare-pages-deploy.md`
 

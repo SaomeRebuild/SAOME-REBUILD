@@ -43,6 +43,7 @@ alwaysApply: true
 | 改 tsconfig | 檢查所有 `*.config.ts` 是否都在 `include` | CI 與 IDE 行為會分裂 |
 | 改 package.json | 跑 `npm install` 重新生成 lockfile | 避免 lockfile 與 package.json 不同步 |
 | 改 vite/vitest alias | 跑 `npm test` 確認 alias 解析 | typecheck 綠不代表 runtime 對 |
+| 改 `package.json` 或 `package-lock.json` | `rm -rf node_modules && rm package-lock.json && npm install --include=optional [--os=linux --cpu=x64 --libc=glibc]` | npm 11.0–11.2 對跨平台 optional dep 有 pruning bug；必須明確傳入 `--include=optional` 才能保留全平台 binding |
 
 **覆蓋既有檔一律用 `Read` + `StrReplace`**。`Write` 僅限新建檔案。
 

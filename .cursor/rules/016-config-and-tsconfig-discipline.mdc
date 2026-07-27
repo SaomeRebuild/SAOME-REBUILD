@@ -20,6 +20,7 @@ SAOME 是 monorepo + workspaces，下列 7 個地方**任一不一致**會導致
 | 5 | `apps/*/tsconfig.app.json` 的 `paths` | TypeScript 解析 |
 | 6 | `apps/*/tsconfig.node.json` 的 `include` | IDE 看到哪些檔案 |
 | 7 | `.gitignore` 的 lockfile pattern | CI 是否能找到 lockfile |
+| 8 | `package-lock.json` 內 platform binding 條目完整性 | 必須 lockfile 內含全部目標平台的 binding metadata（npm 11.3.0+ 行為；11.0–11.2 有 pruning bug 需明確傳入 `--include=optional` 才有 metadata） |
 
 ## 變更前的強制檢查
 

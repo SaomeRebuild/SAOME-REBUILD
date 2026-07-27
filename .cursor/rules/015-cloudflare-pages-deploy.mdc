@@ -46,6 +46,19 @@ alwaysApply: true
 | Cloudflare | `sh: 1: tsc: not found` | `.bin/tsc` 未建立 |
 | Cloudflare (降級 TS5.7) | `error TS2688: Cannot find type definition file for 'node'` | TypeScript 存在但 @types/node 位置錯誤 |
 
+## 跨平台 native binding 缺失
+
+當 `package-lock.json` 在 Windows 開發端用 npm 11.0–11.2 生成時（pruning bug，npm/cli#4828/#7961/#8320，於 11.3.0 修復），Linux CI 與 Cloudflare Pages 會找不到對應 binary。
+
+| 平台 | 錯誤訊息 | 實際原因 | 修法 |
+|------|---------|---------|------|
+| GitHub Actions | `Cannot find module '@oxlint/binding-linux-x64-gnu'` | lockfile 缺 Linux binding | 重新生成 lockfile，傳 `--include=optional` |
+| GitHub Actions | `Cannot find module '@rollup/rollup-linux-x64-gnu'` | 同上 | 同上 |
+| Cloudflare Pages | `Cannot find module '@rolldown/binding-linux-x64-gnu'` | 同上 | 同上 |
+
+詳見 `runs/improvements/feedback/20260727-cloudflare-pages-deploy.md` Phase 2
+與 `apps/frontend/scripts/audit-lockfile-bindings.cjs`（lockfile 內 10 個關鍵 Linux binding 必驗）。
+
 ## 禁止
 
 - ❌ 在 build script 裡刪 `node_modules/typescript`（只是清症狀）
