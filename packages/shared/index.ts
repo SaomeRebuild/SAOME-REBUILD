@@ -1,6 +1,6 @@
 /**
  * SAOME-REBUILD Shared Package
- * 
+ *
  * @module @saome/shared
  * @description Shared package containing business logic, types, schemas, i18n, and BDD testing infrastructure
  */
@@ -13,6 +13,9 @@ export * from './schemas';
 
 // Logic
 export * from './logic';
+
+// Constants
+export * from './constants';
 
 // i18n
 export * from './i18n';

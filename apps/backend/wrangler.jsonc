@@ -1,0 +1,29 @@
+// Cloudflare Workers configuration for saome-backend (Hono API Worker).
+//
+// Required env / bindings:
+//   - HYPERDRIVE: Postgres connection pool (id from Cloudflare dashboard)
+//
+// Local dev: use `.dev.vars` for JWT_SECRET etc. (git ignored).
+// Production: `wrangler secret put JWT_SECRET`.
+
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "saome-backend",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-09-06",
+  "compatibility_flags": ["nodejs_compat"],
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "<HYPERDRIVE_ID_PLACEHOLDER>"
+    }
+  ],
+  "vars": {
+    "ACCESS_TOKEN_TTL": "900",
+    "REFRESH_TOKEN_TTL": "2592000",
+    "ALLOWED_ORIGINS": "http://localhost:5173"
+  },
+  "observability": {
+    "enabled": true
+  }
+}

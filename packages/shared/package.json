@@ -17,14 +17,21 @@
     "./types": "./types/index.ts",
     "./schemas": "./schemas/index.ts",
     "./logic": "./logic/index.ts",
+    "./constants": "./constants/index.ts",
     "./i18n": "./i18n/index.ts"
   },
   "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "test:bdd": "cucumber-js",
     "test:bdd:watch": "cucumber-js --watch",
     "build": "tsc",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@cucumber/cucumber": "^10.9.0",

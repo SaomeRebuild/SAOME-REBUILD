@@ -5,7 +5,7 @@
  * @description Custom Cucumber World with Playwright page context
  */
 
-import { chromium, Browser, BrowserContext, Page } from '@playwright/test';
+import { chromium, type Browser, type BrowserContext, type Page } from '@playwright/test';
 
 /**
  * Global test world instance

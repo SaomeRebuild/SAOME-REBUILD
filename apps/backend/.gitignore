@@ -1,0 +1,52 @@
+# SAOME Backend — Worker (Hono on Cloudflare Workers)
+# Defensive .gitignore: ensure no private state leaks to the repo.
+
+# ───── Build artifacts ─────
+node_modules/
+dist/
+.wrangler/
+.mf/
+*.local
+
+# ───── Cloudflare / Wrangler local state ─────
+.dev.vars
+.dev.vars.*
+.wrangler/
+
+# ───── Logs ─────
+*.log
+logs/
+
+# ───── Coverage ─────
+coverage/
+
+# ───── Environment / Secrets ─────
+.env
+.env.local
+.env.*.local
+
+# ───── IDE / Editor ─────
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.sw?
+*.suo
+
+# ───── OS ─────
+.DS_Store
+Thumbs.db
+
+# ───── TypeScript build info ─────
+*.tsbuildinfo
+
+# ───── Owner-agent private state (defensive — must NOT be in saome-* repo) ─────
+.cursor/
+DEV/
+runs/
+AGENTS.md
+# (Note: This repo IS intentionally inside SAOME-REBUILD so AGENTS.md is committed.)
+
+# ───── Shared schema sync ─────
+# When copying schemas from packages/shared/ into src/shared/schemas/from-shared/,
+# the destination files SHOULD be committed for traceability.
+# But the source-of-truth lives in ../../packages/shared/ — do not symlink.

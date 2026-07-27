@@ -6,7 +6,7 @@
 
 import { Given, When, Then } from '@cucumber/cucumber';
 import { expect } from '@playwright/test';
-import { testWorld } from '../support/world';
+import { testWorld } from '../support/world.ts';
 
 const TIER_LABELS: Record<string, string> = {
   bronze: '銅牌',

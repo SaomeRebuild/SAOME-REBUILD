@@ -5,7 +5,7 @@
  */
 
 import { Given, When, Then } from '@cucumber/cucumber';
-import { testWorld } from '../support/world';
+import { testWorld } from '../support/world.ts';
 
 /**
  * Fill in a text input

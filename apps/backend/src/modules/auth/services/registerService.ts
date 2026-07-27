@@ -1,0 +1,104 @@
+/**
+ * Registration business logic.
+ *
+ * @module modules/auth/services/registerService
+ * @description Orchestrates: hash password → DB transaction (insert user +
+ * insert tenant) → sign tokens. Pure function: takes sql, secrets, payload.
+ */
+
+import type { Sql } from '@/shared/db/client';
+import type { RegistrationPayload } from '../schemas/request';
+import type { AuthSessionDto } from '@/contracts/auth';
+import { ConflictError } from '@/shared/lib/saomeError';
+import { hashPassword } from '@/shared/lib/password';
+import { signAccessToken, signRefreshToken } from '@/shared/lib/jwt';
+import { insertUser, findUserByEmail } from '../db/users';
+import { insertTenant, findTenantByTaxId } from '../db/tenants';
+
+const ACCESS_TOKEN_TTL_DEFAULT = 900; // 15 min
+
+export async function registerService(
+  sql: Sql,
+  jwtSecret: string,
+  payload: RegistrationPayload,
+  accessTokenTtl: number = ACCESS_TOKEN_TTL_DEFAULT
+): Promise<AuthSessionDto> {
+  // 1. Check email uniqueness before insert (fast-fail)
+  const existing = await findUserByEmail(sql, payload.accountInfo.email);
+  if (existing) {
+    throw new ConflictError(
+      'auth.error.emailTaken',
+      'Email already in use',
+      { email: payload.accountInfo.email },
+    );
+  }
+
+  // 1b. Check tax_id uniqueness (only if taxId is provided and not "0")
+  if (payload.tenantInfo.taxId && payload.tenantInfo.taxId !== '0') {
+    const existingTenant = await findTenantByTaxId(sql, payload.tenantInfo.taxId);
+    if (existingTenant) {
+      throw new ConflictError(
+        'auth.error.taxIdTaken',
+        'Tax ID already in use',
+        { taxId: payload.tenantInfo.taxId },
+      );
+    }
+  }
+
+  // 2. Hash password
+  const passwordHash = await hashPassword(payload.accountInfo.password);
+
+  // 3. Insert user + tenant in a transaction
+  const result = await sql.begin(async (tx) => {
+    const user = await insertUser(tx as unknown as Sql, {
+      email: payload.accountInfo.email,
+      passwordHash,
+      role: 'tenant',
+    });
+    const tenant = await insertTenant(tx as unknown as Sql, {
+      ownerUserId: user.id,
+      name: payload.tenantInfo.name,
+      contactName: payload.tenantInfo.contactName,
+      phoneCity: payload.tenantInfo.phoneCity,
+      address: payload.tenantInfo.address,
+      taxId: payload.tenantInfo.taxId,
+      invoiceAddress: payload.tenantInfo.invoiceAddress ?? null,
+      mobile: payload.tenantInfo.mobile ?? null,
+      website: payload.tenantInfo.website ?? null,
+      email: payload.tenantInfo.email,
+    });
+    return { user, tenant };
+  });
+
+  // 4. Sign tokens
+  const tokenPayload = {
+    sub: result.user.id,
+    email: result.user.email,
+    role: 'tenant' as const,
+  };
+  const accessToken = await signAccessToken(tokenPayload, jwtSecret, accessTokenTtl);
+  const refreshToken = await signRefreshToken(tokenPayload, jwtSecret);
+
+  return {
+    user: {
+      id: result.user.id,
+      email: result.user.email,
+      role: 'tenant',
+    },
+    tenant: {
+      id: result.tenant.id,
+      name: result.tenant.name,
+      contactName: result.tenant.contact_name,
+      phoneCity: result.tenant.phone_city,
+      address: result.tenant.address,
+      taxId: result.tenant.tax_id,
+      invoiceAddress: result.tenant.invoice_address,
+      mobile: result.tenant.mobile,
+      website: result.tenant.website,
+      email: result.tenant.email,
+    },
+    accessToken,
+    expiresIn: accessTokenTtl,
+    refreshToken,
+  };
+}

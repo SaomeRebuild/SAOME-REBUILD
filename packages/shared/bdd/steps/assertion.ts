@@ -6,7 +6,7 @@
 
 import { Then } from '@cucumber/cucumber';
 import { expect } from '@playwright/test';
-import { testWorld } from '../support/world';
+import { testWorld } from '../support/world.ts';
 
 /**
  * Assert page contains text

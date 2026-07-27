@@ -1,0 +1,87 @@
+/**
+ * Auth contract — public DTO interfaces.
+ *
+ * @module contracts/auth
+ * @description These types describe the JSON shape of API responses for the
+ * auth endpoints. Frontend imports these (via cp sync) to type its services.
+ *
+ * Conventions:
+ *   - Field names use camelCase
+ *   - Timestamps are ISO 8601 strings (not Unix)
+ *   - UUIDs are strings
+ *   - NEVER include `password_hash` or any internal field in a response DTO
+ *
+ * Each DTO mirrors the zod schema in
+ * `src/modules/auth/schemas/response.ts`.
+ */
+
+/**
+ * Public-safe user info returned by /api/auth/me and embedded in
+ * register/login responses.
+ */
+export interface AuthUserDto {
+  id: string;
+  email: string;
+  role: 'tenant' | 'admin';
+}
+
+/**
+ * Tenant business info returned by /api/auth/register and /api/auth/me.
+ */
+export interface TenantDto {
+  id: string;
+  name: string;
+  contactName: string;
+  phoneCity: string;
+  address: string;
+  taxId: string;
+  invoiceAddress: string | null;
+  mobile: string | null;
+  website: string | null;
+  email: string;
+}
+
+/**
+ * Response shape of POST /api/auth/register and /api/auth/login.
+ *
+ * `refreshToken` is returned in the JSON body ONLY for non-cookie clients
+ * (mobile, server-to-server). Browser clients receive it via Set-Cookie header
+ * only — never via JSON — to mitigate XSS exfiltration.
+ */
+export interface AuthSessionDto {
+  user: AuthUserDto;
+  tenant: TenantDto | null; // null for admin (no tenant record)
+  accessToken: string;
+  expiresIn: number; // seconds until accessToken expires
+  refreshToken?: string; // optional; cookie clients receive via Set-Cookie
+}
+
+/**
+ * Response shape of POST /api/auth/refresh.
+ */
+export interface RefreshResponseDto {
+  accessToken: string;
+  expiresIn: number;
+  refreshToken?: string; // optional; cookie clients receive via Set-Cookie
+}
+
+/**
+ * Response shape of GET /api/auth/me.
+ */
+export interface MeResponseDto {
+  user: AuthUserDto;
+  tenant: TenantDto | null;
+}
+
+/**
+ * Standard error response shape (all endpoints use this on failure).
+ */
+export interface ErrorResponseDto {
+  error: {
+    code: string;
+    i18nKey: string;
+    message: string;
+    details?: Record<string, unknown>;
+  };
+  requestId: string;
+}

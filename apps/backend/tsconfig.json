@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022"],
+    "types": ["@cloudflare/workers-types", "node"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
+    "verbatimModuleSyntax": false,
+    "paths": {
+      "@/*": ["./src/*"],
+      "@saome/shared/schemas/*": ["../../packages/shared/schemas/*"],
+      "@saome/shared/types/*": ["../../packages/shared/types/*"],
+      "@saome/shared/logic/*": ["../../packages/shared/logic/*"]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "**/node_modules", "**/*.test.ts", "vitest.config.ts"]}

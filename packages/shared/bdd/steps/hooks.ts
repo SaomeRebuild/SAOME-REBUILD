@@ -5,7 +5,7 @@
  */
 
 import { Before, After, BeforeAll, AfterAll } from '@cucumber/cucumber';
-import { testWorld, initializeBrowser, closeBrowser } from '../support/world';
+import { testWorld, initializeBrowser, closeBrowser } from '../support/world.ts';
 
 /**
  * Setup before all scenarios
