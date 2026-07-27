@@ -12,7 +12,7 @@
     "lint": "npm --workspace=apps/frontend run lint",
     "test": "npm --workspace=apps/frontend run test",
     "typecheck": "npm --workspace=apps/frontend run typecheck",
-    "pages:build": "npm --workspace=apps/frontend ci && cd apps/frontend && node ../node_modules/typescript/bin/tsc -b && node ../node_modules/vite/bin/vite.js build",
+    "pages:build": "npm --workspace=apps/frontend ci && cd apps/frontend && export PATH=\"$PWD/../node_modules/.bin:$PATH\" && tsc -b && vite build",
     "pages:deploy": "npm --workspace=apps/frontend run pages:deploy"
   },
   "engines": {
