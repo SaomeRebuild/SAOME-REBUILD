@@ -21,6 +21,7 @@ export const zhTW = {
       bronze: '銅牌',
       silver: '銀牌',
       gold: '金牌',
+      ariaLabel: '會員等級：{{tier}}',
     },
     register: '註冊會員',
     login: '登入',

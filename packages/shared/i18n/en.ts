@@ -21,6 +21,7 @@ export const en = {
       bronze: 'Bronze',
       silver: 'Silver',
       gold: 'Gold',
+      ariaLabel: 'Member tier: {{tier}}',
     },
     register: 'Register',
     login: 'Login',

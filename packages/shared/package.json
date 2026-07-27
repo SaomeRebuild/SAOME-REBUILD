@@ -3,16 +3,16 @@
   "version": "1.0.0",
   "description": "SAOME-REBUILD shared package - business logic, types, schemas, i18n, BDD steps",
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./index.ts",
+  "types": "./index.ts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "types": "./index.ts",
+      "default": "./index.ts"
     },
     "./bdd": {
-      "import": "./bdd/index.ts",
-      "types": "./bdd/index.ts"
+      "types": "./bdd/index.ts",
+      "default": "./bdd/index.ts"
     },
     "./types": "./types/index.ts",
     "./schemas": "./schemas/index.ts",
