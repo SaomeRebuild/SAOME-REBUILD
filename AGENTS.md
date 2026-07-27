@@ -128,3 +128,34 @@ apps/frontend/ **只能放 Web 特定內容**。所有可共用的程式碼必�
 - ❌ 跳過 ui-ux-pro-max 直接寫 UI 元件
 - ❌ 引用未實際寫成 .mdc 的 rule 路徑（引用前必須先產生對應檔案）
 - ❌ 在合併 / 替換 / 刪除任何目錄前，沒先跑 `git ls-tree` 對比
+
+---
+
+## SDD/BDD/TDD 方法論整合（MANDATORY）
+
+SAOME-REBUILD 採用三層方法論開發流程，詳細說明見：
+
+- **憲法**: `.specify/memory/constitution.md` — 定義核心原則
+- **橋梁 Skill**: `.cursor/skills/saome-methodology-bridge/SKILL.md` — 統一觸發時機與資料流向
+
+### 三系統關係
+
+| 系統 | 驗證層次 | 工具 | 產出 |
+|------|----------|------|------|
+| SDD | 規格層 | Spec-Kit | spec.md, plan.md, tasks.md |
+| BDD | 行為層 | Cucumber | *.feature, step definitions |
+| TDD | 實作層 | Vitest + RTL | *.test.tsx |
+| Smoke | 整合層 | Playwright | smoke test report |
+
+### 快速觸發
+
+| 情境 | 關鍵字 | 必需流程 |
+|------|--------|----------|
+| 新功能 | 新功能、加功能、做頁面 | SDD + BDD + TDD + Review |
+| 修 bug | 修 bug、修復、fix | TDD + Review |
+| 改 UI | 改 UI、切版 | TDD + RWD + Review |
+| 加業務邏輯 | 加業務邏輯 | SDD + BDD + TDD + Review |
+| 重構 | 重構、refactor | SDD + TDD + Review |
+| Deploy | deploy、部署、上線 | Smoke Test |
+
+詳見 `.cursor/skills/saome-methodology-bridge/SKILL.md`。
