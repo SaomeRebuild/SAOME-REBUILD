@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "node -e \"const fs=require('fs');try{const st=fs.lstatSync('node_modules/typescript');if(st.isSymbolicLink()){fs.rmSync('node_modules/typescript',{recursive:true,force:true});console.log('cleaned dangling typescript symlink')}else console.log('typescript is a real dir, keep')}catch(e){console.log('no typescript to clean')}\" && tsc -b && vite build",
+    "build": "tsc -b && vite build",
     "pages:build": "tsc -b && vite build",
     "pages:deploy": "wrangler pages deploy --project-name=saome-frontend --branch=main --commit-dirty=true",
     "typecheck": "tsc -b --noEmit",
@@ -40,7 +40,7 @@
     "@vitest/ui": "^3.0.0",
     "jsdom": "^25.0.0",
     "oxlint": "^1.71.0",
-    "typescript": "^5.7.0",
+    "typescript": "^7.0.2",
     "vite": "^8.1.1",
     "vitest": "^3.0.0",
     "wrangler": "^4.34.0"
