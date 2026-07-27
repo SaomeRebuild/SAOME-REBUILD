@@ -34,8 +34,21 @@ const aliasArray: { find: string | RegExp; replacement: string }[] = [
   { find: '@saome/shared', replacement: resolve(sharedRoot, 'index.ts') },
 ];
 
+// vitest 3.x bundles its own Vite (rollup-based), but `@vitejs/plugin-react`
+// and `@tailwindcss/vite` installed at the workspace root target the new
+// rolldown-based Vite. The two Plugin types are structurally incompatible
+// (`PluginContextMeta.rolldownVersion` only exists on the rolldown build),
+// so TypeScript rejects the assignment to `plugins: PluginOption`. The
+// plugins work fine at runtime because vitest just forwards the array to
+// Vite's plugin pipeline. Cast through `any` to silence the spurious type
+// error while preserving the array's runtime shape.
+// See https://github.com/vitest-dev/vitest/issues/7278 for the upstream
+// discussion.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const plugins = [react(), tailwindcss()] as any;
+
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins,
   resolve: { alias: aliasArray },
   test: {
     globals: true,
@@ -50,3 +63,4 @@ export default defineConfig({
     },
   },
 });
+
