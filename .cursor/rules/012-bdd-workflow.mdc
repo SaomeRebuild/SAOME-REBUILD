@@ -1,0 +1,133 @@
+---
+description: BDD 詳細工作流程 — Cucumber Scenario 撰寫規範與 Step Definitions 結構
+alwaysApply: true
+---
+
+# BDD 詳細流程（MANDATORY）
+
+> 定義 Feature File 撰寫規範與 Step Definitions 結構。
+
+## Feature File 命名規範
+
+```
+.feature 命名：<功能>-<場景>.feature
+範例：
+- member-registration.feature
+- product-page-navigation.feature
+- checkout-flow.feature
+```
+
+## Scenario 撰寫規則
+
+### Given-When-Then 結構
+
+```gherkin
+Feature: 會員註冊
+
+  Scenario: 正常註冊流程
+    Given 我在會員註冊頁面
+    And 我填入有效資料
+    When 我點擊「註冊」按鈕
+    Then 系統顯示「註冊成功」
+    And 發送驗證郵件
+
+  Scenario: 註冊失敗 - email 格式錯誤
+    Given 我在會員註冊頁面
+    And 我填入無效的 email
+    When 我點擊「註冊」按鈕
+    Then 系統顯示錯誤訊息「請輸入有效的 email」
+```
+
+### 常用 Step Patterns
+
+| Pattern | 用途 |
+|---------|------|
+| `I am on ...` | 導航到頁面 |
+| `I fill in ...` | 填入表單 |
+| `I click ...` | 點擊按鈕 |
+| `I should see ...` | 驗證顯示內容 |
+| `the system should ...` | 驗證系統行為 |
+| `there should be ...` | 驗證元素存在 |
+
+## Step Definitions 結構
+
+### 基本結構
+
+```typescript
+// packages/shared/bdd/steps/navigation.ts
+import { Given, When, Then } from '@cucumber/cucumber';
+import { testWorld } from '../support/world';
+
+Given('I am on the {string} page', async function(pageName: string) {
+  const url = getPageUrl(pageName);
+  await testWorld.page.goto(url);
+});
+
+When('I click the {string} button', async function(buttonText: string) {
+  await testWorld.page.click(`button:has-text("${buttonText}")`);
+});
+
+Then('I should see {string}', async function(text: string) {
+  await expect(testWorld.page.locator(`text=${text}`)).toBeVisible();
+});
+```
+
+### Custom World Setup
+
+```typescript
+// packages/shared/bdd/support/world.ts
+import { World, IWorldOptions } from '@cucumber/cucumber';
+
+export interface TestWorld extends World {
+  page: Page;
+  member: TestMember;
+}
+
+export const testWorld = {
+  page: null as unknown as Page,
+  member: null as unknown as TestMember,
+};
+```
+
+## Hooks 使用
+
+```typescript
+// packages/shared/bdd/steps/hooks.ts
+import { Before, After, BeforeAll, AfterAll } from '@cucumber/cucumber';
+import { testWorld } from '../support/world';
+
+BeforeAll(async function() {
+  testWorld.page = await browser.newPage();
+});
+
+Before(async function() {
+  await testWorld.page.goto('about:blank');
+});
+
+After(async function() {
+  // 截圖如果失敗
+  if (this.pickle?.status === 'FAILED') {
+    await testWorld.page.screenshot({ path: `reports/${Date.now()}.png` });
+  }
+});
+
+AfterAll(async function() {
+  await testWorld.page?.close();
+});
+```
+
+## 禁止
+
+- ❌ Scenario 超過 10 步
+- ❌ 同一個 step 重複定義
+- ❌ 硬編碼選擇器在 step definitions
+- ❌ Scenario 描述模糊（如「驗證正常運作」）
+
+## 觸發關鍵字
+
+「寫 .feature」「新增 Scenario」「BDD」**必須**引用此 rule。
+
+## 參照
+
+- `.specify/memory/constitution.md` — 宪法原則 II. BDD-Validated
+- `002-bdd.mdc` — BDD 工作流程概述

@@ -1,0 +1,97 @@
+---
+description: Smoke Test 冒煙測試流程 — Superpowers run-smoke-tests skill，功能完成後 deploy 前必須執行
+alwaysApply: true
+---
+
+# Smoke Test（MANDATORY）
+
+> 功能實作完成後、deploy 前必須執行冒煙測試。
+
+## 使用的 Superpowers Skills
+
+| Skill | 用途 |
+|-------|------|
+| `superpowers:run-smoke-tests` | 執行 Playwright smoke tests |
+
+## 觸發時機
+
+| 情境 | 說明 |
+|------|------|
+| 功能實作完成後 | 驗證核心功能正常 |
+| Deploy 前 | 確認部署正常 |
+| PR merge 前 | 最後把關 |
+
+## Smoke Test 檢查清單
+
+### 認證流程
+
+- [ ] 登入頁面正常顯示
+- [ ] 登入功能正常運作
+- [ ] 登出功能正常運作
+
+### 核心功能
+
+- [ ] 主要頁面正常渲染
+- [ ] 核心元件正確顯示
+- [ ] API 呼叫正常回應
+
+### 導航與互動
+
+- [ ] 頁面導航正常
+- [ ] 按鈕點擊正常
+- [ ] 表單提交正常
+
+### 響應式設計
+
+- [ ] Mobile viewport 正常
+- [ ] Tablet viewport 正常
+- [ ] Desktop viewport 正常
+
+## Playwright Smoke Test 範例
+
+```typescript
+// tests/smoke/member-badge.spec.ts
+import { test, expect } from '@playwright/test';
+
+test.describe('會員等級顯示元件', () => {
+  test('金牌會員顯示正確', async ({ page }) => {
+    await page.goto('/member-profile');
+    await expect(page.locator('.member-badge.gold')).toBeVisible();
+    await expect(page.locator('.member-badge.gold')).toContainText('金牌');
+  });
+
+  test('銀牌會員顯示正確', async ({ page }) => {
+    await page.goto('/member-profile');
+    await expect(page.locator('.member-badge.silver')).toBeVisible();
+  });
+
+  test('銅牌會員顯示正確', async ({ page }) => {
+    await page.goto('/member-profile');
+    await expect(page.locator('.member-badge.bronze')).toBeVisible();
+  });
+});
+```
+
+## 執行命令
+
+```bash
+npm run test:smoke          # 執行所有 smoke tests
+npm run test:smoke:ui      # 開啟 UI mode
+npx playwright test --tag=smoke
+```
+
+## 禁止
+
+- ❌ Smoke test 失敗就 deploy
+- ❌ 跳過 smoke test 說「單元測試會抓到」
+- ❌ 只跑 Happy Path，忽略錯誤路徑
+
+## 觸發關鍵字
+
+「deploy」「部署」「上線」「冒煙」**必須**引用此 rule。
+
+## 參照
+
+- `.specify/memory/constitution.md` — 宪法品質要求
+- `001-methodology.mdc` — Development Workflow
+- `superpowers:run-smoke-tests` — 詳細 smoke test 流程

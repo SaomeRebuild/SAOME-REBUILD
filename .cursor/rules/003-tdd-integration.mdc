@@ -1,0 +1,86 @@
+---
+description: TDD 測試驅動開發整合 — Superpowers test-driven-development skill，必須先寫失敗測試
+alwaysApply: true
+---
+
+# TDD 整合（MANDATORY）
+
+> 實作任何功能前都必須先寫失敗測試。沒有失敗測試就沒有實作。
+
+## 使用的 Superpowers Skills
+
+| Skill | 用途 |
+|-------|------|
+| `superpowers:test-driven-development` | 核心 TDD 流程 |
+| `superpowers:verification-before-completion` | 最終驗證 |
+
+## 觸發時機
+
+實作任何功能前都**必須**觸發。
+
+## Red-Green-Refactor 流程
+
+```
+1. RED: 寫 failing test
+2. Verify RED: 確認測試失敗是因為功能不存在
+3. GREEN: 寫最少量代碼通過測試
+4. Verify GREEN: 確認測試通過
+5. REFACTOR: 重構代碼
+6. Repeat: 下一個 failing test
+```
+
+### RED — 寫失敗測試
+
+```typescript
+test('顯示正確的會員等級圖示', () => {
+  render(<MemberBadge tier="gold" />);
+  expect(screen.getByText('金牌')).toBeInTheDocument();
+});
+```
+
+### Verify RED — 確認失敗
+
+```bash
+npm test src/components/MemberBadge.test.tsx
+# 預期：FAIL - MemberBadge not found
+```
+
+### GREEN — 最少量代碼
+
+```typescript
+export const MemberBadge = ({ tier }: { tier: 'bronze' | 'silver' | 'gold' }) => {
+  return <span>{tier === 'gold' ? '金牌' : tier}</span>;
+};
+```
+
+### Verify GREEN — 確認通過
+
+```bash
+npm test src/components/MemberBadge.test.tsx
+# 預期：PASS
+```
+
+## Coverage 門檻
+
+| 類型 | 門檻 |
+|------|------|
+| 專案整體 | ≥ 80% |
+| 業務邏輯 | ≥ 90% |
+| UI 元件 | ≥ 70% |
+
+## 禁止
+
+- ❌ 沒寫 failing test 就實作
+- ❌ 測試通過後刪除測試
+- ❌ coverage < 80% 就 merge
+- ❌ 先寫 code 再寫 test（要刪掉重寫）
+
+## 觸發關鍵字
+
+「修 bug」「實作」「加功能」「做頁面」**必須**引用此 rule。
+
+## 參照
+
+- `.specify/memory/constitution.md` — 宪法原則 III. TDD-Mandatory
+- `001-methodology.mdc` — 三層流程整合
+- `superpowers:test-driven-development` — 詳細 TDD 流程

@@ -1,5 +1,5 @@
 ---
-description: 方法論規範 — SDD/BDD/TDD/superpowers 整合，Agent 必須先走 spec 後寫 code。
+description: 方法論規範 — SDD/BDD/TDD/Review 整合，Agent 必須先走 spec 後寫 code。
 alwaysApply: true
 ---
 
@@ -7,40 +7,97 @@ alwaysApply: true
 
 > 任何 breaking change、新功能、跨多檔案改動 **必須** 走這份流程。
 
-## 三層流程
+## 完整流程圖
 
+```mermaid
+flowchart TD
+    subgraph PRE[前期]
+        A[User Request] --> B[brainstorming]
+        B --> C[speckit-specify]
+        C --> D[speckit-clarify?]
+        D --> E[speckit-plan]
+        E --> F[speckit-tasks]
+        F --> G[speckit-analyze?]
+    end
+    
+    subgraph BDD[BDD 行為測試]
+        G --> H[抽出 .feature]
+        H --> I[Step Definitions]
+        I --> J[npm run test:bdd]
+    end
+    
+    subgraph TDD[TDD 單元測試]
+        G --> K[test-driven-development]
+        K --> L[Failing Test]
+        L --> M[Implementation]
+        M --> N[npm test]
+    end
+    
+    subgraph QA[品質把關]
+        N --> O[run-smoke-tests]
+        O --> P[requesting-code-review]
+        P --> Q[verification-before-completion]
+    end
+    
+    subgraph FINISH[完成]
+        Q --> R[finishing-a-development-branch]
+        R --> S[saome-self-improvement]
+        S --> T[完成]
+    end
 ```
-1. SDD  Spec-Driven Development
-   ↳ 先用 .specify 寫 spec（specify → plan → tasks）
-   ↳ 產出 specs/<NNN>-<feature>/spec.md, plan.md, tasks.md
 
-2. BDD  Behavior-Driven Development
-   ↳ 從 spec 抽出 .feature（@cucumber/cucumber）
-   ↳ step definitions 放在 packages/shared/bdd/
-   ↳ 跑 npm run test:bdd 必須綠
+## 流程說明
 
-3. TDD  Test-Driven Development
-   ↳ 寫 Vitest/RTL 失敗測試 → 實作 → 綠
-   ↳ coverage 門檻 ≥ 80%
-```
+| 環節 | 工具/Skill | 產出 |
+|------|------------|------|
+| 創意發想 | `superpowers:brainstorming` | design doc |
+| 需求澄清 | `speckit-specify` | spec.md |
+| 技術規劃 | `speckit-plan` | plan.md, data-model.md |
+| 任務分解 | `speckit-tasks` | tasks.md |
+| BDD 行為 | 手動 + `002-bdd.mdc` | *.feature |
+| TDD 實作 | `superpowers:test-driven-development` | *.test.tsx |
+| 冒煙測試 | `superpowers:run-smoke-tests` | smoke test report |
+| Code Review | `superpowers:requesting-code-review` | review report |
+| 最終驗證 | `superpowers:verification-before-completion` | verification report |
+| 完成分支 | `superpowers:finishing-a-development-branch` | branch merged/PR |
 
 ## 觸發時機
 
-| 改動類型 | 必須走 SDD | 必須走 BDD | 必須走 TDD |
-|----------|-----------|-----------|-----------|
-| 新功能（多檔） | ✅ | ✅ | ✅ |
-| 新功能（單檔） | ✅ | ❌ | ✅ |
-| L1 UI 元件 | ❌ | ❌ | ✅ |
-| L2 業務元件 | ✅ | ✅ | ✅ |
-| bug fix | ❌ | 視情況 | ✅ |
-| breaking refactor | ✅ | ✅ | ✅ |
+| 改動類型 | 必走 SDD | 必走 BDD | 必走 TDD | 必走 Review |
+|----------|----------|----------|----------|-------------|
+| 新功能（多檔） | ✅ | ✅ | ✅ | ✅ |
+| 新功能（單檔） | ✅ | ❌ | ✅ | ✅ |
+| L1 UI 元件 | ❌ | ❌ | ✅ | ✅ |
+| L2 業務元件 | ✅ | ✅ | ✅ | ✅ |
+| bug fix | ❌ | 視情況 | ✅ | ✅ |
+| breaking refactor | ✅ | ✅ | ✅ | ✅ |
 
-## 與 superpowers 整合
+## 使用的 Skills
 
-- 開始新功能前：`brainstorming` skill
-- 規劃 spec 前：`writing-plans` skill
-- 實作前：`test-driven-development` skill
-- 完工前：`verification-before-completion` skill
+| 環節 | Skill | 必須/可選 |
+|------|-------|-----------|
+| 創意發想 | `superpowers:brainstorming` | 必須 |
+| 需求澄清 | `speckit-specify` | 必須 |
+| 模糊點澄清 | `speckit-clarify` | 可選 |
+| 技術規劃 | `speckit-plan` | 必須 |
+| 任務分解 | `speckit-tasks` | 必須 |
+| 一致性驗證 | `speckit-analyze` | 可選 |
+| BDD 行為 | 手動 + `002-bdd.mdc` | 必須 |
+| TDD 實作 | `superpowers:test-driven-development` | 必須 |
+| 冒煙測試 | `superpowers:run-smoke-tests` | 必須 |
+| Code Review | `superpowers:requesting-code-review` | 必須 |
+| 最終驗證 | `superpowers:verification-before-completion` | 必須 |
+| 完成分支 | `superpowers:finishing-a-development-branch` | 必須 |
+| 流程反省 | `saome-self-improvement` | 必須 |
+
+## 三層測試關係
+
+| 系統 | 驗證層次 | 工具 | 產出 |
+|------|----------|------|------|
+| SDD | 規格層 | Spec-Kit | spec.md, plan.md, tasks.md |
+| BDD | 行為層 | Cucumber | *.feature, step definitions |
+| TDD | 實作層 | Vitest + RTL | *.test.tsx |
+| Smoke | 整合層 | Playwright | smoke test report |
 
 ## 禁止
 
@@ -48,3 +105,25 @@ alwaysApply: true
 - ❌ 沒 .feature 就寫業務邏輯
 - ❌ 沒 failing test 就寫實作
 - ❌ coverage < 80% 就 merge
+- ❌ smoke test 失敗就 deploy
+- ❌ 跳過 code review 直接 merge
+
+## 觸發關鍵字
+
+| 關鍵字 | 觸發流程 |
+|--------|----------|
+| 「新功能」「加功能」「做頁面」 | SDD + BDD + TDD + Review |
+| 「修 bug」「修復」「fix」 | TDD + Review |
+| 「改 UI」「切版」「rwd」 | TDD + RWD + Review |
+| 「加業務邏輯」 | SDD + BDD + TDD + Review |
+| 「重構」「refactor」 | SDD + TDD + Review |
+| 「deploy」「部署」「上線」 | Smoke Test |
+
+## 參照
+
+- `.specify/memory/constitution.md` — 宪法
+- `002-bdd.mdc` — BDD 工作流程
+- `003-tdd-integration.mdc` — TDD 整合
+- `004-code-review.mdc` — Code Review
+- `005-smoke-test.mdc` — Smoke Test
+- `saome-methodology-bridge` skill — 完整觸發矩陣

@@ -1,0 +1,77 @@
+---
+description: Code Review 工作流程 — Superpowers requesting-code-review skill，每個 task 完成後必須 review
+alwaysApply: true
+---
+
+# Code Review（MANDATORY）
+
+> 每個 task 完成後、PR 建立前必須進行 code review。
+
+## 使用的 Superpowers Skills
+
+| Skill | 用途 |
+|-------|------|
+| `superpowers:requesting-code-review` | 發起 code review |
+| `subagent:code-reviewer` | 執行 review 的 subagent |
+
+## 觸發時機
+
+| 情境 | 必須/可選 |
+|------|-----------|
+| 每個 task 完成後 | 必須 |
+| 全部功能完成後 | 必須 |
+| PR 建立前 | 必須 |
+| 修復複雜 bug 後 | 建議 |
+
+## Review 檢查清單
+
+### 宪法遵守
+
+- [ ] 遵守 modular design（業務元件一個資料夾）
+- [ ] 遵守 mobile-first RWD
+- [ ] 遵守 shared package 邊界
+- [ ] 遵守 mobile future-proof
+
+### 程式品質
+
+- [ ] 所有 UI 字串走 i18n key
+- [ ] 無 hard-code hex 色碼
+- [ ] 無直接使用 Web-only API
+- [ ] 業務邏輯放在 packages/shared/
+
+### 測試覆蓋
+
+- [ ] 有對應的 test
+- [ ] Coverage ≥ 80%
+- [ ] 有對應的 Storybook
+
+### 安全性
+
+- [ ] 無敏感資訊外洩
+- [ ] 無 hard-code credentials
+- [ ] 正確的 error handling
+
+## Review 等級
+
+| 等級 | 說明 | 行動 |
+|------|------|------|
+| Critical | 破壞性問題，必須立即修復 | Block merge |
+| Important | 重要問題，merge 前修復 | Block merge |
+| Minor | 輕微問題，可記錄稍後修復 | Allow merge |
+
+## 禁止
+
+- ❌ 跳過 Critical/Important 問題直接 merge
+- ❌ 因為「簡單」就跳過 review
+- ❌ 忽略 reviewer 的有效技術反饋
+- ❌ 沒有 commit 就 request review
+
+## 觸發關鍵字
+
+「review」「審查」「merge」「PR」**必須**引用此 rule。
+
+## 參照
+
+- `.specify/memory/constitution.md` — 宪法品質要求
+- `001-methodology.mdc` — Development Workflow
+- `superpowers:requesting-code-review` — 詳細 review 流程
