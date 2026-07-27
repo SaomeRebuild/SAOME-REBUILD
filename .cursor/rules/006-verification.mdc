@@ -32,8 +32,44 @@ alwaysApply: true
 5. 跑全部 test 確認沒 regression
 6. 再跑 typecheck + lint
 
+## 改檔前 checklist（MANDATORY）
+
+任何「修改既有檔案」前**必須**執行：
+
+| 動作 | 指令 | 為什麼 |
+|------|------|--------|
+| 既有檔案 | `git show HEAD:<path>` 或 `git log --all --oneline -- <path>` | Write 會無聲覆蓋；看不到 HEAD 內容 = 風險 |
+| 改 `.gitignore` | `git ls-files \| grep <pattern>` 確認 | 避免誤排除既有 lockfile 導致 CI fail |
+| 改 tsconfig | 檢查所有 `*.config.ts` 是否都在 `include` | CI 與 IDE 行為會分裂 |
+| 改 package.json | 跑 `npm install` 重新生成 lockfile | 避免 lockfile 與 package.json 不同步 |
+| 改 vite/vitest alias | 跑 `npm test` 確認 alias 解析 | typecheck 綠不代表 runtime 對 |
+
+**覆蓋既有檔一律用 `Read` + `StrReplace`**。`Write` 僅限新建檔案。
+
+## Commit message 必填欄位（補強 011-dev.mdc）
+
+每條 commit message footer 必須包含驗證輸出截錄：
+
+```
+feat(member): add MemberCard business component
+
+- Implement MemberCard per design-system/MASTER.md
+- All tests green (Vitest + RTL)
+
+Verification (per .cursor/rules/006-verification.mdc):
+- typecheck: exit 0
+- lint: exit 0
+- test: 133/133 passed across 16 test files
+
+Refs: specs/042-member-card/spec.md
+Sync: https://github.com/SaomeRebuild/SAOME-REBUILD commit abc1234
+```
+
 ## 禁止
 
 - ❌ 「應該好了」→ 必須「確認好了」
 - ❌ 只跑單一測試就聲稱完成 → 必須跑全部
 - ❌ skip coverage 檢查
+- ❌ 沒跑驗證就 commit（「看起來對」≠「驗證通過」）
+- ❌ 用 `Write` 覆蓋既有檔案（必須 `Read` + `StrReplace`）
+- ❌ commit 訊息沒列驗證輸出

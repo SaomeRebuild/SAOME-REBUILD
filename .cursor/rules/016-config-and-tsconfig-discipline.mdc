@@ -1,0 +1,84 @@
+---
+description: Config 檔案（vite/vitest/tsconfig/package.json/lockfile）必須跨多 surface 同步一致；改任一檔必須驗證 CI 仍綠。
+alwaysApply: true
+---
+
+# Config & tsconfig 紀律（MANDATORY）
+
+> 觸發：新增/修改 `vite.config.ts`、`vitest.config.ts`、`tsconfig*.json`、`package.json`、`package-lock.json`、`.gitignore`、`.github/workflows/*.yml`
+
+## 7 個 surface 必須同步
+
+SAOME 是 monorepo + workspaces，下列 7 個地方**任一不一致**會導致 CI 與 IDE 行為分裂：
+
+| # | 檔案 | 影響 |
+|---|------|------|
+| 1 | `apps/*/package.json` 的 `dependencies` / `devDependencies` | `npm ci` 安裝的套件 |
+| 2 | 根目錄 `package-lock.json` | npm workspace 的 lockfile（CI 用） |
+| 3 | `apps/*/vite.config.ts` 的 `resolve.alias` | Vite dev/build 解析 |
+| 4 | `apps/*/vitest.config.ts` 的 `resolve.alias` | Vitest worker 解析（**與 #3 獨立**） |
+| 5 | `apps/*/tsconfig.app.json` 的 `paths` | TypeScript 解析 |
+| 6 | `apps/*/tsconfig.node.json` 的 `include` | IDE 看到哪些檔案 |
+| 7 | `.gitignore` 的 lockfile pattern | CI 是否能找到 lockfile |
+
+## 變更前的強制檢查
+
+任何時候要改這 7 個檔案的**任一個**，**必須**先跑：
+
+```bash
+# 確認既有 lockfile 是否被 git 追蹤
+git ls-files | grep -E "(package-lock|yarn.lock|pnpm-lock)"
+
+# 確認既有 *.config.ts 是否被 tsconfig include
+grep -E "(vite|vitest|jest|playwright)\.config" apps/*/tsconfig*.json
+
+# 確認既有 alias 在哪些 config
+grep -rn "@saome/shared" apps/*/*.config.ts apps/*/tsconfig*.json
+```
+
+然後**逐項**對照上面 7 個 surface 是否需要同步更新。
+
+## vitest alias 順序（Vite 8.x 鐵律）
+
+`resolve.alias` array form 按**宣告順序**匹配 prefix。最 specific 必須最先宣告：
+
+```ts
+// ✅ 正確：specific first
+const alias = [
+  { find: '@saome/shared/schemas/member', replacement: '...' },
+  { find: '@saome/shared/schemas', replacement: '...' },
+  { find: '@saome/shared', replacement: '...' }, // least specific LAST
+];
+
+// ❌ 錯誤：generic 會 swallow specific
+const alias = [
+  { find: '@saome/shared', replacement: 'index.ts' },
+  // 此行會被上面那行 swallow，never matched
+  { find: '@saome/shared/schemas/member', replacement: '...' },
+];
+```
+
+> **判斷**：每條 alias 是 prefix matching。Vite 拿到 `'@saome/shared/schemas/member'`，**第一個匹配的 wins**。
+
+驗證 alias 工作：跑 vitest 測試時用 `vi.mock` import 一個 workspace 套件，確認不報 `Failed to resolve import`。
+
+## tsconfig include 漏列 = CI 綠 IDE 紅
+
+`tsconfig.node.json` 的 `include` 沒列 `vitest.config.ts` → `tsc -b --noEmit` 不檢查它 → IDE 用合成視角檢查 → 兩者報告結果不一。
+
+新增任何 `*.config.ts` 必須同步進 `tsconfig.node.json` 的 `include`。
+
+## npm workspace + lockfile
+
+| 規則 | 說明 |
+|------|------|
+| Root `package-lock.json` | **必須 commit**（CI 在 root 跑 `npm ci`） |
+| `apps/*/package-lock.json` | **不 commit**（npm 10 hoist 全部到 root） |
+| `packages/*/package-lock.json` | **不 commit**（同上） |
+| `.gitignore` pattern | 用 `apps/*/package-lock.json` 與 `packages/*/package-lock.json`，**不要**用全域 `package-lock.json` |
+
+CI workflow 必須在 **workspace root** 跑 `npm ci`，子工作區用 `npm run <script> --workspace=<name>`。
+
+## 觸發關鍵字
+
+出現「config」、「tsconfig」、「alias」、「lockfile」、「CI」、「IDE 紅 CI 綠」、「resolve」、「vite」、「vitest」時**必須**引用此 rule + `.cursor/rules/015-cloudflare-pages-deploy.mdc`。
