@@ -226,6 +226,38 @@ Deploy 完成後，**必須**確認：
 - [ ] 舊分支已刪除
 - [ ] 沒有 `.env` 或 credentials 在 repo 中
 
+## Cloudflare Pages 部署檢查表
+
+> 當需要將前端部署至 Cloudflare Workers 時，**必須**參照 `.cursor/rules/015-cloudflare-pages-deploy.mdc`。
+
+### 前置檢查
+
+| 檢查項 | 指令 / 方法 |
+|--------|-------------|
+| wrangler.jsonc 格式正確 | 確認 `assets` 使用 `{ directory: "./dist" }`（非 Pages 格式） |
+| package.json deploy script | 確認使用 `npx wrangler deploy`（非直接 `wrangler deploy`） |
+| lockfile 無 pnpm entries | 檢查 `package-lock.json` 不含 `.pnpm/... link entries` |
+| 雙 lockfile 衝突 | 確認使用單一 lockfile（root 或 apps/frontend/，不要兩者都有） |
+
+### Cloudflare Pages 設定
+
+| 設定項目 | 值 |
+|----------|-----|
+| Root directory | `apps/frontend` |
+| Build command | `npm run deploy` |
+| Build output directory | `dist` |
+| Environment variables | `SKIP_DEPENDENCY_INSTALL=true` |
+
+### 常見錯誤與解決
+
+| 錯誤訊息 | 實際原因 | 解決方式 |
+|----------|----------|----------|
+| `sh: 1: tsc: not found` | `.bin/tsc` 未建立 | 檢查 lockfile 無 pnpm-style entries |
+| `Cannot read properties of undefined (reading 'extraneous')` | npm Arborist 分析損壞的 dependency tree | 重建 lockfile |
+| `error TS2688: Cannot find type definition file for 'node'` | @types/node 位置錯誤 | 統一 lockfile 策略 |
+
+詳見：`runs/improvements/feedback/20260727-cloudflare-pages-deploy.md`
+
 ## 錯誤處理
 
 | 錯誤 | 解決方式 |

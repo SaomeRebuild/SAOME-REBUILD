@@ -1,0 +1,59 @@
+---
+description: Cloudflare Pages 部署前端 Worker 的正確設定與常見錯誤。
+alwaysApply: true
+---
+
+# Cloudflare Pages Deploy（MANDATORY）
+
+> 觸發：`Cloudflare Pages`、`wrangler deploy`、`workers.dev`、`SKIP_DEPENDENCY_INSTALL`、`npm workspace`、`lockfile`
+
+## Cloudflare Pages 部署設定
+
+| 設定項目 | 值 | 說明 |
+|---------|---|------|
+| 部署命令 | `npm run deploy`（内部用 `npx wrangler deploy`） | wrangler 不在 Cloudflare Pages 全域 PATH |
+| 根目錄 | `apps/frontend` |  |
+| 建置變數 | `SKIP_DEPENDENCY_INSTALL=true` | 避免自動 npm install 衝突 |
+
+## wrangler.jsonc Worker-only 格式
+
+```jsonc
+// 正確（Worker-only）
+{
+  "name": "saome-frontend",
+  "assets": { "directory": "./dist" }
+}
+
+// 錯誤（Pages 格式，不適用於 Worker-only）
+{
+  "assets": { "binding": "ASSETS", "source": "./dist" }
+}
+```
+
+## npm workspace + lockfile 警告（重要！）
+
+| 問題 | 說明 | 修法 |
+|------|------|------|
+| pnpm lockfile entries | 根目錄 `package-lock.json` 含 `.pnpm/... link entries`，會被 npm 10 誤解 | 移除或重建 lockfile |
+| 雙 lockfile | 同時存在 root + apps/frontend/package-lock.json | 統一使用單一 lockfile |
+| workspace 邊界模糊 | npm 在子目錄執行時，向上識別 workspace root | 確保 lockfile 無 pnpm-style entries |
+
+### 三種錯誤表象
+
+| 平台 | 錯誤訊息 | 實際原因 |
+|------|----------|----------|
+| GitHub Actions | `Cannot read properties of undefined (reading 'extraneous')` | npm Arborist 分析損壞的 dependency tree |
+| Cloudflare | `sh: 1: tsc: not found` | `.bin/tsc` 未建立 |
+| Cloudflare (降級 TS5.7) | `error TS2688: Cannot find type definition file for 'node'` | TypeScript 存在但 @types/node 位置錯誤 |
+
+## 禁止
+
+- ❌ 在 build script 裡刪 `node_modules/typescript`（只是清症狀）
+- ❌ 用 `node ../../node_modules/typescript/bin/tsc`（繞過問題）
+- ❌ 單純升降 TypeScript 版本（沒解決根本問題）
+
+## 真正需要回答
+
+> 「此 repository 由哪一份 lockfile、在哪一個 workspace root、使用哪一種 package manager」
+
+詳見 `runs/improvements/feedback/20260727-cloudflare-pages-deploy.md`
