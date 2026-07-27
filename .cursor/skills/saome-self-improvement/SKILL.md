@@ -16,6 +16,7 @@
 3. 使用者明確要求「反省」「檢討」「改善」「self-improvement」「今天學到什麼」
 4. `.cursor/rules/` 內任何檔案被引用卻發現磁碟上不存在
 5. `runs/improvements/feedback/` 內有同日多於 1 個 feedback
+6. 同一類 deploy / CI 錯誤連續 2 次出現於不同平台（例如 GitHub Actions 與 Cloudflare Pages 同源）
 
 ## 流程
 
@@ -36,24 +37,40 @@
 - 加強觸發關鍵字（讓規範更容易被自動引用）
 - 或在 `AGENTS.md` 的強制檢查清單加上對應條目
 
-### Step 3：commit（不 push）
-SAOME-REBUILD 是 owner-agent 私房，self-improvement **純反思性**改動（feedback、debug log、
-skill 自我改進）commit 在本地，不推任何 remote。
+### Step 3：commit（依層級決定 push）
 
-**例外**：當 fix 補上是「補回原本被誤刪的共用規範」（例如遺失的 .cursor/rules/ 補齊、
-被誤覆蓋的 AGENTS.md 重要章節還原）→ 屬於規範本身的修復，**可 push**，但是 commit
-message 必須明確標 `Self-improvement:` 並連到本 feedback。
+把舊的二極化規則（純反思不 push / 例外可 push）改為「三層決策表」：
+
+| 層級 | 內容範例 | push | commit 標記 |
+|------|----------|------|-------------|
+| 規範層 | `.cursor/rules/*.mdc`、`AGENTS.md`、`runs/improvements/feedback/*` | **預設 push** | footer `Self-improvement:` + feedback 連結 |
+| 操作層 | `apps/frontend/*.config.ts`、`package.json`、`wrangler.jsonc`、CI workflow、`.github/dependabot.yml` | **push** | 一般 `feat:` / `fix:` / `chore:` |
+| 私人層 | `DEV/07-2026/*` 開發日誌、`.cursor/agents/*`、個人 cursor state | **`.gitignore` 鎖住**，不進 commit | 不適用 |
+
+#### 三層範例
 
 ```bash
-# 純反思（不 push）
-git add .cursor/skills/saome-self-improvement/ runs/improvements/
-git commit -m "chore(self-improvement): reflect ..."
+# 規範層：feedback 修復被誤刪的 rules
+git add .cursor/rules/000-modular-design.mdc runs/improvements/feedback/20260727-rules-overwritten-by-speckit-merge.md
+git commit -m "fix(rules): restore spec-kit-demo merge 誤刪 12 rules
 
-# 規範修復（可 push）
-git add .cursor/rules/000-modular-design.mdc AGENTS.md
-git commit -m "chore(self-improvement): restore ..."
+Self-improvement: runs/improvements/feedback/20260727-rules-overwritten-by-speckit-merge.md"
 git push origin main
+
+# 操作層：lockfile 跨平台 binding 重建
+git add package-lock.json
+git commit -m "fix(deps): regenerate lockfile with --include=optional for cross-platform native bindings"
+git push origin main
+
+# 私人層：根本不入 commit，gitignore 直接擋
+echo "DEV/" >> .gitignore
+echo ".cursor/agents/" >> .gitignore
 ```
+
+#### 舊規則（已廢除）
+
+~~「純反思不 push / 例外可 push」~~ 二極化規則已於 2026-07-27 廢除。
+理由：規範層與操作層的 feedback 不 push 會讓下個 session agent 看不到教訓，誤刪無法還原（見 `runs/improvements/feedback/20260727-rules-overwritten-by-speckit-merge.md`）。
 
 ### Step 4：建立下一個 session 的起點
 把這次 session 的關鍵決策寫進 `DEV/YYYY-MM/<MM>-dev.md`，讓下次開新 session 第一件事就是讀這份。
@@ -68,6 +85,5 @@ git push origin main
 
 - 寫得太長（AI 痕跡風險）
 - 寫進 emoji
-- 純反思 commit 推任何 remote（owner-agent 私房）
-- 規範修復 push 卻沒標 `Self-improvement:` 與 feedback 連結
+- 規範層 commit 不寫 `Self-improvement:` 標記
 - 跳過 Step 1 直接改 rules

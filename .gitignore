@@ -59,3 +59,9 @@ Thumbs.db
 # NOTE: .cursor/ is NOT ignored — rules/ and skills/ are committed as
 # team-shared documentation. Cursor IDE personal state lives under
 # .cursor/agents/ and .cursor/projects/ which are blocked by .cursorignore.
+
+# Private layers — owner-agent local state, never commit (per skill
+# saome-self-improvement 三層決策表「私人層」)
+DEV/
+projects/
+.cursor/agents/

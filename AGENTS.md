@@ -116,6 +116,8 @@ apps/frontend/ **只能放 Web 特定內容**。所有可共用的程式碼必�
 - ✅ 任何新 UI 必須先檢查 `components/ui/` 與 `components/business/` 是否有可重用元件
 - ✅ 禁止在 component 內寫業務邏輯（拆到 hook 或 service）
 - ✅ 禁止跨層引用（L2 不可直接修改 L1；改成變體擴充）
+- ✅ commit 前判斷層級（規範層 / 操作層 / 私人層），依層級決定是否 push（見 `.cursor/skills/saome-self-improvement/SKILL.md` Step 3 三層決策表）
+- ✅ 規範層（rules / skills / AGENTS.md / feedback）與操作層 commit **必須 push**（除非含 secret）
 
 ## 變更既有元件
 - L1（shadcn 元件）可改，但改完更新 `design-system/MASTER.md`
