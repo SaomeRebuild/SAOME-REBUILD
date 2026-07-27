@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "pages:build": "npm install --include=dev && npx tsc -b && npx vite build",
+    "pages:build": "tsc -b && vite build",
     "pages:deploy": "wrangler pages deploy ./dist --project-name=saome-frontend --branch=main --commit-dirty=true",
     "typecheck": "tsc -b --noEmit",
     "lint": "oxlint",
