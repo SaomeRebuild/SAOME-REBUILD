@@ -50,9 +50,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: '20', cache: 'npm' }
       - run: npm ci
-        working-directory: apps/frontend
-      - run: npx tsc -b --noEmit
-        working-directory: apps/frontend
+      - run: npm run typecheck --workspace=apps/frontend
 
   lint:
     needs: changes
@@ -63,9 +61,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: '20', cache: 'npm' }
       - run: npm ci
-        working-directory: apps/frontend
-      - run: npm run lint
-        working-directory: apps/frontend
+      - run: npm run lint --workspace=apps/frontend
 
   test:
     needs: changes
@@ -76,6 +72,4 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: '20', cache: 'npm' }
       - run: npm ci
-        working-directory: apps/frontend
-      - run: npm test
-        working-directory: apps/frontend
+      - run: npm test --workspace=apps/frontend

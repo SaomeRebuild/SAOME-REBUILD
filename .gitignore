@@ -6,8 +6,13 @@ build/
 *.tsbuildinfo
 coverage/
 
-# Lock files (root workspace has no lock; each workspace manages its own)
-package-lock.json
+# Lockfiles
+# Root package-lock.json IS committed (required for CI `npm ci` at workspace root).
+# Sub-workspace lockfiles (apps/*, packages/*) are intentionally NOT committed
+# because npm 10 hoists all deps to root node_modules and only the root lockfile
+# stays in sync. See .cursor/rules/015-cloudflare-pages-deploy.mdc.
+apps/*/package-lock.json
+packages/*/package-lock.json
 
 # Cache / Lock-store / Logs
 .turbo/
