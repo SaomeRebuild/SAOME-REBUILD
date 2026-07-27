@@ -54,3 +54,61 @@ A 方案是 CF Pages 官方 recommended pattern（single source）。
 - ✅ wrangler.jsonc 對齊 Pages project name `saome-frontend`（commit 7fcf62c）
 - ⏳ A 方案需要 owner-agent 進 CF Pages dashboard 改設定
 - ⏳ 之後 CF 自動 build → preview URL `saome-frontend.pages.dev`
+
+---
+
+## 2026-07-27 更新：採用 A 方案，npx wrangler deploy 改為 auto-deploy
+
+### 問題演化
+
+第一次 build log（2026-07-26T23:51）：
+
+```
+Executing user deploy command: npx wrangler deploy
+npm error Cannot read properties of undefined (reading 'extraneous')
+```
+
+第二次 build log（2026-07-27T00:27，commit `998016c` 已 push）：
+
+```
+⛅️ wrangler 4.114.0  ← wrangler 順利載入（從 node_modules/.bin）
+✘ [ERROR] The directory specified by the "assets.directory" field in your
+  configuration file does not exist:
+  /opt/buildhome/repo/apps/frontend/dist
+```
+
+### 根因
+
+CF Pages 設 Root directory = `/apps/frontend`，build 完成後 wrangler CWD 是
+`/opt/buildhome/repo/apps/frontend`。但 `wrangler.jsonc` 在 repo root，內容
+`assets.directory: "./apps/frontend/dist"` 被 CWD 解析成
+`apps/frontend/apps/frontend/dist` → 不存在。
+
+### 解法：採用 A 方案 — 不跑 wrangler CLI
+
+CF Pages **原設計就是 auto-upload build output**，不需要 wrangler CLI。
+`wrangler pages deploy` 只在 GitHub Actions / local CLI 才用。
+
+### Dashboard 設定（A 方案最終值）
+
+| 欄位 | 值 |
+|---|---|
+| Build command | `npm run pages:build` |
+| Root directory | `/apps/frontend` |
+| Deploy command | **(留空)** ← 關鍵改動 |
+| Build output directory | `dist` |
+
+CF 會自動把 `apps/frontend/dist/` 上傳到 Pages project `saome-frontend`。
+
+### 程式端變更（commit `998016c`）
+
+- `apps/frontend/package.json` 新增 `wrangler@^4.34.0` 到 devDependencies
+  （預裝避免 npx 下載 metadata 觸發 npm bug）
+- 新增 `pages:deploy` script（保留給手動 / CI 部署用，不會被 CF Pages 跑）
+
+### 為何保留 wrangler devDep + pages:deploy script？
+
+- wrangler 在 devDep 沒有成本（CF Pages 只裝 `devDependencies` 因為
+  `pages:build` 跑 `npm install --include=dev`）
+- `pages:deploy` 保留給 GitHub Actions 或本地手動部署時使用
+- 對 CF Pages auto-deploy 完全不影響 — CF 直接讀 build output，不碰 wrangler
