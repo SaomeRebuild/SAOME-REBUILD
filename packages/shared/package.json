@@ -1,0 +1,49 @@
+{
+  "name": "@saome/shared",
+  "version": "1.0.0",
+  "description": "SAOME-REBUILD shared package - business logic, types, schemas, i18n, BDD steps",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./bdd": {
+      "import": "./bdd/index.ts",
+      "types": "./bdd/index.ts"
+    },
+    "./types": "./types/index.ts",
+    "./schemas": "./schemas/index.ts",
+    "./logic": "./logic/index.ts",
+    "./i18n": "./i18n/index.ts"
+  },
+  "scripts": {
+    "test:bdd": "cucumber-js",
+    "test:bdd:watch": "cucumber-js --watch",
+    "build": "tsc",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cucumber/cucumber": "^10.9.0",
+    "@cucumber/pretty-formatter": "^1.0.1",
+    "@playwright/test": "^1.48.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "zod": "^3.23.0"
+  },
+  "keywords": [
+    "saome",
+    "shared",
+    "bdd",
+    "cucumber"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
