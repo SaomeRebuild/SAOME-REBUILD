@@ -1,16 +1,52 @@
 import { defineConfig } from 'vitest/config';
-import { mergeConfig } from 'vitest/config';
-import viteConfig from './vite.config';
+import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-export default mergeConfig(
-  viteConfig,
-  defineConfig({
-    test: {
-      globals: true,
-      environment: 'jsdom',
-      setupFiles: ['./src/test/setup.ts'],
-      css: false,
-      include: ['src/**/*.{test,spec}.{ts,tsx}'],
+const __dirname = fileURLToPath(new URL('.', import.meta.url));
+const sharedRoot = resolve(__dirname, '../../packages/shared');
+
+// IMPORTANT: Vite alias `find` matches by prefix in declaration order. More
+// specific paths MUST come before less specific ones, otherwise
+// `@saome/shared` will swallow `@saome/shared/schemas/member` and rewrite it
+// to `index.ts`, leaving `/schemas/member` dangling.
+const aliasArray: { find: string | RegExp; replacement: string }[] = [
+  { find: '@', replacement: resolve(__dirname, './src') },
+  // Most specific first
+  { find: '@saome/shared/schemas/member', replacement: resolve(sharedRoot, 'schemas/member.ts') },
+  { find: '@saome/shared/schemas/order', replacement: resolve(sharedRoot, 'schemas/order.ts') },
+  { find: '@saome/shared/schemas/pass', replacement: resolve(sharedRoot, 'schemas/pass.ts') },
+  { find: '@saome/shared/schemas', replacement: resolve(sharedRoot, 'schemas/index.ts') },
+  { find: '@saome/shared/logic/member', replacement: resolve(sharedRoot, 'logic/member.ts') },
+  { find: '@saome/shared/logic/order', replacement: resolve(sharedRoot, 'logic/order.ts') },
+  { find: '@saome/shared/logic/pass', replacement: resolve(sharedRoot, 'logic/pass.ts') },
+  { find: '@saome/shared/logic', replacement: resolve(sharedRoot, 'logic/index.ts') },
+  { find: '@saome/shared/types/member', replacement: resolve(sharedRoot, 'types/member.ts') },
+  { find: '@saome/shared/types/order', replacement: resolve(sharedRoot, 'types/order.ts') },
+  { find: '@saome/shared/types/pass', replacement: resolve(sharedRoot, 'types/pass.ts') },
+  { find: '@saome/shared/types', replacement: resolve(sharedRoot, 'types/index.ts') },
+  { find: '@saome/shared/i18n/zh-TW', replacement: resolve(sharedRoot, 'i18n/zh-TW.ts') },
+  { find: '@saome/shared/i18n/en', replacement: resolve(sharedRoot, 'i18n/en.ts') },
+  { find: '@saome/shared/i18n', replacement: resolve(sharedRoot, 'i18n/index.ts') },
+  { find: '@saome/shared/bdd', replacement: resolve(sharedRoot, 'bdd/index.ts') },
+  // Least specific last
+  { find: '@saome/shared', replacement: resolve(sharedRoot, 'index.ts') },
+];
+
+export default defineConfig({
+  plugins: [react(), tailwindcss()],
+  resolve: { alias: aliasArray },
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: ['./src/test/setup.ts'],
+    css: false,
+    include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    server: {
+      deps: {
+        inline: ['@saome/shared'],
+      },
     },
-  }),
-);
+  },
+});

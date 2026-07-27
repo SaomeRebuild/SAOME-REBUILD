@@ -17,8 +17,20 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@saome/shared": ["../../packages/shared/index.ts"],
+      "@saome/shared/schemas": ["../../packages/shared/schemas/index.ts"],
+      "@saome/shared/schemas/*": ["../../packages/shared/schemas/*"],
+      "@saome/shared/logic": ["../../packages/shared/logic/index.ts"],
+      "@saome/shared/logic/*": ["../../packages/shared/logic/*"],
+      "@saome/shared/types": ["../../packages/shared/types/index.ts"],
+      "@saome/shared/types/*": ["../../packages/shared/types/*"],
+      "@saome/shared/i18n": ["../../packages/shared/i18n/index.ts"],
+      "@saome/shared/i18n/*": ["../../packages/shared/i18n/*"],
+      "@saome/shared/bdd": ["../../packages/shared/bdd/index.ts"],
+      "@saome/shared/bdd/*": ["../../packages/shared/bdd/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/**/*.stories.tsx"]
 }

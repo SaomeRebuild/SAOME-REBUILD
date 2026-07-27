@@ -1,6 +1,6 @@
 import { Award } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { memberTierSchema, type MemberTier } from '@saome/shared/schemas/member';
-import { getTierDisplayName } from '@saome/shared/logic/member';
 
 export interface MemberBadgeProps {
   tier: MemberTier;
@@ -25,24 +25,26 @@ const tierStyles: Record<MemberTier, { text: string; bg: string }> = {
 
 const sizeStyles = {
   sm: 'text-sm px-2 py-1 min-h-[44px]',  // mobile 觸控目標 ≥ 44pt
-  md: 'text-base px-3 py-2 min-h-[44px]',  // mobile 觸控目標 ≥ 44pt
-  lg: 'text-lg px-4 py-3 min-h-12',        // desktop ≥ 48px
+  md: 'text-base px-3 py-2 min-h-[44px]', // mobile 觸控目標 ≥ 44pt
+  lg: 'text-lg px-4 py-3 min-h-12',       // desktop ≥ 48px
 };
 
-export const MemberBadge = ({ 
-  tier, 
+export const MemberBadge = ({
+  tier,
   size = 'md',
-  className = '' 
+  className = '',
 }: MemberBadgeProps) => {
+  const { t } = useTranslation();
   // Validate tier
   const validatedTier = memberTierSchema.parse(tier);
-  const displayName = getTierDisplayName(validatedTier);
+  const displayName = t(`member.tier.${validatedTier}`);
+  const ariaLabel = t('member.tier.ariaLabel', { tier: displayName });
   const styles = tierStyles[validatedTier];
-  
+
   return (
     <span
       data-testid="member-badge"
-      aria-label={`會員等級：${displayName}`}
+      aria-label={ariaLabel}
       className={`
         inline-flex items-center gap-2
         rounded-full font-medium
