@@ -11,7 +11,9 @@
     "build": "npm --workspace=apps/frontend run build",
     "lint": "npm --workspace=apps/frontend run lint",
     "test": "npm --workspace=apps/frontend run test",
-    "typecheck": "npm --workspace=apps/frontend run typecheck"
+    "typecheck": "npm --workspace=apps/frontend run typecheck",
+    "pages:build": "npm --workspace=apps/frontend ci && npm --workspace=apps/frontend run build",
+    "pages:deploy": "npm --workspace=apps/frontend run pages:deploy"
   },
   "engines": {
     "node": ">=20"
