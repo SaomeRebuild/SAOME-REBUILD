@@ -14,6 +14,7 @@ const sharedRoot = resolve(__dirname, '../../packages/shared');
 const aliasArray: { find: string | RegExp; replacement: string }[] = [
   { find: '@', replacement: resolve(__dirname, './src') },
   // Most specific first
+  { find: '@saome/shared/schemas/auth', replacement: resolve(sharedRoot, 'schemas/auth.ts') },
   { find: '@saome/shared/schemas/member', replacement: resolve(sharedRoot, 'schemas/member.ts') },
   { find: '@saome/shared/schemas/order', replacement: resolve(sharedRoot, 'schemas/order.ts') },
   { find: '@saome/shared/schemas/pass', replacement: resolve(sharedRoot, 'schemas/pass.ts') },
@@ -26,6 +27,8 @@ const aliasArray: { find: string | RegExp; replacement: string }[] = [
   { find: '@saome/shared/types/order', replacement: resolve(sharedRoot, 'types/order.ts') },
   { find: '@saome/shared/types/pass', replacement: resolve(sharedRoot, 'types/pass.ts') },
   { find: '@saome/shared/types', replacement: resolve(sharedRoot, 'types/index.ts') },
+  { find: '@saome/shared/constants/role', replacement: resolve(sharedRoot, 'constants/role.ts') },
+  { find: '@saome/shared/constants', replacement: resolve(sharedRoot, 'constants/index.ts') },
   { find: '@saome/shared/i18n/zh-TW', replacement: resolve(sharedRoot, 'i18n/zh-TW.ts') },
   { find: '@saome/shared/i18n/en', replacement: resolve(sharedRoot, 'i18n/en.ts') },
   { find: '@saome/shared/i18n', replacement: resolve(sharedRoot, 'i18n/index.ts') },

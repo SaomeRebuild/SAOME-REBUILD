@@ -25,6 +25,8 @@
       "@saome/shared/logic/*": ["../../packages/shared/logic/*"],
       "@saome/shared/types": ["../../packages/shared/types/index.ts"],
       "@saome/shared/types/*": ["../../packages/shared/types/*"],
+      "@saome/shared/constants": ["../../packages/shared/constants/index.ts"],
+      "@saome/shared/constants/*": ["../../packages/shared/constants/*"],
       "@saome/shared/i18n": ["../../packages/shared/i18n/index.ts"],
       "@saome/shared/i18n/*": ["../../packages/shared/i18n/*"],
       "@saome/shared/bdd": ["../../packages/shared/bdd/index.ts"],

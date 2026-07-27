@@ -1,0 +1,48 @@
+{
+  "login": {
+    "title": "Sign in",
+    "subtitle": "Welcome back to SAOME",
+    "email": "Email",
+    "password": "Password",
+    "submit": "Sign in",
+    "submitting": "Signing in…",
+    "locked": {
+      "message": "Too many attempts. Please try again in {{seconds}} seconds."
+    },
+    "error": {
+      "invalidCredentials": "Invalid email or password",
+      "email": "Please enter a valid email",
+      "required": "This field is required",
+      "unknown": "Sign-in failed. Please try again."
+    },
+    "switchToRegister": "Don't have an account? Sign up"
+  },
+  "register": {
+    "title": "Create account",
+    "subtitle": "Register your store",
+    "contactName": "Contact name",
+    "phoneCity": "Office phone",
+    "address": "Address",
+    "taxId": "Tax ID",
+    "taxIdHint": "Enter 0 if not applicable",
+    "name": "Company / Store name",
+    "email": "Email (contact)",
+    "next": "Next",
+    "back": "Back",
+    "accountEmail": "Login email",
+    "password": "Password",
+    "confirmPassword": "Confirm password",
+    "submit": "Complete registration",
+    "submitting": "Registering…",
+    "error": {
+      "conflict": "This email or tax ID is already in use",
+      "validation": "Please review the highlighted fields",
+      "email": "Please enter a valid email",
+      "password": "Password must be at least 8 characters",
+      "passwordMismatch": "Passwords do not match",
+      "required": "This field is required",
+      "unknown": "Registration failed. Please try again."
+    },
+    "switchToLogin": "Already have an account? Sign in"
+  }
+}
