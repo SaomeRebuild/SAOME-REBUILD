@@ -31,11 +31,15 @@ const REQUIRED_BINDINGS = [
   '@rolldown/binding-linux-x64-gnu',
   '@tailwindcss/oxide-linux-x64-gnu',
   '@esbuild/linux-x64',
-  '@cloudflare/workerd-linux-x64',
+  '@cloudflare/workerd-linux-64',
   '@oxlint/binding-linux-x64-musl',
   '@tailwindcss/oxide-linux-x64-musl',
-  '@esbuild/linux-x64-musl',
-  '@cloudflare/workerd-linux-x64-musl',
+  // Note (2026-07-28):
+  //   - esbuild 0.28+ merged gnu+musl into a single `linux-x64` binding
+  //     (auto-detects libc at install time). The separate `-musl` entry no
+  //     longer exists in its optionalDependencies.
+  //   - @cloudflare/workerd does not publish a `linux-x64-musl` binding.
+  //     Cloudflare Pages uses glibc (gnu) runtime; musl is not in scope.
 ];
 
 function main() {

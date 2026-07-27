@@ -11,6 +11,8 @@
     "build": "npm --workspace=apps/frontend run build",
     "lint": "npm --workspace=apps/frontend run lint",
     "test": "npm --workspace=apps/frontend run test",
+    "test:bdd": "cucumber-js -c ./.cucumber.js",
+    "test:bdd:watch": "echo 'use test:bdd' && exit 0",
     "typecheck": "npm --workspace=apps/frontend run typecheck",
     "pages:build": "npm --workspace=apps/frontend ci && cd apps/frontend && export PATH=\"$PWD/../node_modules/.bin:$PATH\" && tsc -b && vite build",
     "pages:deploy": "npm --workspace=apps/frontend run pages:deploy"

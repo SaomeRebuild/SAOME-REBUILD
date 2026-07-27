@@ -6,6 +6,11 @@ build/
 *.tsbuildinfo
 coverage/
 
+# Test runner outputs (vitest, playwright)
+test-results/
+playwright-report/
+test-outputs/
+
 # Lockfiles
 # Root package-lock.json IS committed (required for CI `npm ci` at workspace root).
 # Sub-workspace lockfiles (apps/*, packages/*) are intentionally NOT committed

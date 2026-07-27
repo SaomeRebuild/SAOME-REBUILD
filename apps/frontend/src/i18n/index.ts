@@ -2,13 +2,15 @@ import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import zhTW from './locales/zh-TW.json';
 import en from './locales/en.json';
+import authZhTW from './locales/auth.zh-TW.json';
+import authEn from './locales/auth.en.json';
 
 const resources = {
-  'zh-TW': { translation: zhTW },
-  en: { translation: en },
+  'zh-TW': { translation: zhTW, auth: authZhTW },
+  en: { translation: en, auth: authEn },
 };
 
-i18n
+void i18n
   .use(initReactI18next)
   .init({
     resources,
