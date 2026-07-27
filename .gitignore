@@ -6,6 +6,9 @@ build/
 *.tsbuildinfo
 coverage/
 
+# Lock files (root workspace has no lock; each workspace manages its own)
+package-lock.json
+
 # Cache / Lock-store / Logs
 .turbo/
 .cache/
