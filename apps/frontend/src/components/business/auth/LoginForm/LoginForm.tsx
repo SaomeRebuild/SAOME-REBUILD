@@ -8,13 +8,15 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslation } from 'react-i18next';
 import { Field, PasswordField, SubmitButton, ErrorBanner, CountdownText } from '@/components/ui';
 import { loginCredentialsSchema, type LoginCredentials } from '@saome/shared/schemas/auth';
-import { useAuth, useLoginLockout } from '@/hooks';
+import { useAuth, useLoginLockout, useAuthRedirect } from '@/hooks';
 import { SaomeApiError } from '@/services/httpClient';
 
 export function LoginForm() {
   const { t } = useTranslation('auth');
   const { login } = useAuth();
   const { isLocked, remainingSec, recordFailure, recordSuccess } = useLoginLockout();
+  // Drive role-based landing once login succeeds (Bug-5 fix).
+  useAuthRedirect();
   const [serverError, setServerError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -36,6 +38,9 @@ export function LoginForm() {
     try {
       await login(values);
       recordSuccess();
+      // Navigation is driven by useAuthRedirect above; it watches
+      // `isAuthenticated` from AuthProvider and pushes to the role's
+      // landing path.
     } catch (e) {
       recordFailure();
       if (e instanceof SaomeApiError) {
