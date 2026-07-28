@@ -1,0 +1,124 @@
+---
+description: 任何 frontend build 完成後必須 grep dist/ 驗證 production URL 與 domain 都正確內含，禁止 localhost 殘留。
+alwaysApply: true
+---
+
+# Production Bundle Guard（MANDATORY）
+
+> 觸發：`npm run build`、`vite build`、`wrangler deploy`、任何「我 deploy 了」的訊息
+
+## 為什麼這條 rule 存在
+
+2026-07-28 admin-login recovery chain 的 Bug-4c：前端 bundle 內含
+`http://localhost:8787` 指向 production backend。`import.meta.env.PROD`
+沒被正確讀取，Cloudflare Pages 用 dev default 把 localhost 烤進
+`dist/assets/index-*.js`。
+
+當 HTTPS origin 的前端 fetch `http://localhost:8787` 時，瀏覽器
+**silently drop** request（Mixed Content）。curl 看不到，後端看不到，
+只有使用者看到「登入失敗」。這條 bug 沒有任何 server-side trace，
+是「curl 看起來通、瀏覽器不通」的經典陷阱。
+
+## Build 後強制 grep
+
+每次 `npm run build` 完成，**必須**跑下列 grep：
+
+```bash
+# 1. 禁止 localhost URL 殘留在 production bundle
+grep -rn "localhost" apps/frontend/dist/ 2>&1 | grep -v "node_modules" || echo "OK: no localhost"
+
+# 2. 確認 production API URL 真的內含
+grep -rn "josh1989213.workers.dev" apps/frontend/dist/ 2>&1 | grep -v "node_modules" || echo "FAIL: production API URL missing"
+```
+
+預期結果：
+- 第 1 條 → 沒有任何 localhost 行（除非是 hash 演算法字串意外吻合）
+- 第 2 條 → 至少 1 行命中 production URL
+
+如果第 1 條失敗：**不要 deploy**，回去檢查 `src/config/env.ts` 的
+default 邏輯與 `apps/frontend/.env.production`。
+
+## 寫成 post-build hook（建議）
+
+在 `apps/frontend/package.json` 的 `build` script 後面串接：
+
+```json
+{
+  "scripts": {
+    "build": "vite build && node scripts/audit-bundle-urls.cjs"
+  }
+}
+```
+
+`scripts/audit-bundle-urls.cjs` 範本：
+
+```js
+// Fail build if localhost URLs are baked into the production bundle,
+// or if the production API URL is missing.
+const fs = require('node:fs');
+const path = require('node:path');
+
+const distDir = path.resolve(__dirname, '../dist');
+const forbidden = ['localhost:8787', 'localhost:5173'];
+const required = ['josh1989213.workers.dev'];
+
+function walk(dir) {
+  const out = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...walk(full));
+    else if (entry.isFile()) out.push(full);
+  }
+  return out;
+}
+
+const files = walk(distDir).filter((f) => /\.(js|css|html)$/.test(f));
+let failed = false;
+
+for (const file of files) {
+  const text = fs.readFileSync(file, 'utf8');
+  for (const needle of forbidden) {
+    if (text.includes(needle)) {
+      console.error(`FAIL: ${file} contains forbidden string "${needle}"`);
+      failed = true;
+    }
+  }
+}
+
+const allText = files.map((f) => fs.readFileSync(f, 'utf8')).join('\n');
+for (const needle of required) {
+  if (!allText.includes(needle)) {
+    console.error(`FAIL: production bundle is missing required string "${needle}"`);
+    failed = true;
+  }
+}
+
+if (failed) process.exit(1);
+console.log('OK: bundle URL audit passed');
+```
+
+## 為什麼 curl 不夠
+
+```bash
+curl https://saome-backend.josh1989213.workers.dev/api/auth/login
+# → 200 OK，curl 沒在 HTTPS origin 內，沒 Mixed Content 問題
+```
+
+只有 HTTPS origin 內 fetch HTTP 才會被 Mixed Content 擋。Production
+deploy 後必須用瀏覽器開、或用 Playwright smoke test 驗證完整請求鏈。
+
+## 禁止
+
+- ❌ 只跑 `npm run build` 不跑後續 grep 就宣告 deploy 完成
+- ❌ 看到「build 成功」就 push 到 main（除非有 post-build audit）
+- ❌ 信任 `import.meta.env.PROD` 會自動切換 default —— 必須用 `.env.production` 顯式覆寫
+
+## 與其他 rule 的關係
+
+- `010-uiux-pro-max.mdc`：禁止 hard-code，但這條專門抓「預設值沒分 build target」
+- `016-config-and-tsconfig-discipline.mdc`：7 個 surface 必須同步，這條把 `dist/` 視為第 8 個 surface
+- `006-verification.mdc`：完工驗證的 grep 清單補充
+
+## 觸發關鍵字
+
+「deploy」、「部署」、「上線」、「build 完成」、「vite build」**必須**引用此 rule。

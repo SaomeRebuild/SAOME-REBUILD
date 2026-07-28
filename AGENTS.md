@@ -119,6 +119,22 @@ apps/frontend/ **只能放 Web 特定內容**。所有可共用的程式碼必�
 - ✅ commit 前判斷層級（規範層 / 操作層 / 私人層），依層級決定是否 push（見 `.cursor/skills/saome-self-improvement/SKILL.md` Step 3 三層決策表）
 - ✅ 規範層（rules / skills / AGENTS.md / feedback）與操作層 commit **必須 push**（除非含 secret）
 
+## Auth flow 鐵律（自 2026-07-28 admin-login recovery chain 補上）
+
+每個 auth-related page / form 都必須通過下列檢查，缺一即視為 bug：
+
+1. **後端 200 ≠ 通過**：成功的 200 response 加上正確的 `Set-Cookie` 不代表登入完成。**必須**手動驗證 user 看到的下一個畫面（next screen）有可讀內容、token 正確帶到下一個 request、可關閉 tab 後重開仍持 session。
+2. **SPA 必走 client-side redirect**：任何 `setState({user,accessToken})` 之後必須**同步**呼叫 `navigate(ROLE_HOME_PATH[role], { replace: true })` 或 `useAuthRedirect()`。Login 跟 Register 行為必須對稱（同一個 hook 或同等 explicit navigate）。
+3. **AuthGuard 必有對稱 reverse-direction**：每一個 `<AuthGuard>`（未登入 → 推 login）必對應一個 `<AuthenticatedRedirect>`（已登入 → 推 home）。back button 是常見的回歸來源。
+4. **「It works but it looks wrong」仍是 P0**：每個 placeholder / L1 元件必須跑 `forbidden-class scan`（禁 `bg-white` / `text-neutral-{50..900}` / `bg-[#abc]` 等 hardcoded colour），參考 `apps/frontend/src/components/ui/feedback/ComingSoonCard.test.tsx` 的實作。
+
+## CORS / Mixed Content 鐵律
+
+任何 deploy 後的整合測試**必須**包含這兩個靜態檢查，缺一即視為 deploy 失敗：
+
+- **Mixed Content grep**：`grep -c localhost dist/assets/*.js` 必須為 0。任何 frontend bundle 不能內含 localhost URL 指向 production backend。完整 post-build audit script 範本見 `.cursor/rules/017-production-bundle-guard.mdc`。
+- **CORS preflight trace**：DevTools Network 上若 OPTIONS 回 204 但 response 沒有 `Access-Control-Allow-Origin` header → 瀏覽器會 silently drop POST。用 Cloudflare Observability `$metadata.service eq <name>` 確認 backend 有收到 OPTIONS，但 POST 沒出現 = CORS 拒絕。`ALLOWED_ORIGIN_PATTERNS` 用法見 `.cursor/rules/015-cloudflare-pages-deploy.mdc` + `apps/backend/wrangler.jsonc`。
+
 ## 變更既有元件
 - L1（shadcn 元件）可改，但改完更新 `design-system/MASTER.md`
 - L2（業務元件）需在 PR 描述說明影響範圍
