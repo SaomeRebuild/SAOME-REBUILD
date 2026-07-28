@@ -1,4 +1,5 @@
 # Bug-4b: Admin login still failed after PR-3 (root cause: scrypt params mismatch) — 2026-07-28
+# Bug-4c: After Bug-4b fix, login STILL failed (root cause: production bundle baked in http://localhost:8787) — 2026-07-28 (continued)
 
 ## Symptom
 
@@ -10,131 +11,104 @@ showed both:
 
 ## Investigation
 
-Initial assumption: Bug-4 still not fully resolved (CORS / Cookie / JWT_SECRET).
+### Round 1 — CORS / Cookie / JWT_SECRET (PR-3 territory)
 
 Direct curl against `https://saome-backend.josh1989213.workers.dev/api/auth/login`
-with admin credentials:
+with admin credentials returned 500 INTERNAL_ERROR with
+`details.original.message = "Scrypt failed"`. CORS headers were correct.
 
-```
-HTTP/1.1 500 Internal Server Error
-{"error":{"code":"INTERNAL_ERROR","i18nKey":"common.error.internal",
- "message":"Internal server error",
- "details":{"original":{"name":"Error","message":"Scrypt failed"}}},
- "requestId":"604ccc8b-..."}
-```
+**Root cause (Bug-4b):** password.ts used `N=131072 r=8 p=1` but the seed
+hash in migration 003 was generated with `N=16384 r=8 p=1` (Node.js crypto.scrypt
+default). Plus OpenSSL's default `maxmem=32 MiB` rejected `N=131072` (working
+set ~128 MiB).
 
-CORS headers were correct (`Access-Control-Allow-Origin: https://saome-frontend.pages.dev`).
-**The root cause was NOT CORS/Cookie/JWT — it was the password verify path
-itself throwing inside workerd.**
+**Fix (commit 46dbd7a):**
+- Switch to `N=16384 r=8 p=1` to match the seed.
+- Pass explicit `maxmem: 128 MiB` so future bumps don't fail.
+- Wrap scrypt in try/catch; verifyPassword returns false instead of 500.
+- New regression fixture `password.test.ts` pins the seed hash.
 
-Local reproduction:
+### Round 2 — production bundle baked in wrong API URL (Bug-4c)
 
-```js
-const { scryptSync } = require('node:crypto');
-const salt = Buffer.from('28d2de255da11d8f233940b867f8897b', 'hex');
-scryptSync('Qwww123123!', salt, 64, { N: 131072, r: 8, p: 1 });
-// -> RangeError: Invalid scrypt params: error:030000AC:digital envelope routines::memory limit exceeded
-```
+After deploying 46dbd7a, user reported login still failed. Re-probing backend
+showed 401 UNAUTHORIZED for any credentials — Bug-4b fix was live. So the
+problem wasn't backend anymore.
 
-OpenSSL's default scrypt `maxmem` is 32 MiB. With `N=131072, r=8, p=1` the
-working set is `128*r*N = 128*8*131072 ≈ 128 MiB` → OpenSSL refuses.
+Inspecting the production frontend bundle:
 
-**Worse**, after bumping `maxmem` to 256 MiB the call *succeeds* — but the
-produced hash `eda53e09...` did NOT match the seed hash `49575e8e...`.
-
-Brute-forcing params against the seed hash revealed:
-
-```js
-FOUND: { N: 16384, r: 8, p: 1, label: 'Node.js scrypt default' }
+```bash
+# dist/assets/index-*.js contained:
+localhost:8787        # ← WRONG
+# but did NOT contain:
+josh1989213.workers.dev
 ```
 
-The seed hash in `migrations/003_seed_admin.sql` was generated with Node.js's
-**default** `crypto.scrypt` params (`N=16384 r=8 p=1`), NOT the OWASP 2024
-recommended `N=131072` that the current `password.ts` was using.
+`apps/frontend/src/config/env.ts` defaulted `apiBaseUrl` to
+`http://localhost:8787` regardless of build mode. Cloudflare Pages builds the
+frontend on push with `npm run build` and no `VITE_API_BASE_URL` set, so the
+localhost default got baked in.
 
-## Why this wasn't caught in PR-3
+When the deployed frontend (https://saome-frontend.pages.dev/) tries to
+fetch `http://localhost:8787/...`, **the browser's Mixed Content blocker
+silently drops the request**. The browser never sends it; the user sees
+"login failed" with no network traffic reaching the backend.
 
-- The test suite mocks `verifyPassword` (`vi.mock('@/shared/lib/password')`)
-  so the real scrypt code never ran in unit tests.
-- No integration test against the actual seed hash existed.
-- vitest-pool-workers runs the source code under workerd, but the unit tests
-  for login didn't reach verifyPassword because every test path mocks it.
+**This explains the full symptom chain:**
+- "登入失敗" — LoginForm's generic error after a network failure.
+- "嘗試次數過多" — Frontend UX lockout ticking from previous attempts that
+  also failed (but for the same Mixed Content reason, not backend 429).
 
-## Fix
+**Fix (this commit):**
 
-Three changes in `apps/backend/src/shared/lib/password.ts`:
+1. `apps/frontend/src/config/env.ts` — switch the default based on
+   `import.meta.env.PROD`:
+   - dev → `http://localhost:8787`
+   - prod → `https://saome-backend.josh1989213.workers.dev`
+2. `apps/frontend/.env.production` (new) — explicit overrides committed
+   so Vite picks them up regardless of `import.meta.env.PROD` derivation.
+3. `apps/frontend/src/config/env.test.ts` (new) — regression test asserting
+   apiBaseUrl is not localhost when running in production mode.
+4. After this commit:
+   - `grep -c localhost:8787 dist/assets/*.js` → 0
+   - `grep -c josh1989213.workers.dev dist/assets/*.js` → 1
 
-1. **Params match the seed**: `N=16384, r=8, p=1` (Node.js default).
-2. **Explicit `maxmem`**: `128 MiB`. Future-proof for if we bump N later.
-3. **Defensive try/catch**: `verifyPassword` now returns `false` instead of
-   propagating the scrypt exception. Previously a param/platform mismatch
-   would bubble up as `500 INTERNAL_ERROR`; now it cleanly fails as
-   `401 UNAUTHORIZED` (same response shape as wrong password).
+## Why this wasn't caught in PR-3 / Bug-4b
 
-Five new unit tests in `password.test.ts`:
-- verifyPassword accepts the admin seed hash for `Qwww123123!`
-- verifyPassword rejects a wrong password against the seed hash
-- verifyPassword returns false for malformed stored hash (not throw)
-- hashPassword + verifyPassword round-trip consistent
-- does not throw "memory limit exceeded" (param-set compatibility)
-
-Result: backend 8 test files, 57 tests passing (was 7/52).
-
-## Side fix: frontend lockout sync
-
-Even with backend fixed, the user was locked out by the frontend UX lockout
-(localStorage `saome.login.lockout.v1`). Two changes:
-
-1. `apps/frontend/src/services/httpClient.ts`: on 429 RATE_LIMITED from the
-   server, sync the local lockout to the server's authoritative
-   `retryAfterSec`. Previously the UI would keep its local countdown
-   slightly behind the backend, causing "submit → 429 → record local
-   failure → try again → still locked" loops.
-2. `apps/frontend/src/components/business/auth/LoginForm/LoginForm.tsx`:
-   surface a specific "tooManyAttempts" i18n message when the error is
-   `isRateLimited`, instead of the generic "invalidCredentials".
-3. `apps/frontend/src/i18n/locales/auth.{zh-TW,en}.json`: add
-   `login.error.tooManyAttempts` key.
+- Local dev `npm run dev` reads `import.meta.env.VITE_API_BASE_URL` or
+  falls back to localhost — works because Vite serves on localhost too.
+- Local `npm run build` doesn't set `VITE_API_BASE_URL` either, but no one
+  ran a `grep` on the bundled JS to check the URL constant.
+- Cloudflare Pages builds without explicit env vars, so it falls back to
+  whatever the source default is — and the default was wrong.
+- No integration test pings the deployed bundle and decodes the URL.
 
 ## Verification
 
 - `apps/backend/src/shared/lib/password.test.ts`: 5/5 new tests pass
-- `apps/backend` full suite: 57/57 across 8 files (was 52/52)
-- `apps/frontend` full suite: 158/158 across 23 files
+- `apps/backend` full suite: 57/57 across 8 files
+- `apps/frontend` full suite: 161/161 across 24 files (was 158/158; +3 env tests)
 - typecheck (root + frontend + backend): exit 0
 - build (frontend + backend): exit 0
-
-## Open: password algorithm upgrade (still)
-
-Per `runs/improvements/feedback/20260727-backend-db-migrations.md`,
-`Open: Password algorithm`:
-
-- Re-hash admin with N=131072 in a future migration (004_rehash_admin.sql).
-- After rehash, bump `password.ts` to N=131072 r=8 p=1.
-- For users that register between now and that migration: they get the
-  weaker hash, but it's still 16-byte-salt scrypt, so not catastrophic.
+- Backend probe (fake email): 401 UNAUTHORIZED ✅
+- Frontend bundle grep: production URL present, localhost absent ✅
 
 ## Process Lessons (for self-improvement skill)
 
-1. **Mock-everything test suites can hide production-only failures.**
-   `vi.mock('@/shared/lib/password')` in login.test.ts made verifyPassword
-   invisible to tests. Add a smoke test that exercises the real hash, not
-   the mock, at least for the seed admin password.
+1. **Bundled URLs need bundle-level tests.** After every frontend build,
+   grep the `dist/assets/*.js` for the expected API URL constant. Add this
+   to `npm run build` as a post-build check.
+2. **Mixed Content failures are invisible in curl but fatal in browsers.**
+   Always verify the deployed frontend uses https URLs for any API call.
+3. **Defaults must vary by build target.** Anything defaulting to localhost
+   should branch on `import.meta.env.PROD` so production builds can't
+   silently ship dev defaults.
+4. **`grep` the bundle, don't trust `import.meta.env`.** Vite replaces
+   env at build time; the only way to know what URL is in production is to
+   read the bundled JS.
+5. **`.env.production` should be checked into the repo.** CI / Cloudflare
+   Pages may not set every env var, so committing explicit overrides
+   ensures consistency across dev / staging / prod.
 
-2. **Deterministic seed migration hashes need a unit test that pins them.**
-   `password.test.ts` now does exactly that: imports the seed hash string
-   and asserts `verifyPassword(seedPassword, seedHash) === true`. Any
-   future param change will fail RED on this test.
-
-3. **OpenSSL `maxmem` is not optional.** When using scrypt with N > 8192,
-   always pass an explicit `maxmem` ≥ `128 * r * N`. Otherwise some
-   runtimes (workerd in particular) will throw.
-
-4. **Two lockouts in series is worse than one.** Frontend lockout (UX)
-   and backend lockout (rate limit) had independent counters. Users
-   could be stuck in an inconsistent state where the UI said "5 minutes
-   to go" but the server said "you're cleared". Always sync the local
-   countdown to the server's authoritative `retryAfterSec`.
-
-Refs: Bug-4 PR-3 commit `85f03a6`, design-tokens-check.md,
-      Node.js crypto.scrypt docs https://nodejs.org/api/crypto.html#cryptoscryptsyncpassword-salt-keylen-options
+Refs: Bug-4 PR-3 commit `85f03a6`, Bug-4b commit `46dbd7a`,
+      Cloudflare Pages Mixed Content rules
+      https://developers.cloudflare.com/ssl/edge-certificates/mixed-content/
