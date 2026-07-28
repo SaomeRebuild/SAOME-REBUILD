@@ -11,6 +11,7 @@
     },
     "error": {
       "invalidCredentials": "帳號或密碼錯誤",
+      "tooManyAttempts": "嘗試次數過多，請稍後再試",
       "email": "請輸入有效的電子信箱",
       "required": "此欄位為必填",
       "unknown": "登入失敗，請稍後再試"

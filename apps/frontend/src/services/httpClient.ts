@@ -1,8 +1,15 @@
 /**
  * httpClient — fetch wrapper with credentials, JSON handling, and 401 retry-via-refresh.
+ *
+ * Side-effect on RATE_LIMITED: if the server returns 429 on /api/auth/login,
+ * the local `saome.login.lockout.v1` entry is updated to the server's
+ * authoritative `retryAfterSec`. This stops the UI from looping forever
+ * (UI keeps local countdown slightly ahead, backend stays source-of-truth
+ * via DB login_attempts).
  */
 
 import { api } from '@/config/api';
+import { limits } from '@/config/limits';
 import { ROUTES } from '@/config/routes';
 
 export class SaomeApiError extends Error {
@@ -19,7 +26,13 @@ export class SaomeApiError extends Error {
     this.status = status;
     this.code = body?.error?.code;
     this.i18nKey = body?.error?.i18nKey;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.details = body?.error?.details;
+  }
+
+  /** True when the server says "too many requests" — for login, this drives the local lockout. */
+  get isRateLimited(): boolean {
+    return this.status === 429 || this.code === 'RATE_LIMITED';
   }
 }
 
@@ -37,10 +50,6 @@ export class HttpClient {
     this.fetchImpl = opts.fetchImpl ?? fetch.bind(globalThis);
   }
 
-  /**
-   * Perform a request. If `credentials: true` is implied, cookies (saome_refresh) are sent.
-   * If the response is 401 and the request wasn't to /refresh, attempt one /refresh then retry.
-   */
   async request<T>(
     method: string,
     path: string,
@@ -73,7 +82,26 @@ export class HttpClient {
       } catch {
         errBody = { message: res.statusText };
       }
-      throw new SaomeApiError(res.status, errBody as { error?: { code?: string; i18nKey?: string; message?: string; details?: unknown } });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const parsed = errBody as { error?: { code?: string; i18nKey?: string; message?: string; details?: any } };
+      if (parsed?.error?.code === 'RATE_LIMITED' && typeof window !== 'undefined') {
+        // Sync local lockout to server's authoritative retryAfterSec.
+        const retryAfterSec =
+          (parsed.error.details as { retryAfterSec?: number } | undefined)?.retryAfterSec ??
+          limits.loginLockoutSeconds;
+        try {
+          window.localStorage.setItem(
+            'saome.login.lockout.v1',
+            JSON.stringify({
+              failedCount: limits.loginMaxAttempts,
+              lockedUntil: Date.now() + retryAfterSec * 1000,
+            }),
+          );
+        } catch {
+          /* ignore quota */
+        }
+      }
+      throw new SaomeApiError(res.status, parsed);
     }
 
     if (res.status === 204) return undefined as T;

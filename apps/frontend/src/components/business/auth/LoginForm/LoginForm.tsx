@@ -39,7 +39,14 @@ export function LoginForm() {
     } catch (e) {
       recordFailure();
       if (e instanceof SaomeApiError) {
-        setServerError(t('login.error.invalidCredentials'));
+        // The httpClient already syncs local lockout to the server's
+        // retryAfterSec when 429 is returned. Surface a specific
+        // message here so the user knows why their request bounced.
+        if (e.isRateLimited) {
+          setServerError(t('login.error.tooManyAttempts'));
+        } else {
+          setServerError(t('login.error.invalidCredentials'));
+        }
       } else {
         setServerError(t('login.error.unknown'));
       }

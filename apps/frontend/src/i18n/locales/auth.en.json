@@ -11,6 +11,7 @@
     },
     "error": {
       "invalidCredentials": "Invalid email or password",
+      "tooManyAttempts": "Too many attempts. Please try again later.",
       "email": "Please enter a valid email",
       "required": "This field is required",
       "unknown": "Sign-in failed. Please try again."
