@@ -23,6 +23,17 @@ export interface Env {
   /** Allowed CORS origins (comma-separated). Default: localhost:5173. */
   ALLOWED_ORIGINS?: string;
 
+  /**
+   * Allowed CORS host patterns (comma-separated). Use for wildcard hosts
+   * that can't be enumerated ahead of time, e.g. Workers preview URLs
+   * (`*.josh1989213.workers.dev`) or first-party subdomains
+   * (`*.saome.org`).
+   *
+   * Bug-4d context: the previous allowlist-only design forced us to add a
+   * new ALLOWED_ORIGINS entry for every preview URL. Now we can glob.
+   */
+  ALLOWED_ORIGIN_PATTERNS?: string;
+
   /** Access token TTL in seconds. Default: 900 (15 min). */
   ACCESS_TOKEN_TTL?: string;
 

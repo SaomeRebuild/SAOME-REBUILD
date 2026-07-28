@@ -12,6 +12,12 @@
 // Per Bug-4 fix: the Set-Cookie Domain is derived from the actual Origin
 // request header (see shared/lib/cookieDomain.ts), so this list does NOT
 // have to match cookie scoping.
+//
+// ALLOWED_ORIGIN_PATTERNS: comma-separated host glob patterns. Bug-4d fix.
+// Workers preview URLs (https://<subdomain>.josh1989213.workers.dev)
+// can't be enumerated ahead of time, so we accept any subdomain under
+// our workers.dev account. Same for *.saome-frontend.pages.dev (Pages
+// preview) and the future *.saome.org production family.
 
 {
   "$schema": "node_modules/wrangler/config-schema.json",
@@ -28,7 +34,8 @@
   "vars": {
     "ACCESS_TOKEN_TTL": "900",
     "REFRESH_TOKEN_TTL": "2592000",
-    "ALLOWED_ORIGINS": "http://localhost:5173,http://localhost:8788,https://saome-frontend.pages.dev,https://saome-admin.pages.dev,https://josh1989213.workers.dev,https://saome-backend.josh1989213.workers.dev,https://app.saome.org,https://admin.saome.org,https://saome.org"
+    "ALLOWED_ORIGINS": "http://localhost:5173,http://localhost:8788,https://saome-frontend.pages.dev,https://saome-admin.pages.dev,https://josh1989213.workers.dev,https://saome-backend.josh1989213.workers.dev,https://app.saome.org,https://admin.saome.org,https://saome.org",
+    "ALLOWED_ORIGIN_PATTERNS": "*.josh1989213.workers.dev,*.saome-frontend.pages.dev,*.saome-admin.pages.dev,*.app.saome.org,*.admin.saome.org,*.saome.org"
   },
   "observability": {
     "enabled": true

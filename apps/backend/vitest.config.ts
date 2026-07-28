@@ -13,13 +13,20 @@
  *
  * Pool-workers setup notes:
  *   - `wrangler.jsonc` is read for bindings
- *   - Hyperdrive binding is mocked in CI by miniflare; for real Postgres
- *     tests, point `HYPERDRIVE_LOCAL_CONNECTION_STRING` env at a test DB
+ *   - Hyperdrive binding requires `WRANGLER_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE`
+ *     env var (set by CI / devs before `npm test`). It points at a local
+ *     Postgres connection; even though most tests `vi.mock` the DB layer,
+ *     wrangler ≥ 4.30 refuses to initialize the runtime without one.
  *   - Secrets (JWT_SECRET) come from `.dev.vars` in dev or `CLOUDFLARE_*` env in CI
  */
 
 import { defineWorkersConfig } from '@cloudflare/vitest-pool-workers/config';
 import path from 'node:path';
+
+if (!process.env.WRANGLER_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE) {
+  process.env.WRANGLER_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE =
+    'postgres://postgres:postgres@127.0.0.1:5432/postgres';
+}
 
 export default defineWorkersConfig({
   test: {
