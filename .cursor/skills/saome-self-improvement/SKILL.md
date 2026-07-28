@@ -44,8 +44,10 @@
 | 層級 | 內容範例 | push | commit 標記 |
 |------|----------|------|-------------|
 | 規範層 | `.cursor/rules/*.mdc`、`AGENTS.md`、`runs/improvements/feedback/*` | **預設 push** | footer `Self-improvement:` + feedback 連結 |
-| 操作層 | `apps/frontend/*.config.ts`、`package.json`、`wrangler.jsonc`、CI workflow、`.github/dependabot.yml` | **push** | 一般 `feat:` / `fix:` / `chore:` |
-| 私人層 | `DEV/07-2026/*` 開發日誌、`.cursor/agents/*`、個人 cursor state | **`.gitignore` 鎖住**，不進 commit | 不適用 |
+| 操作層 | `apps/frontend/*.config.ts`、`package.json`、`wrangler.jsonc`、CI workflow、`.github/dependabot.yml`、`DEV/` 開發紀錄 | **push** | 一般 `feat:` / `fix:` / `chore:` |
+| 私人層 | `projects/`、`.cursor/agents/`、個人 cursor state | **`.gitignore` 鎖住**，不進 commit | 不適用 |
+
+> **2026-07-28 更新**：DEV/ 開發紀錄從「私人層」改為「操作層」 — 你說「開發紀錄要備份」。DEV/ 仍受版控，但 commit 用一般 `feat:` / `fix:` / `chore:` 而非 `Self-improvement:` 標記，因為它不是規範變更。`projects/` 與 `.cursor/agents/` 仍維持私人層。
 
 #### 三層範例
 
@@ -73,7 +75,7 @@ echo ".cursor/agents/" >> .gitignore
 理由：規範層與操作層的 feedback 不 push 會讓下個 session agent 看不到教訓，誤刪無法還原（見 `runs/improvements/feedback/20260727-rules-overwritten-by-speckit-merge.md`）。
 
 ### Step 4：建立下一個 session 的起點
-把這次 session 的關鍵決策寫進 `DEV/YYYY-MM/<MM>-dev.md`，讓下次開新 session 第一件事就是讀這份。
+把這次 session 的關鍵決策寫進 `DEV/<MM>-YYYY/<DD>-dev.md`（操作層 — commit + push），讓下次開新 session 第一件事就是讀這份。
 
 ## 與其他 skill 的關係
 

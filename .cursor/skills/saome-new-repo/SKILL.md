@@ -1,20 +1,24 @@
 # SAOME New Repo Skill
 
-> SAOME 系列所有業主專用 repo（saome-frontend / saome-backend / saome-api-worker / saome-postgresql …）的建立標準。
+> SAOME 系列業主專用 repo（saome-frontend / saome-backend / saome-api-worker / saome-postgresql …）的建立標準。
 > 觸發條件：使用者提到「新建 repo」「抽 backend」「建立 saome-xxx」「獨立 repo」時必須引用。
 
 ## 目的
 
 把「SAOME-REBUILD 清理 + 抽 frontend 推 saome-frontend」這次成功流程標準化，避免下次新 repo 又踩一樣的坑：
-- 把 owner-agent 私房（.cursor/、DEV/、runs/、AGENTS.md、specs/、mu-plugins/）意外推到業主 repo
+- 把 owner-agent 私房意外推到業主 repo
 - 沒有 defensive .gitignore
 - 沒有 i18n 雙語 SOP
-- 沒有 owner-agent 私房鎖定規範
 
-## 強制規則（所有 saome-* repo 必須遵守）
+## 適用範圍
+
+> **2026-07-28 更新**：SAOME-REBUILD 已決定保留 monorepo 結構（apps/frontend + apps/backend + packages/shared），不主動拆 repo。本 skill 僅在「使用者明確指示要把子系統獨立成 saome-* repo」時觸發。「禁止把新資料夾建在 SAOME-REBUILD 子目錄」這條舊規則已廢除 — SAOME-REBUILD 本身就是產品的 canonical repo，子目錄加東西是常態。
+
+## 強制規則（任何新 saome-* repo 必須遵守）
 
 ### 路徑
-所有 saome-* repo 必須建在 `C:\Users\user\Desktop\saome-<name>\`，與 SAOME-REBUILD 平行。**禁止**建在 SAOME-REBUILD 子目錄。
+新 saome-* repo 應建在 `C:\Users\user\Desktop\saome-<name>\`，與 SAOME-REBUILD 平行。
+（不再硬性禁止放在 SAOME-REBUILD 子目錄 — 但若決定放在 SAOME-REBUILD 子目錄，必須在 PR 描述明確說明理由並更新 AGENTS.md。）
 
 ### 必含檔案
 每個 saome-* repo 必須有：
@@ -28,15 +32,10 @@
 ```
 # Owner-agent private state — 不應出現在任何 saome-* repo
 .cursor/
-DEV/
-runs/
+runs/improvements/    # 規範層 feedback 留在 SAOME-REBUILD，不要外洩到業主 repo
 mu-plugins/
-AGENTS.md
-specs/
-shared/
-design-system/
-backend/
-SAOME-REBUILD/
+specs/                # 規格只在 SAOME-REBUILD，不要外洩
+SAOME-REBUILD/        # 防誤把上游 monorepo 整包拷進來
 
 # Build artifacts
 node_modules/
@@ -69,6 +68,8 @@ Thumbs.db
 coverage/
 ```
 
+> **2026-07-28 更新**：從範本移除 `DEV/` 與 `AGENTS.md` — 開發紀錄（DEV）與規範入口（AGENTS.md）現在是 SAOME-REBUILD monorepo 內的「**操作層**」內容，會 commit + push。新拆出的業主 repo 仍應自帶 AGENTS.md（規範入口是每個 repo 必須的），但 DEV/ 開發紀錄不需要外洩。
+
 ### 來自 SAOME-REBUILD 的搬入流程
 
 從 `C:\Users\user\Desktop\SAOME-REBUILD\` 抽出 source 進 saome-* repo：
@@ -79,7 +80,7 @@ coverage/
 
 ### 禁止
 
-- 把 `.cursor/`、`DEV/`、`runs/`、`AGENTS.md`、`specs/`、`mu-plugins/` 推到任何 saome-* repo
+- 把 `.cursor/`、`runs/improvements/`、`AGENTS.md`（SAOME-REBUILD 上游那份）、`specs/`、`mu-plugins/` 推到業主 repo
 - 在 saome-* repo 寫 emoji
 - 在 saome-* repo 寫 hard-code secrets
 - 在 saome-* repo 寫 console.log / debug

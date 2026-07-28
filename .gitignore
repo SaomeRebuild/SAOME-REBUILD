@@ -67,6 +67,8 @@ Thumbs.db
 
 # Private layers — owner-agent local state, never commit (per skill
 # saome-self-improvement 三層決策表「私人層」)
-DEV/
 projects/
 .cursor/agents/
+
+# NOTE: DEV/ is committed as 操作層 — 開發紀錄要備份
+# (see .cursor/skills/saome-self-improvement/SKILL.md 三層決策表更新)
