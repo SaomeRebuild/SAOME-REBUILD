@@ -1,5 +1,11 @@
 /**
  * ErrorBanner — top-of-form inline error banner.
+ *
+ * Visual contract (per design-system/MASTER.md §1):
+ *   - Bg:        var(--color-destructive) at 10% opacity
+ *   - Border:    var(--color-destructive)
+ *   - Text:      var(--color-destructive)
+ *   - Icon:      AlertCircle (Lucide)
  */
 
 import type { ReactNode } from 'react';
@@ -17,7 +23,12 @@ export function ErrorBanner({ message, children }: ErrorBannerProps) {
   return (
     <div
       role="alert"
-      className="flex items-start gap-2 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+      className="flex items-start gap-2 rounded-md border px-3 py-2 text-sm"
+      style={{
+        borderColor: 'var(--color-destructive)',
+        backgroundColor: 'color-mix(in srgb, var(--color-destructive) 10%, transparent)',
+        color: 'var(--color-destructive)',
+      }}
     >
       <AlertCircle size={16} className="mt-0.5 shrink-0" />
       <div>{message ?? children}</div>

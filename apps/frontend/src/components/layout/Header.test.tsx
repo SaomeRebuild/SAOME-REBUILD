@@ -116,7 +116,8 @@ describe('Header', () => {
       });
       const header = screen.getByRole('banner');
       expect(header.className).toContain('shadow-sm');
-      expect(header.className).toContain('bg-header-bg');
+      // design-system/MASTER.md: scrolled header uses var(--color-background) at 95% opacity
+      expect(header.getAttribute('style') ?? '').toMatch(/--color-background/);
     });
 
     it('removes shadow when scrolled back to top', () => {

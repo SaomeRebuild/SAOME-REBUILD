@@ -1,5 +1,28 @@
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
+import type { ReactNode } from 'react';
+import {
+  ClipboardList,
+  Search,
+  BarChart3,
+  Palette,
+  Type,
+  Link as LinkIcon,
+  Phone,
+  Map,
+  Smartphone,
+  Globe,
+  LayoutTemplate,
+  Sparkles,
+  Megaphone,
+  Radio,
+  MessageSquare,
+  Users,
+  Inbox,
+  CheckCircle,
+  Printer,
+  QrCode,
+} from 'lucide-react';
 
 function SectionHeader({ title, subtitle }: { title: string; subtitle: string }) {
   return (
@@ -28,7 +51,7 @@ function FeatureCard({
   title,
   description,
 }: {
-  icon: string;
+  icon: ReactNode;
   title: string;
   description: string;
 }) {
@@ -40,7 +63,15 @@ function FeatureCard({
         backgroundColor: 'var(--color-card)',
       }}
     >
-      <div className="mb-4 text-4xl">{icon}</div>
+      <div
+        className="mb-4 inline-flex items-center justify-center rounded-md p-2"
+        style={{
+          color: 'var(--color-primary)',
+          backgroundColor: 'color-mix(in srgb, var(--color-primary) 12%, transparent)',
+        }}
+      >
+        {icon}
+      </div>
       <h3
         className="mb-2 text-xl font-semibold"
         style={{
@@ -100,17 +131,17 @@ export function ProductPage() {
           />
           <div className="grid gap-8 md:grid-cols-3">
             <FeatureCard
-              icon="📋"
+              icon={<ClipboardList size={28} />}
               title={t('product.intro.form.title')}
               description={t('product.intro.form.desc')}
             />
             <FeatureCard
-              icon="🔍"
+              icon={<Search size={28} />}
               title={t('product.intro.duplicate.title')}
               description={t('product.intro.duplicate.desc')}
             />
             <FeatureCard
-              icon="📊"
+              icon={<BarChart3 size={28} />}
               title={t('product.intro.crm.title')}
               description={t('product.intro.crm.desc')}
             />
@@ -130,17 +161,17 @@ export function ProductPage() {
           />
           <div className="grid gap-8 md:grid-cols-3">
             <FeatureCard
-              icon="🎨"
+              icon={<Palette size={28} />}
               title={t('product.custom.design.title')}
               description={t('product.custom.design.desc')}
             />
             <FeatureCard
-              icon="📝"
+              icon={<Type size={28} />}
               title={t('product.custom.description.title')}
               description={t('product.custom.description.desc')}
             />
             <FeatureCard
-              icon="🔗"
+              icon={<LinkIcon size={28} />}
               title={t('product.custom.links.title')}
               description={t('product.custom.links.desc')}
             />
@@ -157,32 +188,32 @@ export function ProductPage() {
           />
           <div className="grid gap-8 md:grid-cols-3 lg:grid-cols-6">
             <FeatureCard
-              icon="📋"
+              icon={<ClipboardList size={28} />}
               title={t('product.engage.survey.title')}
               description={t('product.engage.survey.desc')}
             />
             <FeatureCard
-              icon="🎁"
+              icon={<Megaphone size={28} />}
               title={t('product.engage.referral.title')}
               description={t('product.engage.referral.desc')}
             />
             <FeatureCard
-              icon="📞"
+              icon={<Phone size={28} />}
               title={t('product.engage.call.title')}
               description={t('product.engage.call.desc')}
             />
             <FeatureCard
-              icon="🗺️"
+              icon={<Map size={28} />}
               title={t('product.engage.map.title')}
               description={t('product.engage.map.desc')}
             />
             <FeatureCard
-              icon="📱"
+              icon={<Smartphone size={28} />}
               title={t('product.engage.social.title')}
               description={t('product.engage.social.desc')}
             />
             <FeatureCard
-              icon="🌐"
+              icon={<Globe size={28} />}
               title={t('product.engage.website.title')}
               description={t('product.engage.website.desc')}
             />
@@ -199,17 +230,17 @@ export function ProductPage() {
           />
           <div className="grid gap-8 md:grid-cols-3">
             <FeatureCard
-              icon="📑"
+              icon={<LayoutTemplate size={28} />}
               title={t('product.builder.templates.title')}
               description={t('product.builder.templates.desc')}
             />
             <FeatureCard
-              icon="✨"
+              icon={<Sparkles size={28} />}
               title={t('product.builder.custom.title')}
               description={t('product.builder.custom.desc')}
             />
             <FeatureCard
-              icon="📣"
+              icon={<Megaphone size={28} />}
               title={t('product.builder.marketing.title')}
               description={t('product.builder.marketing.desc')}
             />
@@ -226,12 +257,12 @@ export function ProductPage() {
           />
           <div className="grid gap-8 md:grid-cols-2">
             <FeatureCard
-              icon="📝"
+              icon={<MessageSquare size={28} />}
               title={t('product.campaign.questionnaire.title')}
               description={t('product.campaign.questionnaire.desc')}
             />
             <FeatureCard
-              icon="📡"
+              icon={<Radio size={28} />}
               title={t('product.campaign.push.title')}
               description={t('product.campaign.push.desc')}
             />
@@ -248,17 +279,17 @@ export function ProductPage() {
           />
           <div className="grid gap-8 md:grid-cols-3">
             <FeatureCard
-              icon="💬"
+              icon={<MessageSquare size={28} />}
               title={t('product.share.online.title')}
               description={t('product.share.online.desc')}
             />
             <FeatureCard
-              icon="🌐"
+              icon={<Globe size={28} />}
               title={t('product.share.website.title')}
               description={t('product.share.website.desc')}
             />
             <FeatureCard
-              icon="🤝"
+              icon={<Users size={28} />}
               title={t('product.share.referral.title')}
               description={t('product.share.referral.desc')}
             />
@@ -275,17 +306,17 @@ export function ProductPage() {
           />
           <div className="grid gap-8 md:grid-cols-3">
             <FeatureCard
-              icon="📥"
+              icon={<Inbox size={28} />}
               title={t('product.email.import.title')}
               description={t('product.email.import.desc')}
             />
             <FeatureCard
-              icon="📬"
+              icon={<Megaphone size={28} />}
               title={t('product.email.push.title')}
               description={t('product.email.push.desc')}
             />
             <FeatureCard
-              icon="✅"
+              icon={<CheckCircle size={28} />}
               title={t('product.email.status.title')}
               description={t('product.email.status.desc')}
             />
@@ -302,12 +333,12 @@ export function ProductPage() {
           />
           <div className="grid gap-8 md:grid-cols-2">
             <FeatureCard
-              icon="🖨️"
+              icon={<Printer size={28} />}
               title={t('product.offline.print.title')}
               description={t('product.offline.print.desc')}
             />
             <FeatureCard
-              icon="📲"
+              icon={<QrCode size={28} />}
               title={t('product.offline.scanner.title')}
               description={t('product.offline.scanner.desc')}
             />

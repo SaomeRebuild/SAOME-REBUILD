@@ -77,4 +77,16 @@ describe('BDD: ProductPage Gherkin 場景對應', () => {
       expect(screen.getByText('產品介紹')).toBeInTheDocument();
     });
   });
+
+  describe('design-system/MASTER.md compliance', () => {
+    // Per MASTER.md §7: no emoji as structural icons — Lucide SVG only.
+    it('contains no emoji characters anywhere in rendered output', () => {
+      const { container } = renderProductPage();
+      const text = (container.textContent ?? '').replace(/\s+/g, '');
+      // Block emoji range (Misc Symbols and Pictographs + Emoticons + Transport + Misc + Supplemental + Symbols)
+      const emojiRegex =
+        /[\u{1F300}-\u{1FAFF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{2600}-\u{27BF}]/u;
+      expect(text).not.toMatch(emojiRegex);
+    });
+  });
 });

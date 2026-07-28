@@ -101,22 +101,22 @@ export function RegisterForm() {
         {serverError ? <ErrorBanner message={serverError} /> : null}
         <form onSubmit={tenantForm.handleSubmit(onStep1Submit)} className="flex flex-col gap-4" noValidate>
           <Field label={t('register.contactName')} required error={tenantForm.formState.errors.contactName?.message ? t('register.error.required') : undefined}>
-            <input {...tenantForm.register('contactName')} className={inputCls} />
+            <input {...tenantForm.register('contactName')} className={inputCls} style={inputStyle()} {...inputFocusHandlers()} />
           </Field>
           <Field label={t('register.phoneCity')} required error={tenantForm.formState.errors.phoneCity?.message ? t('register.error.required') : undefined}>
-            <input {...tenantForm.register('phoneCity')} className={inputCls} />
+            <input {...tenantForm.register('phoneCity')} className={inputCls} style={inputStyle()} {...inputFocusHandlers()} />
           </Field>
           <Field label={t('register.address')} required error={tenantForm.formState.errors.address?.message ? t('register.error.required') : undefined}>
-            <input {...tenantForm.register('address')} className={inputCls} />
+            <input {...tenantForm.register('address')} className={inputCls} style={inputStyle()} {...inputFocusHandlers()} />
           </Field>
           <Field label={t('register.taxId')} required description={t('register.taxIdHint')} error={tenantForm.formState.errors.taxId?.message ? t('register.error.required') : undefined}>
-            <input {...tenantForm.register('taxId')} className={inputCls} />
+            <input {...tenantForm.register('taxId')} className={inputCls} style={inputStyle()} {...inputFocusHandlers()} />
           </Field>
           <Field label={t('register.name')} required error={tenantForm.formState.errors.companyName?.message ? t('register.error.required') : undefined}>
-            <input {...tenantForm.register('companyName')} className={inputCls} />
+            <input {...tenantForm.register('companyName')} className={inputCls} style={inputStyle()} {...inputFocusHandlers()} />
           </Field>
           <Field label={t('register.invoiceAddress')} error={tenantForm.formState.errors.invoiceAddress?.message ? t('register.error.required') : undefined}>
-            <input {...tenantForm.register('invoiceAddress')} className={inputCls} />
+            <input {...tenantForm.register('invoiceAddress')} className={inputCls} style={inputStyle()} {...inputFocusHandlers()} />
           </Field>
           <SubmitButton fullWidth>{t('register.next')}</SubmitButton>
         </form>
@@ -125,41 +125,72 @@ export function RegisterForm() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <Stepper current={step} steps={steps} />
-      {serverError ? <ErrorBanner message={serverError} /> : null}
-      <form onSubmit={accountForm.handleSubmit(onStep2Submit)} className="flex flex-col gap-4" noValidate>
-        <Field label={t('register.accountEmail')} required error={accountForm.formState.errors.email?.message ? t('register.error.email') : undefined}>
-          <input type="email" autoComplete="email" {...accountForm.register('email')} className={inputCls} />
-        </Field>
-        <PasswordField
-          label={t('register.password')}
-          autoComplete="new-password"
-          required
-          {...accountForm.register('password')}
-          error={accountForm.formState.errors.password?.message ? t('register.error.password') : undefined}
-        />
-        <PasswordField
-          label={t('register.confirmPassword')}
-          autoComplete="new-password"
-          required
-          {...accountForm.register('confirmPassword')}
-          error={accountForm.formState.errors.confirmPassword?.message ? t('register.error.passwordMismatch') : undefined}
-        />
-        <div className="flex gap-2">
-          <button type="button" onClick={() => setStep(0)} className="min-h-[44px] flex-1 rounded border border-neutral-300 px-4 py-2 text-sm">
-            {t('register.back')}
-          </button>
-          <SubmitButton loading={submitting} loadingText={t('register.submitting')} fullWidth>
-            {t('register.submit')}
-          </SubmitButton>
-        </div>
-      </form>
-    </div>
+      <div className="flex flex-col gap-6">
+        <Stepper current={step} steps={steps} />
+        {serverError ? <ErrorBanner message={serverError} /> : null}
+        <form onSubmit={accountForm.handleSubmit(onStep2Submit)} className="flex flex-col gap-4" noValidate>
+          <Field label={t('register.accountEmail')} required error={accountForm.formState.errors.email?.message ? t('register.error.email') : undefined}>
+            <input type="email" autoComplete="email" {...accountForm.register('email')} className={inputCls} style={inputStyle()} {...inputFocusHandlers()} />
+          </Field>
+          <PasswordField
+            label={t('register.password')}
+            autoComplete="new-password"
+            required
+            {...accountForm.register('password')}
+            error={accountForm.formState.errors.password?.message ? t('register.error.password') : undefined}
+          />
+          <PasswordField
+            label={t('register.confirmPassword')}
+            autoComplete="new-password"
+            required
+            {...accountForm.register('confirmPassword')}
+            error={accountForm.formState.errors.confirmPassword?.message ? t('register.error.passwordMismatch') : undefined}
+          />
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setStep(0)}
+              className="min-h-[44px] flex-1 rounded border px-4 py-2 text-sm transition-colors hover:opacity-80"
+              style={{
+                borderColor: 'var(--color-border)',
+                backgroundColor: 'transparent',
+                color: 'var(--color-foreground)',
+              }}
+            >
+              {t('register.back')}
+            </button>
+            <SubmitButton loading={submitting} loadingText={t('register.submitting')} fullWidth>
+              {t('register.submit')}
+            </SubmitButton>
+          </div>
+        </form>
+      </div>
   );
 }
 
 const inputCls =
-  'min-h-[44px] w-full rounded border border-neutral-300 px-3 py-2 text-base focus:border-neutral-900 focus:outline-none';
+  'min-h-[44px] w-full rounded px-3 py-2 text-base outline-none transition-colors focus:ring-2';
+
+function inputStyle(disabled?: boolean): React.CSSProperties {
+  return {
+    border: '1px solid var(--color-border)',
+    backgroundColor: disabled ? 'var(--color-muted)' : 'var(--color-muted)',
+    color: 'var(--color-foreground)',
+    opacity: disabled ? 0.6 : 1,
+  };
+}
+
+function inputFocusHandlers() {
+  return {
+    onFocus: (e: React.FocusEvent<HTMLInputElement>) => {
+      e.currentTarget.style.borderColor = 'var(--color-ring)';
+      e.currentTarget.style.boxShadow = '0 0 0 2px var(--color-ring)';
+    },
+    onBlur: (e: React.FocusEvent<HTMLInputElement>) => {
+      e.currentTarget.style.borderColor = 'var(--color-border)';
+      e.currentTarget.style.boxShadow = 'none';
+    },
+  };
+}
 
 export default RegisterForm;

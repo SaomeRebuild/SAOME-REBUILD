@@ -69,13 +69,14 @@ describe('BDD: Homepage Gherkin 場景對應', () => {
       expect(cta).toHaveAttribute('href', '/register');
     });
 
-    it('sc05: 滾動時顯示陰影與半透明白色背景', () => {
+    it('sc05: 滾動時顯示陰影與半透明背景色', () => {
       renderHomepage();
       Object.defineProperty(window, 'scrollY', { configurable: true, value: 20 });
       fireEvent.scroll(window);
       const header = screen.getByRole('banner');
       expect(header.className).toContain('shadow-sm');
-      expect(header.className).toContain('bg-header-bg');
+      // design-system/MASTER.md: scrolled header uses var(--color-background) at 95% opacity
+      expect(header.getAttribute('style') ?? '').toMatch(/--color-background/);
     });
 
     it('sc06: 開啟手機選單後 body overflow 鎖定', () => {

@@ -45,11 +45,15 @@ export function Header({ className }: HeaderProps) {
       <header
         className={cn(
           'fixed top-0 left-0 right-0 z-50 transition-all duration-150',
-          isScrolled
-            ? 'border-b bg-header-bg/95 backdrop-blur-sm shadow-sm'
-            : 'bg-transparent',
+          isScrolled ? 'border-b backdrop-blur-sm shadow-sm' : 'bg-transparent',
           className
         )}
+        style={{
+          backgroundColor: isScrolled
+            ? 'color-mix(in srgb, var(--color-background) 95%, transparent)'
+            : 'transparent',
+          borderColor: isScrolled ? 'var(--color-border)' : 'transparent',
+        }}
       >
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex h-16 items-center justify-between lg:h-[72px]">

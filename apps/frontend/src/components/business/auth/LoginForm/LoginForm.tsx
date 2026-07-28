@@ -63,7 +63,20 @@ export function LoginForm() {
           autoComplete="email"
           {...register('email')}
           disabled={isLocked || submitting}
-          className="min-h-[44px] w-full rounded border border-neutral-300 px-3 py-2 text-base focus:border-neutral-900 focus:outline-none"
+          className="min-h-[44px] w-full rounded px-3 py-2 text-base outline-none transition-colors focus:ring-2"
+          style={{
+            border: '1px solid var(--color-border)',
+            backgroundColor: 'var(--color-muted)',
+            color: 'var(--color-foreground)',
+          }}
+          onFocus={(e) => {
+            e.currentTarget.style.borderColor = 'var(--color-ring)';
+            e.currentTarget.style.boxShadow = '0 0 0 2px var(--color-ring)';
+          }}
+          onBlur={(e) => {
+            e.currentTarget.style.borderColor = 'var(--color-border)';
+            e.currentTarget.style.boxShadow = 'none';
+          }}
         />
       </Field>
 
