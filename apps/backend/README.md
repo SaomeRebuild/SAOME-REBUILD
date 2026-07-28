@@ -72,9 +72,42 @@ Migrations 存於 `migrations/`,透過 Supabase MCP `apply_migration` 套用:
 | `JWT_SECRET` | yes | HS256 signing key(min 32 chars) |
 | `ACCESS_TOKEN_TTL` | optional | seconds;default 900 (15 min) |
 | `REFRESH_TOKEN_TTL` | optional | seconds;default 2592000 (30 day) |
-| `ALLOWED_ORIGINS` | optional | CORS allowlist;default `localhost:5173` |
+| `ALLOWED_ORIGINS` | optional | CORS allowlist;comma-separated origins;default `localhost:5173` |
 
 Local dev 用 `.dev.vars`(git ignored);production 用 `wrangler secret put`.
+
+### JWT_SECRET 在 production 的注入方式(Bug-4)
+
+```bash
+# Generate a random 32-byte hex secret locally
+openssl rand -hex 32
+
+# Inject into the deployed Worker
+cd apps/backend
+npx wrangler secret put JWT_SECRET --name saome-backend
+# paste the secret at the prompt
+
+# Verify it's set
+npx wrangler secret list --name saome-backend
+```
+
+If `JWT_SECRET` is not set in the Worker env, `loginService` and `refreshService`
+fall back to `dev-insecure-secret`. This is **not safe for production** — anyone
+can forge tokens with the public fallback. Always inject the secret before going live.
+
+### Cookie Domain(Bug-4)
+
+The refresh cookie's `Domain=` attribute is derived per-request from the
+`Origin` header by [`src/shared/lib/cookieDomain.ts`](./src/shared/lib/cookieDomain.ts):
+
+| Request Origin | Set-Cookie Domain |
+|----------------|-------------------|
+| `https://app.saome.org` / `https://admin.saome.org` | `Domain=.saome.org` |
+| `https://saome-frontend.pages.dev` / `*.workers.dev` / `http://localhost:5173` | omitted (browser scopes to exact host) |
+| missing | omitted |
+
+This lets a single deployment serve both the Cloudflare Pages preview origins
+and the future `*.saome.org` production origins without manual config flips.
 
 ## Wrangler
 

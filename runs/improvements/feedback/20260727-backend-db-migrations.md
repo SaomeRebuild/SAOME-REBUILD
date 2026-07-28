@@ -52,16 +52,51 @@ Once chosen, the admin password must be:
 
 ## Open: Hyperdrive ID
 
-`apps/backend/wrangler.jsonc` still has `"id": "<HYPERDRIVE_ID_PLACEHOLDER>"`.
+`apps/backend/wrangler.jsonc` now has the real Hyperdrive ID `7abd3a2056314db294ce3a54d2555d68`.
+Provisioned against Supabase Postgres (Direct connection, not Transaction pooler).
+Deploy verified: `npm run build` (wrangler deploy --dry-run) succeeds with binding listed.
 
-To provision:
+## Open: JWT_SECRET in production (Bug-4)
 
-1. Cloudflare dashboard → Workers → Hyperdrive → Create configuration
-2. Connection string: `postgres://postgres.<PROJECT>:<PASSWORD>@<HOST>:5432/postgres`
-   (use Supabase "Direct connection" not "Transaction" pooler for Hyperdrive)
-3. Copy the resulting Hyperdrive ID
-4. Replace `<HYPERDRIVE_ID_PLACEHOLDER>` in `apps/backend/wrangler.jsonc`
-5. Deploy: `cd apps/backend && npm run deploy`
+`loginService` and `refreshService` fallback to the public string `dev-insecure-secret`
+when `c.env.JWT_SECRET` is missing. Cloudflare's single-isolate model makes the
+fallback deterministic *within* a Worker instance, so login/refresh still work —
+but the secret is public knowledge, so anyone can forge tokens.
+
+**Required before going live**:
+
+```bash
+openssl rand -hex 32        # generate locally
+cd apps/backend
+npx wrangler secret put JWT_SECRET --name saome-backend
+# paste the 64-char hex
+npx wrangler secret list --name saome-backend  # verify
+```
+
+After the secret is set, existing access tokens (if any) become invalid because
+their signatures were made with `dev-insecure-secret`. Users will need to
+re-login. Refresh tokens are stored in `refresh_tokens` table by their
+SHA-256 hash, so rotation still works across the JWT_SECRET rotation.
+
+## Open: Cookie Domain (Bug-4)
+
+The previous `Domain=.saome.org` literal on `Set-Cookie` caused admin login to
+silently fail in deployed environments (Pages / workers.dev), because the browser
+rejects a cookie that declares a `Domain=` it doesn't belong to.
+
+Fixed in 2026-07-28 commit (PR-3):
+- `apps/backend/src/shared/lib/cookieDomain.ts` (new) — `refreshCookieDomain(origin)`
+  returns `' Domain=.saome.org'` when origin matches `*.saome.org`, else `''`.
+- `apps/backend/src/modules/auth/routes/login.ts` and `refresh.ts` now derive
+  the attribute via that helper.
+- 11 unit tests on the helper + 3 integration tests on `/api/auth/login` Set-Cookie.
+
+## Open: ALLOWED_ORIGINS (Bug-4)
+
+`apps/backend/wrangler.jsonc` `vars.ALLOWED_ORIGINS` expanded to include
+both Cloudflare test origins (`*.pages.dev`, `*.workers.dev`) and the future
+saome.org family (`app.`, `admin.`, apex). CORS middleware reads the
+comma-separated list via `c.env.ALLOWED_ORIGINS`.
 
 ## Verification queries
 

@@ -144,6 +144,55 @@ describe('POST /api/auth/login', () => {
     expect(mockedInsertAttempt).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ success: true }));
   });
 
+  // Per Bug-4 fix: cookie Domain must derive from the request Origin so the
+  // browser accepts it on both *.saome.org and *.workers.dev deployments.
+  describe('Set-Cookie Domain derivation (Bug-4)', () => {
+    it('emits no Domain attribute when Origin is workers.dev (production test)', async () => {
+      const app = buildApp();
+      const res = await app.request(
+        'http://localhost/api/auth/login',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Origin: 'https://saome-frontend.pages.dev',
+          },
+          body: JSON.stringify(validCreds),
+        },
+        testEnv,
+      );
+      const setCookie = res.headers.get('Set-Cookie') ?? '';
+      expect(setCookie).toContain('saome_refresh=refresh');
+      expect(setCookie).not.toMatch(/Domain=/);
+    });
+
+    it('emits Domain=.saome.org when Origin ends with .saome.org (production)', async () => {
+      const app = buildApp();
+      const res = await app.request(
+        'http://localhost/api/auth/login',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Origin: 'https://app.saome.org',
+          },
+          body: JSON.stringify(validCreds),
+        },
+        testEnv,
+      );
+      const setCookie = res.headers.get('Set-Cookie') ?? '';
+      expect(setCookie).toContain('saome_refresh=refresh');
+      expect(setCookie).toContain('Domain=.saome.org');
+    });
+
+    it('emits no Domain attribute when Origin header is missing (CLI / smoke)', async () => {
+      const app = buildApp();
+      const res = await callLogin(app, validCreds);
+      const setCookie = res.headers.get('Set-Cookie') ?? '';
+      expect(setCookie).not.toMatch(/Domain=/);
+    });
+  });
+
   it('wrong password returns 401 UNAUTHORIZED', async () => {
     mockedVerify.mockResolvedValue(false);
     const app = buildApp();

@@ -8,6 +8,7 @@ import { loginCredentialsSchema } from '../schemas/request';
 import { loginService } from '../services/loginService';
 import { ValidationError } from '@/shared/lib/saomeError';
 import { getDb } from '@/shared/db/client';
+import { refreshCookieDomain } from '@/shared/lib/cookieDomain';
 
 export const loginRoute = new Hono<HonoEnv>()
   .post('/', async (c) => {
@@ -25,9 +26,10 @@ export const loginRoute = new Hono<HonoEnv>()
     const session = await loginService(sql, jwtSecret, parsed.data, ttl);
 
     if (session.refreshToken) {
+      const domainAttr = refreshCookieDomain(c.req.header('Origin'));
       c.res.headers.append(
         'Set-Cookie',
-        `saome_refresh=${session.refreshToken}; HttpOnly; Secure; SameSite=Lax; Path=/api/auth; Domain=.saome.org; Max-Age=2592000`,
+        `saome_refresh=${session.refreshToken}; HttpOnly; Secure; SameSite=Lax; Path=/api/auth${domainAttr}; Max-Age=2592000`,
       );
     }
     return c.json({

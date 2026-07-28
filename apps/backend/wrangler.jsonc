@@ -5,6 +5,13 @@
 //
 // Local dev: use `.dev.vars` for JWT_SECRET etc. (git ignored).
 // Production: `wrangler secret put JWT_SECRET`.
+//
+// ALLOWED_ORIGINS: comma-separated list of allowed origins for CORS.
+// Includes both Cloudflare Pages/Workers test domains (saome-frontend.pages.dev,
+// josh1989213.workers.dev) and the future saome.org production family.
+// Per Bug-4 fix: the Set-Cookie Domain is derived from the actual Origin
+// request header (see shared/lib/cookieDomain.ts), so this list does NOT
+// have to match cookie scoping.
 
 {
   "$schema": "node_modules/wrangler/config-schema.json",
@@ -21,7 +28,7 @@
   "vars": {
     "ACCESS_TOKEN_TTL": "900",
     "REFRESH_TOKEN_TTL": "2592000",
-    "ALLOWED_ORIGINS": "http://localhost:5173"
+    "ALLOWED_ORIGINS": "http://localhost:5173,http://localhost:8788,https://saome-frontend.pages.dev,https://saome-admin.pages.dev,https://josh1989213.workers.dev,https://saome-backend.josh1989213.workers.dev,https://app.saome.org,https://admin.saome.org,https://saome.org"
   },
   "observability": {
     "enabled": true
