@@ -1,48 +1,56 @@
 ---
-description: 方法論規範 — SDD/BDD/TDD/Review 整合，Agent 必須先走 spec 後寫 code。
+description: 方法論規範 — Task Router 分流 + TDD/Review，BDD 已於 2026-07-29 廢除。
 alwaysApply: true
 ---
 
 # 方法論（MANDATORY）
 
-> 任何 breaking change、新功能、跨多檔案改動 **必須** 走這份流程。
+> **2026-07-29 更新**：BDD（Cucumber）已廢除。單人 vibe coding 場景下，vibe prompt 即 BDD。
 
-## 完整流程圖
+## 完整流程圖（task-router 分流後）
 
 ```mermaid
 flowchart TD
-    subgraph PRE[前期]
-        A[User Request] --> B[brainstorming]
-        B --> C[speckit-specify]
-        C --> D[speckit-clarify?]
-        D --> E[speckit-plan]
-        E --> F[speckit-tasks]
-        F --> G[speckit-analyze?]
+    subgraph ENTRY[Task Router 入口]
+        A[User Request] --> B[saome-task-router]
+        B --> C{L1/L2/L3/EscapeHatch}
     end
     
-    subgraph BDD[BDD 行為測試]
-        G --> H[抽出 .feature]
-        H --> I[Step Definitions]
-        I --> J[npm run test:bdd]
+    subgraph L1[L1 Trivial]
+        C -->|L1| D[直接實作]
+        D --> E[lint]
+        E --> F[npm test]
     end
     
-    subgraph TDD[TDD 單元測試]
-        G --> K[test-driven-development]
-        K --> L[Failing Test]
-        L --> M[Implementation]
-        M --> N[npm test]
+    subgraph L2[L2 Standard]
+        C -->|L2| G[test-driven-development]
+        G --> H[Failing Test]
+        H --> I[Implementation]
+        I --> J[npm test]
+        J --> K[verification-before-completion]
     end
     
-    subgraph QA[品質把關]
-        N --> O[run-smoke-tests]
-        O --> P[requesting-code-review]
-        P --> Q[verification-before-completion]
+    subgraph L3[L3 Heavy]
+        C -->|L3| L[brainstorming]
+        L --> M[Decision Log]
+        M --> N[test-driven-development]
+        N --> O[Failing Test]
+        O --> P[Implementation]
+        P --> Q[npm test]
+        Q --> R[run-smoke-tests]
+        R --> S[requesting-code-review]
+        S --> T[verification-before-completion]
+    end
+    
+    subgraph L3E[L3 Escape Hatch]
+        C -->|Escape Hatch| L3
     end
     
     subgraph FINISH[完成]
-        Q --> R[finishing-a-development-branch]
-        R --> S[saome-self-improvement]
-        S --> T[完成]
+        K --> U[finishing-a-development-branch]
+        T --> U
+        U --> V[saome-self-improvement]
+        V --> W[完成]
     end
 ```
 
@@ -50,43 +58,35 @@ flowchart TD
 
 | 環節 | 工具/Skill | 產出 |
 |------|------------|------|
-| 創意發想 | `superpowers:brainstorming` | design doc |
-| 需求澄清 | `speckit-specify` | spec.md |
-| 技術規劃 | `speckit-plan` | plan.md, data-model.md |
-| 任務分解 | `speckit-tasks` | tasks.md |
-| BDD 行為 | 手動 + `002-bdd.mdc` | *.feature |
+| Task Router | `saome-task-router` | 任務級距判定 |
+| 創意發想 | `superpowers:brainstorming` | design doc（L3 Heavy） |
+| Decision Log | `runs/decisions/` | 三段式決策紀錄（L3 Heavy） |
 | TDD 實作 | `superpowers:test-driven-development` | *.test.tsx |
 | 冒煙測試 | `superpowers:run-smoke-tests` | smoke test report |
 | Code Review | `superpowers:requesting-code-review` | review report |
 | 最終驗證 | `superpowers:verification-before-completion` | verification report |
 | 完成分支 | `superpowers:finishing-a-development-branch` | branch merged/PR |
 
-## 觸發時機
+## 觸發時機（task-router 分流表）
 
-| 改動類型 | 必走 SDD | 必走 BDD | 必走 TDD | 必走 Review |
-|----------|----------|----------|----------|-------------|
-| 新功能（多檔） | ✅ | ✅ | ✅ | ✅ |
-| 新功能（單檔） | ✅ | ❌ | ✅ | ✅ |
-| L1 UI 元件 | ❌ | ❌ | ✅ | ✅ |
-| L2 業務元件 | ✅ | ✅ | ✅ | ✅ |
-| bug fix | ❌ | 視情況 | ✅ | ✅ |
-| breaking refactor | ✅ | ✅ | ✅ | ✅ |
+| 任務級距 | 觸發條件 | 必走流程 |
+|----------|----------|----------|
+| L1 Trivial | 改 UI 屬性 / 修 typo / 改文案 | 直接做 → lint → test |
+| L2 Standard | 新 L1/L2 元件 / 一般 bug fix | TDD → Verification |
+| L3 Heavy | 新功能涉及多模組 / 架構改動 | Brainstorming → Decision Log → TDD → Review → Smoke |
+| L3 Escape Hatch | L3 + 需求含糊 / 跨系統整合 | L3 Heavy + Spec-Kit 完整流程 |
 
 ## 使用的 Skills
 
 | 環節 | Skill | 必須/可選 |
 |------|-------|-----------|
-| 創意發想 | `superpowers:brainstorming` | 必須 |
-| 需求澄清 | `speckit-specify` | 必須 |
-| 模糊點澄清 | `speckit-clarify` | 可選 |
-| 技術規劃 | `speckit-plan` | 必須 |
-| 任務分解 | `speckit-tasks` | 必須 |
-| 一致性驗證 | `speckit-analyze` | 可選 |
-| BDD 行為 | 手動 + `002-bdd.mdc` | 必須 |
-| TDD 實作 | `superpowers:test-driven-development` | 必須 |
-| 冒煙測試 | `superpowers:run-smoke-tests` | 必須 |
-| Code Review | `superpowers:requesting-code-review` | 必須 |
-| 最終驗證 | `superpowers:verification-before-completion` | 必須 |
+| Task Router | `saome-task-router` | **必須** |
+| 創意發想 | `superpowers:brainstorming` | L3 必須 |
+| Decision Log | 手動寫 `runs/decisions/` | L3 必須 |
+| TDD 實作 | `superpowers:test-driven-development` | L2+ 必須 |
+| 冒煙測試 | `superpowers:run-smoke-tests` | L3 必須 |
+| Code Review | `superpowers:requesting-code-review` | L3 必須 |
+| 最終驗證 | `superpowers:verification-before-completion` | L2+ 必須 |
 | 完成分支 | `superpowers:finishing-a-development-branch` | 必須 |
 | 流程反省 | `saome-self-improvement` | 必須 |
 
@@ -94,36 +94,36 @@ flowchart TD
 
 | 系統 | 驗證層次 | 工具 | 產出 |
 |------|----------|------|------|
-| SDD | 規格層 | Spec-Kit | spec.md, plan.md, tasks.md |
-| BDD | 行為層 | Cucumber | *.feature, step definitions |
+| Task Router | 分流層 | `saome-task-router` | 任務級距 |
 | TDD | 實作層 | Vitest + RTL | *.test.tsx |
 | Smoke | 整合層 | Playwright | smoke test report |
 
+> **BDD 已廢除** — 單人 vibe coding 場景下，vibe prompt 即 BDD。
+
 ## 禁止
 
-- ❌ 沒 spec 就寫 code
-- ❌ 沒 .feature 就寫業務邏輯
-- ❌ 沒 failing test 就寫實作
+- ❌ L1 任務跑完整 SDD → TDD 流程（浪費 token）
+- ❌ 不先 invoke task-router 就開始實作
+- ❌ 沒 failing test 就寫實作（L2+）
 - ❌ coverage < 80% 就 merge
 - ❌ smoke test 失敗就 deploy
-- ❌ 跳過 code review 直接 merge
+- ❌ 跳過 code review 直接 merge（L3）
 
 ## 觸發關鍵字
 
-| 關鍵字 | 觸發流程 |
-|--------|----------|
-| 「新功能」「加功能」「做頁面」 | SDD + BDD + TDD + Review |
-| 「修 bug」「修復」「fix」 | TDD + Review |
-| 「改 UI」「切版」「rwd」 | TDD + RWD + Review |
-| 「加業務邏輯」 | SDD + BDD + TDD + Review |
-| 「重構」「refactor」 | SDD + TDD + Review |
-| 「deploy」「部署」「上線」 | Smoke Test |
+| 關鍵字 | task-router 等級 |
+|--------|----------------|
+| 改 UI、切版、修 typo | L1 Trivial |
+| 新增、元件、fix | L2 Standard |
+| 新功能、加功能 | L3 Heavy |
+| 平台整合、BREAKING | L3 Escape Hatch |
+| deploy、部署、上線 | Smoke Test |
 
 ## 參照
 
+- `saome-task-router/SKILL.md` — 任務級距分流器
 - `.specify/memory/constitution.md` — 宪法
-- `002-bdd.mdc` — BDD 工作流程
 - `003-tdd-integration.mdc` — TDD 整合
 - `004-code-review.mdc` — Code Review
 - `005-smoke-test.mdc` — Smoke Test
-- `saome-methodology-bridge` skill — 完整觸發矩陣
+- `saome-methodology-bridge` skill — L3 Heavy 觸發時機

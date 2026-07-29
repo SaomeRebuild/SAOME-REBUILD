@@ -118,6 +118,38 @@ apps/frontend/ **只能放 Web 特定內容**。所有可共用的程式碼必�
 - ✅ 禁止跨層引用（L2 不可直接修改 L1；改成變體擴充）
 - ✅ commit 前判斷層級（規範層 / 操作層 / 私人層），依層級決定是否 push（見 `.cursor/skills/saome-self-improvement/SKILL.md` Step 3 三層決策表）
 - ✅ 規範層（rules / skills / AGENTS.md / feedback）與操作層 commit **必須 push**（除非含 secret）
+- ✅ 任何 session 開頭或收到新任務時，**必須先 invoke `saome-task-router`** 判斷任務級距
+
+## Task Router 入口（MANDATORY）
+
+> 任何 session 開頭或收到新任務時，**必須先 invoke `saome-task-router`** 判斷任務級距。
+
+### 四級分流表
+
+| 等級 | 觸發條件 | 工作流程深度 |
+|------|----------|--------------|
+| **L1 Trivial** | 改 UI 元件屬性 / 修 typo / 改文案 | 直接做 → lint → test |
+| **L2 Standard** | 新 L1/L2 元件 / 一般 bug fix | TDD → Verification |
+| **L3 Heavy** | 新功能涉及多模組 / 架構改動 / 跨 package 變更 | Brainstorming → Decision Log → TDD → Review → Smoke |
+| **L3 Escape Hatch** | L3 Heavy 但需求模糊 / 跨系統整合 / Breaking change | L3 Heavy + Spec-Kit 完整流程 |
+
+詳見 `.cursor/skills/saome-task-router/SKILL.md`。
+
+### Decision Log 規範（L3 Heavy 必填）
+
+L3 Heavy 任務**必須**寫 `runs/decisions/YYYY-MM-DD-<topic>.md`，含三段式：
+- **背景**：為什麼要做這個決定
+- **選項與決定**：列舉選項、最終選擇及理由
+- **影響**：這個決定影響哪些現有系統
+
+### 已廢除項目清單（2026-07-29）
+
+以下為**已廢除**，不再使用：
+- `.cursor/rules/002-bdd.mdc`（已刪除）
+- `.cursor/rules/012-bdd-workflow.mdc`（已刪除）
+- `.feature` 檔（已刪除）
+- `packages/shared/bdd/`（已刪除）
+- `test:bdd` / `test:bdd:watch` npm scripts（已移除）
 
 ## Auth flow 鐵律（自 2026-07-28 admin-login recovery chain 補上）
 
@@ -149,31 +181,30 @@ apps/frontend/ **只能放 Web 特定內容**。所有可共用的程式碼必�
 
 ---
 
-## SDD/BDD/TDD 方法論整合（MANDATORY）
+## SDD/TDD 方法論整合（MANDATORY）
 
-SAOME-REBUILD 採用三層方法論開發流程，詳細說明見：
+SAOME-REBUILD 采用 task-router 分流的兩層方法論，詳細說明見：
 
-- **憲法**: `.specify/memory/constitution.md` — 定義核心原則
+- **憲法**: `.specify/memory/constitution.md` — 定义核心原则
 - **橋梁 Skill**: `.cursor/skills/saome-methodology-bridge/SKILL.md` — 統一觸發時機與資料流向
 
-### 三系統關係
+### task-router 分流後的流程
 
-| 系統 | 驗證層次 | 工具 | 產出 |
-|------|----------|------|------|
-| SDD | 規格層 | Spec-Kit | spec.md, plan.md, tasks.md |
-| BDD | 行為層 | Cucumber | *.feature, step definitions |
-| TDD | 實作層 | Vitest + RTL | *.test.tsx |
-| Smoke | 整合層 | Playwright | smoke test report |
+| 等級 | 流程 |
+|------|------|
+| L1 Trivial | 直接做 → lint → test |
+| L2 Standard | TDD → Verification |
+| L3 Heavy | Brainstorming → Decision Log → TDD → Review → Smoke |
+| L3 Escape Hatch | L3 Heavy + Spec-Kit 完整流程 |
 
-### 快速觸發
+### 快速觸發（task-router 分流後）
 
-| 情境 | 關鍵字 | 必需流程 |
-|------|--------|----------|
-| 新功能 | 新功能、加功能、做頁面 | SDD + BDD + TDD + Review |
-| 修 bug | 修 bug、修復、fix | TDD + Review |
-| 改 UI | 改 UI、切版 | TDD + RWD + Review |
-| 加業務邏輯 | 加業務邏輯 | SDD + BDD + TDD + Review |
-| 重構 | 重構、refactor | SDD + TDD + Review |
+| 情境 | 關鍵字 | task-router 等級 |
+|------|--------|----------------|
+| 改 UI / 修 typo | 改 UI、切版、修 typo | L1 Trivial |
+| 新 L1/L2 元件 / bug fix | 新增、元件、fix | L2 Standard |
+| 新功能（多模組） | 新功能、加功能 | L3 Heavy |
+| 需求含糊 / 跨系統 | 平台整合、BREAKING | L3 Escape Hatch |
 | Deploy | deploy、部署、上線 | Smoke Test |
 
-詳見 `.cursor/skills/saome-methodology-bridge/SKILL.md`。
+詳見 `.cursor/skills/saome-task-router/SKILL.md` 與 `.cursor/skills/saome-methodology-bridge/SKILL.md`。
