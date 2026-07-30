@@ -119,6 +119,8 @@ apps/frontend/ **只能放 Web 特定內容**。所有可共用的程式碼必�
 - ✅ commit 前判斷層級（規範層 / 操作層 / 私人層），依層級決定是否 push（見 `.cursor/skills/saome-self-improvement/SKILL.md` Step 3 三層決策表）
 - ✅ 規範層（rules / skills / AGENTS.md / feedback）與操作層 commit **必須 push**（除非含 secret）
 - ✅ 任何 session 開頭或收到新任務時，**必須先 invoke `saome-task-router`** 判斷任務級距
+- ✅ 寫多步表單 / `<input type="email">` / `<input type="password">` 前**必須**讀 `.cursor/rules/018-form-autofill-and-multi-step-state.mdc`
+- ✅ 改 backend schema (`request.ts` / `dto.ts`) 或新增 DB migration 前**必須**讀 `.cursor/rules/019-schema-contract-drift.mdc`
 
 ## Task Router 入口（MANDATORY）
 
@@ -208,3 +210,13 @@ SAOME-REBUILD 采用 task-router 分流的兩層方法論，詳細說明見：
 | Deploy | deploy、部署、上線 | Smoke Test |
 
 詳見 `.cursor/skills/saome-task-router/SKILL.md` 與 `.cursor/skills/saome-methodology-bridge/SKILL.md`。
+
+## 表單 / Schema 整合 Skill
+
+寫 multi-step form 或 schema 跨 package 對齊時，引用：
+
+- `.cursor/skills/saome-form-integrity/SKILL.md` — 表單 autofill + schema drift 的 playbook
+- `.cursor/rules/018-form-autofill-and-multi-step-state.mdc` — autofill + multi-step state 鐵律
+- `.cursor/rules/019-schema-contract-drift.mdc` — DB ↔ zod schema ↔ backend contract 鐵律
+
+事故紀錄：`runs/improvements/feedback/20260731-register-autofill-schema-drift.md`。
