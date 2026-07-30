@@ -28,6 +28,17 @@ const taxIdSchema = z
   .refine((v) => v === '0', { message: 'validation.taxIdInvalid' })
   .or(z.string().regex(/^\d{8}$/, { message: 'validation.taxIdInvalid' }));
 
+/**
+ * Mobile (E.164). The frontend normalizes `09xxxxxxxx` → `+8869xxxxxxxx`
+ * before submit, so by the time the payload reaches the backend the
+ * format is strict E.164: `^\+[1-9]\d{7,14}$`.
+ *
+ * Keeping the rules stricter on the backend than the frontend is
+ * intentional — it's the last line of defense. If the frontend ever
+ * forgets to normalize, the backend rejects the bare local form.
+ */
+const mobileE164Regex = /^\+[1-9]\d{7,14}$/;
+
 export const registrationPayloadSchema = z.object({
   // tenantInfo fields (required)
   name: z.string().min(1, 'validation.required'),
@@ -38,7 +49,12 @@ export const registrationPayloadSchema = z.object({
   // invoiceAddress is optional in tenantInfo but required in the combined payload
   invoiceAddress: z.string().min(1, 'validation.required'),
   // optional tenantInfo fields
-  mobile: z.string().optional().nullable(),
+  mobile: z
+    .string()
+    .regex(mobileE164Regex, 'validation.mobileInvalid')
+    .optional()
+    .nullable()
+    .or(z.literal('')),
   website: z.string().url().optional().nullable(),
   // accountInfo fields (confirmPassword is omitted — frontend doesn't send it)
   email: z.string().email('validation.email'),

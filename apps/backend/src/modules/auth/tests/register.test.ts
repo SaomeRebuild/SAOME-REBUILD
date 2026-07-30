@@ -83,7 +83,10 @@ const validPayload = {
   taxId: '12345678',
   name: 'Test Store',
   invoiceAddress: 'Taipei City, Zhongzheng District, Sec 1, Chongqing S Rd, No 122',
-  mobile: '0912345678',
+  // Backend stub uses strict E.164 (rule 019 — last line of defense).
+  // Frontend normalizePhoneToE164 converts Taiwan bare 09xxxxxxxx → +8869xxxxxxxx
+  // before submit, so the payload reaching the backend is always strict E.164.
+  mobile: '+886912345678',
   website: 'https://example.com',
   email: 'user@example.com',
   password: 'Password123!',
