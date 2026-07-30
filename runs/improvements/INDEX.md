@@ -7,6 +7,7 @@
 
 | 日期 | 主題 | 路徑 | 影響 / 後續 |
 |------|------|------|------|
+| 2026-07-31 | Register 表單 autofill + schema drift 三連環 | runs/improvements/feedback/20260731-register-autofill-schema-drift.md | 新增 rule `018` (form autofill + multi-step state) + `019` (schema contract drift)；新增 skill `saome-form-integrity`；commit + push（規範層） |
 | 2026-07-27 | spec-kit-demo merge 誤刪 12 rules | runs/improvements/feedback/20260727-rules-overwritten-by-speckit-merge.md | 規範層修復已 push（commit `652e0a2` + `704af2a`） |
 | 2026-07-27 | MemberBadge verification 漏跑 | runs/improvements/feedback/20260727-member-badge-verification-missed.md | 補強 `.cursor/rules/006-verification.mdc` commit message 驗證輸出欄位 |
 | 2026-07-27 | SDD / BDD / TDD 三層流程試跑 | runs/improvements/feedback/20260727-sdd-bdd-tdd-flow-test.md | 觀察用，無規範變更 |
