@@ -33,9 +33,12 @@ logs/
 pic/
 
 # Runtime data — exclude most runtime/ephemeral outputs, but KEEP
-# improvement feedback inside `runs/improvements/` as team knowledge.
+# improvement feedback inside `runs/improvements/` as team knowledge,
+# and KEEP decision logs inside `runs/decisions/` (per AGENTS.md "Decision
+# Log 規範 (L3 Heavy 必填)").
 runs/*
 !runs/improvements/
+!runs/decisions/
 
 # mu-plugins: read-only reference, never commit
 mu-plugins/

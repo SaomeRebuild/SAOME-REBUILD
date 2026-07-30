@@ -5,15 +5,35 @@
 import { describe, expect, it } from 'vitest';
 import {
   accountInfoSchema,
+  e164PhoneRegex,
   loginAttemptSchema,
   loginCredentialsSchema,
   lockoutStateSchema,
+  normalizePhoneToE164,
   registerResponseSchema,
   registrationPayloadSchema,
   roleSchema,
   taxIdSchema,
   tenantInfoSchema,
 } from './auth';
+
+describe('normalizePhoneToE164', () => {
+  it('passes through E.164 with leading + unchanged', () => {
+    expect(normalizePhoneToE164('+886912345678')).toBe('+886912345678');
+  });
+
+  it('normalizes Taiwan bare 09xxxxxxxx → +8869xxxxxxxx', () => {
+    expect(normalizePhoneToE164('0912345678')).toBe('+886912345678');
+  });
+
+  it('returns empty string when input is empty', () => {
+    expect(normalizePhoneToE164('')).toBe('');
+  });
+
+  it('returns unknown bare format unchanged (will fail regex check)', () => {
+    expect(normalizePhoneToE164('1234567')).toBe('1234567');
+  });
+});
 
 describe('roleSchema', () => {
   it('accepts tenant and admin', () => {
@@ -73,6 +93,40 @@ describe('tenantInfoSchema', () => {
   it('rejects invalid taxId', () => {
     expect(() => tenantInfoSchema.parse({ ...valid, taxId: 'BAD' })).toThrow();
   });
+
+  // mobile (optional E.164) — added 2026-07-31 per decision
+  // runs/decisions/2026-07-31-add-mobile-field.md
+  it('accepts E.164 mobile with leading +', () => {
+    expect(() => tenantInfoSchema.parse({ ...valid, mobile: '+886912345678' })).not.toThrow();
+  });
+
+  it('accepts bare 10-digit Taiwan mobile without leading +', () => {
+    expect(() => tenantInfoSchema.parse({ ...valid, mobile: '0912345678' })).not.toThrow();
+  });
+
+  it('rejects mobile shorter than 8 digits', () => {
+    expect(() => tenantInfoSchema.parse({ ...valid, mobile: '+1234567' })).toThrow();
+  });
+
+  it('rejects mobile longer than 15 digits', () => {
+    expect(() => tenantInfoSchema.parse({ ...valid, mobile: '+1234567890123456' })).toThrow();
+  });
+
+  it('rejects mobile starting with 0 after +', () => {
+    expect(() => tenantInfoSchema.parse({ ...valid, mobile: '+01234567' })).toThrow();
+  });
+
+  it('rejects mobile with non-digit characters', () => {
+    expect(() => tenantInfoSchema.parse({ ...valid, mobile: '+886-912-345-678' })).toThrow();
+  });
+
+  it('accepts empty mobile string (treated as null / not provided)', () => {
+    const result = tenantInfoSchema.safeParse({ ...valid, mobile: '' });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.mobile).toBeNull();
+    }
+  });
 });
 
 describe('accountInfoSchema', () => {
@@ -106,11 +160,25 @@ describe('accountInfoSchema', () => {
     expect(() => accountInfoSchema.parse({ ...base, password: 'short' })).toThrow();
   });
 
-  it('accepts optional mobile / website / businessEmail', () => {
+  // mobile was removed from accountInfoBase 2026-07-31 per decision
+  // runs/decisions/2026-07-31-add-mobile-field.md. accountInfoBase only
+  // carries email/password/confirmPassword (login-credential concerns);
+  // mobile now lives on tenantInfoSchema (store-cellular-phone concern).
+  it('does not accept mobile field on accountInfoSchema', () => {
+    const result = accountInfoSchema.safeParse({
+      ...base,
+      mobile: '+886912345678',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect((result.data as Record<string, unknown>).mobile).toBeUndefined();
+    }
+  });
+
+  it('accepts optional website / businessEmail', () => {
     expect(() =>
       accountInfoSchema.parse({
         ...base,
-        mobile: '+886912345678',
         website: 'https://example.com',
         businessEmail: 'biz@example.com',
       }),

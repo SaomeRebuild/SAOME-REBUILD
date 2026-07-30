@@ -25,6 +25,44 @@ export const taxIdSchema = z
   );
 
 /**
+ * E.164 international phone number regex.
+ *
+ * Format: optional leading `+` followed by 8-15 digits, with the first
+ * digit being 1-9 (no leading zero after `+`). Accepts:
+ *   - +886912345678  (international, 12 chars)
+ *   - +14155551234   (US, 12 chars)
+ *
+ * Rejects strings with non-digit characters (no dashes / spaces),
+ * leading zeros, and lengths outside 8-15 digits.
+ */
+export const e164PhoneRegex = /^\+[1-9]\d{7,14}$/;
+
+/**
+ * Normalize a phone string into E.164.
+ *
+ * Per UX decision (2026-07-31 AskQuestion response):
+ *   - If the input already starts with `+`, validate as-is.
+ *   - If the input is Taiwan bare local `09xxxxxxxx` (10 digits),
+ *     prepend `+886` and drop the leading `0` → `+8869xxxxxxxx`.
+ *   - Anything else is left untouched and will fail the regex check.
+ *
+ * Empty string input is allowed (the field is optional). Returns the
+ * normalized form, or the original input if no rule matched.
+ */
+export function normalizePhoneToE164(input: string): string {
+  if (typeof input !== 'string') return input;
+  const trimmed = input.trim();
+  if (trimmed === '') return trimmed;
+  if (trimmed.startsWith('+')) return trimmed;
+  // Taiwan bare local: 09xxxxxxxx (10 digits, "09" mobile prefix).
+  if (/^09\d{8}$/.test(trimmed)) {
+    return `+886${trimmed.slice(1)}`;
+  }
+  // Otherwise leave as-is so the regex check decides the verdict.
+  return trimmed;
+}
+
+/**
  * Tenant Step 1 — store info (店家資料)
  *
  * `name` is the **company / store legal name** (公司 / 店家名稱) — what
@@ -33,6 +71,12 @@ export const taxIdSchema = z
  * `registrationPayloadSchema` (apps/backend/src/modules/auth/schemas/request.ts)
  * requires it under the canonical key `name`, so we keep both client and
  * server aligned here.
+ *
+ * `mobile` is the store / owner's **cell phone** in E.164 format.
+ * It is distinct from `phoneCity` (office landline). Per decision
+ * runs/decisions/2026-07-31-add-mobile-field.md it lives on
+ * tenantInfoSchema (not accountInfoBase) because the DB column is
+ * `tenants.mobile` and the wire format already accepts it as flat.
  *
  * `invoiceAddress` is optional at the schema level — the frontend may
  * default it to '' if the merchant does not have a separate invoice
@@ -45,6 +89,19 @@ export const tenantInfoSchema = z.object({
   phoneCity: z.string().min(7, 'validation.phoneCityTooShort').max(30),
   address: z.string().min(5, 'validation.addressTooShort').max(500),
   taxId: taxIdSchema,
+  mobile: z
+    .preprocess(
+      (v) => {
+        if (typeof v !== 'string') return v;
+        if (v.trim() === '') return null; // empty string -> null = "no value"
+        return normalizePhoneToE164(v);
+      },
+      z
+        .string()
+        .regex(e164PhoneRegex, 'validation.mobileInvalid')
+        .nullable(),
+    )
+    .optional(),
   invoiceAddress: z.string().max(500).optional().default(''),
 });
 export type TenantInfoInput = z.infer<typeof tenantInfoSchema>;
@@ -61,7 +118,6 @@ export const accountInfoBase = z.object({
   email: z.string().email('validation.email'),
   password: z.string().min(8, 'validation.passwordTooShort'),
   confirmPassword: z.string().min(8, 'validation.passwordTooShort'),
-  mobile: z.string().regex(/^(\+?\d{8,15})?$/).optional(),
   website: z.string().url().optional(),
   businessEmail: z.string().email().optional(),
 });
