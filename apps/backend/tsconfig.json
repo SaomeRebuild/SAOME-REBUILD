@@ -16,6 +16,7 @@
     "verbatimModuleSyntax": false,
     "paths": {
       "@/*": ["./src/*"],
+      "@/shared/*": ["./src/shared/*"],
       "@saome/shared/schemas/*": ["../../packages/shared/schemas/*"],
       "@saome/shared/types/*": ["../../packages/shared/types/*"],
       "@saome/shared/logic/*": ["../../packages/shared/logic/*"]

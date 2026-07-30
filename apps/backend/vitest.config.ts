@@ -56,6 +56,8 @@ export default defineWorkersConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src'),
+      '@/shared': path.resolve(__dirname, 'src/shared'),
+      '@/shared/': path.resolve(__dirname, 'src/shared/'),
       '@saome/shared/schemas': path.resolve(__dirname, '../../packages/shared/schemas/index.ts'),
       '@saome/shared/schemas/': path.resolve(__dirname, '../../packages/shared/schemas/'),
       '@saome/shared/types': path.resolve(__dirname, '../../packages/shared/types/index.ts'),
