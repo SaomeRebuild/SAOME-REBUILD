@@ -1,0 +1,130 @@
+---
+description: 多步表單的瀏覽器 autofill 防禦 + 跨 step 狀態回填鐵律 — 任何寫 multi-step form 的 PR 必須引用
+alwaysApply: true
+---
+
+# Form Autofill + Multi-Step State（MANDATORY）
+
+> 觸發：寫多步表單（multi-step form）、寫含 `<input type="email">` /
+> `<input type="password">` 的 form、或 debug 表單「使用者沒打過的值
+> 卻出現在 submit payload」時。
+
+## 背景
+
+2026-07-31 register 表單污染事故：Chrome 在 Step 1 → Step 2 handoff
+時，把前一個欄位的值（contact name prefix）自動填進
+`<input type="email" autoComplete="email">` 的 input，產生像
+`pjj → pjj@jj.mm` 的髒資料寫進 production DB。
+完整記錄見 `runs/improvements/feedback/20260731-register-autofill-schema-drift.md`。
+
+## 鐵律
+
+### 1. autofill contract — multi-step 表單必跑防禦
+
+任何 multi-step form，**每一個** 新 step mount 時**必須** 跑 raf + timeout
+sweep 清空 `<input>`：
+
+```ts
+useEffect(() => {
+  if (step !== 1) return;
+  const clearAutofill = () => {
+    const emailInput = document.querySelector<HTMLInputElement>('input[name="email"]');
+    if (emailInput && emailInput.value !== '') {
+      emailInput.value = '';
+    }
+    accountForm.setValue('email', '', { shouldDirty: false });
+    accountForm.setValue('password', '', { shouldDirty: false });
+    accountForm.setValue('confirmPassword', '', { shouldDirty: false });
+  };
+  // Chrome autofill is async; defer to multiple frames + a 100ms fallback.
+  const raf1 = requestAnimationFrame(clearAutofill);
+  const raf2 = requestAnimationFrame(() => requestAnimationFrame(clearAutofill));
+  const timeoutId = window.setTimeout(clearAutofill, 100);
+  return () => {
+    cancelAnimationFrame(raf1);
+    cancelAnimationFrame(raf2);
+    window.clearTimeout(timeoutId);
+  };
+}, [step, accountForm]);
+```
+
+> 只設 `autoComplete="off"` 不夠 — Chrome 把 `off` 視為「hints」，
+> 不是強制指令。**必須** raf+timeout 主動清空。
+
+### 2. state source of truth — submit 之前 reconcile DOM vs RHF
+
+RHF 的 `formState.isDirty` **不是** source of truth。它只是「使用者至少
+改過一次」的 UI 提示。
+
+submit 之前**必須** reconcile：
+
+```ts
+async function onSubmit() {
+  await accountForm.handleSubmit(async (rhfValues) => {
+    // 強制 reconcile DOM → RHF，避免 autofill 把 DOM 改了但 RHF 沒跟上
+    const emailInput = document.querySelector<HTMLInputElement>('input[name="email"]');
+    if (emailInput && emailInput.value !== rhfValues.email) {
+      rhfValues.email = emailInput.value;
+    }
+    await registerUser(rhfValues);
+  })();
+}
+```
+
+### 3. multi-step handoff — 必 reset + 必 sessionStorage
+
+每一步切換**必須**：
+
+| 動作 | 為什麼 |
+|------|-------|
+| `sessionStorage.setItem('saome.reg.step1', JSON.stringify(values))` | 上一步的值要落地，避免按回上一步時丟失 |
+| `nextForm.reset()` | 把 RHF internal `_formValues` 清乾淨，避免污染下一步 |
+| **不要** reset 上一個 form | 讓使用者按「上一步」時值還在 |
+
+下一步 mount 時**必須** re-read `sessionStorage` 把值填回去。
+
+### 4. forbidden pattern
+
+| Pattern | 為什麼 P1 violation |
+|---------|---------------------|
+| `<input type="email" autoComplete="email">` 在剛 mount 的 form 上沒有配對的「clear effect」 | Chrome 會自動填，污染 DB |
+| 依賴 `formState.isDirty` 判斷「使用者確認過所有欄位」 | 這是 UI 提示，不是 gate |
+| multi-step form 只有 `nextForm.reset()`，沒 `sessionStorage` | 按回上一步值會丟 |
+| 在 password field 用 `autoComplete="current-password"`（用於登入）或 `autoComplete="new-password"`（用於註冊）以外的屬性 | password manager 行為會混亂 |
+
+### 5. password manager 防禦
+
+針對 1Password / LastPass 等瀏覽�器擴充，除了上面的 raf+timeout sweep：
+
+- `<input type="email">` 加 `data-1p-ignore` + `data-lpignore="true"`
+- `<input type="password">` 加 `data-1p-ignore`
+- 用 `autoComplete="new-password"` 提示這是註冊而非登入
+
+## Conformance check（建議加進 *.test.tsx）
+
+```ts
+test('Step 2 mount clears autofilled values', async () => {
+  const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+  render(<RegisterForm />);
+  await user.click(screen.getByRole('button', { name: /next/i }));
+  // 等 raf+timeout
+  await waitFor(() => {
+    const emailInput = document.querySelector<HTMLInputElement>('input[name="email"]');
+    expect(emailInput?.value).toBe('');
+  });
+});
+```
+
+## 觸發關鍵字
+
+出現「register form」、「multi-step form」、「autofill」、「Chrome
+自動填」、「contactName」、「input.value 跟 form._formValues 對不上」、
+「isDirty」、「RHF reset」時**必須**引用此 rule。
+
+## 參照
+
+- `.cursor/skills/saome-form-integrity/SKILL.md` — 完整 playbook
+- `.cursor/rules/019-schema-contract-drift.mdc` — 同源 bug 的 sibling rule
+- `runs/improvements/feedback/20260731-register-autofill-schema-drift.md`
+  — 完整事故記錄 + 真實污染的 `tenants_rows.json` 證據
+- `tests/probe/register-probe.ts` — Playwright probe 模板

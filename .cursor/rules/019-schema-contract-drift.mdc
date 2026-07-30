@@ -1,0 +1,129 @@
+---
+description: DB ↔ zod schema ↔ backend request schema 跨 package 契約鐵律 — 任何改 backend schema 或 migration 的 PR 必須引用
+alwaysApply: true
+---
+
+# Schema Contract Drift（MANDATORY）
+
+> 觸發：改 `apps/backend/src/modules/auth/schemas/request.ts`（或任何
+> `request.ts` / `dto.ts`）、新增 DB migration、改 `packages/shared/schemas/`。
+
+## 背景
+
+2026-07-31 register 流程 Round 1+2 事故：
+
+- Round 1：`tenants` table 缺 `email`、`mobile`、`website` 三欄，
+  前端 payload 帶了，後端 `insertTenant` 沒欄位可寫，靜悄悄丟掉。
+- Round 2：前端 `z.string().min(2)` 過、後端 stub `z.string().min(1)`
+  過；後端 `request.ts` 是 hand-written `TODO: cp from shared/`，從沒被
+  sync 過。
+
+完整記錄見
+`runs/improvements/feedback/20260731-register-autofill-schema-drift.md`。
+
+## 鐵律
+
+### 1. single source of truth — shared zod schema 是契約
+
+`packages/shared/schemas/` **是** 契約。後端的
+`src/modules/<module>/schemas/request.ts`（以及其他 `request.ts` /
+`dto.ts`）**必須** 從 shared 自動生成或拷貝。
+
+> 手寫一份分歧的副本 = **P0 violation**。
+
+| Pattern | 為什麼 P0 |
+|---------|----------|
+| 後端 `request.ts` 的 `z.object({...})` 跟 shared `registrationPayloadSchema` 的 field set 不一致 | 前後端 zod 各自漂移，runtime 一邊過一邊 fail |
+| `request.ts` 開頭有 `// TODO: cp from shared/` 之類註解 | 表示從來沒被同步過，是技術債定時炸彈 |
+| `request.ts` 直接 import z 自己組合，沒共用 shared 的 base shape | 任何 shared 改動這邊不會跟上 |
+
+**修法**（依優先順序）：
+
+1. **首選**：建 `apps/backend/src/shared/schemas/from-shared/` 拷貝
+   pipeline，`request.ts` 改成 `export * from '@/shared/schemas/from-shared/auth';`
+2. **次選**：monorepo 用 path alias 直接 `export * from '@saome/shared/schemas/auth';`
+   （需要 vite alias 跟 vitest alias 都加上，見 rule 016）
+3. **過渡期**：後端 stub 跟 shared 改成完全 mirror，每次改 shared
+   **必同步**改後端 stub。
+
+### 2. DB ↔ schema binding — 每個 column 必出現三次
+
+任何 `public.<table>` 的欄位，**必須** 同時出現在三個地方，缺一即 P0：
+
+| 出現地點 | 範例 |
+|---------|------|
+| DB migration | `migrations/00X_init_xxx.sql` 的 `CREATE TABLE` |
+| `tenants.ts::insertX` 參數列 | `apps/backend/src/modules/<module>/db/<table>.ts` |
+| shared zod schema（optional field） | `packages/shared/schemas/<module>.ts` |
+
+例：2026-07-31 的 `email` 欄位，DB migration 補上後，後端 `tenants.ts::insertTenant`
+的 params 跟 shared `tenantInfoSchema` 也要**同個 commit**補上。
+
+### 3. conformance test — 必加 Vitest conformance test
+
+每個 `request.ts` 必加一個 Vitest conformance test，斷言 local schema
+跟 shared schema 的 field set 一致：
+
+```ts
+// apps/backend/src/modules/auth/tests/schema-conformance.test.ts
+import { describe, it, expect } from 'vitest';
+import { registrationPayloadSchema as localRegistration } from '../schemas/request';
+import { registrationPayloadSchema as sharedRegistration } from '@saome/shared/schemas/auth';
+
+describe('schema conformance (shared vs backend)', () => {
+  it('registrationPayloadSchema fields match', () => {
+    expect(Object.keys(localRegistration.shape).sort())
+      .toEqual(Object.keys(sharedRegistration.shape).sort());
+  });
+});
+```
+
+**建議**（plan optional）：用 `scripts/check-shared-schema-sync.cjs`
+當作 build-time check，在 `npm run build` 之前跑，自動 fail。
+
+### 4. migration 紀律 — 新增 column 必 triple-binding
+
+新增 `public.<table>` 欄位的 PR，**必須** 在同一個 commit 內帶齊：
+
+```
+[migration .sql]                 # 改 DB schema
+[migration .sql - re-run via Supabase MCP apply_migration]
+[packages/shared/schemas/...]    # shared zod 加 optional field
+[apps/backend/.../db/<table>.ts] # insertX 參數列加欄位
+[apps/backend/.../tests/schema-conformance.test.ts]  # 加 conformance 驗證
+[feedback]                       # 必要時 runs/improvements/feedback/
+```
+
+任一缺一 → 後續 drift 又會出現。
+
+### 5. backward compatibility
+
+如果新增欄位要 default（例如 `invoice_address` 從 NOT NULL 變成
+NULL-able），**必須** 在 migration 裡明確寫 default value 或 `USING`
+clause，**不準** 留給 application 處理。
+
+例：
+
+```sql
+-- ✅ 正確
+ALTER TABLE public.tenants ADD COLUMN email text NULL;
+ALTER TABLE public.tenants ALTER COLUMN email SET NOT NULL;
+
+-- ❌ 錯誤
+ALTER TABLE public.tenants ADD COLUMN email text;  -- NOT NULL 預設，但沒 default value → 既有 rows 會 fail
+```
+
+## 觸發關鍵字
+
+出現「schema drift」、「後端 zod 跟前端對不上」、「DB column missing」、
+「backend schema stub」、「shared/schemas」、「from-shared」、
+「新增欄位」、「migration」時**必須**引用此 rule。
+
+## 參照
+
+- `.cursor/skills/saome-form-integrity/SKILL.md` — Step E schema drift check
+- `.cursor/rules/018-form-autofill-and-multi-step-state.mdc` — 同源 bug 的 sibling rule
+- `runs/improvements/feedback/20260731-register-autofill-schema-drift.md`
+  — 完整事故記錄
+- `apps/backend/src/modules/auth/schemas/request.ts` — TODO 來源檔
+- `apps/backend/migrations/001_init_users_tenants.sql` — Round 1 缺欄位的 migration
