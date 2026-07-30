@@ -1,13 +1,16 @@
 /**
  * RegisterForm — multi-step tenant registration.
  *
- * Step 1: tenant info (contactName, phoneCity, address, taxId, companyName, invoiceAddress, mobile?, website?, businessEmail?).
+ * Step 1: tenant info (contactName, phoneCity, address, taxId, companyName, invoiceAddress).
  * Step 2: account info (email, password, confirmPassword).
+ *
+ * Data persistence: step 1 values are saved to sessionStorage on advance and
+ * restored when going back, so the user does not lose their input.
  *
  * On success, AuthProvider stores session; useAuthRedirect handles navigation.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslation } from 'react-i18next';
@@ -35,6 +38,15 @@ const steps = [
   { label: 'Account' },
 ];
 
+/**
+ * Translate a react-hook-form error message (zod i18n key) to a human-readable i18n string.
+ * Falls back to the raw key so we never show an untranslated string.
+ */
+function translateFieldError(t: ReturnType<typeof useTranslation>['t'], message?: string): string | undefined {
+  if (!message) return undefined;
+  return t(message, message);
+}
+
 export function RegisterForm() {
   const { t } = useTranslation('auth');
   const { register: registerUser } = useAuth();
@@ -42,25 +54,78 @@ export function RegisterForm() {
   const [step, setStep] = useState(0);
   const [serverError, setServerError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [serverFieldErrors, setServerFieldErrors] = useState<Record<string, string>>({});
 
   const tenantForm = useForm<TenantInfoInput>({
     resolver: zodResolver(tenantInfoSchema) as never,
-    mode: 'onTouched',
+    mode: 'onSubmit',
     defaultValues: {
+      name: '',
+      contactName: '',
+      phoneCity: '',
+      address: '',
+      taxId: '',
       invoiceAddress: '',
     },
   });
 
   const accountForm = useForm<AccountInfoInput>({
     resolver: zodResolver(accountInfoSchema) as never,
-    mode: 'onTouched',
+    mode: 'onSubmit',
   });
 
   async function onStep1Submit(values: TenantInfoInput) {
     setServerError(null);
+    setServerFieldErrors({});
     sessionStorage.setItem('saome.reg.tenant', JSON.stringify(values));
+    // Do NOT reset tenantForm — we want values intact in case the user goes back.
+    accountForm.reset();
     setStep(1);
   }
+
+  function onBack() {
+    setServerError(null);
+    setServerFieldErrors({});
+    accountForm.reset();
+    // Restore step 1 values from sessionStorage into the form so fields are not empty.
+    const tenantJson = sessionStorage.getItem('saome.reg.tenant');
+    if (tenantJson) {
+      try {
+        const saved = JSON.parse(tenantJson) as TenantInfoInput;
+        tenantForm.reset(saved);
+      } catch {
+        tenantForm.reset();
+      }
+    }
+    setStep(0);
+  }
+
+  // Clear browser-autofilled values on Step 2 mount. Chrome (and other browsers)
+  // autofill <input type="email" autoComplete="email"> based on form history,
+  // and RHF syncs the autofilled input.value into _formValues. Without this
+  // override, the user sees an email value they never typed, isDirty stays
+  // false, and submit sends an unexpected email to the backend.
+  useEffect(() => {
+    if (step !== 1) return;
+    const clearAutofill = () => {
+      const emailInput = document.querySelector<HTMLInputElement>('input[name="email"]');
+      if (emailInput && emailInput.value !== '') {
+        emailInput.value = '';
+      }
+      accountForm.setValue('email', '', { shouldDirty: false });
+      accountForm.setValue('password', '', { shouldDirty: false });
+      accountForm.setValue('confirmPassword', '', { shouldDirty: false });
+    };
+    // Browser autofill happens after first paint, so defer to multiple frames.
+    const raf1 = requestAnimationFrame(clearAutofill);
+    const raf2 = requestAnimationFrame(() => requestAnimationFrame(clearAutofill));
+    const timeoutId = window.setTimeout(clearAutofill, 100);
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+      window.clearTimeout(timeoutId);
+    };
+  }, [step, accountForm]);
 
   async function onStep2Submit(values: AccountInfoInput) {
     setServerError(null);
@@ -82,7 +147,24 @@ export function RegisterForm() {
         if (e.code === 'CONFLICT') {
           setServerError(t('register.error.conflict'));
         } else if (e.code === 'VALIDATION_ERROR') {
-          setServerError(t('register.error.validation'));
+          // Parse per-field errors from backend zod issues.
+          const issues = e.details?.issues as Array<{ path: string; i18nKey: string }> | undefined;
+          if (issues && issues.length > 0) {
+            const fieldErrors: Record<string, string> = {};
+            for (const issue of issues) {
+              if (issue.path && issue.i18nKey) {
+                fieldErrors[issue.path] = t(issue.i18nKey, issue.i18nKey);
+              }
+            }
+            if (Object.keys(fieldErrors).length > 0) {
+              setServerFieldErrors(fieldErrors);
+              setServerError(t('register.error.validation'));
+            } else {
+              setServerError(t('register.error.validation'));
+            }
+          } else {
+            setServerError(t('register.error.validation'));
+          }
         } else {
           setServerError(t('register.error.unknown'));
         }
@@ -100,23 +182,48 @@ export function RegisterForm() {
         <Stepper current={step} steps={steps} />
         {serverError ? <ErrorBanner message={serverError} /> : null}
         <form onSubmit={tenantForm.handleSubmit(onStep1Submit)} className="flex flex-col gap-4" noValidate>
-          <Field label={t('register.contactName')} required error={tenantForm.formState.errors.contactName?.message ? t('register.error.required') : undefined}>
-            <input {...tenantForm.register('contactName')} className={inputCls} style={inputStyle()} {...inputFocusHandlers()} />
+          <Field
+            label={t('register.contactName')}
+            required
+            error={translateFieldError(t, tenantForm.formState.errors.contactName?.message)}
+          >
+            <input {...tenantForm.register('contactName')} autoComplete="name" className={inputCls} style={inputStyle()} {...inputFocusHandlers()} />
           </Field>
-          <Field label={t('register.phoneCity')} required error={tenantForm.formState.errors.phoneCity?.message ? t('register.error.required') : undefined}>
-            <input {...tenantForm.register('phoneCity')} className={inputCls} style={inputStyle()} {...inputFocusHandlers()} />
+          <Field
+            label={t('register.phoneCity')}
+            required
+            error={translateFieldError(t, tenantForm.formState.errors.phoneCity?.message)}
+          >
+            <input {...tenantForm.register('phoneCity')} autoComplete="tel" className={inputCls} style={inputStyle()} {...inputFocusHandlers()} />
           </Field>
-          <Field label={t('register.address')} required error={tenantForm.formState.errors.address?.message ? t('register.error.required') : undefined}>
-            <input {...tenantForm.register('address')} className={inputCls} style={inputStyle()} {...inputFocusHandlers()} />
+          <Field
+            label={t('register.address')}
+            required
+            error={translateFieldError(t, tenantForm.formState.errors.address?.message)}
+          >
+            <input {...tenantForm.register('address')} autoComplete="street-address" className={inputCls} style={inputStyle()} {...inputFocusHandlers()} />
           </Field>
-          <Field label={t('register.taxId')} required description={t('register.taxIdHint')} error={tenantForm.formState.errors.taxId?.message ? t('register.error.required') : undefined}>
-            <input {...tenantForm.register('taxId')} className={inputCls} style={inputStyle()} {...inputFocusHandlers()} />
+          <Field
+            label={t('register.taxId')}
+            required
+            description={t('register.taxIdHint')}
+            error={translateFieldError(t, tenantForm.formState.errors.taxId?.message)}
+          >
+            <input {...tenantForm.register('taxId')} autoComplete="off" className={inputCls} style={inputStyle()} {...inputFocusHandlers()} />
           </Field>
-          <Field label={t('register.name')} required error={tenantForm.formState.errors.companyName?.message ? t('register.error.required') : undefined}>
-            <input {...tenantForm.register('companyName')} className={inputCls} style={inputStyle()} {...inputFocusHandlers()} />
+          <Field
+            label={t('register.name')}
+            required
+            error={translateFieldError(t, tenantForm.formState.errors.name?.message)}
+          >
+            <input {...tenantForm.register('name')} autoComplete="organization" className={inputCls} style={inputStyle()} {...inputFocusHandlers()} />
           </Field>
-          <Field label={t('register.invoiceAddress')} error={tenantForm.formState.errors.invoiceAddress?.message ? t('register.error.required') : undefined}>
-            <input {...tenantForm.register('invoiceAddress')} className={inputCls} style={inputStyle()} {...inputFocusHandlers()} />
+          <Field
+            label={t('register.invoiceAddress')}
+            required
+            error={translateFieldError(t, tenantForm.formState.errors.invoiceAddress?.message)}
+          >
+            <input {...tenantForm.register('invoiceAddress')} autoComplete="street-address" className={inputCls} style={inputStyle()} {...inputFocusHandlers()} />
           </Field>
           <SubmitButton fullWidth>{t('register.next')}</SubmitButton>
         </form>
@@ -129,7 +236,14 @@ export function RegisterForm() {
         <Stepper current={step} steps={steps} />
         {serverError ? <ErrorBanner message={serverError} /> : null}
         <form onSubmit={accountForm.handleSubmit(onStep2Submit)} className="flex flex-col gap-4" noValidate>
-          <Field label={t('register.accountEmail')} required error={accountForm.formState.errors.email?.message ? t('register.error.email') : undefined}>
+          <Field
+            label={t('register.accountEmail')}
+            required
+            error={
+              serverFieldErrors.email
+                ?? (accountForm.formState.errors.email?.message ? t('validation.email') : undefined)
+            }
+          >
             <input type="email" autoComplete="email" {...accountForm.register('email')} className={inputCls} style={inputStyle()} {...inputFocusHandlers()} />
           </Field>
           <PasswordField
@@ -137,19 +251,25 @@ export function RegisterForm() {
             autoComplete="new-password"
             required
             {...accountForm.register('password')}
-            error={accountForm.formState.errors.password?.message ? t('register.error.password') : undefined}
+            error={
+              serverFieldErrors.password
+                ?? (accountForm.formState.errors.password?.message ? t('validation.passwordTooShort') : undefined)
+            }
           />
           <PasswordField
             label={t('register.confirmPassword')}
             autoComplete="new-password"
             required
             {...accountForm.register('confirmPassword')}
-            error={accountForm.formState.errors.confirmPassword?.message ? t('register.error.passwordMismatch') : undefined}
+            error={
+              serverFieldErrors.confirmPassword
+                ?? (accountForm.formState.errors.confirmPassword?.message ? t('validation.passwordMismatch') : undefined)
+            }
           />
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => setStep(0)}
+              onClick={onBack}
               className="min-h-[44px] flex-1 rounded border px-4 py-2 text-sm transition-colors hover:opacity-80"
               style={{
                 borderColor: 'var(--color-border)',
