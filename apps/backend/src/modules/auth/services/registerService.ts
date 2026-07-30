@@ -24,48 +24,48 @@ export async function registerService(
   accessTokenTtl: number = ACCESS_TOKEN_TTL_DEFAULT
 ): Promise<AuthSessionDto> {
   // 1. Check email uniqueness before insert (fast-fail)
-  const existing = await findUserByEmail(sql, payload.accountInfo.email);
+  const existing = await findUserByEmail(sql, payload.email);
   if (existing) {
     throw new ConflictError(
       'auth.error.emailTaken',
       'Email already in use',
-      { email: payload.accountInfo.email },
+      { email: payload.email },
     );
   }
 
   // 1b. Check tax_id uniqueness (only if taxId is provided and not "0")
-  if (payload.tenantInfo.taxId && payload.tenantInfo.taxId !== '0') {
-    const existingTenant = await findTenantByTaxId(sql, payload.tenantInfo.taxId);
+  if (payload.taxId && payload.taxId !== '0') {
+    const existingTenant = await findTenantByTaxId(sql, payload.taxId);
     if (existingTenant) {
       throw new ConflictError(
         'auth.error.taxIdTaken',
         'Tax ID already in use',
-        { taxId: payload.tenantInfo.taxId },
+        { taxId: payload.taxId },
       );
     }
   }
 
   // 2. Hash password
-  const passwordHash = await hashPassword(payload.accountInfo.password);
+  const passwordHash = await hashPassword(payload.password);
 
   // 3. Insert user + tenant in a transaction
   const result = await sql.begin(async (tx) => {
     const user = await insertUser(tx as unknown as Sql, {
-      email: payload.accountInfo.email,
+      email: payload.email!,
       passwordHash,
       role: 'tenant',
     });
     const tenant = await insertTenant(tx as unknown as Sql, {
       ownerUserId: user.id,
-      name: payload.tenantInfo.name,
-      contactName: payload.tenantInfo.contactName,
-      phoneCity: payload.tenantInfo.phoneCity,
-      address: payload.tenantInfo.address,
-      taxId: payload.tenantInfo.taxId,
-      invoiceAddress: payload.tenantInfo.invoiceAddress ?? null,
-      mobile: payload.tenantInfo.mobile ?? null,
-      website: payload.tenantInfo.website ?? null,
-      email: payload.tenantInfo.email,
+      name: payload.name,
+      contactName: payload.contactName,
+      phoneCity: payload.phoneCity,
+      address: payload.address,
+      taxId: payload.taxId,
+      invoiceAddress: payload.invoiceAddress ?? null,
+      mobile: payload.mobile ?? null,
+      website: payload.website ?? null,
+      email: payload.email ?? null,
     });
     return { user, tenant };
   });

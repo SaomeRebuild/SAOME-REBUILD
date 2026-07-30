@@ -39,10 +39,27 @@ vi.mock('../db/tenants', () => ({
   insertTenant: vi.fn(),
 }));
 
-vi.mock('../db/loginAttempts', () => ({
-  countRecentFailures: vi.fn().mockResolvedValue(0),
-  insertLoginAttempt: vi.fn().mockResolvedValue(undefined),
-}));
+const FAKE_ATTEMPT_ROW = {
+  id: 1,
+  user_id: null,
+  email_attempted: 'x@example.com',
+  success: true,
+  attempted_at: new Date(),
+};
+
+vi.mock('../db/loginAttempts', () => {
+  const fakeAttempt = {
+    id: 1,
+    user_id: null as unknown as string,
+    email_attempted: 'x@example.com',
+    success: true,
+    attempted_at: new Date(),
+  };
+  return {
+    countRecentFailures: vi.fn().mockResolvedValue(0),
+    insertLoginAttempt: vi.fn().mockResolvedValue(fakeAttempt),
+  };
+});
 
 vi.mock('../middleware/rateLimit', () => ({
   rateLimitMiddleware: vi.fn().mockImplementation(async (_c: unknown, next: () => Promise<void>) => {
@@ -105,7 +122,7 @@ const fakeTenant = {
   invoice_address: null,
   mobile: null,
   website: null,
-  email: 'x',
+  created_at: new Date(),
 };
 
 async function callLogin(app: Hono<HonoEnv>, body: unknown) {
@@ -128,7 +145,13 @@ describe('POST /api/auth/login', () => {
     mockedVerify.mockResolvedValue(true);
     mockedAccess.mockResolvedValue('access');
     mockedRefresh.mockResolvedValue('refresh');
-    mockedInsertAttempt.mockResolvedValue(undefined);
+    mockedInsertAttempt.mockResolvedValue({
+      id: 1,
+      user_id: null,
+      email_attempted: 'x@example.com',
+      success: true,
+      attempted_at: new Date(),
+    });
   });
 
   it('happy path returns 200 with auth session + Set-Cookie', async () => {

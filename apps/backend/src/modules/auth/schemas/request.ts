@@ -12,29 +12,37 @@
 import { z } from 'zod';
 
 /**
- * Body of POST /api/auth/register.
- * Combines `tenantInfo` (business info) + `accountInfo` (login creds).
+ * Combined registration payload sent to the backend (flat structure, NOT nested).
+ *
+ * Mirrors the frontend's `RegistrationPayload` type from packages/shared/schemas/auth.
+ * The frontend sends tenant fields + account fields at the top level (flat),
+ * not as `{ tenantInfo, accountInfo }`.
  */
+
+/**
+ * Tax ID: accepts literal "0" (個人戶/工作室) or 8 numeric digits.
+ * Zod message must be the i18n key that frontend looks up.
+ */
+const taxIdSchema = z
+  .string()
+  .refine((v) => v === '0', { message: 'validation.taxIdInvalid' })
+  .or(z.string().regex(/^\d{8}$/, { message: 'validation.taxIdInvalid' }));
+
 export const registrationPayloadSchema = z.object({
-  tenantInfo: z.object({
-    name: z.string().min(1),
-    contactName: z.string().min(1),
-    phoneCity: z.string().min(1),
-    address: z.string().min(1),
-    taxId: z.string(),
-    invoiceAddress: z.string().optional().nullable(),
-    mobile: z.string().optional().nullable(),
-    website: z.string().url().optional().nullable(),
-    email: z.string().email(),
-  }),
-  accountInfo: z.object({
-    email: z.string().email(),
-    password: z.string().min(8),
-    confirmPassword: z.string().min(8),
-  }).refine((d) => d.password === d.confirmPassword, {
-    message: 'passwordsDoNotMatch',
-    path: ['confirmPassword'],
-  }),
+  // tenantInfo fields (required)
+  name: z.string().min(1, 'validation.required'),
+  contactName: z.string().min(1, 'validation.required'),
+  phoneCity: z.string().min(1, 'validation.required'),
+  address: z.string().min(1, 'validation.required'),
+  taxId: taxIdSchema,
+  // invoiceAddress is optional in tenantInfo but required in the combined payload
+  invoiceAddress: z.string().min(1, 'validation.required'),
+  // optional tenantInfo fields
+  mobile: z.string().optional().nullable(),
+  website: z.string().url().optional().nullable(),
+  // accountInfo fields (confirmPassword is omitted — frontend doesn't send it)
+  email: z.string().email('validation.email'),
+  password: z.string().min(8, 'validation.passwordTooShort'),
 });
 
 export type RegistrationPayload = z.infer<typeof registrationPayloadSchema>;

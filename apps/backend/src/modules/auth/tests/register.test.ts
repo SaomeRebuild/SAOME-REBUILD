@@ -77,22 +77,16 @@ function getErrorCode(body: Record<string, unknown>): string | undefined {
 }
 
 const validPayload = {
-  tenantInfo: {
-    contactName: 'Test Contact',
-    phoneCity: '02-12345678',
-    address: 'Taipei City, Zhongzheng District, Sec 1, Chongqing S Rd, No 122',
-    taxId: '12345678',
-    name: 'Test Store',
-    invoiceAddress: 'Taipei City, Zhongzheng District, Sec 1, Chongqing S Rd, No 122',
-    mobile: '0912345678',
-    website: 'https://example.com',
-    email: 'user' + '@example.com',
-  },
-  accountInfo: {
-    email: 'user' + '@example.com',
-    password: 'Password123!',
-    confirmPassword: 'Password123!',
-  },
+  contactName: 'Test Contact',
+  phoneCity: '02-12345678',
+  address: 'Taipei City, Zhongzheng District, Sec 1, Chongqing S Rd, No 122',
+  taxId: '12345678',
+  name: 'Test Store',
+  invoiceAddress: 'Taipei City, Zhongzheng District, Sec 1, Chongqing S Rd, No 122',
+  mobile: '0912345678',
+  website: 'https://example.com',
+  email: 'user@example.com',
+  password: 'Password123!',
 };
 
 async function callRegister(app: Hono<HonoEnv>, body: unknown) {
@@ -116,15 +110,15 @@ describe('POST /api/auth/register', () => {
     mockedInsertTenant.mockResolvedValue({
       id: 'tenant-1',
       owner_user_id: 'user-1',
-      contact_name: validPayload.tenantInfo.contactName,
-      phone_city: validPayload.tenantInfo.phoneCity,
-      address: validPayload.tenantInfo.address,
-      tax_id: validPayload.tenantInfo.taxId,
-      name: validPayload.tenantInfo.name,
-      invoice_address: validPayload.tenantInfo.invoiceAddress,
-      mobile: validPayload.tenantInfo.mobile,
-      website: validPayload.tenantInfo.website,
-      email: validPayload.tenantInfo.email,
+      contact_name: validPayload.contactName,
+      phone_city: validPayload.phoneCity,
+      address: validPayload.address,
+      tax_id: validPayload.taxId,
+      name: validPayload.name,
+      invoice_address: validPayload.invoiceAddress,
+      mobile: validPayload.mobile,
+      website: validPayload.website,
+      email: validPayload.email,
     });
     mockedHash.mockResolvedValue('hashed');
     mockedSignAccess.mockResolvedValue('access');
@@ -178,16 +172,16 @@ describe('POST /api/auth/register', () => {
 
   it('invalid email (zod) returns 400 VALIDATION_ERROR', async () => {
     const app = buildApp();
-    const bad = { ...validPayload, accountInfo: { ...validPayload.accountInfo, email: 'not-an-email' } };
+    const bad = { ...validPayload, email: 'not-an-email' };
     const res = await callRegister(app, bad);
     expect(res.status).toBe(400);
     const body = (await res.json()) as Record<string, unknown>;
     expect(getErrorCode(body)).toBe('VALIDATION_ERROR');
   });
 
-  it('password mismatch returns 400 VALIDATION_ERROR', async () => {
+  it('password too short returns 400 VALIDATION_ERROR', async () => {
     const app = buildApp();
-    const bad = { ...validPayload, accountInfo: { ...validPayload.accountInfo, confirmPassword: 'different' } };
+    const bad = { ...validPayload, password: 'short' };
     const res = await callRegister(app, bad);
     expect(res.status).toBe(400);
   });

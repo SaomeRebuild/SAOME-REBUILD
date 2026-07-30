@@ -26,7 +26,7 @@ export const tenantDtoSchema = z.object({
   invoiceAddress: z.string().nullable(),
   mobile: z.string().nullable(),
   website: z.string().nullable(),
-  email: z.string().email(),
+  email: z.string().email().nullable(),
 });
 
 export const authSessionDtoSchema = z.object({

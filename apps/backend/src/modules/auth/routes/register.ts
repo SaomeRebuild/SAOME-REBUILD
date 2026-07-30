@@ -13,8 +13,12 @@ export const registerRoute = new Hono<HonoEnv>().post('/', async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const parsed = registrationPayloadSchema.safeParse(body);
   if (!parsed.success) {
-    throw new ValidationError('common.error.validationFailed', {
-      issues: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+    const issues = parsed.error.issues.map((i) => ({
+      path: i.path.join('.'),
+      i18nKey: i.message,
+    }));
+    throw new ValidationError(issues[0]?.i18nKey ?? 'common.error.validationFailed', {
+      issues,
     });
   }
   const sql = getDb(c.env.HYPERDRIVE);
