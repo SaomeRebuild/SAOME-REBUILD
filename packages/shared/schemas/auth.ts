@@ -15,24 +15,36 @@ export const roleSchema = z.enum(['tenant', 'admin']);
  * `tax_id` accepts:
  *  - the literal "0" (個人戶/工作室 — 無統編)
  *  - 8 numeric digits
- * Rejects everything else with a stable error message.
+ * Rejects everything else with a stable error message (i18n key).
  */
 export const taxIdSchema = z
   .string()
-  .refine((v) => v === '0', { message: 'taxIdInvalid' })
+  .refine((v) => v === '0', { message: 'validation.taxIdInvalid' })
   .or(
-    z.string().regex(/^\d{8}$/, { message: 'taxIdInvalid' }),
+    z.string().regex(/^\d{8}$/, { message: 'validation.taxIdInvalid' }),
   );
 
 /**
  * Tenant Step 1 — store info (店家資料)
+ *
+ * `name` is the **company / store legal name** (公司 / 店家名稱) — what
+ * appears on the registration certificate and on issued invoices.
+ * Historically this column was called `companyName`; the backend's
+ * `registrationPayloadSchema` (apps/backend/src/modules/auth/schemas/request.ts)
+ * requires it under the canonical key `name`, so we keep both client and
+ * server aligned here.
+ *
+ * `invoiceAddress` is optional at the schema level — the frontend may
+ * default it to '' if the merchant does not have a separate invoice
+ * address, and the backend `registrationPayloadSchema` upgrades the
+ * min(1) requirement at the merged-payload level.
  */
 export const tenantInfoSchema = z.object({
-  contactName: z.string().min(2).max(100),
-  phoneCity: z.string().min(7).max(30),
-  address: z.string().min(5).max(500),
+  name: z.string().min(2, 'validation.companyNameTooShort').max(200),
+  contactName: z.string().min(2, 'validation.contactNameTooShort').max(100),
+  phoneCity: z.string().min(7, 'validation.phoneCityTooShort').max(30),
+  address: z.string().min(5, 'validation.addressTooShort').max(500),
   taxId: taxIdSchema,
-  companyName: z.string().min(2).max(200),
   invoiceAddress: z.string().max(500).optional().default(''),
 });
 export type TenantInfoInput = z.infer<typeof tenantInfoSchema>;
@@ -46,9 +58,9 @@ export type TenantInfoInput = z.infer<typeof tenantInfoSchema>;
  * pulling in `confirmPassword` (which the backend doesn't need).
  */
 export const accountInfoBase = z.object({
-  email: z.string().email(),
-  password: z.string().min(8).max(128),
-  confirmPassword: z.string().min(8).max(128),
+  email: z.string().email('validation.email'),
+  password: z.string().min(8, 'validation.passwordTooShort'),
+  confirmPassword: z.string().min(8, 'validation.passwordTooShort'),
   mobile: z.string().regex(/^(\+?\d{8,15})?$/).optional(),
   website: z.string().url().optional(),
   businessEmail: z.string().email().optional(),
@@ -124,10 +136,23 @@ export const loginAttemptSchema = z.object({
 });
 export type LoginAttempt = z.infer<typeof loginAttemptSchema>;
 
-/** Combined registration payload sent to the backend (Tenant Info + Account Info flat) */
+/**
+ * Combined registration payload sent to the backend (Tenant Info + Account Info flat).
+ *
+ * MUST mirror `apps/backend/src/modules/auth/schemas/request.ts` —
+ * the backend is the source of truth at runtime, but the client validates
+ * against this copy first so we can surface field errors before hitting
+ * the network.
+ *
+ * Note: `accountInfoBase` does not include `mobile` / `website` /
+ * `businessEmail` at the moment (those optional tenantInfo fields have
+ * not yet been wired into the Step 2 form), so we omit them from the
+ * merged payload here. When the UI grows those inputs, extend this schema
+ * in lockstep with the backend.
+ */
 export const registrationPayloadSchema = tenantInfoSchema.merge(
   accountInfoBase.omit({ confirmPassword: true }),
 ).extend({
-  invoiceAddress: z.string().min(1).max(500),
+  invoiceAddress: z.string().min(1, 'validation.required').max(500),
 });
 export type RegistrationPayload = z.infer<typeof registrationPayloadSchema>;

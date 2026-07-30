@@ -50,11 +50,11 @@ describe('taxIdSchema', () => {
 
 describe('tenantInfoSchema', () => {
   const valid = {
+    name: '王小明工作室',
     contactName: '王小明',
     phoneCity: '02-1234-5678',
     address: '台北市信義區信義路 1 號',
     taxId: '12345678',
-    companyName: '王小明工作室',
     invoiceAddress: '台北市信義區信義路 1 號',
   };
 
@@ -154,11 +154,11 @@ describe('lockoutStateSchema', () => {
 describe('registrationPayloadSchema', () => {
   it('merges tenant info + account info (omits confirmPassword) and requires invoiceAddress', () => {
     const fullPayload = {
+      name: '王小明工作室',
       contactName: '王小明',
       phoneCity: '02-1234-5678',
       address: '台北市信義區信義路 1 號',
       taxId: '12345678',
-      companyName: '王小明工作室',
       invoiceAddress: '台北市信義區信義路 1 號',
       email: 'register@example.com',
       password: 'Password123',
