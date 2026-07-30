@@ -63,6 +63,7 @@ export function RegisterForm() {
       name: '',
       contactName: '',
       phoneCity: '',
+      mobile: '',
       address: '',
       taxId: '',
       invoiceAddress: '',
@@ -126,6 +127,37 @@ export function RegisterForm() {
       window.clearTimeout(timeoutId);
     };
   }, [step, accountForm]);
+
+  // Clear Chrome-autofilled values on Step 1 mount. The mobile field
+  // (added 2026-07-31) sits alongside phoneCity; both are <input type="tel">
+  // and Chrome's hint-based autofill could populate mobile from the user's
+  // saved cell-phone profile entry, syncing into RHF without isDirty.
+  // See rule 018 (form autofill + multi-step state).
+  //
+  // Bail if the user has already touched the mobile field — otherwise the
+  // 100ms setTimeout can race with user typing and wipe the value mid-keystroke.
+  useEffect(() => {
+    if (step !== 0) return;
+    const clearStep1Autofill = () => {
+      const mobileInput = document.querySelector<HTMLInputElement>('input[name="mobile"]');
+      // Only clear if Chrome has populated something AND the user hasn't typed yet.
+      // tenantForm.getValues() reflects RHF state; if it's already non-empty
+      // the user typed during the sweep window — leave their input alone.
+      if (tenantForm.getValues('mobile')) return;
+      if (mobileInput && mobileInput.value !== '') {
+        mobileInput.value = '';
+      }
+      tenantForm.setValue('mobile', '', { shouldDirty: false });
+    };
+    const raf1 = requestAnimationFrame(clearStep1Autofill);
+    const raf2 = requestAnimationFrame(() => requestAnimationFrame(clearStep1Autofill));
+    const timeoutId = window.setTimeout(clearStep1Autofill, 100);
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+      window.clearTimeout(timeoutId);
+    };
+  }, [step, tenantForm]);
 
   async function onStep2Submit(values: AccountInfoInput) {
     setServerError(null);
@@ -195,6 +227,20 @@ export function RegisterForm() {
             error={translateFieldError(t, tenantForm.formState.errors.phoneCity?.message)}
           >
             <input {...tenantForm.register('phoneCity')} autoComplete="tel" className={inputCls} style={inputStyle()} {...inputFocusHandlers()} />
+          </Field>
+          <Field
+            label={t('register.mobile')}
+            description={t('register.mobileHint')}
+            error={translateFieldError(t, tenantForm.formState.errors.mobile?.message)}
+          >
+            <input
+              type="tel"
+              autoComplete="tel"
+              {...tenantForm.register('mobile')}
+              className={inputCls}
+              style={inputStyle()}
+              {...inputFocusHandlers()}
+            />
           </Field>
           <Field
             label={t('register.address')}

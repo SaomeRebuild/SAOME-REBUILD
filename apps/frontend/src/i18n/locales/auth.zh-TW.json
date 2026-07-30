@@ -27,7 +27,8 @@
     "contactNameTooShort": "姓名至少需 2 個字元",
     "phoneCityTooShort": "電話號碼格式不正確",
     "addressTooShort": "地址至少需 5 個字元",
-    "companyNameTooShort": "公司/店家名稱至少需 2 個字元"
+    "companyNameTooShort": "公司/店家名稱至少需 2 個字元",
+    "mobileInvalid": "手機號碼須為 E.164 格式（如 +886912345678）或台灣 09xxxxxxxx 格式"
   },
   "register": {
     "title": "建立帳號",
@@ -36,6 +37,8 @@
     "step2Title": "Step 2：帳號資訊",
     "contactName": "聯絡人姓名",
     "phoneCity": "市內電話",
+    "mobile": "手機號碼",
+    "mobileHint": "選填。建議用 E.164 格式（如 +886912345678）；台灣 09xxxxxxxx 也接受。",
     "address": "地址",
     "taxId": "統一編號",
     "taxIdHint": "若無統編請填 0",

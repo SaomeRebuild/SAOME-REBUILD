@@ -27,7 +27,8 @@
     "contactNameTooShort": "Name must be at least 2 characters",
     "phoneCityTooShort": "Phone number format is invalid",
     "addressTooShort": "Address must be at least 5 characters",
-    "companyNameTooShort": "Company / Store name must be at least 2 characters"
+    "companyNameTooShort": "Company / Store name must be at least 2 characters",
+    "mobileInvalid": "Mobile number must be in E.164 format (e.g. +886912345678) or Taiwan 09xxxxxxxx"
   },
   "register": {
     "title": "Create account",
@@ -36,6 +37,8 @@
     "step2Title": "Step 2: Account info",
     "contactName": "Contact name",
     "phoneCity": "Office phone",
+    "mobile": "Mobile number",
+    "mobileHint": "Optional. E.164 format preferred (e.g. +886912345678); Taiwan 09xxxxxxxx also accepted.",
     "address": "Address",
     "taxId": "Tax ID",
     "taxIdHint": "Enter 0 if not applicable",
