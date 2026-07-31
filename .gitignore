@@ -34,11 +34,13 @@ pic/
 
 # Runtime data — exclude most runtime/ephemeral outputs, but KEEP
 # improvement feedback inside `runs/improvements/` as team knowledge,
-# and KEEP decision logs inside `runs/decisions/` (per AGENTS.md "Decision
-# Log 規範 (L3 Heavy 必填)").
+# KEEP decision logs inside `runs/decisions/` (per AGENTS.md "Decision
+# Log 規範 (L3 Heavy 必填)"), and KEEP public articles inside
+# `runs/articles/` (per skill article-writing).
 runs/*
 !runs/improvements/
 !runs/decisions/
+!runs/articles/
 
 # mu-plugins: read-only reference, never commit
 mu-plugins/
@@ -63,6 +65,12 @@ Thumbs.db
 .commit-msg-*.tmp
 .git-rebase-todo
 *.tmp
+
+# Production data dumps — never commit (per .cursor/rules/019-schema-contract-drift.mdc
+# 提到的真實污染證據;含真實 email/phone,不該 push)
+tenants_rows.json
+users_rows.json
+*_rows.json
 
 # NOTE: .cursor/ is NOT ignored — rules/ and skills/ are committed as
 # team-shared documentation. Cursor IDE personal state lives under
