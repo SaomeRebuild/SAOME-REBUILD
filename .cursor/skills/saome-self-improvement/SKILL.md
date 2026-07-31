@@ -81,7 +81,19 @@ echo ".cursor/agents/" >> .gitignore
 
 - `saome-github-deploy`：本 skill 處理「deploy 後的反省」，它處理「deploy 本身」
 - `saome-new-repo`：本 skill 與它互補——一個管反省、一個管 SOP
+- `article-writing`：本 skill 跟 article writing 是兩件事。article 是給讀者看的散文，DEV LOG 是給未來的自己看的 trace。如果使用者說「DEV LOG」「debug log」「事故記錄」「寫個 trace」，走 `saome-dev-logging` skill；說「寫文章」「polish」「polish 一篇」，走 `article-writing` skill。混用會破壞兩者的目的。
+- `saome-form-integrity`：debug autofill / schema drift 時的 probe 樣板可參考
 - `AGENTS.md`：本 skill 是它的執行延伸——AGENTS.md 列規範，本 skill 補規範缺失
+
+### DEV LOG vs article 判斷口訣
+
+| 訊號 | 走向 |
+|---|---|
+| 「DEV LOG」「開發日誌」「事故記錄」「debug log」「trace」「寫個 reproduction」 | `saome-dev-logging` |
+| 「寫文章」「寫一篇」「polish」「給讀者看」「要發布」 | `article-writing` |
+| 修改 `runs/dev/*.md`、`DEV/**/*.md` | 走 DEV LOG 紀律（raw data 優先） |
+| 修改 `runs/articles/*.md` | 走 article-style rule（讀者舒服優先） |
+| 使用者沒講 | 預設 DEV LOG（SAOME 內部居多） |
 
 ## 禁止
 
