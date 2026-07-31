@@ -1,28 +1,39 @@
 ---
-description: 模組化設計鐵律 — 每個業務元件為獨立資料夾，禁止 flat 結構、禁止跨層引用。
+description: 模組化設計鐵律 — 每個業務元件 / Hono module / 第三方 API 包裝為獨立資料夾,禁止 flat 結構、禁止跨層引用、禁止在 handler / component / route 內堆業務邏輯。
 alwaysApply: true
 ---
 
 # 模組化設計（MANDATORY）
 
-> 觸發：寫新元件、改舊元件、code review。
+> 觸發:寫新元件 / 新 Hono module / 新第三方 API 包裝 / 改舊元件 / code review。
 
-## 鐵律
+## 鐵律總表
 
 | 鐵律 | 適用層 | 細節 |
 |------|--------|------|
-| 業務元件必須是一個資料夾 | L2 | `components/business/<scope>/<Name>/` |
-| 主組件 ≤ 100 行 | L2 | 只做組裝，邏輯拆 sub-component / hook |
-| L2 不能直接修改 L1 | L1 / L2 | 用變體擴充，不要 fork |
-| 業務邏輯不能在 component 內 | 全部 | 拆到 hook 或 service |
-| 跨層引用禁止 | 全部 | L2 引用 L3 / L4 / L5 必須透過 barrel |
+| 業務元件必須是一個資料夾 | L2 React 元件 | `components/business/<scope>/<Name>/` |
+| 主組件 ≤ 100 行 | L2 React 元件 | 只做組裝,邏輯拆 sub-component / hook |
+| L2 不能直接修改 L1 | React L1 / L2 | 用變體擴充,不要 fork |
+| 業務邏輯不能在 component 內 | React 全部 | 拆到 hook 或 service |
+| 跨層引用禁止 | React 全部 | L2 引用 L3 / L4 / L5 必須透過 barrel |
+| **Route handler 只做組裝** | Hono backend | `routes/` 只做 zod parse + service 呼叫,邏輯拆 `services/` |
+| **每個 feature 一個資料夾** | Hono backend | `modules/<feature>/` 含 routes / services / db / schemas / middleware / tests |
+| **DB 查詢不能寫在 route / service 裡** | Hono backend | SQL 必須放 `db/<table>.ts`,service 呼叫 db 函式 |
+| **共用 lib 必須走 shared/** | Hono backend | Hyperdrive / JWT / password / error 必須走 `src/shared/lib/`,禁止 module 重寫 |
+| **第三方 API 必須包成 service** | 外部 SDK / HTTP | 任何 fetch / SDK 呼叫必須放在 `services/external/<provider>.ts`,內部程式只調 service |
+| **第三方錯誤必須轉 SaomeError** | 外部 SDK / HTTP | 第三方 SDK / fetch 拋出的 error 必須在包裝層轉成 SaomeError,route / component handler 不處理第三方型別 |
+| **API contract 必須有 zod schema** | 跨 backend ↔ frontend ↔ 第三方 | `packages/shared/schemas/<feature>.ts` 是契約;後端 request.ts 必須 import 或 mirror |
 
-## 資料夾結構（MANDATORY）
+---
+
+## Part A — React 元件(L1 / L2 / L3)
+
+### A.1 L2 業務元件資料夾結構(MANDATORY)
 
 ```
 components/business/<scope>/<Name>/
 ├── index.ts                  ← barrel export
-├── <Name>.tsx                ← 主組件（<= 100 行）
+├── <Name>.tsx                ← 主組件(<= 100 行)
 ├── <Name>Header.tsx          ← sub
 ├── <Name>Stats.tsx
 ├── <Name>Actions.tsx
@@ -33,9 +44,193 @@ components/business/<scope>/<Name>/
 └── <Name>.stories.tsx        ← Storybook
 ```
 
-## 禁止
+### A.2 React 禁止
 
-- ❌ 把 L2 業務元件寫成單一 .tsx（必須資料夾）
+- ❌ 把 L2 業務元件寫成單一 .tsx(必須資料夾)
 - ❌ 主組件超過 100 行
 - ❌ L2 直接修改 shadcn L1 元件
 - ❌ 把業務邏輯寫在 JSX / event handler 裡
+- ❌ 同名元件重複存在(`<Card>` 跟 `<MyCard>` 兩者)— 詳見 `frontend/022-component-reuse.mdc`
+
+---
+
+## Part B — Hono Backend
+
+### B.1 為什麼 backend 也要模組化
+
+Hono 是 framework 不是元件庫,但**邏輯堆積的風險跟 React 完全同源**:
+
+- route handler 一旦塞 zod parse + DB call + 業務邏輯 + 第三方 fetch + error mapping → 變成 300 行的 god file
+- 兩個 module 各寫一份 `emailService` → drift bug 的溫床
+- 直接 `import { HYPERDRIVE }` 在 module 內 → 測試時綁定壞掉,整個 Worker 沒法 mock
+
+所以 backend **用同樣的精神**做模組化,只是目錄結構跟 React 不同。
+
+### B.2 Feature module 結構(MANDATORY)
+
+```
+apps/backend/src/modules/<feature>/
+├── index.ts                  ← Hono sub-app,export `<feature>Module`
+├── routes/                   ← 只做 zod parse + service 呼叫
+│   ├── <verb>.ts             ← 一個 HTTP verb 一個檔
+├── middleware/               ← module 內專用 middleware(rateLimit 等)
+├── db/                       ← SQL queries(postgres.js calls)
+│   ├── <table>.ts            ← 一個 table 一個檔
+├── schemas/                  ← request / response / db row zod
+│   ├── request.ts
+│   ├── response.ts
+│   └── db.ts
+├── services/                 ← 業務邏輯(transaction / orchestration)
+│   └── <verb>Service.ts
+└── tests/                    ← vitest unit tests
+```
+
+### B.3 全 Worker 共用層(MANDATORY)
+
+```
+apps/backend/src/shared/
+├── middleware/               ← cors / requestId / errorHandler / auth(JWT verify)
+├── db/client.ts              ← postgres.js 實例,綁定 Hyperdrive
+├── lib/                      ← JWT / password / error helpers
+└── types/bindings.ts         ← Env / HyperdriveBindings 型別
+```
+
+### B.4 Hono backend 禁止
+
+- ❌ route handler 內寫業務邏輯(只做 zod parse + service 呼叫)
+- ❌ route / service 內直接寫 SQL(必須放 `db/<table>.ts`)
+- ❌ `modules/<X>/db/` 直接 `import { HYPERDRIVE }`(必須透過 `shared/db/client.ts`)
+- ❌ modules 內直接 import `jose`(必須透過 `shared/lib/jwt.ts`)
+- ❌ modules 內自己實作 hashPassword / verifyPassword(必須透過 `shared/lib/password.ts`)
+- ❌ route handler 直接 throw 第三方 SDK error 或 fetch error(必須在包裝層轉 SaomeError)
+- ❌ route handler 直接 `c.req.json()` 給 service(必須先過 zod schema)
+
+### B.5 route handler 範本
+
+```ts
+// apps/backend/src/modules/auth/routes/register.ts — 只有 ~30 行
+import { Hono } from 'hono';
+import { z } from 'zod';
+import { registrationPayloadSchema } from '../schemas/request';
+import { registerUser } from '../services/registerService';
+
+export const registerRoute = new Hono();
+
+registerRoute.post('/', async (c) => {
+  const body = registrationPayloadSchema.parse(await c.req.json());
+  const result = await registerUser(body, c.env);
+  return c.json(result, 201);
+});
+```
+
+---
+
+## Part C — 第三方 API 包裝
+
+### C.1 為什麼第三方 API 必須包成 service
+
+第三方 API(LINE Pay、Twilio、SendGrid、Stripe、Toss 等)有三個**未受控風險**:
+
+| 風險 | 沒包裝的後果 |
+|------|-------------|
+| **SDK 升版型別壞掉** | 整個 codebase typecheck fail,且無法鎖版控 |
+| **錯誤型別外洩** | route handler 要 catch SDK 的 error,每個 provider 一套,drift 起點 |
+| **API endpoint / header 散落** | 加一個 endpoint 要改 5 個檔案,測試無從 mock |
+
+包成 service 之後:
+
+- 升版風險縮在一個檔案內
+- 錯誤型別在邊界轉 SaomeError,route 只看 SaomeError
+- 加新 endpoint 改一個 service 檔 + 一個測試檔
+
+### C.2 第三方 service 結構(MANDATORY)
+
+```
+apps/backend/src/modules/<feature>/services/external/
+├── <provider>.ts            ← 一個第三方 provider 一個檔
+└── <provider>.test.ts       ← mock 第三方 SDK,測 service 行為
+```
+
+範例(假設 auth feature 加 LINE Login):
+
+```
+apps/backend/src/modules/auth/services/external/
+├── lineLogin.ts              ← 只 export function,不 export SDK 物件
+└── lineLogin.test.ts
+```
+
+### C.3 第三方 service 範本
+
+```ts
+// apps/backend/src/modules/auth/services/external/lineLogin.ts
+import { LineLogin } from 'line-login-sdk';          // SDK import 鎖在這一層
+import { SaomeError } from '@/shared/lib/saomeError';
+
+export interface LineProfile { userId: string; displayName: string; }
+
+export async function fetchLineProfile(accessToken: string): Promise<LineProfile> {
+  try {
+    const client = new LineLogin({ accessToken });
+    const profile = await client.getProfile();
+    return { userId: profile.userId, displayName: profile.displayName };
+  } catch (err) {
+    // 第三方錯誤 → SaomeError 在邊界轉
+    throw new SaomeError('AUTH_THIRD_PARTY_FAILED', { provider: 'line' });
+  }
+}
+```
+
+### C.4 第三方 API 禁止
+
+- ❌ module 內直接 `import` 第三方 SDK(必須在 `services/external/<provider>.ts`)
+- ❌ route / component handler 處理第三方 SDK error 型別
+- ❌ 第三方 SDK 的型別出現在 `shared/schemas/`(契約是 zod,不是 SDK 型別)
+- ❌ 直接用第三方 SDK 的型別做業務邏輯(必須在 service 內轉成自家 domain 型別)
+- ❌ fetch / axios 散落在 route / service(必須包成 service)
+- ❌ 在 package.json 升 SDK 大版沒跑 conformance test(升版前必跑)
+
+### C.5 第三方 SDK 升版 SOP
+
+1. 改 `package.json` SDK 版本
+2. 跑 `npm install --include=optional`(避免 lockfile drift,見 rule 016)
+3. 跑 `npm run typecheck` 看哪些 service 受影響
+4. 跑 `npm test services/external/<provider>.test.ts` 看 mock 跟新版 SDK 行為有沒有變
+5. 受影響的 route / service 必須在**同個 PR**修完
+6. 必要時在 `runs/improvements/feedback/` 寫升版紀錄
+
+---
+
+## Part D — API Contract(backend ↔ frontend ↔ 第三方)
+
+### D.1 契約層級
+
+| 層級 | 位置 | 誰能改 |
+|------|------|--------|
+| **業務契約** | `packages/shared/schemas/<feature>.ts` | frontend + backend + 第三方 provider 三方都要對齊 |
+| **HTTP 介面** | `apps/backend/src/contracts/<feature>.ts` | backend 改,frontend 看 |
+| **request / response** | `apps/backend/src/modules/<feature>/schemas/{request,response}.ts` | backend 改,必須 mirror shared |
+
+### D.2 shared schema 雙向同步(細節見 rule 019)
+
+- shared schema 改 → 後端 `request.ts` 必同 PR 改
+- 後端 `request.ts` 開頭有 `// TODO: cp from shared/` 之類註解 = **P0 violation**
+- 必加 Vitest conformance test(`schema-conformance.test.ts`)斷言兩邊 field set 一致
+
+### D.3 第三方 API 也算契約
+
+LINE Pay 的 request / response 形狀 → 必須在 `shared/schemas/external/linePay.ts` 有 zod schema,後端 service 拿回 response 必先 parse 再用。
+
+理由:第三方 API 文件改版時,zod schema fail 比 runtime error 早抓。
+
+---
+
+## 觸發關鍵字
+
+「寫新元件 / 新 module / 新 API 包裝 / 改舊元件 / 改舊 module / code review」、「Hono route」、「third-party API」、「fetch SDK」、「外部服務」、「LINE Pay / Twilio / SendGrid / Stripe」、「升版 SDK」、「import SDK」時**必須**引用此 rule。
+
+## 與其他 rule 關係
+
+- `frontend/022-component-reuse.mdc`:React 元件重用的對應規則,本 rule 是它的 backend 對應
+- `019-schema-contract-drift.mdc`:本 rule 的契約層是它的延伸
+- `017-production-bundle-guard.mdc`:前端 bundle 不准含 localhost URL,跟 backend service 包裝無關但都是 deploy 前必跑
+- `apps/backend/AGENTS.md`:本 rule 是它的規範層摘要;AGENTS.md 是操作手冊,兩者不衝突

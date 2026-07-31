@@ -6,6 +6,17 @@
 
 任何 session 結束前、同樣的錯第二次出現、或使用者要求反省時，必須引用 `.cursor/skills/saome-self-improvement/SKILL.md`。詳見該 skill。
 
+## Article Writing（MANDATORY）
+
+寫 root-level 文章 / blog / 教學文 / polished 公開文時，必須引用 `.cursor/skills/article-writing/SKILL.md`。紀律見 `.cursor/rules/articles/001-article-style.mdc`。
+
+**DEV LOG 走另一個 skill**：`saome-dev-logging`（debug log / 事故記錄 / 維運筆記）。DEV LOG 跟 article 是兩件事，混用會破壞兩者的目的。
+
+判斷口訣：
+
+- **article**：給別人讀，讀者舒適度優先
+- **DEV LOG**：給未來的自己讀，raw data 完整性優先
+
 ## New Repo SOP（MANDATORY）
 
 任何新建 saome-* repo（saome-backend / saome-api-worker / saome-postgresql …）時，必須引用 `.cursor/skills/saome-new-repo/SKILL.md`，遵守路徑規則、必含檔案、defensive .gitignore 範本、禁止清單。
@@ -66,7 +77,7 @@ components/business/<scope>/<Name>/
 └── <Name>.stories.tsx
 ```
 
-詳見 `.cursor/rules/000-modular-design.mdc` 與 `.cursor/rules/frontend/022-component-reuse.mdc`。
+詳見 `.cursor/rules/000-modular-design.mdc`（含 React 元件 / Hono backend / 第三方 API 包裝 / API contract 四個 Part）與 `.cursor/rules/frontend/022-component-reuse.mdc`（React 元件重用）。
 
 ## Config 結構（MANDATORY）
 
