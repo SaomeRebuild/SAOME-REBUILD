@@ -1,0 +1,104 @@
+---
+description: Article style discipline — applies to root-level long-form markdown under runs/articles/, runs/dev/, DEV/, and public-facing writes. Use glob `runs/articles/**/*.md` `runs/dev/**/*.md` `DEV/**/*.md`.
+globs:
+  - runs/articles/**/*.md
+  - runs/dev/**/*.md
+  - DEV/**/*.md
+alwaysApply: false
+---
+
+# Article Style Rule
+
+> 觸發：使用者正在寫 / 改 root-level 的 long-form markdown（articles、公開文章、polished DEV LOG）。
+
+## 跟 DEV LOG 的差異
+
+本 rule **只對 article 適用**——DEV LOG 的紀律是「完整 raw data」，不是「讀者舒服」。
+DEV LOG 的紀律見 `.cursor/skills/saome-dev-logging/SKILL.md`，本 rule 的 checklist 不適用。
+
+## 表格 → 段落 / 列表 的轉換規則
+
+### 應該改成段落的
+
+- 表格只有 2 行、沒有對照關係（例如「角色 / 寫什麼」這類定義表）
+- 表格內容是「原因 / 觀察 / 結論」等需要解釋的段落
+- 表格把代碼範本包起來（code 應該獨立 code block）
+
+### 應該改成列表的
+
+- 表格只有 4 行以下、純列舉、無對照
+- 表格內容是「三個問句 / 五個啟發式」這種 inline-friendly 內容
+- 表格是「流程 / 順序 / 時間軸」性質（用有序列表）
+
+### 適合保留表格的
+
+- 兩列可直接對照、有「A 對應 B」結構（例如功能 / 規則 / 限制）
+- 三個以上選項需要橫向對比（例如工具鏈選擇）
+- 數據對照（例如實驗結果 5 個任務的判斷一致性）
+
+## Frontmatter
+
+每篇 article 必須有 frontmatter：
+
+```markdown
+---
+title: [Article Title]
+status: [outline|draft|ready|published]
+audience: [developers|pms|other-vibe-coders]
+series: [optional]
+date: YYYY-MM-DD
+---
+```
+
+**禁止**：
+
+- ❌ 從 `outline` 跳 `published`（中間少了 self-review）
+- ❌ 沒有 frontmatter 就發布
+- ❌ frontmatter 用 emoji 或 markdown 強調
+
+## 章節結構
+
+- H2 章節，每章 ≤ 500 字
+- 章節用 `##` 標題、不用表格當小標
+- 段落 3–5 句為主，長段要拆
+
+## 列表紀律
+
+- 列表 ≤ 7 項，超過 7 項拆段
+- 流程類內容用有序列表而非表格
+
+## 發布前 checklist
+
+正式發布前**必須**逐項刷過：
+
+- [ ] 每篇的表格數 ≤ 5 個
+- [ ] 沒有表格包 code block
+- [ ] 沒有 2 行表格
+- [ ] 流程類內容用有序列表而非表格
+- [ ] 章節用 `##` 標題、不用表格當小標
+- [ ] 列表 ≤ 7 項（超過 7 項拆段）
+- [ ] 沒有「| 是 | 否 |」這種 yes/no 表格
+- [ ] 沒有「| 引言 | 內容 |」用表格當 callout
+- [ ] 沒有 code 嵌入 paragraph 而沒 code block
+- [ ] 沒有 raw log / JSON 內嵌散文
+- [ ] frontmatter `status` 是 `published`
+- [ ] frontmatter `date` 是今天或最近一次編輯日
+
+## 與 Skill 的分工
+
+| Skill 負責 | Rule 負責 |
+|---|---|
+| 何時進入寫作流程 | 寫作時必須遵守的紀律 |
+| 從 topic → outline → draft → polish 的步驟 | 表格使用規則的 fine-grained 判斷 |
+| 哪幾步要叫人 review | 排版檢查 checklist |
+
+引用 `.cursor/skills/article-writing/SKILL.md` 是 trigger 入口。
+本 rule 是紀律。
+
+## 禁止
+
+- ❌ 寫完直接 publish 不跑 checklist
+- ❌ 用大量表格偽裝結構清晰
+- ❌ 把 check item 寫成散文而非清單
+- ❌ 為了好讀硬砍技術精確度（必要時用 footnote 或加 section）
+- ❌ 把 DEV LOG 的 raw data 強行套本 rule 的表格限制
