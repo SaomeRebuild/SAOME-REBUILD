@@ -5,7 +5,7 @@
 > 後 `session.user === undefined`，所以 Header 判斷
 > `isAuthenticated = false` → 看起來像 session 丟了。
 >
-> 完整 trace 見 `runs/dev-logs/2026-08-08-bug-7-bug-trace.md`。
+> 完整 trace 見 `DEV/08-2026/0808-bug-7-trace.md`。
 
 ## 症狀
 
@@ -155,7 +155,7 @@ TDD 流程：寫 failing test → 確認 RED → 改 source → 確認 GREEN。
 
 ### 連到的 feedback / dev-log
 
-- `runs/dev-logs/2026-08-08-bug-7-bug-trace.md` — 完整 7 個 bug trace
+- `DEV/08-2026/0808-bug-7-trace.md` — 完整 7 個 bug trace
 - `runs/improvements/feedback/20260808-homepage-no-redirect.md` — Bug-7 的 UX follow-up
 
 ## 自問

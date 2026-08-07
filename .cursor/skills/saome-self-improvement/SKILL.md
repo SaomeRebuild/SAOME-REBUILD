@@ -91,7 +91,7 @@ echo ".cursor/agents/" >> .gitignore
 |---|---|
 | 「DEV LOG」「開發日誌」「事故記錄」「debug log」「trace」「寫個 reproduction」 | `saome-dev-logging` |
 | 「寫文章」「寫一篇」「polish」「給讀者看」「要發布」 | `article-writing` |
-| 修改 `runs/dev/*.md`、`DEV/**/*.md` | 走 DEV LOG 紀律（raw data 優先） |
+| 修改 `DEV/**/*.md` | 走 DEV LOG 紀律（raw data 優先） |
 | 修改 `runs/articles/*.md` | 走 article-style rule（讀者舒服優先） |
 | 使用者沒講 | 預設 DEV LOG（SAOME 內部居多） |
 

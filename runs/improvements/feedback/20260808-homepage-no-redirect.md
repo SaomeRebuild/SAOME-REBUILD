@@ -4,7 +4,7 @@
 > 公開頁（包括 `/`、`/demo`、`/pricing/compare`）都被踢回 dashboard。
 > 是 reverse-direction AuthGuard 套在 `HomePage` 太廣的後遺症。
 >
-> 完整 trace 見 `runs/dev-logs/2026-08-08-bug-7-bug-trace.md`。
+> 完整 trace 見 `DEV/08-2026/0808-bug-7-trace.md`。
 
 ## 症狀
 
@@ -180,7 +180,7 @@ back-button 重 render login form 確實會 confuse user（Bug-5 修的就是這
 
 ### 連到的 feedback / dev-log
 
-- `runs/dev-logs/2026-08-08-bug-7-bug-trace.md` — 完整 7 個 bug trace
+- `DEV/08-2026/0808-bug-7-trace.md` — 完整 7 個 bug trace
 - `runs/improvements/feedback/20260807-bug7-refresh-deploy-gap.md` — Bug-7b (refresh 沒 user/tenant)
 
 ## 自問

@@ -2,12 +2,18 @@
 
 > 觸發條件：使用者說「DEV LOG」「開發日誌」「debug log」「事故記錄」
 > 「寫個 trace」「留個記錄」、或任何明示要把這次修 bug / debug chain /
-> 決策過程寫下來、寫進 `DEV/` 或 `runs/dev/` 時。
+> 決策過程寫下來、寫進 `DEV/MM-YYYY/` 時。
 
 ## 目的
 
-把 SAOME 已經在用的 DEV LOG 格式（見 `DEV/07-2026/`、`runs/dev/`、
+把 SAOME 已經在用的 DEV LOG 格式（見 `DEV/07-2026/`、`DEV/08-2026/`、
 `runs/improvements/feedback/`）沉澱成可重複的 playbook。
+
+**DEV LOG 標準位置**：`DEV/MM-YYYY/DD-topic.md`
+- 月份用 2 位數（`07-2026`、`08-2026`）
+- 日期用 2 位數（`0726-`、`0731-`、`0808-`）
+- topic 用 kebab-case 簡述（例：`0731-register-form-chain.md`）
+- 跟既有 12 個歷史檔（`DEV/07-2026/`）的命名一致
 
 **對齊的對象**：
 - 規則：`.cursor/rules/articles/001-article-style.mdc`（DEV LOG **不適用**該 rule 的表格紀律）

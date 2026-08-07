@@ -1,8 +1,7 @@
 ---
-description: Article style discipline — applies to root-level long-form markdown under runs/articles/, runs/dev/, DEV/, and public-facing writes. Use glob `runs/articles/**/*.md` `runs/dev/**/*.md` `DEV/**/*.md`.
+description: Article style discipline — applies to root-level long-form markdown under runs/articles/, DEV/, and public-facing writes. Use glob `runs/articles/**/*.md` `DEV/**/*.md`.
 globs:
   - runs/articles/**/*.md
-  - runs/dev/**/*.md
   - DEV/**/*.md
 alwaysApply: false
 ---

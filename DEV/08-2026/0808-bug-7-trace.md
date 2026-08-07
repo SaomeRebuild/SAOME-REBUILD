@@ -5,7 +5,7 @@
 - **日期**：2026-08-08
 - **作者**：Josh（agent-assisted via Cursor）
 - **commit hash**：
-  - 規範 / 觀察：本檔（`runs/dev-logs/2026-08-08-bug-7-bug-trace.md`）
+  - 規範 / 觀察：本檔（`DEV/08-2026/0808-bug-7-trace.md`）
   - Bug-7 refresh fix：`52b23aa` (origin/main, sync ✅)
   - Bug-7 UX fix：`d6be7aa` (origin/main, sync ✅)
 - **規則 / skill 觸發**：`saome-self-improvement`、`saome-dev-logging`、`AGENTS.md § Auth flow 鐵律`、`rules/006-verification`、`rules/017-production-bundle-guard`

@@ -41,7 +41,6 @@ runs/*
 !runs/improvements/
 !runs/decisions/
 !runs/articles/
-!runs/dev-logs/
 
 # mu-plugins: read-only reference, never commit
 mu-plugins/
