@@ -28,7 +28,7 @@ export interface AuthShellProps {
 export function AuthShell({ title, subtitle, footer, children, langSwitcher }: AuthShellProps) {
   return (
     <main
-      className="min-h-screen px-4 py-8 sm:py-12 md:py-16"
+      className="min-h-screen px-4 pt-24 pb-8 sm:pt-12 sm:pb-12 md:pt-16 md:pb-16"
       style={{ backgroundColor: 'var(--color-background)' }}
     >
       <div className="mx-auto max-w-md">

@@ -42,10 +42,21 @@ export const en = {
       passwordLabel: 'Password',
       passwordPlaceholder: 'Password',
       submit: 'Sign in',
+      submitting: 'Signing in...',
       errorInvalid: 'Invalid email or password',
       sessionExpired: 'Your session has expired, please sign in again',
       noAccountPrompt: 'No account yet?',
       registerCta: 'Register now',
+      error: {
+        tooManyAttempts: 'Too many attempts, please try again later',
+        invalidCredentials: 'Invalid email or password',
+        unknown: 'An unknown error occurred, please try again later',
+        email: 'Please enter a valid email',
+        required: 'This field is required',
+      },
+      locked: {
+        message: 'Account locked. Try again in {{seconds}} seconds',
+      },
     },
     register: {
       step1Title: 'Step 1: Store info',

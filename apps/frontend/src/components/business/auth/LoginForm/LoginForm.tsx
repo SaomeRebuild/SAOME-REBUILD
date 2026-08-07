@@ -43,17 +43,19 @@ export function LoginForm() {
       // landing path.
     } catch (e) {
       recordFailure();
+      // Store the translation KEY, not the value, so switching languages
+      // after an error re-translates the message correctly.
       if (e instanceof SaomeApiError) {
         // The httpClient already syncs local lockout to the server's
         // retryAfterSec when 429 is returned. Surface a specific
         // message here so the user knows why their request bounced.
         if (e.isRateLimited) {
-          setServerError(t('login.error.tooManyAttempts'));
+          setServerError('login.error.tooManyAttempts');
         } else {
-          setServerError(t('login.error.invalidCredentials'));
+          setServerError('login.error.invalidCredentials');
         }
       } else {
-        setServerError(t('login.error.unknown'));
+        setServerError('login.error.unknown');
       }
     } finally {
       setSubmitting(false);
@@ -62,7 +64,7 @@ export function LoginForm() {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4" noValidate>
-      {serverError ? <ErrorBanner message={serverError} /> : null}
+      {serverError ? <ErrorBanner message={t(serverError)} /> : null}
       {isLocked ? (
         <ErrorBanner
           message={t('login.locked.message', { seconds: remainingSec })}

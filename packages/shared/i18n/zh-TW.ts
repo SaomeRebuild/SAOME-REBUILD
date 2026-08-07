@@ -42,10 +42,21 @@ export const zhTW = {
       passwordLabel: '密碼',
       passwordPlaceholder: '請輸入密碼',
       submit: '登入',
+      submitting: '登入中...',
       errorInvalid: '帳號或密碼錯誤',
       sessionExpired: '您的 session 已過期，請重新登入',
       noAccountPrompt: '還沒有帳號？',
       registerCta: '立即註冊',
+      error: {
+        tooManyAttempts: '嘗試次數過多，請稍後再試',
+        invalidCredentials: '帳號或密碼錯誤',
+        unknown: '發生未知錯誤，請稍後再試',
+        email: '請輸入有效的電子郵件',
+        required: '此欄位為必填',
+      },
+      locked: {
+        message: '帳號已被鎖定，{{seconds}} 秒後可再試',
+      },
     },
     register: {
       step1Title: 'Step 1：店家資料',
