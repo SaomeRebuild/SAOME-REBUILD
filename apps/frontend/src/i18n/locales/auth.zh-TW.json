@@ -35,6 +35,10 @@
     "subtitle": "註冊您的店家帳號",
     "step1Title": "Step 1：店家資訊",
     "step2Title": "Step 2：帳號資訊",
+    "steps": {
+      "storeInfo": "店家資料",
+      "account": "帳號資料"
+    },
     "contactName": "聯絡人姓名",
     "phoneCity": "市內電話",
     "mobile": "手機號碼",

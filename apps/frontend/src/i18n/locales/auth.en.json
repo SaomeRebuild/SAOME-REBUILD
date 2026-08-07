@@ -35,6 +35,10 @@
     "subtitle": "Register your store",
     "step1Title": "Step 1: Store info",
     "step2Title": "Step 2: Account info",
+    "steps": {
+      "storeInfo": "Store info",
+      "account": "Account"
+    },
     "contactName": "Contact name",
     "phoneCity": "Office phone",
     "mobile": "Mobile number",
