@@ -16,7 +16,15 @@ import { describe, it, expect } from 'vitest';
 describe('config/env', () => {
   it('exports apiBaseUrl', async () => {
     const { env } = await import('./env');
-    expect(env.apiBaseUrl).toBeTruthy();
+    // Bug-7: in dev with VITE_API_BASE_URL='', apiBaseUrl is empty (means
+    // "use Vite proxy"). Production must be a full URL.
+    if ((import.meta as { env?: { PROD?: boolean } }).env?.PROD) {
+      expect(env.apiBaseUrl).toBeTruthy();
+      expect(env.apiBaseUrl).toMatch(/^https:\/\//);
+    } else {
+      // Dev: empty (proxy) or a URL are both acceptable.
+      expect(typeof env.apiBaseUrl).toBe('string');
+    }
   });
 
   it('does not silently fall back to localhost in production', async () => {

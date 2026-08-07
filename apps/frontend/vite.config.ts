@@ -41,9 +41,13 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:8787',
-        changeOrigin: false,
-        secure: false,
+        // Bug-7 fix dev mode: proxy same-origin /api to production backend.
+        // Cookies will be set as same-origin by the browser, sidestepping the
+        // `SameSite=Lax` cross-site rejection. Production frontend deploys
+        // don't use this proxy and hit the backend directly.
+        target: 'https://saome-backend.josh1989213.workers.dev',
+        changeOrigin: true,
+        secure: true,
       },
     },
   },
