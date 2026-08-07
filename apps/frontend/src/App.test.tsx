@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -13,6 +13,19 @@ import { CTASection } from './components/home/CTASection';
 import { TermsPage } from './pages/legal/TermsPage';
 import { PrivacyPage } from './pages/legal/PrivacyPage';
 import { GDPRPage } from './pages/legal/GDPRPage';
+import { AuthProvider } from '@/hooks';
+
+// Suppress "useAuth must be used inside AuthProvider" — setup.ts already mocks
+// authService.refresh to reject, so Header renders in "logged-out" state.
+vi.mock('@/services/authService', () => ({
+  authService: {
+    login: vi.fn(),
+    register: vi.fn(),
+    me: vi.fn(),
+    logout: vi.fn(),
+    refresh: vi.fn().mockRejectedValue(new Error('no session')),
+  },
+}));
 
 function HomePage() {
   return (
@@ -45,18 +58,20 @@ const renderApp = (initialRoute = '/') => {
 
   return render(
     <MemoryRouter initialEntries={[initialRoute]}>
-      <Header />
-      <main className="flex-1">
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<LoginPage />} />
-          <Route path="/terms" element={<TermsPage />} />
-          <Route path="/privacy" element={<PrivacyPage />} />
-          <Route path="/gdpr" element={<GDPRPage />} />
-        </Routes>
-      </main>
-      <Footer />
+      <AuthProvider>
+        <Header />
+        <main className="flex-1">
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<LoginPage />} />
+            <Route path="/terms" element={<TermsPage />} />
+            <Route path="/privacy" element={<PrivacyPage />} />
+            <Route path="/gdpr" element={<GDPRPage />} />
+          </Routes>
+        </main>
+        <Footer />
+      </AuthProvider>
     </MemoryRouter>,
   );
 };

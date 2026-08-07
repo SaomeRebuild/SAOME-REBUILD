@@ -9,21 +9,36 @@ import { Features } from '@/components/home/Features';
 import { HowItWorks } from '@/components/home/HowItWorks';
 import { PricingSection } from '@/components/pricing/PricingSection';
 import { CTASection } from '@/components/home/CTASection';
+import { AuthProvider } from '@/hooks/useAuth';
+
+// Suppress "useAuth must be used inside AuthProvider" — setup.ts already mocks
+// authService.refresh to reject, so Header renders in "logged-out" state.
+vi.mock('@/services/authService', () => ({
+  authService: {
+    login: vi.fn(),
+    register: vi.fn(),
+    me: vi.fn(),
+    logout: vi.fn(),
+    refresh: vi.fn().mockRejectedValue(new Error('no session')),
+  },
+}));
 
 const renderHomepage = () => {
   window.scrollTo = vi.fn();
   return render(
     <MemoryRouter initialEntries={['/']}>
-      <Header />
-      <main>
-        <Hero />
-        <SocialProof />
-        <Features />
-        <HowItWorks />
-        <PricingSection />
-        <CTASection />
-      </main>
-      <Footer />
+      <AuthProvider>
+        <Header />
+        <main>
+          <Hero />
+          <SocialProof />
+          <Features />
+          <HowItWorks />
+          <PricingSection />
+          <CTASection />
+        </main>
+        <Footer />
+      </AuthProvider>
     </MemoryRouter>,
   );
 };
