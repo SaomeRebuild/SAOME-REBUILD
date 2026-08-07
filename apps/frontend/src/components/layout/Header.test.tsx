@@ -1,17 +1,62 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen, act } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, act, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { Header } from './Header';
+import { AuthProvider } from '@/hooks/useAuth';
+import { authService } from '@/services/authService';
+import type { AuthSessionWithTenant } from '@saome/shared/types/auth';
+import { ROLE_HOME_PATH } from '@saome/shared/constants/role';
 
-const renderHeader = (initialRoute = '/') =>
-  render(
+// ── Mock authService ─────────────────────────────────────────────────────────
+
+vi.mock('@/services/authService', () => ({
+  authService: {
+    login: vi.fn(),
+    register: vi.fn(),
+    refresh: vi.fn(),
+    me: vi.fn(),
+    logout: vi.fn(),
+  },
+}));
+
+const adminSession: AuthSessionWithTenant = {
+  user: { id: 'admin-id', email: 'admin@saome.org', role: 'admin' },
+  tenant: null,
+  accessToken: 'fake-access-token',
+  expiresIn: 28800,
+  refreshToken: 'fake-refresh-token',
+};
+
+// ── Render helper ──────────────────────────────────────────────────────────────
+
+function renderHeader(initialRoute = '/', authState?: { authenticated: boolean }) {
+  if (authState?.authenticated) {
+    // Bug-7 follow-up: refresh now returns full session.
+    vi.mocked(authService.refresh).mockResolvedValue({
+      user: adminSession.user,
+      tenant: null,
+      accessToken: adminSession.accessToken,
+      expiresIn: adminSession.expiresIn ?? 28800,
+    });
+  } else {
+    vi.mocked(authService.refresh).mockRejectedValue(new Error('no session'));
+  }
+
+  return render(
     <MemoryRouter initialEntries={[initialRoute]}>
-      <Header />
+      <AuthProvider>
+        <Header />
+      </AuthProvider>
     </MemoryRouter>,
   );
+}
 
 describe('Header', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   describe('basic rendering', () => {
     it('renders SAOME logo text', () => {
       renderHeader();
@@ -36,7 +81,7 @@ describe('Header', () => {
       expect(desktopNav).toHaveTextContent('定價');
     });
 
-    it('renders login link', () => {
+    it('renders login link when unauthenticated', () => {
       renderHeader();
       const loginLinks = screen.getAllByRole('link', { name: '登入' });
       expect(loginLinks.length).toBeGreaterThanOrEqual(1);
@@ -45,7 +90,7 @@ describe('Header', () => {
       });
     });
 
-    it('renders get started CTA linking to register', () => {
+    it('renders get started CTA linking to register when unauthenticated', () => {
       renderHeader();
       const ctaLinks = screen.getAllByRole('link', { name: '開始使用' });
       expect(ctaLinks.length).toBeGreaterThanOrEqual(1);
@@ -55,11 +100,87 @@ describe('Header', () => {
     });
   });
 
-  describe('mobile menu', () => {
-    it('renders hamburger menu button with aria-label', () => {
-      renderHeader();
+  describe('auth-aware desktop UI', () => {
+    it('shows logout button and user email when authenticated', async () => {
+      renderHeader('/', { authenticated: true });
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('auth-user-email')).toBeInTheDocument();
+      });
+      expect(screen.getByTestId('auth-user-email')).toHaveTextContent('admin@saome.org');
+      expect(screen.getByTestId('desktop-logout-btn')).toBeInTheDocument();
+    });
+
+    // UX fix 2026-08-08: clicking the user email should take the user to their
+    // role-based dashboard. This replaces the previous "reverse-direction
+    // AuthGuard on HomePage" behaviour, which forced logged-in users away
+    // from any page they clicked on.
+    it('exposes the user email as a link to the role dashboard', async () => {
+      renderHeader('/', { authenticated: true });
+      await waitFor(() => {
+        expect(screen.getByTestId('auth-user-email')).toBeInTheDocument();
+      });
+      const emailLink = screen.getByTestId('auth-user-email').closest('a');
+      expect(emailLink).not.toBeNull();
+      expect(emailLink).toHaveAttribute('href', ROLE_HOME_PATH.admin);
+    });
+
+    it('shows login link when unauthenticated', async () => {
+      renderHeader('/', { authenticated: false });
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('auth-user-email')).toBeNull();
+      });
+      expect(screen.getAllByRole('link', { name: '登入' }).length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('calls logout when logout button is clicked', async () => {
+      renderHeader('/', { authenticated: true });
+      await waitFor(() => {
+        expect(screen.getByTestId('desktop-logout-btn')).toBeInTheDocument();
+      });
+
+      const user = userEvent.setup();
+      await user.click(screen.getByTestId('desktop-logout-btn'));
+      // authService.logout is a no-op server-side; AuthProvider clears local state
+      expect(authService.logout).toHaveBeenCalled();
+    });
+  });
+
+  describe('auth-aware mobile menu', () => {
+    it('shows logout button and user email in mobile menu when authenticated', async () => {
+      renderHeader('/', { authenticated: true });
+
+      // Open mobile menu
       const hamburger = screen.getByRole('button', { name: 'Open menu' });
-      expect(hamburger).toBeInTheDocument();
+      await userEvent.setup().click(hamburger);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('mobile-auth-user-email')).toBeInTheDocument();
+      });
+      expect(screen.getByTestId('mobile-auth-user-email')).toHaveTextContent('admin@saome.org');
+      expect(screen.getByTestId('mobile-logout-btn')).toBeInTheDocument();
+    });
+
+    it('calls logout when mobile logout button is clicked', async () => {
+      renderHeader('/', { authenticated: true });
+
+      // Open mobile menu
+      const hamburger = screen.getByRole('button', { name: 'Open menu' });
+      await userEvent.setup().click(hamburger);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('mobile-logout-btn')).toBeInTheDocument();
+      });
+      await userEvent.setup().click(screen.getByTestId('mobile-logout-btn'));
+      expect(authService.logout).toHaveBeenCalled();
+    });
+  });
+
+  describe('mobile menu', () => {
+    it('renders hamburger menu button with aria-label', async () => {
+      renderHeader();
+      expect(screen.getByRole('button', { name: 'Open menu' })).toBeInTheDocument();
     });
 
     it('does not show mobile menu drawer initially', () => {

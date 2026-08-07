@@ -1,8 +1,10 @@
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Menu, X } from 'lucide-react';
+import { Menu, X, LogOut } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/hooks';
+import { ROLE_HOME_PATH, type Role } from '@saome/shared/constants/role';
 
 interface HeaderProps {
   className?: string;
@@ -10,8 +12,17 @@ interface HeaderProps {
 
 export function Header({ className }: HeaderProps) {
   const { t } = useTranslation();
+  const { state, isAuthenticated, logout } = useAuth();
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // Dashboard link target depends on the user's role. For anonymous visitors
+  // we fall back to '#' (never reached in practice — see `isAuthenticated`
+  // branch below).
+  const dashboardPath =
+    state.user?.role && (state.user.role === 'admin' || state.user.role === 'tenant')
+      ? ROLE_HOME_PATH[state.user.role as Role]
+      : '#';
 
   useEffect(() => {
     const handleScroll = () => {
@@ -39,6 +50,11 @@ export function Header({ className }: HeaderProps) {
     { href: '/#about', label: t('nav.about') },
     { href: '/#features', label: t('nav.features') },
   ];
+
+  const handleLogout = () => {
+    logout();
+    setIsMobileMenuOpen(false);
+  };
 
   return (
     <>
@@ -94,26 +110,52 @@ export function Header({ className }: HeaderProps) {
             </nav>
 
             <div className="hidden items-center gap-3 lg:flex">
-              <Link
-                to="/login"
-                className="text-sm font-medium transition-colors hover:opacity-80"
-                style={{ color: 'var(--color-muted-foreground)' }}
-              >
-                {t('nav.login')}
-              </Link>
-              <Link
-                to="/register"
-                className="inline-flex items-center justify-center rounded-md transition-all hover:opacity-90 hover:-translate-y-px active:translate-y-0 interactive-scale"
-                style={{
-                  backgroundColor: 'var(--color-primary)',
-                  color: 'var(--color-on-primary)',
-                  padding: '0.5rem 1rem',
-                  fontSize: '0.875rem',
-                  fontWeight: 500,
-                }}
-              >
-                {t('nav.getStarted')}
-              </Link>
+              {isAuthenticated ? (
+                <>
+                  <Link
+                    to={dashboardPath}
+                    className="text-sm font-medium transition-colors hover:opacity-80"
+                    style={{ color: 'var(--color-muted-foreground)' }}
+                    data-testid="auth-user-email"
+                    aria-label={t('nav.openDashboard')}
+                  >
+                    {state.user?.email}
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={logout}
+                    className="inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors hover:opacity-80"
+                    style={{ color: 'var(--color-muted-foreground)' }}
+                    data-testid="desktop-logout-btn"
+                  >
+                    <LogOut size={16} aria-hidden="true" />
+                    {t('nav.logout')}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Link
+                    to="/login"
+                    className="text-sm font-medium transition-colors hover:opacity-80"
+                    style={{ color: 'var(--color-muted-foreground)' }}
+                  >
+                    {t('nav.login')}
+                  </Link>
+                  <Link
+                    to="/register"
+                    className="inline-flex items-center justify-center rounded-md transition-all hover:opacity-90 hover:-translate-y-px active:translate-y-0 interactive-scale"
+                    style={{
+                      backgroundColor: 'var(--color-primary)',
+                      color: 'var(--color-on-primary)',
+                      padding: '0.5rem 1rem',
+                      fontSize: '0.875rem',
+                      fontWeight: 500,
+                    }}
+                  >
+                    {t('nav.getStarted')}
+                  </Link>
+                </>
+              )}
             </div>
 
             <button
@@ -169,28 +211,54 @@ export function Header({ className }: HeaderProps) {
               className="mt-auto flex flex-col gap-2 border-t p-4"
               style={{ borderColor: 'var(--color-border)' }}
             >
-              <Link
-                to="/login"
-                className="w-full rounded-md border px-4 py-3 text-center text-sm font-medium transition-colors hover:opacity-80"
-                style={{
-                  borderColor: 'var(--color-border)',
-                  color: 'var(--color-muted-foreground)',
-                }}
-                onClick={() => setIsMobileMenuOpen(false)}
-              >
-                {t('nav.login')}
-              </Link>
-              <Link
-                to="/register"
-                className="w-full rounded-md px-4 py-3 text-center text-sm font-medium transition-all hover:opacity-90"
-                style={{
-                  backgroundColor: 'var(--color-primary)',
-                  color: 'var(--color-on-primary)',
-                }}
-                onClick={() => setIsMobileMenuOpen(false)}
-              >
-                {t('nav.getStarted')}
-              </Link>
+              {isAuthenticated ? (
+                <>
+                  <Link
+                    to={dashboardPath}
+                    className="w-full rounded-md border px-4 py-3 text-center text-sm font-medium"
+                    style={{ borderColor: 'var(--color-border)', color: 'var(--color-muted-foreground)' }}
+                    data-testid="mobile-auth-user-email"
+                    aria-label={t('nav.openDashboard')}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    {state.user?.email}
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="w-full rounded-md border px-4 py-3 text-center text-sm font-medium transition-colors hover:opacity-80"
+                    style={{ borderColor: 'var(--color-border)', color: 'var(--color-muted-foreground)' }}
+                    data-testid="mobile-logout-btn"
+                  >
+                    {t('nav.logout')}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Link
+                    to="/login"
+                    className="w-full rounded-md border px-4 py-3 text-center text-sm font-medium transition-colors hover:opacity-80"
+                    style={{
+                      borderColor: 'var(--color-border)',
+                      color: 'var(--color-muted-foreground)',
+                    }}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    {t('nav.login')}
+                  </Link>
+                  <Link
+                    to="/register"
+                    className="w-full rounded-md px-4 py-3 text-center text-sm font-medium transition-all hover:opacity-90"
+                    style={{
+                      backgroundColor: 'var(--color-primary)',
+                      color: 'var(--color-on-primary)',
+                    }}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    {t('nav.getStarted')}
+                  </Link>
+                </>
+              )}
             </div>
           </nav>
         </div>

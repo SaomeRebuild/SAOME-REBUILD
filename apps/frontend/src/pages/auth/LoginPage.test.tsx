@@ -54,14 +54,12 @@ describe('LoginPage back-button guard', () => {
   });
 
   it('redirects an already-authenticated admin to /admin/dashboard', async () => {
-    // refresh() returns a token; me() returns the matching admin payload.
+    // Bug-7 follow-up: refresh() now returns the full session.
     vi.mocked(authService.refresh).mockResolvedValue({
-      accessToken: adminSession.accessToken,
-      expiresIn: adminSession.expiresIn ?? 900,
-    });
-    vi.mocked(authService.me).mockResolvedValue({
       user: adminSession.user,
       tenant: null,
+      accessToken: adminSession.accessToken,
+      expiresIn: adminSession.expiresIn ?? 900,
     });
 
     renderLoginWith('/login');
@@ -72,7 +70,6 @@ describe('LoginPage back-button guard', () => {
 
   it('renders the LoginForm when no session exists', async () => {
     vi.mocked(authService.refresh).mockRejectedValue(new Error('no refresh cookie'));
-    vi.mocked(authService.me).mockRejectedValue(new Error('no me'));
 
     renderLoginWith('/login');
 

@@ -7,6 +7,8 @@
     "product": "Product",
     "demo": "Demo",
     "login": "Login",
+    "logout": "Logout",
+    "openDashboard": "Open dashboard",
     "getStarted": "Get Started"
   },
   "hero": {

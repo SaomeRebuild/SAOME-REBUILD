@@ -4,6 +4,11 @@
  * Uses `httpClient` for transport. Refresh token is stored in an HttpOnly cookie
  * set by the backend, so this service does not handle token persistence directly.
  * Access tokens are held in memory by the AuthProvider (via state).
+ *
+ * Bug-7 follow-up: `refresh()` now returns the full session (user + tenant +
+ * accessToken) so the AuthProvider can recover the session on page reload
+ * without a second `/api/auth/me` call. The /me endpoint still exists for
+ * callers that already have an access token in memory.
  */
 
 import { httpClient } from './httpClient';
@@ -21,11 +26,6 @@ interface MeResponse {
   tenant: AuthTenant | null;
 }
 
-interface RefreshResponse {
-  accessToken: string;
-  expiresIn: number;
-}
-
 export const authService = {
   async login(creds: LoginCredentials): Promise<AuthSessionWithTenant> {
     return httpClient.post<AuthSessionWithTenant>(api.paths.login, creds);
@@ -35,8 +35,11 @@ export const authService = {
     return httpClient.post<AuthSessionWithTenant>(api.paths.register, payload);
   },
 
-  async refresh(): Promise<RefreshResponse> {
-    return httpClient.post<RefreshResponse>(api.paths.refresh);
+  async refresh(): Promise<AuthSessionWithTenant> {
+    // Bug-7 follow-up: backend now returns the full session in the refresh
+    // response, so this single call is enough for AuthProvider to recover
+    // the user/tenant on mount.
+    return httpClient.post<AuthSessionWithTenant>(api.paths.refresh);
   },
 
   async me(): Promise<MeResponse> {

@@ -13,6 +13,8 @@ export interface AuthState {
   tenant: AuthTenant | null;
   accessToken: string | null;
   loading: boolean;
+  /** Unix ms when the current access token expires (set from `expiresIn`). */
+  expiresAt: number | null;
 }
 
 export interface AuthContextValue {
@@ -31,6 +33,7 @@ const initialState: AuthState = {
   tenant: null,
   accessToken: null,
   loading: true,
+  expiresAt: null,
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -47,14 +50,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     (async () => {
       try {
-        const refreshed = await authService.refresh();
-        if (cancelled) return;
-        const session = await authService.me();
+        // Bug-7 follow-up: refresh() now returns the full session (user + tenant)
+        // so we can populate state without a separate /me call.
+        const session = await authService.refresh();
         if (cancelled) return;
         setStateRaw({
           user: session.user,
-          tenant: session.tenant,
-          accessToken: refreshed.accessToken,
+          tenant: session.tenant ?? null,
+          accessToken: session.accessToken,
+          expiresAt: Date.now() + (session.expiresIn ?? 28800) * 1000,
           loading: false,
         });
       } catch {
@@ -67,12 +71,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // Proactive refresh: fire ~1 hour before token expires to avoid silent expiry.
+  // Also acts as a keep-alive ping so the session stays alive across page navigations.
+  useEffect(() => {
+    if (!state.expiresAt || state.loading) return;
+
+    const MS_BEFORE_EXPIRY_TO_REFRESH = 60 * 60 * 1000; // 1 hour
+    const INTERVAL_MS = 60 * 60 * 1000; // refresh every hour
+
+    function scheduleNext() {
+      const now = Date.now();
+      const msUntilRefresh = state.expiresAt! - now - MS_BEFORE_EXPIRY_TO_REFRESH;
+      const delay = Math.max(INTERVAL_MS, msUntilRefresh);
+
+      const timerId = window.setTimeout(async () => {
+        try {
+          const refreshed = await authService.refresh();
+          setStateRaw((s) => ({
+            ...s,
+            accessToken: refreshed.accessToken,
+            expiresAt: Date.now() + (refreshed.expiresIn ?? 28800) * 1000,
+          }));
+        } catch {
+          // Silently ignore refresh failures here — the next API call will
+          // trigger another retry via httpClient.tryRefresh().
+        }
+        scheduleNext(); // schedule the next tick
+      }, delay);
+
+      return timerId;
+    }
+
+    const timerId = scheduleNext();
+    return () => {
+      if (timerId) window.clearTimeout(timerId);
+    };
+  }, [state.expiresAt, state.loading]);
+
   const login = useCallback(async (creds: LoginCredentials) => {
     const session = await authService.login(creds);
     setStateRaw({
       user: session.user,
       tenant: session.tenant ?? null,
       accessToken: session.accessToken,
+      expiresAt: Date.now() + (session.expiresIn ?? 28800) * 1000,
       loading: false,
     });
   }, []);
@@ -84,6 +126,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user: session.user,
       tenant,
       accessToken: session.accessToken,
+      expiresAt: Date.now() + (session.expiresIn ?? 28800) * 1000,
       loading: false,
     });
     return tenant!;
@@ -91,12 +134,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     authService.logout();
-    setStateRaw({ user: null, tenant: null, accessToken: null, loading: false });
+    setStateRaw({ user: null, tenant: null, accessToken: null, expiresAt: null, loading: false });
   }, []);
 
   const refresh = useCallback(async () => {
     const refreshed = await authService.refresh();
-    setStateRaw((s) => ({ ...s, accessToken: refreshed.accessToken }));
+    setStateRaw((s) => ({
+      ...s,
+      accessToken: refreshed.accessToken,
+      expiresAt: Date.now() + (refreshed.expiresIn ?? 28800) * 1000,
+    }));
   }, []);
 
   const value = useMemo<AuthContextValue>(
