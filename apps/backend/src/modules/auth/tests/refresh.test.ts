@@ -28,6 +28,11 @@ vi.mock('../db/users', () => ({
   insertUser: vi.fn(),
 }));
 
+vi.mock('../db/tenants', () => ({
+  findTenantByOwnerId: vi.fn().mockResolvedValue(null),
+  insertTenant: vi.fn(),
+}));
+
 import { findUserById } from '../db/users';
 import { signAccessToken, signRefreshToken, verifyToken } from '@/shared/lib/jwt';
 import { errorHandler } from '@/shared/middleware/errorHandler';
@@ -95,6 +100,23 @@ describe('POST /api/auth/refresh', () => {
     expect(body.accessToken).toBe('new-access');
     expect(body.refreshToken).toBe('new-refresh');
     expect(res.headers.get('Set-Cookie')).toContain('saome_refresh=new-refresh');
+  });
+
+  // Bug-7 follow-up: refresh response must include user + tenant so the
+  // frontend AuthProvider can recover the session on a full page reload
+  // (without an additional /api/auth/me call which previously 401'd because
+  // the AuthProvider hadn't yet threaded the freshly-issued access token).
+  it('refresh response includes user + tenant (Bug-7 follow-up)', async () => {
+    const app = buildApp();
+    const res = await callRefresh(app, 'saome_refresh=old-refresh-token');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.user).toEqual({
+      id: 'user-1',
+      email: 'user' + '@example.com',
+      role: 'tenant',
+    });
+    expect(body.tenant).toBeNull(); // mocked findTenantByOwnerId resolves null
   });
 
   it('missing refresh cookie returns 401 UNAUTHORIZED', async () => {

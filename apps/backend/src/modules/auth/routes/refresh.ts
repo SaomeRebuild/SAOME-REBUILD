@@ -7,7 +7,7 @@ import type { HonoEnv } from '@/shared/types/bindings';
 import { refreshService } from '../services/refreshService';
 import { AuthError } from '@/shared/lib/saomeError';
 import { getDb } from '@/shared/db/client';
-import { refreshCookieDomain } from '@/shared/lib/cookieDomain';
+import { refreshCookieDomain, refreshCookieSecure, refreshCookieSameSite } from '@/shared/lib/cookieDomain';
 
 function getRefreshCookie(cookieHeader: string | undefined): string | undefined {
   if (!cookieHeader) return undefined;
@@ -36,17 +36,16 @@ export const refreshRoute = new Hono<HonoEnv>().post('/', async (c) => {
   const result = await refreshService(sql, jwtSecret, token, ttl);
 
   if (result.refreshToken) {
-    const domainAttr = refreshCookieDomain(c.req.header('Origin'));
+    const origin = c.req.header('Origin');
+    const domainAttr = refreshCookieDomain(origin);
+    const secureAttr = refreshCookieSecure(origin);
+    const sameSiteAttr = refreshCookieSameSite(origin);
     c.res.headers.append(
       'Set-Cookie',
-      `saome_refresh=${result.refreshToken}; HttpOnly; Secure; SameSite=Lax; Path=/api/auth${domainAttr}; Max-Age=2592000`,
+      `saome_refresh=${result.refreshToken}; HttpOnly${secureAttr}${sameSiteAttr}; Path=/api/auth${domainAttr}; Max-Age=2592000`,
     );
   }
-  return c.json({
-    accessToken: result.accessToken,
-    expiresIn: result.expiresIn,
-    refreshToken: result.refreshToken,
-  });
+  return c.json(result);
 });
 
 export default refreshRoute;
