@@ -59,6 +59,19 @@ alwaysApply: true
 | Important | 重要問題，merge 前修復 | Block merge |
 | Minor | 輕微問題，可記錄稍後修復 | Allow merge |
 
+### Production severity bridge（與 `AGENTS.md § Auth flow 鐵律` 對齊）
+
+Review 標等級時，**同步**判斷 production severity，方便 review comment 直接貼 SEV tag：
+
+| Tag | 觸發條件 | 對應等級 |
+|---|---|---|
+| `SEV-1` | critical path 上 user-visible chain failure（典型：auth / payment / session recovery）| Critical |
+| `SEV-2` | 部分 user failure，有 workaround | Critical |
+| `SEV-3` | 次要失效，不擋 flow | Important |
+| `SEV-4` | cosmetic / 純文件 | Minor |
+
+> 來源：`DEV/08-2026/0808-bug-7-trace.md` — Bug-4 umbrella / Bug-5 / Bug-7 都是「L2 scope 但 SEV-1」的典型例子。詳見 `AGENTS.md § Auth flow 鐵律`。
+
 ## 禁止
 
 - ❌ 跳過 Critical/Important 問題直接 merge

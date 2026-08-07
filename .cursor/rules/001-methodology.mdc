@@ -109,6 +109,23 @@ flowchart TD
 - ❌ smoke test 失敗就 deploy
 - ❌ 跳過 code review 直接 merge（L3）
 
+## Critical chain bridge（Pattern 5 — 2026-08-08 加）
+
+Task-router 的 L1/L2/L3 看的是**修法 scope**，不看**修法所在的 chain 是不是 critical**。Bug-4b/4c/4d 都是「L2 scope bug fix 但在 critical path（auth / payment / session recovery）」，結果用 L2 流程過 review，卻是 SEV-1。
+
+鐵律：
+
+> critical chain 上的 bug fix（含 L2 scope）→ 必須附加 production smoke test。
+
+觸發關鍵字覆寫：
+
+| 表面 scope | 所在 chain | 實際走 |
+|---|---|---|
+| L1/L2 fix | 非 critical（純 UI / 文案）| 維持原級距 |
+| L1/L2 fix | **critical**（auth / payment / session recovery / checkout）| **自動升 L3**（要走 production smoke）|
+
+詳見 `.cursor/skills/saome-task-router/SKILL.md` Step 3（腦霧檢查）與 `AGENTS.md § Auth flow 鐵律`（背景）。
+
 ## 觸發關鍵字
 
 | 關鍵字 | task-router 等級 |

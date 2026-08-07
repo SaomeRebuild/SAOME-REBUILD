@@ -173,6 +173,10 @@ L3 Heavy 任務**必須**寫 `runs/decisions/YYYY-MM-DD-<topic>.md`，含三段�
 3. **AuthGuard 必有對稱 reverse-direction**：每一個 `<AuthGuard>`（未登入 → 推 login）必對應一個 `<AuthenticatedRedirect>`（已登入 → 推 home）。back button 是常見的回歸來源。
 4. **「It works but it looks wrong」仍是 P0**：每個 placeholder / L1 元件必須跑 `forbidden-class scan`（禁 `bg-white` / `text-neutral-{50..900}` / `bg-[#abc]` 等 hardcoded colour），參考 `apps/frontend/src/components/ui/feedback/ComingSoonCard.test.tsx` 的實作。
 
+> 這 4 條鐵律來自 7 個 bug 的教訓（見 `DEV/08-2026/0808-bug-7-trace.md` — Bug-4 umbrella / 4b / 4c / 4d / 5 / 6 / 7a / 7b / 7 follow-up）。任何 auth-related work 必先讀該檔。決策依據見 `DEV/08-2026/0808-dev.md`。
+>
+> 注意：auth / payment / session recovery / checkout 都是 **critical chain**。修這條 chain 上的 bug 即便 scope 看似 L2，也必須走 L3 流程 + production smoke test（詳見 `.cursor/rules/001-methodology.mdc` § Critical chain bridge 與 `.cursor/skills/saome-task-router/SKILL.md` Step 5）。
+
 ## CORS / Mixed Content 鐵律
 
 任何 deploy 後的整合測試**必須**包含這兩個靜態檢查，缺一即視為 deploy 失敗：
