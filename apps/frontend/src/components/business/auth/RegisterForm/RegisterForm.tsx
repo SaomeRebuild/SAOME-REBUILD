@@ -53,8 +53,8 @@ export function RegisterForm() {
 
   // i18n step labels — must be inside component to use `t`
   const steps = [
-    { label: t('auth.register.steps.storeInfo') },
-    { label: t('auth.register.steps.account') },
+    { label: t('register.steps.storeInfo') },
+    { label: t('register.steps.account') },
   ];
 
   const tenantForm = useForm<TenantInfoInput>({
