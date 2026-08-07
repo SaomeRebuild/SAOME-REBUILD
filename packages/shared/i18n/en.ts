@@ -61,6 +61,10 @@ export const en = {
     register: {
       step1Title: 'Step 1: Store info',
       step2Title: 'Step 2: Account info',
+      steps: {
+        storeInfo: 'Store info',
+        account: 'Account',
+      },
       fields: {
         contactName: 'Contact name',
         phoneCity: 'Office phone',

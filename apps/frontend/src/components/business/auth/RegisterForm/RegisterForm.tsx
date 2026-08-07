@@ -33,11 +33,6 @@ import { SaomeApiError } from '@/services/httpClient';
 import { useNavigate } from 'react-router-dom';
 import { ROUTES } from '@/config/routes';
 
-const steps = [
-  { label: 'Store info' },
-  { label: 'Account' },
-];
-
 /**
  * Translate a react-hook-form error message (zod i18n key) to a human-readable i18n string.
  * Falls back to the raw key so we never show an untranslated string.
@@ -55,6 +50,12 @@ export function RegisterForm() {
   const [serverError, setServerError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [serverFieldErrors, setServerFieldErrors] = useState<Record<string, string>>({});
+
+  // i18n step labels — must be inside component to use `t`
+  const steps = [
+    { label: t('auth.register.steps.storeInfo') },
+    { label: t('auth.register.steps.account') },
+  ];
 
   const tenantForm = useForm<TenantInfoInput>({
     resolver: zodResolver(tenantInfoSchema) as never,

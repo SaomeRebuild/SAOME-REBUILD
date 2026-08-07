@@ -61,6 +61,10 @@ export const zhTW = {
     register: {
       step1Title: 'Step 1：店家資料',
       step2Title: 'Step 2：帳號資料',
+      steps: {
+        storeInfo: '店家資料',
+        account: '帳號資料',
+      },
       fields: {
         contactName: '聯絡人姓名',
         phoneCity: '市內電話',
