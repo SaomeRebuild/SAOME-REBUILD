@@ -216,6 +216,70 @@ describe('POST /api/auth/login', () => {
     });
   });
 
+  // Per Bug-7 (session-loss on HTTP dev page): browsers reject `Secure` cookies
+  // when the document is non-secure (HTTP). For dev origins like
+  // http://localhost:5173 the backend must drop the `Secure` flag so the cookie
+  // can be stored and sent on subsequent navigations. Production HTTPS origins
+  // keep the `Secure` flag.
+  //
+  // Bug-7 follow-up: `SameSite=Lax` cookies are NOT attached to cross-site
+  // POST subrequests, which causes `refresh()` from a different-site frontend
+  // to silently miss the cookie. We must emit `SameSite=None` for HTTPS
+  // origins (which mandates `Secure`) so the cookie survives cross-site
+  // navigations between the frontend and backend.
+  describe('Set-Cookie Secure + SameSite flags (Bug-7)', () => {
+    it('HTTPS origin: emits Secure + SameSite=None', async () => {
+      const app = buildApp();
+      const res = await app.request(
+        'http://localhost/api/auth/login',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Origin: 'https://app.saome.org',
+          },
+          body: JSON.stringify(validCreds),
+        },
+        testEnv,
+      );
+      const setCookie = res.headers.get('Set-Cookie') ?? '';
+      expect(setCookie).toContain('saome_refresh=refresh');
+      expect(setCookie).toMatch(/;\s*Secure\b/);
+      expect(setCookie).toMatch(/SameSite=None/);
+      expect(setCookie).not.toMatch(/SameSite=Lax/);
+    });
+
+    it('HTTP origin: drops Secure, keeps SameSite=Lax', async () => {
+      const app = buildApp();
+      const res = await app.request(
+        'http://localhost/api/auth/login',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Origin: 'http://localhost:5173',
+          },
+          body: JSON.stringify(validCreds),
+        },
+        testEnv,
+      );
+      const setCookie = res.headers.get('Set-Cookie') ?? '';
+      expect(setCookie).toContain('saome_refresh=refresh');
+      expect(setCookie).not.toMatch(/;\s*Secure\b/);
+      expect(setCookie).toMatch(/SameSite=Lax/);
+      expect(setCookie).not.toMatch(/SameSite=None/);
+    });
+
+    it('Missing Origin: defaults to Secure + SameSite=None (production)', async () => {
+      const app = buildApp();
+      const res = await callLogin(app, validCreds);
+      const setCookie = res.headers.get('Set-Cookie') ?? '';
+      expect(setCookie).toContain('saome_refresh=refresh');
+      expect(setCookie).toMatch(/;\s*Secure\b/);
+      expect(setCookie).toMatch(/SameSite=None/);
+    });
+  });
+
   it('wrong password returns 401 UNAUTHORIZED', async () => {
     mockedVerify.mockResolvedValue(false);
     const app = buildApp();

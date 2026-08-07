@@ -7,6 +7,9 @@
 
 | 日期 | 主題 | 路徑 | 影響 / 後續 |
 |------|------|------|------|
+| 2026-08-08 | 7 個 Bug 完整 root cause trace（admin-login recovery chain）| runs/dev-logs/2026-08-08-bug-7-bug-trace.md | 沉澱 5 個共同 pattern（deploy 後才算完工 / 200 OK ≠ 完工 / config 不分 build target / API contract drift / chain-think 缺失）|
+| 2026-08-08 | Bug-7 follow-up：HomePage reverse-direction redirect 太廣 | runs/improvements/feedback/20260808-homepage-no-redirect.md | HomePage 移除 reverse-direction AuthGuard，Header email 變 dashboard link（commit `d6be7aa`）|
+| 2026-08-07 | Bug-7 refresh route 沒回 user/tenant（deploy gap）| runs/improvements/feedback/20260807-bug7-refresh-deploy-gap.md | `routes/refresh.ts` 改 `c.json(result)`；加 user/tenant assertion；commit `52b23aa` |
 | 2026-07-31 | Register 表單 autofill + schema drift 三連環 | runs/improvements/feedback/20260731-register-autofill-schema-drift.md | 新增 rule `018` (form autofill + multi-step state) + `019` (schema contract drift)；新增 skill `saome-form-integrity`；commit + push（規範層） |
 | 2026-07-27 | spec-kit-demo merge 誤刪 12 rules | runs/improvements/feedback/20260727-rules-overwritten-by-speckit-merge.md | 規範層修復已 push（commit `652e0a2` + `704af2a`） |
 | 2026-07-27 | MemberBadge verification 漏跑 | runs/improvements/feedback/20260727-member-badge-verification-missed.md | 補強 `.cursor/rules/006-verification.mdc` commit message 驗證輸出欄位 |

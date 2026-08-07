@@ -8,6 +8,7 @@ import { registrationPayloadSchema } from '../schemas/request';
 import { registerService } from '../services/registerService';
 import { ValidationError } from '@/shared/lib/saomeError';
 import { getDb } from '@/shared/db/client';
+import { refreshCookieDomain, refreshCookieSecure, refreshCookieSameSite } from '@/shared/lib/cookieDomain';
 
 export const registerRoute = new Hono<HonoEnv>().post('/', async (c) => {
   const body = await c.req.json().catch(() => ({}));
@@ -29,9 +30,13 @@ export const registerRoute = new Hono<HonoEnv>().post('/', async (c) => {
 
   // Browser: refresh token via Set-Cookie. JSON body also includes it for non-browser clients.
   if (session.refreshToken) {
+    const origin = c.req.header('Origin');
+    const domainAttr = refreshCookieDomain(origin);
+    const secureAttr = refreshCookieSecure(origin);
+    const sameSiteAttr = refreshCookieSameSite(origin);
     c.res.headers.append(
       'Set-Cookie',
-      `saome_refresh=${session.refreshToken}; HttpOnly; Secure; SameSite=Lax; Path=/api/auth; Domain=.saome.org; Max-Age=2592000`,
+      `saome_refresh=${session.refreshToken}; HttpOnly${secureAttr}${sameSiteAttr}; Path=/api/auth${domainAttr}; Max-Age=2592000`,
     );
   }
   return c.json({
