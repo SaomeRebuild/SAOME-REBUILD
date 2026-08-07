@@ -45,6 +45,7 @@ description: 任務級距分流器 — 根據任務複雜度分流到對應深�
 - 涉及多個假設（「假設使用者會喜歡」）
 - 任務描述時間明顯不足 5 分鐘
 - 涉及商業邏輯或資料模型變更
+- 落在 critical chain 上的 bug fix（auth / payment / session recovery / checkout）— 2026-08-08 加，避免 L2 scope 變 SEV-1（見 `DEV/08-2026/0808-bug-7-trace.md` Bug-4b/4c/4d）
 
 ### Step 4：標記級距
 
@@ -61,6 +62,7 @@ description: 任務級距分流器 — 根據任務複雜度分流到對應深�
 - 任務涉及新 API endpoint 或 schema 變更
 - 任務涉及多人協作或跨團隊溝通
 - 任務時間估計超過 30 分鐘
+- **L1/L2 fix 但落在 critical chain（auth / payment / session recovery / checkout）→ 升 L3 跑 production smoke**（2026-08-08 加，理由見上）
 
 ## L1 Trivial 範例
 
