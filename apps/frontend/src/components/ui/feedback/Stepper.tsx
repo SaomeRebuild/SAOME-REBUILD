@@ -28,10 +28,20 @@ export function Stepper({ current, steps }: StepperProps) {
               ]
                 .filter(Boolean)
                 .join(' ')}
+              style={
+                isComplete
+                  ? { borderColor: 'var(--color-foreground)', backgroundColor: 'var(--color-foreground)', color: 'var(--color-card)' }
+                  : isCurrent
+                  ? { borderColor: 'var(--color-foreground)', color: 'var(--color-foreground)' }
+                  : { borderColor: 'var(--color-border)', color: 'var(--color-muted-foreground)' }
+              }
             >
               {isComplete ? <Check size={14} /> : idx + 1}
             </span>
-            <span className={['text-sm', isCurrent ? 'font-medium text-neutral-900' : 'text-neutral-500'].join(' ')}>
+            <span
+              className="text-sm"
+              style={{ fontWeight: isCurrent ? 500 : 400, color: isCurrent ? 'var(--color-foreground)' : 'var(--color-muted-foreground)' }}
+            >
               {s.label}
             </span>
             {idx < steps.length - 1 ? <span className="flex-1 border-t border-neutral-200" aria-hidden /> : null}
