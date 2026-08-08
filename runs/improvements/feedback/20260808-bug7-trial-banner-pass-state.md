@@ -94,4 +94,54 @@ const visible =
 
 ---
 
+## 附記：RegisterForm Step 3 的值得記錄的 Pattern（2026-08-08）
+
+### Pattern 1：簡單選擇 UI 不需要 react-hook-form
+
+Step 3 是 pure UI 選擇（3 個 plan card 點選），不需要 validate，
+所以用 component state (`useState<PricingTier | null>`) 而不是 RHF。
+
+這是正確的選擇——RHF 的價值在複雜 validation，不在「有 input 就用」。
+
+### Pattern 2：multi-step handoff 靠 sessionStorage，不靠 props
+
+Step 1 → Step 2 → Step 3 時，所有資料寫入 `sessionStorage`：
+```ts
+sessionStorage.setItem('saome.reg.tenant', JSON.stringify(values)); // step 1
+sessionStorage.setItem('saome.reg.account', JSON.stringify(values)); // step 2
+```
+
+Step 3 submit 時一次性組裝：
+```ts
+const tenant = JSON.parse(sessionStorage.getItem('saome.reg.tenant'));
+const account = JSON.parse(sessionStorage.getItem('saome.reg.account'));
+const payload = { ...tenant, ...account, plan: selectedPlan };
+```
+
+好處：步驟之間完全不耦合，back/forward 行為自然。
+
+### Pattern 3：PlanSelector 違反 shared package 邊界
+
+`PricingTier` 型別定義在 `@/components/pricing`（frontend app 層），
+但 `PlanSelector` 從那裡 import。如果 React Native 以後要遷移，這個型別會綁在 app 層。
+
+**建議**：遷移到 `packages/shared/types/pricing.ts`，`PlanSelector` 和 `RegisterForm` 都從 shared import。
+
+### Pattern 4：`as RegistrationPayload` 是 schema drift 訊號
+
+```ts
+const payload: RegistrationPayload = {
+  ...tenant, ...account, invoiceAddress: ..., plan: selectedPlan,
+} as RegistrationPayload;
+```
+
+`as` 強轉 = TypeScript 在告訴你「兩個型別的 shape 不完全 match，
+你在繞過型別檢查」。根因是 `RegistrationPayload` 的 field set 跟
+`TenantInfoInput + AccountInfoInput` 的 union 不完全對齊（e.g. `invoiceAddress`
+是 optional 但 payload 必填）。
+
+這是 rule 019 schema contract drift 的經典訊號，未來應該統一 schema。
+
+---
+
 > 撰寫者：cursor-agent ｜ 時間：2026-08-08
