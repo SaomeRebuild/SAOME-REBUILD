@@ -4,3 +4,6 @@ export { useCountdown } from './useCountdown';
 export { useLoginLockout } from './useLoginLockout';
 export { useAuthRedirect } from './useAuthRedirect';
 export { useFormSchema } from './useFormSchema';
+export { useStorage } from './useStorage';
+export { useTheme } from './useTheme';
+export type { ThemePreference, ResolvedTheme } from './useTheme';

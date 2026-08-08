@@ -476,6 +476,23 @@
     }
   },
   "dashboard": {
+    "dashboardHeader": {
+      "logoAlt": "SAOME",
+      "logout": "Logout",
+      "openMenu": "Open menu",
+      "closeMenu": "Close menu",
+      "nav": {
+        "dashboard": "Dashboard",
+        "overview": "Overview",
+        "members": "Members",
+        "cards": "Cards",
+        "settings": "Settings"
+      }
+    },
+    "dashboardFooter": {
+      "copyright": "© 2026 SAOME. All rights reserved.",
+      "privacy": "Privacy Policy"
+    },
     "trialBanner": {
       "ariaLabel": "{{daysLeft}} days remaining on trial",
       "title": "{{daysLeft}} days left on your trial",

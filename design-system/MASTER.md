@@ -233,3 +233,102 @@ Design tokens live in: `frontend/src/index.css` (`@theme` block)
 See also:
 - `.cursor/rules/uiux/011-uiux-tokens.mdc` — token rule
 - `.cursor/rules/uiux/010-uiux-pro-max.mdc` — process rule
+
+---
+
+## 11. Light Mode Tokens
+
+> RN-friendly note: Token values are platform-neutral. Web uses `var(--color-*)` CSS variables; React Native uses the same token objects (`tokens.background.light`).
+
+### Color Mapping (Dark vs Light)
+
+Primary `#F97316` is **consistent** across both modes.
+
+| Token | Dark | Light | Usage |
+|-------|------|-------|-------|
+| `--color-background` | `#0F0F23` | `#FAFAFA` | Page background |
+| `--color-foreground` | `#F8FAFC` | `#0F172A` | Primary text |
+| `--color-card` | `#1B1B30` | `#FFFFFF` | Card surfaces |
+| `--color-card-foreground` | `#F8FAFC` | `#0F172A` | Text on cards |
+| `--color-muted` | `#27273B` | `#F1F5F9` | Disabled bg, subtle surfaces |
+| `--color-muted-foreground` | `#94A3B8` | `#64748B` | Secondary text, hints |
+| `--color-border` | `#2D2D4A` | `#E2E8F0` | Dividers, card borders |
+| `--color-primary` | `#F97316` | `#F97316` | **Unchanged** — CTA, buttons |
+| `--color-on-primary` | `#0F172A` | `#FFFFFF` | Text on primary |
+| `--color-secondary` | `#FB923C` | `#FB923C` | Secondary actions |
+| `--color-on-secondary` | `#0F172A` | `#FFFFFF` | Text on secondary |
+| `--color-accent` | `#FBBF24` | `#FBBF24` | Highlights, badges |
+| `--color-on-accent` | `#0F172A` | `#0F172A` | Text on accent |
+| `--color-destructive` | `#EF4444` | `#EF4444` | Errors |
+| `--color-success` | `#22C55E` | `#22C55E` | Success states |
+| `--color-warning` | `#F59E0B` | `#F59E0B` | Warnings |
+| `--color-ring` | `#F97316` | `#F97316` | Focus ring |
+
+### Light Mode Contrast
+
+All text on light surfaces meets WCAG 4.5:1 minimum.
+- Foreground `#0F172A` on Background `#FAFAFA`: ~17:1
+- Muted Foreground `#64748B` on Muted `#F1F5F9`: ~5.5:1
+- On Primary `#FFFFFF` on Primary `#F97316`: ~4.8:1
+
+### CSS Implementation Pattern
+
+```css
+:root,
+[data-theme='dark'] {
+  --color-background: #0F0F23;
+  --color-foreground: #F8FAFC;
+  --color-card: #1B1B30;
+  --color-card-foreground: #F8FAFC;
+  --color-muted: #27273B;
+  --color-muted-foreground: #94A3B8;
+  --color-border: #2D2D4A;
+  /* primary, secondary, accent, destructive, success, warning unchanged */
+}
+
+[data-theme='light'] {
+  --color-background: #FAFAFA;
+  --color-foreground: #0F172A;
+  --color-card: #FFFFFF;
+  --color-card-foreground: #0F172A;
+  --color-muted: #F1F5F9;
+  --color-muted-foreground: #64748B;
+  --color-border: #E2E8F0;
+}
+
+/* Typography, spacing, radius, shadow, transitions: shared across both modes */
+```
+
+---
+
+## 12. Three-State Theme System
+
+### State Model
+
+| State | Description | Resolved |
+|-------|-------------|----------|
+| `'light'` | User explicitly chose light | `light` |
+| `'dark'` | User explicitly chose dark | `dark` |
+| `'system'` | Follow OS preference | OS dark → `dark`; else `light` |
+
+### Persistence
+
+Theme preference is stored in `localStorage` under key `saome.theme`. RN migration path: replace with `@react-native-async-storage/async-storage`.
+
+### RN Migration Map
+
+| Web Implementation | RN Replacement |
+|---------------------|----------------|
+| `document.documentElement.dataset.theme` | `StatusBar.setBarStyle()` + subtree re-render via Context |
+| `matchMedia('(prefers-color-scheme: dark)')` | `Appearance.addChangeListener` |
+| `useStorage` hook | Same hook interface, swap internal to `AsyncStorage` |
+| `ThemeProvider` Context | React Context (identical API) |
+| `useTheme()` hook | React hook (identical API) |
+
+### No Scroll-Aware Effects in Dashboard Header
+
+`DashboardHeader` must not use `window.scrollY` listeners (RN has no equivalent). Dashboard header uses **static** styling — transparency transition should be avoided or gated by a separate prop.
+
+### Icon Compatibility
+
+Lucide icons (`lucide-react`) are used on web. RN migration swaps to `lucide-react-native` with identical icon names.

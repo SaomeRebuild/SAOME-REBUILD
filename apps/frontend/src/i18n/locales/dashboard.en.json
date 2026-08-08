@@ -5,5 +5,19 @@
     "titleUrgent": "Only {{daysLeft}} days left — act now!",
     "subtitle": "Verify your account and bind a credit card to avoid service interruption after the trial ends",
     "cta": "Verify & Bind Credit Card"
+  },
+  "dashboardHeader": {
+    "logoAlt": "SAOME",
+    "openMenu": "Open menu",
+    "closeMenu": "Close menu",
+    "logout": "Sign out",
+    "nav": {
+      "dashboard": "Dashboard",
+      "members": "Members"
+    }
+  },
+  "dashboardFooter": {
+    "copyright": "© 2026 SAOME. All rights reserved.",
+    "privacy": "Privacy Policy"
   }
 }

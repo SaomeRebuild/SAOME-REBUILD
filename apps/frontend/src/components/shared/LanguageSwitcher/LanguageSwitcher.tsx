@@ -12,7 +12,7 @@ interface LanguageSwitcherProps {
 
 export function LanguageSwitcher({ separator = '|' }: LanguageSwitcherProps) {
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 rounded-md px-4 py-3 group-hover:bg-[var(--color-muted)] transition-colors">
       {LANGUAGES.map((lang, index) => (
         <span key={lang.code} className="contents">
           {index > 0 && (
@@ -20,10 +20,8 @@ export function LanguageSwitcher({ separator = '|' }: LanguageSwitcherProps) {
           )}
           <button
             onClick={() => i18n.changeLanguage(lang.code)}
-            className={`text-xs transition-opacity hover:opacity-80 ${
-              i18n.language === lang.code ? 'font-bold' : ''
-            }`}
-            style={{ color: 'var(--color-muted-foreground)' }}
+            className="text-sm transition-colors hover:opacity-80 rounded px-1"
+            style={{ color: 'var(--color-foreground)' }}
           >
             {lang.label}
           </button>

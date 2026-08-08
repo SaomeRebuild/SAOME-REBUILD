@@ -5,5 +5,19 @@
     "titleUrgent": "試用期僅剩 {{daysLeft}} 天 — 立即行動！",
     "subtitle": "完成驗證並綁定信用卡，避免試用期結束後服務中斷",
     "cta": "立即驗證並綁定信用卡"
+  },
+  "dashboardHeader": {
+    "logoAlt": "SAOME",
+    "openMenu": "開啟選單",
+    "closeMenu": "關閉選單",
+    "logout": "登出",
+    "nav": {
+      "dashboard": "控制台",
+      "members": "會員管理"
+    }
+  },
+  "dashboardFooter": {
+    "copyright": "© 2026 SAOME. All rights reserved.",
+    "privacy": "隱私權政策"
   }
 }

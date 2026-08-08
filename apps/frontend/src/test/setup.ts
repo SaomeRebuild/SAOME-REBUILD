@@ -1,10 +1,35 @@
 import '@testing-library/jest-dom/vitest';
 import './i18n';
-import { afterEach, vi } from 'vitest';
+import i18n from 'i18next';
+import { afterEach, vi, beforeAll } from 'vitest';
 import { cleanup } from '@testing-library/react';
 
 afterEach(() => {
   cleanup();
+});
+
+// ── i18n async init ──────────────────────────────────────────────────────────
+// Block test setup until i18n.init() completes. Without this, components that
+// call useTranslation() before init resolves will see raw keys (e.g. "dashboard.xxx"
+// instead of translated text) in both jsdom and real browser environments.
+beforeAll(async () => {
+  if (i18n.isInitialized) return;
+  await (i18n as unknown as { initPromise: Promise<void> }).initPromise;
+});
+
+// ── matchMedia mock (jsdom does not implement this Web API) ───────────────────
+Object.defineProperty(window, 'matchMedia', {
+  writable: true,
+  value: vi.fn().mockImplementation((query: string) => ({
+    matches: query === '(prefers-color-scheme: dark)',
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  })),
 });
 
 // ── Global authService mock ──────────────────────────────────────────────────

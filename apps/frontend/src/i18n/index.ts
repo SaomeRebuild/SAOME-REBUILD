@@ -6,21 +6,28 @@ import authZhTW from './locales/auth.zh-TW.json';
 import authEn from './locales/auth.en.json';
 import dashboardZhTW from './locales/dashboard.zh-TW.json';
 import dashboardEn from './locales/dashboard.en.json';
+import themeZhTW from './locales/theme.zh-TW.json';
+import themeEn from './locales/theme.en.json';
 
 const resources = {
   'zh-TW': {
     translation: zhTW,
     auth: authZhTW,
     dashboard: dashboardZhTW,
+    theme: themeZhTW,
   },
   en: {
     translation: en,
     auth: authEn,
     dashboard: dashboardEn,
+    theme: themeEn,
   },
 };
 
-void i18n
+// Do NOT use `void` here — Vite/Rollup tree-shakes unhandled promise rejections
+// in production, causing i18n.init() to be silently dropped. Without init,
+// all namespaces (dashboard, theme, etc.) return raw keys at render time.
+i18n
   .use(initReactI18next)
   .init({
     resources,

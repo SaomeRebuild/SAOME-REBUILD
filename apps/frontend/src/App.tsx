@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { useEffect } from 'react';
-import { Header } from '@/components/layout/Header';
-import { Footer } from '@/components/layout/Footer';
+import { MarketingShell } from '@/components/layout/MarketingShell';
+import { DashboardShell } from '@/components/layout/DashboardShell';
 import { TermsPage } from '@/pages/legal/TermsPage';
 import { PrivacyPage } from '@/pages/legal/PrivacyPage';
 import { GDPRPage } from '@/pages/legal/GDPRPage';
@@ -31,16 +31,47 @@ function AppRoutes() {
   const { state, isAuthenticated } = useAuth();
   return (
     <Routes>
-      <Route path={ROUTES.home} element={<HomePage />} />
-      <Route path={ROUTES.login} element={<LoginPage />} />
-      <Route path={ROUTES.register} element={<RegisterPage />} />
+      {/* ── Public / marketing pages → MarketingShell ── */}
+      <Route path={ROUTES.home} element={
+        <MarketingShell><HomePage /></MarketingShell>
+      } />
+      <Route path={ROUTES.login} element={
+        <MarketingShell><LoginPage /></MarketingShell>
+      } />
+      <Route path={ROUTES.register} element={
+        <MarketingShell><RegisterPage /></MarketingShell>
+      } />
+      <Route path="/terms" element={
+        <MarketingShell><TermsPage /></MarketingShell>
+      } />
+      <Route path="/privacy" element={
+        <MarketingShell><PrivacyPage /></MarketingShell>
+      } />
+      <Route path="/gdpr" element={
+        <MarketingShell><GDPRPage /></MarketingShell>
+      } />
+      <Route path="/product" element={
+        <MarketingShell><ProductPage /></MarketingShell>
+      } />
+      <Route path="/demo" element={
+        <MarketingShell><DemoPage /></MarketingShell>
+      } />
+      <Route path="/pricing/compare" element={
+        <MarketingShell><DetailedPricingPage /></MarketingShell>
+      } />
+
+      {/* ── Dashboard pages → DashboardShell ── */}
       <Route path={ROUTES.tenantDashboard} element={
         <AuthGuard
           authenticated={isAuthenticated ? true : state.loading ? undefined : false}
           expectedRole="tenant"
           actualRole={state.user?.role as Role | undefined}
         >
-          <AppDashboardPage />
+          <DashboardShell navItems={[
+            { key: 'dashboardHeader.nav.dashboard', href: '/app/dashboard' },
+          ]}>
+            <AppDashboardPage />
+          </DashboardShell>
         </AuthGuard>
       } />
       <Route path={ROUTES.adminDashboard} element={
@@ -49,15 +80,13 @@ function AppRoutes() {
           expectedRole="admin"
           actualRole={state.user?.role as Role | undefined}
         >
-          <AdminDashboardPage />
+          <DashboardShell navItems={[
+            { key: 'dashboardHeader.nav.dashboard', href: '/admin/dashboard' },
+          ]}>
+            <AdminDashboardPage />
+          </DashboardShell>
         </AuthGuard>
       } />
-      <Route path="/terms" element={<TermsPage />} />
-      <Route path="/privacy" element={<PrivacyPage />} />
-      <Route path="/gdpr" element={<GDPRPage />} />
-      <Route path="/product" element={<ProductPage />} />
-      <Route path="/demo" element={<DemoPage />} />
-      <Route path="/pricing/compare" element={<DetailedPricingPage />} />
     </Routes>
   );
 }
@@ -66,11 +95,7 @@ function App() {
   return (
     <BrowserRouter>
       <ScrollToTop />
-      <Header />
-      <main className="flex-1">
-        <AppRoutes />
-      </main>
-      <Footer />
+      <AppRoutes />
     </BrowserRouter>
   );
 }
