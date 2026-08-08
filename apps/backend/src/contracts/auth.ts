@@ -62,11 +62,15 @@ export interface AuthSessionDto {
 
 /**
  * Response shape of POST /api/auth/refresh.
+ *
+ * `pass` is embedded — frontend AuthProvider uses it to update the session
+ * state on every refresh, so TrialBanner sees updated daysRemaining after reload.
  */
 export interface RefreshResponseDto {
   accessToken: string;
   expiresIn: number;
   refreshToken?: string; // optional; cookie clients receive via Set-Cookie
+  pass?: PassDto | null; // null for admin / no pass yet
 }
 
 /**

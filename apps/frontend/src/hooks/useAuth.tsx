@@ -150,6 +150,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ...s,
       accessToken: refreshed.accessToken,
       expiresAt: Date.now() + (refreshed.expiresIn ?? 28800) * 1000,
+      pass: refreshed.pass ?? s.pass,
     }));
   }, []);
 
