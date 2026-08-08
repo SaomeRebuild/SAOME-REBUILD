@@ -17,6 +17,7 @@ import { AuthError, ForbiddenError } from '@/shared/lib/saomeError';
 import { verifyToken, signAccessToken, signRefreshToken } from '@/shared/lib/jwt';
 import { findUserById } from '../db/users';
 import { findTenantByOwnerId } from '../db/tenants';
+import { getPassStatus } from '@/modules/pass/db/passes';
 
 const ACCESS_TOKEN_TTL_DEFAULT = 900;
 
@@ -53,6 +54,17 @@ export async function refreshService(
   // Hydrate tenant (admin won't have one)
   const tenant = await findTenantByOwnerId(sql, user.id);
 
+  // Pass — embedded in session to avoid a separate /api/me/pass polling call.
+  const passStatus = tenant ? await getPassStatus(sql, tenant.id) : null;
+  const pass: AuthSessionDto['pass'] = passStatus
+    ? {
+        endDate: passStatus.endDate.toISOString(),
+        daysRemaining: passStatus.daysRemaining,
+        status: passStatus.status,
+        plan: passStatus.plan as 'green' | 'gold' | 'platinum',
+      }
+    : null;
+
   return {
     user: {
       id: user.id,
@@ -76,5 +88,6 @@ export async function refreshService(
     accessToken,
     expiresIn: accessTokenTtl,
     refreshToken: newRefreshToken,
+    pass,
   };
 }
