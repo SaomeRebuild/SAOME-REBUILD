@@ -66,6 +66,40 @@ date: YYYY-MM-DD
 - 列表 ≤ 7 項，超過 7 項拆段
 - 流程類內容用有序列表而非表格
 
+## 精簡原則（draft 階段必跑）
+
+- ❌ **禁廢話**：禁止「在這篇文章中我將會⋯⋯」「讓我們一起⋯⋯」「希望這篇文章能幫助你」等鋪墊句
+- ❌ **禁罐頭**：CTA 段不要每篇重複同樣的罐頭語，針對 `cta_type` 客製
+- ✅ **精簡該要**：每段都要有 takeaway；技術問題寫症狀 + 根因 + 解法，不寫反思散文
+- ✅ **程式碼片段**：≤ 15 行；當作「解決問題思路」給讀者參考
+  - 適合放：diff 關鍵行、commit 連結、config 關鍵值、API 呼叫樣板
+  - 不適合放：完整檔案、超過 15 行的連續程式碼
+
+## CTA 必填（所有長文 / 連載）
+
+任何 root-level 長文 / 連載文章**必須**在文末有 CTA 區塊（3 段式）：
+
+```markdown
+---
+
+## 給你看到的成本
+[一句話量化損失]
+
+## 我能為你做的
+[一句話寫我能為你的產品做什麼]
+
+## 聯絡方式
+[GitHub / Email / 服務範圍]
+```
+
+CTA 內容**每篇必須客製**——禁止複製貼上罐頭語。`cta_type` 選項：
+
+- `external-engineer`：對工程師讀者（強調「不需要付費，方法已開源」）
+- `internal-pm`：對 PM（強調「如果你們公司也在 build SaaS，可以怎麼參考」）
+- `client-vendor`：對客戶（強調「我能為你的服務做什麼」）
+
+frontmatter 必填：`cta_type` + `client_facing: true/false` + `problem_impact` + `solution_value`。
+
 ## 發布前 checklist
 
 正式發布前**必須**逐項刷過：
@@ -80,6 +114,10 @@ date: YYYY-MM-DD
 - [ ] 沒有「| 引言 | 內容 |」用表格當 callout
 - [ ] 沒有 code 嵌入 paragraph 而沒 code block
 - [ ] 沒有 raw log / JSON 內嵌散文
+- [ ] 沒有 > 15 行的程式碼片段（超過的拆檔案 reference）
+- [ ] 沒有「在這篇文章中」「讓我們一起」等鋪墊句
+- [ ] 文末有 CTA 區塊（給你看到的成本 / 我能為你做的 / 聯絡方式 3 段）
+- [ ] frontmatter 含 `cta_type` + `client_facing` + `problem_impact` + `solution_value`
 - [ ] frontmatter `status` 是 `published`
 - [ ] frontmatter `date` 是今天或最近一次編輯日
 

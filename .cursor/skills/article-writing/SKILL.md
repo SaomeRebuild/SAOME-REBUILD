@@ -131,6 +131,55 @@ date: YYYY-MM-DD
 - 從 `outline` 跳 `published`（中間少了 self-review）
 - 直接 publish 沒跑 checklist
 
+### Step 5.5 — CTA 區塊（必填）
+
+所有連載文章文末必須有 CTA。3 段式範本：
+
+```markdown
+---
+
+## 給你看到的成本
+[量化該篇主題對甲方業務的影響]
+
+## 我能為你做的
+[針對該篇主題你能提供的服務]
+
+## 聯絡方式
+- GitHub: https://github.com/SaomeRebuild/SAOME-REBUILD
+- Email: josh1989213@gmail.com
+```
+
+CTA 內容**每篇必須客製**，禁止複製貼上。`cta_type` 從 `external-engineer` / `internal-pm` / `client-vendor` 三選一，CTA 語氣要對得起 cta_type。
+
+### Step 6 — 程式碼片段紀律
+
+≤ 15 行小片段、target 是「解決問題思路」：
+
+```typescript
+// apps/backend/src/modules/auth/db/users.ts
+export async function findUserByEmail(sql: Sql, email: string): Promise<User | null> {
+  const rows = await sql<User[]>`
+    SELECT id, email, password_hash FROM users WHERE email = ${email} LIMIT 1
+  `;
+  return rows[0] ?? null;
+}
+```
+
+不要寫：
+
+- ❌ 整個檔案（> 15 行）
+- ❌ 沒有檔案路徑 / commit SHA 連結的程式碼
+- ❌ 「以下是完整原始碼」之類的廢話鋪墊
+
+適合放的場景：
+
+| 場景 | 範例 |
+|------|------|
+| diff 關鍵行 | 「`{ find: '@saome/shared/schemas/auth', replacement: '...' }` 必須排在 generic 之前」 |
+| commit 連結 | 「修法見 `46dbd7a`：把 `N=131072 r=8 p=1` 換成 `N=16384 r=8 p=1`」 |
+| config 關鍵值 | 「`ALLOWED_ORIGIN_PATTERNS="*.workers.dev"`」 |
+| API 呼叫樣板 | 「`c.json(result)` 直接回傳整個 service 結果」 |
+
 ## 與其他 Skill 的關係
 
 - `saome-self-improvement`：本 skill 處理「怎麼寫」
