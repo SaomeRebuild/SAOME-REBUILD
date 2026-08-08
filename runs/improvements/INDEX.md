@@ -7,8 +7,8 @@
 
 | 日期 | 主題 | 路徑 | 影響 / 後續 |
 |------|------|------|------|
-| 2026-08-08 | 7 個 Bug 完整 root cause trace（admin-login recovery chain）| DEV/08-2026/0808-bug-7-trace.md | 沉澱 5 個共同 pattern（deploy 後才算完工 / 200 OK ≠ 完工 / config 不分 build target / API contract drift / chain-think 缺失）|
-| 2026-08-08 | Bug-7 follow-up：HomePage reverse-direction redirect 太廣 | runs/improvements/feedback/20260808-homepage-no-redirect.md | HomePage 移除 reverse-direction AuthGuard，Header email 變 dashboard link（commit `d6be7aa`）|
+| 2026-08-08 | Bug-7 TrialBanner：useAuth.refresh() 漏寫 pass + plan filter 商業邏輯錯誤 | runs/improvements/feedback/20260808-bug7-trial-banner-pass-state.md | `useAuth.refresh()` 加 `pass`；`visible` 接受全部 plan（commits `c76d992` + `a39a379`）；新增三層排除法：CI → 本地 → DB |
+| 2026-08-08 | Bug-7 TrialBanner i18n namespace + layout overlay | DEV/08-2026/0808-trial-banner-i18n-layout.md | 建 `dashboard.{zh-TW,en}.json` namespace；`AppDashboardPage` 加 `pt-16`（commits `3bdb313` + `e851e6a`）|
 | 2026-08-07 | Bug-7 refresh route 沒回 user/tenant（deploy gap）| runs/improvements/feedback/20260807-bug7-refresh-deploy-gap.md | `routes/refresh.ts` 改 `c.json(result)`；加 user/tenant assertion；commit `52b23aa` |
 | 2026-07-31 | Register 表單 autofill + schema drift 三連環 | runs/improvements/feedback/20260731-register-autofill-schema-drift.md | 新增 rule `018` (form autofill + multi-step state) + `019` (schema contract drift)；新增 skill `saome-form-integrity`；commit + push（規範層） |
 | 2026-07-27 | spec-kit-demo merge 誤刪 12 rules | runs/improvements/feedback/20260727-rules-overwritten-by-speckit-merge.md | 規範層修復已 push（commit `652e0a2` + `704af2a`） |
