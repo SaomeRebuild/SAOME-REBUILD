@@ -1,298 +1,205 @@
 ---
-title: "VFR 實驗筆記 #3：用 AI agent 自己判斷任務級距、跑 Decision Log 餵回、測 multi-agent 分工"
-subtitle: "把 #2 留下來的未驗證問題實際跑一遍——看哪些假設成立、哪些要砍"
+title: "VFR 實驗筆記 #3：真實工作流實戰 — 4 小時修完一條斷掉的鏈"
+subtitle: "一個任務分成 4 個等級，不同等級跑不同流程。這一天的真實案例：L2 任務在一條 critical chain 上，跑了 4 小時，修完 8 個 commit，更新了 4 條工作流規範"
 author: Josh
-date: 2026-09-01
+date: 2026-08-08
 lang: zh-TW
-status: outline
+status: draft
 series: vfr-experiment
 series_number: 3
-predecessor: 02-vfr-tech-details
+    10|predecessor: 02-vfr-tech-details
+cta_type: external-engineer
+client_facing: true
+problem_impact: "任務不分級，每個都跑完整流程 → 小任務浪費 30 分鐘，大任務沒跑該跑的步驟 → production bug"
+solution_value: "四級分流 + critical chain bridge + 4 條工作流新規範 = 未來每個 auth session 可減少 30 分鐘浪費 + 避免 6 種 failure mode"
 tags:
   - vibe-coding
-  - ai-agent
   - workflow-experiment
   - decision-log
-  - task-routing
-  - multi-agent
+  - auth-flow
+    20|  - production-smoke
+  - bug-chain
 ---
 
-# 前言：這一篇是 #2 留下來的未驗證問題
+# 前言：這一篇的前提
 
-如果你先看到這一篇，建議先讀：
+建議先讀：
 
-- [**實驗筆記 #1**](01-vfr-intro.md)：VFR 為什麼存在、實驗怎麼設計
-- [**實驗筆記 #2**](02-vfr-tech-details.md)：四級分流、Decision Log、system prompt 怎麼寫
+- [**實驗筆記 #1**](01-vfr-intro.md)：VFR 是什麼、我的假設是什麼
+- [**實驗筆記 #2**](02-vfr-tech-details.md)：四級分流、Decision Log 格式、system prompt 怎麼寫
 
-#2 結尾提了 3 件下一階段要實驗的事，這一篇就是實驗結果。
-
-| 未驗證問題 | 本篇覆蓋 |
-|---|---|
-| 1. AI agent 自己判斷任務級距準不準 | ✅ 詳寫 |
-| 2. Decision Log 能不能讓 AI agent 變聰明 | ✅ 詳寫 |
-| 3. 多個 AI agent 之間如何分工 | ✅ 詳寫 |
+這一篇是一個真實案例：2026-08-08 這一天，我接到一個任務，修的過程中發現工作流因此長出了 4 條新規範。
 
 ---
 
-# 一、未驗證問題 1：AI agent 自己判斷任務級距準不準
+# 一個工作流的前提：任務要分大小
 
-## 實驗設計
+我以前的工作方式：
 
-- **樣本數**：5 個 L3 任務
-- **方法**：每個任務開新 session，第一句只給 vibe prompt（例如「我想做一個 X 功能」），不告訴 AI agent 級距
-- **測量**：AI agent 第一輪回覆裡寫的「我判斷你的任務是 L_」是哪一級 → 對照我事後人工判斷的級距 → 計算一致性
-- **約束**：AI agent 的 system prompt 用 #2 第三章那個範本，沒改
+接到任何任務——無論是「改了 3 行 CSS」還是「重寫整個 auth 流程」——都跑同一套流程：brainstorming → spec → plan → test → review → smoke test。
 
-## 實驗結果（占位）
+後來我發現這樣太浪費了。
 
-### 任務清單
+**改了 3 行 CSS 跑 brainstorming？浪費 30 分鐘。**  
+**critical chain 的 bug 只跑 smoke test 就上線？production 用戶集體登入失敗。**
 
-| # | 任務描述（簡述） | AI agent 判斷 | 人工判斷 | 一致？ |
-|---|---|---|---|---|
-| 1 | （待補） | （待補） | （待補） | （待補） |
-| 2 | （待補） | （待補） | （待補） | （待補） |
-| 3 | （待補） | （待補） | （待補） | （待補） |
-| 4 | （待補） | （待補） | （待補） | （待補） |
-| 5 | （待補） | （待補） | （待補） | （待補） |
+我開始把任務分成 4 個等級：
 
-### 一致性統計（占位）
+- **L1（小任務）**：改了 1 行、修了錯字、換了文案。直接做，測一下，結束。
+- **L2（一般任務）**：新增一個元件、修一個 bug。跑 TDD（先寫測試再寫 code）。
+- **L3（大型任務）**：新功能、多個模組、架構改動。跑完整流程：brainstorming → plan → test → review → smoke test。
+- **L3 逃脫版**：L3 但需求模糊、或跨系統整合。跑最完整的流程。
 
-- **整體一致性**：x / 5
-- **誤判類型分布**：
-  - 升一級（AI 判重於人工）：x 例
-  - 降一級（AI 判輕於人工）：x 例
-  - 跨級距誤判（L1 ↔ L3）：x 例
-- **失準成本估算**：誤判造成的後續補救時間
+每個等級跑的步驟不同。**大任務跑完整，小任務只做必要的。**
 
-### 觀察到的有趣現象（占位）
-
-- AI agent 對「改既有 API 介面」特別敏感——幾乎都判 L3+
-- AI agent 對「跨 package 變更」容易判輕——這是漏報最多的類型
-- 模糊 vibe prompt 時，AI agent 偏好判重（保守傾向）
-
-## 結論（占位）
-
-- 假設成立 / 不成立：________
-- 啟發式要不要改：________
-- 改了哪些：________
+這叫做「任務分流」。
 
 ---
 
-# 二、未驗證問題 2：Decision Log 能不能讓 AI agent 變聰明
+# 2026-08-08 的真實案例
 
-## 實驗設計
+任務描述：「admin 登入頁修好」。
 
-- **樣本數**：10 個新任務
-- **方法**：每個任務開新 session，第一句只給 vibe prompt，**但 session context 內附上過去 6 個月的 Decision Log**（前 N 篇）
-- **對照組**：另外 10 個任務，不附 Decision Log
-- **測量**：
-  - AI agent 給的方案方向是否跟「當時的決策」一致（定性）
-  - 產出 code 的「為什麼」是否寫對 Decision Log 引用過的脈絡
-- **約束**：Decision Log 餵的方式用 RAG（取最相關 5 篇）而非全塞 context
+看起來是 L2（小任務）。
 
-## 實驗結果（占位）
+實際上，這個任務在一條 critical chain 上。什麼意思？
 
-### 一致性觀察（占位）
+auth 流程有 6 個環節：使用者輸入帳號密碼 → 後端驗證 → 瀏覽器收到 cookie → 畫面跳轉到正確頁面 → 顯示會員名稱 → 部署到正式環境。
 
-- 附 Decision Log 的 session：AI agent 引用歷史決策的比例是 x/10
-- 不附的 session：AI agent 從零開始的比例是 x/10
-- 最有共識的決策類型：________
-- 最容易被 AI agent 推翻的決策類型：________
-
-### RAG vs 全塞 context 的取捨（占位）
-
-- 全塞 context：tokens 爆量，但 AI agent 引用率最高
-- RAG：tokens 省 80%，但引用率掉到 __%
-- **折衷方案**：________
-
-### 意外發現（占位）
-
-- AI agent 不只引用決策，**還會指出「這份決策過時了」**——這是預期外的行為
-- 某些決策的「影響」段被 AI agent 用作 future-proofing 提醒
-
-## 結論（占位）
-
-- 假設成立 / 不成立：________
-- Decision Log 格式要不要改：________
-- 改了哪些：________
+**這 6 個環節，壞了 6 個地方。**
 
 ---
 
-# 三、未驗證問題 3：多個 AI agent 之間如何分工
+# 6 個問題，白話版
 
-## 為什麼這個實驗最冒險
+## 1. 密碼比對參數設太嚴，伺服器跑不動
 
-前兩個問題都是「AI agent 自己判斷 / 自己讀歷史」，是單 agent 場景的延伸。
+**發生了什麼**：使用者輸入正確密碼，但畫面說「登入失敗」。
 
-第三個問題是「**多個 AI agent 能不能重現團隊效果**」——這需要工具鏈支援，而且結果可能跟我預期完全相反。
-
-## 工具鏈選擇（占位）
-
-| 工具 | 嘗試原因 | 結論 |
-|---|---|---|
-| Cursor 多視窗 + 不同 persona | 最簡單，零基礎設施 | （待補） |
-| LangGraph | 圖形化 state machine，適合多角色 workflow | （待補） |
-| CrewAI | 內建 role-based agent pattern | （待補） |
-| AutoGen | 微軟出品，擅長多 agent 對話 | （待補） |
-| 自建 CLI 多 session | 最笨但最可控 | （待補） |
-
-## 實驗設計
-
-- **場景 1**：spec agent（生成 vibe）→ coder agent（產出 code）→ reviewer agent（檢查）
-- **場景 2**：三個同質 coder agent 各自給方案 → 一個 reviewer agent 評分
-- **場景 3**：完全沒分工，單 agent 全做（對照組）
-
-每個場景跑 3 個任務，觀察：
-- 產出品質（reviewer agent 給分）
-- 總 token 消耗
-- **是否真的分工**（還是退化成單 agent 拖拉）
-
-## 實驗結果（占位）
-
-### 場景 1：流水線式
-
-- 優點：________
-- 缺點：________
-- spec agent 的產出比單 agent 的 vibe prompt 好嗎？________
-
-### 場景 2：三方案投票
-
-- 優點：________
-- 缺點：________
-- 三方案真的有差異嗎？還是 AI agent 都給一樣的答案？________
-
-### 場景 3：對照組
-
-- 確認 baseline：________
-
-### 跨場景觀察（占位）
-
-- **多 agent 沒有顯著提升**：這個結論如果成立，會推翻 #1 假設（用 AI agent 模擬團隊）
-- **分工真的有效**：________
-
-## 結論（占位）
-
-- 假設成立 / 不成立：________
-- VFR 要不要擴展到 multi-agent：________
-- multi-agent 在哪些場景值得用：________
+**真正的原因是**：驗證密碼的程式參數設得太高，伺服器記憶體不夠用，直接崩潰。
 
 ---
 
-# 四、整合：VFR 經過三輪實驗後的修正
+## 2. 打包時把「本地測試網址」打進了正式網站
 
-> 這個章節是把 #1 + #2 + #3 的結果整合，回頭修 VFR 的 system prompt 與流程表。
+**發生了什麼**：deploy 完成，但登入還是失敗。curl 測試正確，但瀏覽器用戶登入不了。
 
-## 4.1 任務級距啟發式的修正（占位）
+**真正的原因是**：工程師在開發時，程式裡寫了一個「預設值」——`http://localhost:8787`（本地測試用的網址）。Deploy 時這個網址跟著一起被打包進去了。瀏覽器認為 HTTPS 網站 fetch HTTP 網址是危險的，直接把請求丟掉。
 
-如果未驗證問題 1 發現某些判斷失準，會列出修正後的啟發式：
+---
 
-```markdown
-（修正後的啟發式，待補）
+## 3. 瀏覽器預檢查通過了，但真正請求被吃掉
+
+**發生了什麼**：DevTools 顯示「預檢查成功」，但實際的登入請求從來沒發出去。
+
+**真正的原因是**：後端只允許一個網址（`https://josh1989213.workers.dev`），但使用者從另一個網址進來（`https://saome-frontend.josh1989213.workers.dev`）。瀏覽器認為這是「不同網站」的請求，靜靜拒絕掉。
+
+---
+
+## 4. 登入成功，但畫面沒跳轉
+
+**發生了什麼**：程式收到「登入成功」了，但使用者還是盯著登入頁看。
+
+**真正的原因是**：`login()` 函式把「已登入」寫進了狀態，但從來沒叫「跳轉」這個動作。
+
+修好的關鍵片段：
+
+```tsx
+// 之後（修好）
+navigate(ROLE_HOME_PATH[role], { replace: true }); // 多了這一行
 ```
 
-## 4.2 Decision Log 格式的修正（占位）
+---
 
-如果未驗證問題 2 發現某些欄位沒用或缺欄位，會列出修正後的格式：
+## 5. 深色背景上放了白底卡片，看不見字
 
-```markdown
-（修正後的 Decision Log 範本，待補）
-```
+**發生了什麼**：登入成功，頁面跳轉了，但卡片是白底，背景是深色，字體也是白色——等於看不見任何東西。
 
-## 4.3 VFR 要不要擴展到 multi-agent（占位）
-
-如果未驗證問題 3 結果為「multi-agent 沒顯著提升」，**VFR 維持單 agent + 流程分流**。
-
-如果結果為「分工有效」，VFR 加一層 L4：multi-agent 編排。
+**真正的原因是**：工程師用了預設的白色模板，但背景是自己設計的深色。兩邊沒對上。
 
 ---
 
-# 結語：連載狀態
+## 6. 回傳的使用者資料不完整
 
-| 篇 | 狀態 | 主題 |
-|---|---|---|
-| #1 | 已發布（draft） | 動機、實驗、結果（概念版） |
-| #2 | 已發布（draft） | 技術細節（四級分流、Decision Log、system prompt、vibe 即 spec） |
-| #3 | 本文（outline） | 三個未驗證問題的實驗結果 |
-| #4 | 規劃中 | （依 #3 結果決定） |
-| #5 | 規劃中 | （依 #3 結果決定） |
+**發生了什麼**：畫面右上角應該顯示「張先生您好」，但顯示不出來。
+
+**真正的原因是**：後端回傳了 3 個欄位，但前端用了 6 個欄位。少了 3 個。
+
+---
+
+# 修完後發現：工作流有 4 個盲點
+
+修完 6 個 bug 後，我回頭看這次 session，發現工作流有 4 個地方以前從來沒寫進檢查清單：
+
+- **以前以為「後端說成功 = 真的成功」**：但後端 200 不代表瀏覽器真的收到了、也不代表畫面真的顯示了。要有 smoke test（瀏覽器端的快速測試）才算。
+
+- **以前以為「build 完成就 push」**：但 build 後要再多一步——檢查 bundle 裡有沒有不該有的網址（比如 localhost）。如果忘記檢查，localhost 就會被包進正式網站。
+
+- **以前只檢查「未登入的人不能進後台」**：但忘了檢查「已經登入的人不該再看到登入頁」。這兩端要對稱，back button 才能正常運作。
+
+- **以前只看 typecheck（型別檢查）**：但 typecheck 通過了不代表後端回傳的資料形狀和前端用的形狀一致。要加一個 conformance test 來斷言兩邊的欄位數量對得上。
+
+---
+
+# 改善了什麼
+
+**時間**：這次 session 4 小時，修完 6 個 bug、跑了 CI/CD、更新了工作流規範文件。
+
+**節省了多少**：
+
+- 沒有重跑 brainstorming（因為任務分流判斷是 L2） → 省了約 30 分鐘
+- 沒有每次 commit 都重跑完整 smoke test（只有 L3 才跑完整版） → 省了重複等待時間
+- smoke test 在每個 commit 都跑 → 及早發現問題，不用等使用者回報
+
+**4 條新規範**：
+
+- **Auth flow 規範 1**：後端 200 不等於成功。必須 next screen 有內容才算。
+- **Bundle guard**：build 完成後要多一步檢查，確認 bundle 裡沒有 localhost URL。
+- **Auth redirect 對稱**：未登入 guard 加上已登入 redirect，back button 才正常。
+- **Schema conformance test**：後端回傳的形狀和前端用的形狀，必須有測試斷言兩邊一致。
+
+---
+
+# 結語
+
+這 6 個 bug 在同一個 session 爆出來，表面上是運氣不好。實際上是因為它們在同一條 chain 上——一個壞了，後續 5 個遲早會被觸發。
+
+修完之後，這條 chain 未來再壞，可以更快抓出來——因為我知道這 6 個 failure mode 是怎麼串起來的。
+
+這是工作流改善的價值：不是「這一次省了多少時間」，是**未來同一條 chain 的問題都能更快被發現和修復**。
+
+---
+
+## 名詞解釋
+
+- **工作流規範**：我在這次 session 過後寫進 codebase 的工作原則，用 Markdown 格式存在 `.cursor/rules/` 目錄裡。目的是讓下一個 session 的 AI agent 自動知道「critical chain 上的 bug 要升級處理」「build 完成後要檢查 bundle URL」之類的檢查事項。
+- **Decision Log**：每個重要取捨的三段式記錄——背景、選項與決定、影響。目的是讓未來回頭看時，能記得「當時為什麼選 A 而不是 B」。
+- **Smoke test**：在瀏覽器端（不是 curl）快速跑一遍核心功能，確認從頭到尾都能 work。目的是抓「curl 測試看起來正確、但瀏覽器因為 Mixed Content 或 CORS 問題實際上失敗」的陷阱。
+
+---
+
+## 連載狀態
+
+- **#1**：動機、假設、概念版結果
+- **#2**：技術細節（四級分流、Decision Log、system prompt）
+- **#3**：本文——演化實錄：4 小時修完一條斷掉的鏈 + 4 個工作流盲點
+- **#4**：每個 decision 的「為什麼選 A 不選 B」（3 個濃縮版）
+- **#5**：規劃中
 
 ---
 
 # 我接的案子是什麼
 
-> ⚠️ 本文目前是 outline，實驗結果尚未填入。以下 CTA 是**占位**——實驗填完後會按實驗結論調整，但主軸不會變：我接的是全端開發案，不是 VFR 顧問。
+這幾篇實驗筆記是**我的工作方法側寫**——我在做什麼、怎麼想的、哪些地方踩過坑。
 
-**我的正業是接全端開發案——幫你把你的想法落地**。
+**我的正業是接全端開發案，不是 VFR 顧問**。VFR 系列只是我優化自己工作流的過程記錄。
 
-如果三個未驗證問題的實驗結果都成立，#1 #2 #3 寫 VFR 的方法論最終要回答的問題是：**怎麼讓單人開發像個小團隊**。這個問題的回答方式很多，**VFR 只是我的其中一種**。我能接的案子不限於有跑 VFR 的客戶。
+如果你有以下需求，我可以幫你：
 
-如果你有：
-
-- **全端 web app 開發**（前端 + 後端 + database + deployment）
-- **既有系統重寫**（PHP / jQuery 現代化、React migration、API 設計）
-- **production 等級的硬工**（auth、payment、CI/CD、Cloudflare Workers）
-
-**下面這些專案類型是我常接的**：
-
-- React / TypeScript / Node.js 全端
-- Hono（API 框架，Cloudflare Workers / Node 兩種 runtime 都熟）
-- React Native（mobile app，與 React 共用邏輯層）
-- 前後端共用同一份 TypeScript schema / zod / 業務邏輯（mono-repo 拆分）
-- PostgreSQL（schema 設計、migration、query optimization）
-- Cloudflare Workers / Workers + D1 / Workers + R2
-- AWS serverless 服務群（Lambda、S3、API Gateway、DynamoDB、SQS 等）
-- 既有 PHP / jQuery 系統的現代化重寫
-- 簡單的 SaaS MVP（會員、訂閱、內容管理）
-
-都可以找我聊。**聯絡方式**：Medium 留言、email、或我的 Upwork profile。
-
----
-
-# 附錄 A：這個 outline 要怎麼填
-
-填 #3 的時候，建議照這個順序：
-
-1. **先跑實驗**：照每章的「實驗設計」跑一次
-2. **填實驗結果**：照占位位置填實際數字
-3. **回頭修 #2 的模板**：把修正後的啟發式 / Decision Log 寫進第四章
-4. **決定連載路線**：在「連載狀態」表補 #4 / #5 的主題
-
-# 附錄 B：發布前的讀者導向排版檢查
-
-> 這份清單在 #1 #2 #3 都進入 `status: published` 階段、正式發布前**必須**跑一次。
-> 目的：把「為了在 AI 對話裡寫得清楚」轉成「給真讀者讀得舒服」。
-
-完整的 article 寫作紀律（表格使用規則、排版 checklist、frontmatter 規範）已搬到：
-
-- **Skill**（觸發 + 流程）：`.cursor/skills/article-writing/SKILL.md`
-- **Rule**（紀律 + checklist）：`.cursor/rules/articles/001-article-style.mdc`
-
-本文只列**這三篇專屬**的已知待清項目，不再重複通用規則。
-
-## B.1 #1 #2 #3 audit 結果（2026-08-01）
-
-> 套用 article-style rule 跑 audit，**全部通過**——下面紀錄的是 audit 中看到的「事實」，不是「待清項目」。
-
-### #1（vfr-intro）
-
-- 表格數：1（量化結果表）
-- 評估：A 對 B 對照，符合保留條件
-- 結論：通過，不需改
-
-### #2（vfr-tech-details）
-
-- 表格數：4（四級分流啟發式、流程對應、system prompt 流程、system prompt 產出）
-- 評估：每個都是「級距 ↔ 對應 X」的 A 對 B 對照，全部符合保留條件
-- 結論：通過，不需改
-
-### #3（本文）
-
-- 表格數：4（前言覆蓋表、實驗任務清單、工具鏈選擇、連載狀態）
-- 評估：佔位性質的清單（任務清單、工具鏈選擇）目前是 5 行 × 5 列 — 實驗跑完填入後仍是對照性質，不超過規則
-- 結論：通過，佔位填入後複查一次
-
-> 這個 audit 是通用 rule + 三篇專屬規則的最後一次掃描。
-> 三篇都還沒進 `status: published`，等實驗填完、複查後才升 status。
+- 把模糊的想法變成能跑的 web app
+- 重寫既有系統的某個 module（PHP / jQuery → React / TypeScript）
+- 處理智 auth / payment / session recovery 的 critical chain
+- 既有系統的硬技術問題（CI/CD、Cloudflare Workers、第三方整合）
 
 ---
 

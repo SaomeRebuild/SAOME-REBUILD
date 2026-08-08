@@ -70,6 +70,7 @@ date: YYYY-MM-DD
 
 - ❌ **禁廢話**：禁止「在這篇文章中我將會⋯⋯」「讓我們一起⋯⋯」「希望這篇文章能幫助你」等鋪墊句
 - ❌ **禁罐頭**：CTA 段不要每篇重複同樣的罐頭語，針對 `cta_type` 客製
+- ❌ **禁內部用語**：自創詞彙（如「鐵律」「L2 scope」）出現在正文時，必須全文替換 + 文末加名詞解釋段落
 - ✅ **精簡該要**：每段都要有 takeaway；技術問題寫症狀 + 根因 + 解法，不寫反思散文
 - ✅ **程式碼片段**：≤ 15 行；當作「解決問題思路」給讀者參考
   - 適合放：diff 關鍵行、commit 連結、config 關鍵值、API 呼叫樣板
@@ -118,6 +119,11 @@ frontmatter 必填：`cta_type` + `client_facing: true/false` + `problem_impact`
 - [ ] 沒有「在這篇文章中」「讓我們一起」等鋪墊句
 - [ ] 文末有 CTA 區塊（給你看到的成本 / 我能為你做的 / 聯絡方式 3 段）
 - [ ] frontmatter 含 `cta_type` + `client_facing` + `problem_impact` + `solution_value`
+- [ ] CTA 沒有提到 VFR 工作流建立 / VFR 流程修改 / VFR 流程優化諮詢
+- [ ] 文末有「名詞解釋」段落，覆蓋所有正文出現過的自創詞彙
+- [ ] 全文沒有未替換的內部用語（如「鐵律」「L2 scope」出現在正文）
+- [ ] 每篇程式碼片段 ≤ 3 個
+- [ ] Decision Log / 演化類文章：核心 decision 數 ≤ 4 個（完整清單進附錄或另一篇）
 - [ ] frontmatter `status` 是 `published`
 - [ ] frontmatter `date` 是今天或最近一次編輯日
 

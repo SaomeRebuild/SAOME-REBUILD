@@ -41,6 +41,16 @@
 
 ## 流程
 
+### 內部用語處理流程
+
+寫作過程中若發現自創詞彙（如「鐵律」「L2 scope」「L3 Heavy」）出現在正文段落（非程式碼、非 frontmatter），**必須**：
+
+1. 全文 grep 該詞所有出現位置
+2. 全部替換為讀者可理解的說法（如「鐵律」→「新規範」）
+3. 在文末加「名詞解釋」段落，用一句話說明每個被替換的詞
+
+> **觸發時機**：每次 draft 完成後、polish 之前必跑。
+
 ### Step 1 — Topic Framing
 
 先問使用者三個問題（或自己內部釐清）：
@@ -71,6 +81,8 @@
 
 **禁止**：直接寫完再回頭加 H2。改排版的成本會吃掉三分之一的 token。
 
+**Decision Log / 架構演化類文章**：如果決策數 > 5 個，outline 階段就要先濃縮至 3–4 個核心 decision，否則讀者無法帶走重點。完整清單移到附錄或另一篇。
+
 ### Step 3 — Draft with Reader First
 
 寫的時候**主對話框**用「讀者導向」：
@@ -80,6 +92,11 @@
 - 列表 ≤ 7 項，超過拆段
 - 程式碼用 code block 不嵌入表格
 - 引用 rule 連到 rule，而不是 copy rule 內容
+
+**程式碼片段紀律**（每篇原則上 ≤ 3 個）：
+- 每個片段 ≤ 15 行
+- 片段用於：diff 關鍵行、commit 連結、config 關鍵值
+- **禁止**：完整檔案、超過 15 行的連續程式碼、沒有檔案路徑的片段
 
 寫完一篇**強制性**：
 
@@ -107,6 +124,7 @@
 ```markdown
 ---
 title: [Article Title]
+lang: zh-TW
 status: [outline|draft|ready|published]
 audience: [developers|pms|other-vibe-coders]
 series: [optional]
@@ -120,11 +138,12 @@ date: YYYY-MM-DD
 
 從 `draft` / `ready` 升 `published` 前**必須**：
 
-1. 重讀一次，假裝你是第一次讀的讀者
-2. 跑 rule `001-article-style.mdc` 的完整 checklist
-3. 檢查每個表格：B.1 規則轉換測試（要不要改成段落/列表）
-4. 補 frontmatter
-5. 把 frontmatter `status` 標 `published`
+1. 內部用語替換：全文 grep 自創詞彙，全部替換為讀者可理解說法 + 文末加名詞解釋
+2. 重讀一次，假裝你是第一次讀的讀者
+3. 跑 rule `001-article-style.mdc` 的完整 checklist
+4. 檢查每個表格：B.1 規則轉換測試（要不要改成段落/列表）
+5. 補 frontmatter
+6. 把 frontmatter `status` 標 `published`
 
 **禁止**：
 
@@ -150,6 +169,8 @@ date: YYYY-MM-DD
 ```
 
 CTA 內容**每篇必須客製**，禁止複製貼上。`cta_type` 從 `external-engineer` / `internal-pm` / `client-vendor` 三選一，CTA 語氣要對得起 cta_type。
+
+**CTA 禁止提到的服務**：VFR 工作流建立、VFR 流程修改、VFR 流程優化諮詢——VFR 是作者個人工作方法側寫，不是對外提供的服務，讀者不該為此付費。
 
 ### Step 6 — 程式碼片段紀律
 

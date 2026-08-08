@@ -280,21 +280,36 @@ BDD 的核心是「讓非工程師讀懂行為」——產品、業務可以用 
 
 # 結語：連載進行中
 
-這一篇把 #1 的概念展開成可以直接抄的模板。你照著跑有問題、想找人幫你落地到 production code——
+這一篇把 #1 的概念展開成可以直接抄的模板。我在用自己的工作流跑的過程中把細節記錄下來，供有興趣的讀者參考。
+
+**VFR 系列不是顧問服務，是我個人工作流的側寫。**
+
+---
+
+## 連載狀態
+
+- **#1**：動機、假設、概念版結果
+- **#2**：本文——技術細節（四級分流、Decision Log、system prompt）
+- **#3**：演化實錄：4 小時修完一條斷掉的鏈 + 4 個工作流盲點
+- **#4**：每個 decision 的「為什麼選 A 不選 B」（3 個濃縮版）
+- **#5**：規劃中
 
 ---
 
 # 我接的案子是什麼
 
-這幾篇實驗筆記都是我工作方法的側面。**我的正業是接全端開發案——幫你把你的想法落地**。
+這幾篇實驗筆記是**我的工作方法側寫**——我在做什麼、怎麼想的、哪些地方踩過坑。
 
-如果你需要：
+**我的正業是接全端開發案，不是 VFR 顧問**。VFR 系列只是我優化自己工作流的過程記錄，不是對外提供的服務。
 
-- **把 vibe 變成 web app**（前端 + 後端 + deployment 全包）
-- **重寫既有系統**（React、Node.js、PHP / jQuery 現代化都行）
-- **production 等級的硬工**（auth、payment、CI/CD、第三方整合）
+如果你有以下需求，我可以幫你：
 
-**下面這些專案類型是我常接的**：
+- **把模糊的想法變成能跑的 web app**
+- **重寫既有系統的某個 module**（PHP / jQuery → React / TypeScript）
+- **處理智 auth / payment / session recovery 的 critical chain**（用同一個工作流把所有 failure mode 找出來，附 regression test）
+- **既有系統的硬技術問題**（CI/CD、Cloudflare Workers、第三方整合）
+
+**下面這些是我常接的專案類型**：
 
 - React / TypeScript / Node.js 全端
 - Hono（API 框架，Cloudflare Workers / Node 兩種 runtime 都熟）
@@ -306,15 +321,7 @@ BDD 的核心是「讓非工程師讀懂行為」——產品、業務可以用 
 - 既有 PHP / jQuery 系統的現代化重寫
 - 簡單的 SaaS MVP（會員、訂閱、內容管理）
 
-計價方式第一次對齊時一起談。**聯絡方式**：Medium 留言、email、或我的 Upwork profile。
-
----
-
-下一階段我會實驗的事：
-
-1. 拿 5 個 L3 任務，**看 AI agent 自己判斷任務級距**準不準
-2. 拿 10 個新任務，**餵過去 6 個月的 Decision Log 給 AI agent**，看它會不會跟著過去的決策走
-3. 測試 multi-agent 工具鏈，看能不能在單人場景下重現「團隊」效果
+計價方式在第一次對齊時一起談。**聯絡方式**：Medium 留言、email、或我的 Upwork profile。
 
 ---
 
