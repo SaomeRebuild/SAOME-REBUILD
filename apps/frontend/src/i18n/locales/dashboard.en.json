@@ -1,0 +1,9 @@
+{
+  "trialBanner": {
+    "ariaLabel": "{{daysLeft}} days remaining on trial",
+    "title": "{{daysLeft}} days left on your trial",
+    "titleUrgent": "Only {{daysLeft}} days left — act now!",
+    "subtitle": "Verify your account and bind a credit card to avoid service interruption after the trial ends",
+    "cta": "Verify & Bind Credit Card"
+  }
+}

@@ -37,7 +37,40 @@
     "step2Title": "Step 2: Account info",
     "steps": {
       "storeInfo": "Store info",
-      "account": "Account"
+      "account": "Account",
+      "plan": "Choose plan"
+    },
+    "plan": {
+      "trialHint": "Start your 14-day free trial",
+      "priceNote": "Prices in New Taiwan Dollars (NTD)",
+      "green": {
+        "name": "Green",
+        "desc": "For small stores starting out"
+      },
+      "gold": {
+        "name": "Gold",
+        "desc": "For growing businesses"
+      },
+      "platinum": {
+        "name": "Platinum",
+        "desc": "For large chain stores"
+      },
+      "pricePerMonth": "/month",
+      "freeTrial": "14 days free trial",
+      "mostPopular": "Most popular",
+      "features": {
+        "cardTemplates3": "Store 3 card templates",
+        "cardTemplates6": "Store 6 card templates",
+        "cardTemplates10": "Store 10 card templates",
+        "email50": "Email marketing, 50 free/month, NT$0.5/excess",
+        "email80": "Email marketing, 80 free/month, NT$0.4/excess",
+        "email100": "Email marketing, 100 free/month, NT$0.3/excess",
+        "address1": "1 store address per template",
+        "address3": "3 store addresses per template",
+        "address10": "10 store addresses per template",
+        "subaccount1": "1 sub-account",
+        "subaccount5": "5 sub-accounts"
+      }
     },
     "contactName": "Contact name",
     "phoneCity": "Office phone",
@@ -63,6 +96,7 @@
       "password": "Password must be at least 8 characters",
       "passwordMismatch": "Passwords do not match",
       "required": "This field is required",
+      "planRequired": "Please select a plan",
       "unknown": "Registration failed. Please try again."
     },
     "switchToLogin": "Already have an account? Sign in"

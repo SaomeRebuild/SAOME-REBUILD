@@ -16,6 +16,7 @@ export default function AdminDashboardPage() {
   const { logout } = useAuth();
   const { t } = useTranslation('auth');
   return (
+    <div className="flex flex-col gap-4 p-4 pt-16">
     <ComingSoonCard
       title={t('admin.dashboard.title', 'Admin dashboard — coming soon')}
       description={t('admin.dashboard.description', 'The admin console is under construction.')}
@@ -34,5 +35,6 @@ export default function AdminDashboardPage() {
         </button>
       }
     />
+    </div>
   );
 }

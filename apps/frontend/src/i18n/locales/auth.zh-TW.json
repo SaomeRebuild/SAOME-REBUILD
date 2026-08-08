@@ -37,7 +37,40 @@
     "step2Title": "Step 2：帳號資訊",
     "steps": {
       "storeInfo": "店家資料",
-      "account": "帳號資料"
+      "account": "帳號資料",
+      "plan": "選擇方案"
+    },
+    "plan": {
+      "trialHint": "開始 14 天免費試用",
+      "priceNote": "價格為新台幣 (NTD)",
+      "green": {
+        "name": "綠卡",
+        "desc": "適合小型店家起步"
+      },
+      "gold": {
+        "name": "金卡",
+        "desc": "適合成長中的店家"
+      },
+      "platinum": {
+        "name": "白金卡",
+        "desc": "適合大型連鎖店家"
+      },
+      "pricePerMonth": "/月",
+      "freeTrial": "14 天免費試用",
+      "mostPopular": "最受歡迎",
+      "features": {
+        "cardTemplates3": "可儲存 3 個卡片模板",
+        "cardTemplates6": "可儲存 6 個卡片模板",
+        "cardTemplates10": "可儲存 10 個卡片模板",
+        "email50": "Email 行銷，每月 50 封免費，超額 NT$0.5/封",
+        "email80": "Email 行銷，每月 80 封免費，超額 NT$0.4/封",
+        "email100": "Email 行銷，每月 100 封免費，超額 NT$0.3/封",
+        "address1": "每個模板 1 個店家地址",
+        "address3": "每個模板 3 個店家地址",
+        "address10": "每個模板 10 個店家地址",
+        "subaccount1": "1 個子帳號",
+        "subaccount5": "5 個子帳號"
+      }
     },
     "contactName": "聯絡人姓名",
     "phoneCity": "市內電話",
@@ -63,6 +96,7 @@
       "password": "密碼至少需 8 個字元",
       "passwordMismatch": "兩次輸入的密碼不一致",
       "required": "此欄位為必填",
+      "planRequired": "請選擇一個方案",
       "unknown": "註冊失敗，請稍後再試"
     },
     "switchToLogin": "已有帳號？立即登入"
