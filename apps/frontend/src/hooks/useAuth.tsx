@@ -5,7 +5,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { authService } from '@/services/authService';
-import type { AuthUser, AuthTenant, Role } from '@saome/shared/types/auth';
+import type { AuthUser, AuthTenant, Role, PassInfo } from '@saome/shared/types/auth';
 import type { RegistrationPayload, LoginCredentials } from '@saome/shared/schemas/auth';
 
 export interface AuthState {
@@ -15,6 +15,8 @@ export interface AuthState {
   loading: boolean;
   /** Unix ms when the current access token expires (set from `expiresIn`). */
   expiresAt: number | null;
+  /** Pass info — embedded in login/refresh response; zero polling needed. */
+  pass: PassInfo | null;
 }
 
 export interface AuthContextValue {
@@ -34,6 +36,7 @@ const initialState: AuthState = {
   accessToken: null,
   loading: true,
   expiresAt: null,
+  pass: null,
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -50,7 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     (async () => {
       try {
-        // Bug-7 follow-up: refresh() now returns the full session (user + tenant)
+        // Bug-7 follow-up: refresh() now returns the full session (user + tenant + pass)
         // so we can populate state without a separate /me call.
         const session = await authService.refresh();
         if (cancelled) return;
@@ -59,6 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           tenant: session.tenant ?? null,
           accessToken: session.accessToken,
           expiresAt: Date.now() + (session.expiresIn ?? 28800) * 1000,
+          pass: session.pass ?? null,
           loading: false,
         });
       } catch {
@@ -91,6 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             ...s,
             accessToken: refreshed.accessToken,
             expiresAt: Date.now() + (refreshed.expiresIn ?? 28800) * 1000,
+            pass: refreshed.pass ?? s.pass, // update pass if returned
           }));
         } catch {
           // Silently ignore refresh failures here — the next API call will
@@ -115,6 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       tenant: session.tenant ?? null,
       accessToken: session.accessToken,
       expiresAt: Date.now() + (session.expiresIn ?? 28800) * 1000,
+      pass: session.pass ?? null,
       loading: false,
     });
   }, []);
@@ -127,6 +133,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       tenant,
       accessToken: session.accessToken,
       expiresAt: Date.now() + (session.expiresIn ?? 28800) * 1000,
+      pass: session.pass ?? null,
       loading: false,
     });
     return tenant!;
@@ -134,7 +141,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     authService.logout();
-    setStateRaw({ user: null, tenant: null, accessToken: null, expiresAt: null, loading: false });
+    setStateRaw({ user: null, tenant: null, accessToken: null, expiresAt: null, pass: null, loading: false });
   }, []);
 
   const refresh = useCallback(async () => {
