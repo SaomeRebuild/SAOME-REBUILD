@@ -7,6 +7,7 @@
  */
 
 import { Link, Navigate } from 'react-router-dom';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AuthShell } from '@/components/ui';
 import { RegisterForm, AuthLanguageSwitcher } from '@/components/business/auth';
@@ -17,10 +18,13 @@ import { ROLE_HOME_PATH, type Role } from '@saome/shared/constants/role';
 export default function RegisterPage() {
   const { t } = useTranslation('auth');
   const { state, isAuthenticated } = useAuth();
+  const [step, setStep] = useState(0);
 
   if (!state.loading && isAuthenticated && state.user) {
     return <Navigate to={ROLE_HOME_PATH[state.user.role as Role]} replace />;
   }
+
+  const isStep3 = step === 2;
 
   return (
     <AuthShell
@@ -34,8 +38,9 @@ export default function RegisterPage() {
           </Link>
         </p>
       }
+      fullWidth={isStep3}
     >
-      <RegisterForm />
+      <RegisterForm currentStep={step} onStepChange={setStep} />
     </AuthShell>
   );
 }

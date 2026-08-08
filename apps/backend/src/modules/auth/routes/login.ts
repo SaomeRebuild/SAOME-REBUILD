@@ -35,13 +35,14 @@ export const loginRoute = new Hono<HonoEnv>()
         `saome_refresh=${session.refreshToken}; HttpOnly${secureAttr}${sameSiteAttr}; Path=/api/auth${domainAttr}; Max-Age=2592000`,
       );
     }
-    return c.json({
-      user: session.user,
-      tenant: session.tenant,
-      accessToken: session.accessToken,
-      expiresIn: session.expiresIn,
-      refreshToken: session.refreshToken,
-    });
+  return c.json({
+    user: session.user,
+    tenant: session.tenant,
+    accessToken: session.accessToken,
+    expiresIn: session.expiresIn,
+    refreshToken: session.refreshToken,
+    pass: session.pass,
   });
+});
 
 export default loginRoute;

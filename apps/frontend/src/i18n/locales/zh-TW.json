@@ -474,5 +474,14 @@
         "audit": "審計與證據：處理者應提供所有必要資訊以證明遵守本 DPA。"
       }
     }
+  },
+  "dashboard": {
+    "trialBanner": {
+      "ariaLabel": "試用期剩餘 {{daysLeft}} 天",
+      "title": "試用期還剩 {{daysLeft}} 天",
+      "titleUrgent": "試用期僅剩 {{daysLeft}} 天 — 立即行動！",
+      "subtitle": "完成驗證並綁定信用卡，避免試用期結束後服務中斷",
+      "cta": "立即驗證並綁定信用卡"
+    }
   }
 }

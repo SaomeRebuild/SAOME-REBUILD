@@ -3,6 +3,7 @@
  *
  * Step 1: tenant info (contactName, phoneCity, address, taxId, companyName, invoiceAddress).
  * Step 2: account info (email, password, confirmPassword).
+ * Step 3: plan selection (green/gold/platinum trial).
  *
  * Data persistence: step 1 values are saved to sessionStorage on advance and
  * restored when going back, so the user does not lose their input.
@@ -21,6 +22,7 @@ import {
   ErrorBanner,
   Stepper,
 } from '@/components/ui';
+import { PlanSelector } from '@/components/business/auth/PlanSelector';
 import {
   tenantInfoSchema,
   accountInfoSchema,
@@ -32,9 +34,10 @@ import { useAuth } from '@/hooks';
 import { SaomeApiError } from '@/services/httpClient';
 import { useNavigate } from 'react-router-dom';
 import { ROUTES } from '@/config/routes';
+import type { PricingTier } from '@/components/pricing';
 
 /**
- * Translate a react-hook-form error message (zod i18n key) to a human-readable i18n string.
+ * Translate a react-hook-form error message (zod i18n key) to a human-readable i18n String.
  * Falls back to the raw key so we never show an untranslated string.
  */
 function translateFieldError(t: ReturnType<typeof useTranslation>['t'], message?: string): string | undefined {
@@ -42,11 +45,22 @@ function translateFieldError(t: ReturnType<typeof useTranslation>['t'], message?
   return t(message, message);
 }
 
-export function RegisterForm() {
+interface RegisterFormProps {
+  currentStep?: number;
+  onStepChange?: (step: number) => void;
+}
+
+export function RegisterForm({ currentStep: externalStep, onStepChange }: RegisterFormProps = {}) {
   const { t } = useTranslation('auth');
   const { register: registerUser } = useAuth();
   const navigate = useNavigate();
-  const [step, setStep] = useState(0);
+  const [internalStep, setInternalStep] = useState(0);
+  const step = externalStep ?? internalStep;
+  const setStep = (s: number) => {
+    setInternalStep(s);
+    onStepChange?.(s);
+  };
+  const [selectedPlan, setSelectedPlan] = useState<PricingTier | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [serverFieldErrors, setServerFieldErrors] = useState<Record<string, string>>({});
@@ -55,6 +69,7 @@ export function RegisterForm() {
   const steps = [
     { label: t('register.steps.storeInfo') },
     { label: t('register.steps.account') },
+    { label: t('register.steps.plan') },
   ];
 
   const tenantForm = useForm<TenantInfoInput>({
@@ -85,7 +100,7 @@ export function RegisterForm() {
     setStep(1);
   }
 
-  function onBack() {
+  function onBackToStep1() {
     setServerError(null);
     setServerFieldErrors({});
     accountForm.reset();
@@ -100,6 +115,12 @@ export function RegisterForm() {
       }
     }
     setStep(0);
+  }
+
+  function onBackToStep2() {
+    setServerError(null);
+    setServerFieldErrors({});
+    setStep(1);
   }
 
   // Clear browser-autofilled values on Step 2 mount. Chrome (and other browsers)
@@ -160,20 +181,41 @@ export function RegisterForm() {
     };
   }, [step, tenantForm]);
 
-  async function onStep2Submit(values: AccountInfoInput) {
+  function onStep2Submit(values: AccountInfoInput) {
+    setServerError(null);
+    setServerFieldErrors({});
+    // Save step 2 values to sessionStorage before advancing
+    sessionStorage.setItem('saome.reg.account', JSON.stringify(values));
+    setStep(2);
+  }
+
+  async function onStep3Submit() {
+    if (!selectedPlan) {
+      setServerError(t('register.error.planRequired'));
+      return;
+    }
+
     setServerError(null);
     setSubmitting(true);
+
     try {
       const tenantJson = sessionStorage.getItem('saome.reg.tenant');
-      if (!tenantJson) throw new Error('Missing tenant info');
+      const accountJson = sessionStorage.getItem('saome.reg.account');
+      if (!tenantJson || !accountJson) throw new Error('Missing form data');
+      
       const tenant = JSON.parse(tenantJson) as TenantInfoInput;
+      const account = JSON.parse(accountJson) as AccountInfoInput;
+      
       const payload: RegistrationPayload = {
         ...tenant,
-        ...values,
+        ...account,
         invoiceAddress: tenant.invoiceAddress || '',
-      };
+        plan: selectedPlan,
+      } as RegistrationPayload;
+
       await registerUser(payload);
       sessionStorage.removeItem('saome.reg.tenant');
+      sessionStorage.removeItem('saome.reg.account');
       navigate(ROUTES.tenantDashboard, { replace: true });
     } catch (e) {
       if (e instanceof SaomeApiError) {
@@ -209,6 +251,7 @@ export function RegisterForm() {
     }
   }
 
+  // Step 1 — Tenant Info
   if (step === 0) {
     return (
       <div className="flex flex-col gap-6">
@@ -278,7 +321,9 @@ export function RegisterForm() {
     );
   }
 
-  return (
+  // Step 2 — Account Info
+  if (step === 1) {
+    return (
       <div className="flex flex-col gap-6">
         <Stepper current={step} steps={steps} />
         {serverError ? <ErrorBanner message={serverError} /> : null}
@@ -316,7 +361,7 @@ export function RegisterForm() {
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={onBack}
+              onClick={onBackToStep1}
               className="min-h-[44px] flex-1 rounded border px-4 py-2 text-sm transition-colors hover:opacity-80"
               style={{
                 borderColor: 'var(--color-border)',
@@ -326,12 +371,46 @@ export function RegisterForm() {
             >
               {t('register.back')}
             </button>
-            <SubmitButton loading={submitting} loadingText={t('register.submitting')} fullWidth>
-              {t('register.submit')}
-            </SubmitButton>
+            <SubmitButton fullWidth>{t('register.next')}</SubmitButton>
           </div>
         </form>
       </div>
+    );
+  }
+
+  // Step 3 — Plan Selection
+  return (
+    <div className="flex flex-col gap-6">
+      <Stepper current={step} steps={steps} />
+      {serverError ? <ErrorBanner message={serverError} /> : null}
+      <PlanSelector selectedPlan={selectedPlan} onSelect={setSelectedPlan} />
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <button
+          type="button"
+          onClick={onBackToStep2}
+          className="min-h-[44px] flex-1 rounded border px-4 py-2 text-sm transition-colors hover:opacity-80"
+          style={{
+            borderColor: 'var(--color-border)',
+            backgroundColor: 'transparent',
+            color: 'var(--color-foreground)',
+          }}
+        >
+          {t('register.back')}
+        </button>
+        <button
+          type="button"
+          onClick={onStep3Submit}
+          disabled={!selectedPlan || submitting}
+          className="min-h-[44px] flex-1 rounded px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50"
+          style={{
+            backgroundColor: selectedPlan ? 'var(--color-primary)' : 'var(--color-muted)',
+            color: selectedPlan ? 'var(--color-on-primary)' : 'var(--color-muted-foreground)',
+          }}
+        >
+          {submitting ? t('register.submitting') : !selectedPlan ? t('register.error.planRequired') : t('register.submit')}
+        </button>
+      </div>
+    </div>
   );
 }
 

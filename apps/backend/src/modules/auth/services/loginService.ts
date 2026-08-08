@@ -7,13 +7,14 @@
 
 import type { Sql } from '@/shared/db/client';
 import type { LoginCredentials } from '../schemas/request';
-import type { AuthSessionDto } from '@/contracts/auth';
+import type { AuthSessionDto, PassDto } from '@/contracts/auth';
 import { AuthError, ForbiddenError } from '@/shared/lib/saomeError';
 import { verifyPassword } from '@/shared/lib/password';
 import { signAccessToken, signRefreshToken } from '@/shared/lib/jwt';
 import { findUserByEmail } from '../db/users';
 import { insertLoginAttempt } from '../db/loginAttempts';
 import { findTenantByOwnerId } from '../db/tenants';
+import { getPassStatus } from '../../pass/db/passes';
 
 const ACCESS_TOKEN_TTL_DEFAULT = 900;
 
@@ -63,6 +64,17 @@ export async function loginService(
   // Tenant (admin won't have one)
   const tenant = await findTenantByOwnerId(sql, user.id);
 
+  // Pass — embedded in session to avoid a separate /api/me/pass polling call.
+  const passStatus = tenant ? await getPassStatus(sql, tenant.id) : null;
+  const pass: PassDto | null = passStatus
+    ? {
+        endDate: passStatus.endDate.toISOString(),
+        daysRemaining: passStatus.daysRemaining,
+        status: passStatus.status,
+        plan: passStatus.plan as 'green' | 'gold' | 'platinum',
+      }
+    : null;
+
   const tokenPayload = {
     sub: user.id,
     email: user.email,
@@ -94,5 +106,6 @@ export async function loginService(
     accessToken,
     expiresIn: accessTokenTtl,
     refreshToken,
+    pass,
   };
 }

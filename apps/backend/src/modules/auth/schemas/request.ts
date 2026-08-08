@@ -59,6 +59,8 @@ export const registrationPayloadSchema = z.object({
   // accountInfo fields (confirmPassword is omitted — frontend doesn't send it)
   email: z.string().email('validation.email'),
   password: z.string().min(8, 'validation.passwordTooShort'),
+  // plan selection (Step 3)
+  plan: z.enum(['green', 'gold', 'platinum'], { message: 'validation.required' }),
 });
 
 export type RegistrationPayload = z.infer<typeof registrationPayloadSchema>;

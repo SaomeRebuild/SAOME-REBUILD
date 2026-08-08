@@ -45,6 +45,7 @@ export const registerRoute = new Hono<HonoEnv>().post('/', async (c) => {
     accessToken: session.accessToken,
     expiresIn: session.expiresIn,
     refreshToken: session.refreshToken,
+    pass: session.pass,
   }, 201);
 });
 

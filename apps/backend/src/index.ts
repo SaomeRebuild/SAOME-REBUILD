@@ -27,6 +27,7 @@ import { corsMiddleware } from '@/shared/middleware/cors';
 import { requestIdMiddleware } from '@/shared/middleware/requestId';
 import { errorHandler } from '@/shared/middleware/errorHandler';
 import { authModule } from '@/modules/auth';
+import { passModule } from '@/modules/pass';
 
 /**
  * Default export — Worker entry point.
@@ -46,5 +47,6 @@ app.get('/health', (c) => c.json({ ok: true }));
 
 // Feature modules
 app.route('/api/auth', authModule);
+app.route('/api/pass', passModule);
 
 export default app;

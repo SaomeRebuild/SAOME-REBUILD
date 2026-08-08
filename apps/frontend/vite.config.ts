@@ -45,7 +45,7 @@ export default defineConfig({
         // Cookies will be set as same-origin by the browser, sidestepping the
         // `SameSite=Lax` cross-site rejection. Production frontend deploys
         // don't use this proxy and hit the backend directly.
-        target: 'https://saome-backend.josh1989213.workers.dev',
+        target: 'http://127.0.0.1:8787',
         changeOrigin: true,
         secure: true,
       },

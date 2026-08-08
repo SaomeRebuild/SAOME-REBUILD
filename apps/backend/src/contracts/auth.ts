@@ -47,6 +47,9 @@ export interface TenantDto {
  * `refreshToken` is returned in the JSON body ONLY for non-cookie clients
  * (mobile, server-to-server). Browser clients receive it via Set-Cookie header
  * only — never via JSON — to mitigate XSS exfiltration.
+ *
+ * `pass` is embedded to avoid a separate /api/me/pass polling call.
+ * The client uses `endDate` to compute a live countdown with setInterval.
  */
 export interface AuthSessionDto {
   user: AuthUserDto;
@@ -54,6 +57,7 @@ export interface AuthSessionDto {
   accessToken: string;
   expiresIn: number; // seconds until accessToken expires
   refreshToken?: string; // optional; cookie clients receive via Set-Cookie
+  pass?: PassDto | null; // null for admin / no pass yet
 }
 
 /**
@@ -84,4 +88,20 @@ export interface ErrorResponseDto {
     details?: Record<string, unknown>;
   };
   requestId: string;
+}
+
+/**
+ * Pass info embedded in AuthSessionDto — avoids a separate /api/me/pass polling call.
+ *
+ * `endDate` is an ISO 8601 string so the client can compute a live countdown
+ * with `setInterval` using `endDate - Date.now()`, requiring zero additional
+ * network requests after login/refresh.
+ *
+ * `plan` mirrors the `passes.plan` CHECK constraint in the DB.
+ */
+export interface PassDto {
+  endDate: string; // ISO 8601, e.g. "2026-08-22T00:00:00.000Z"
+  daysRemaining: number;
+  status: 'active' | 'expired' | 'cancelled';
+  plan: 'green' | 'gold' | 'platinum';
 }

@@ -3,17 +3,18 @@
  *
  * @module modules/auth/services/registerService
  * @description Orchestrates: hash password → DB transaction (insert user +
- * insert tenant) → sign tokens. Pure function: takes sql, secrets, payload.
+ * insert tenant + insert pass) → sign tokens. Pure function: takes sql, secrets, payload.
  */
 
 import type { Sql } from '@/shared/db/client';
 import type { RegistrationPayload } from '../schemas/request';
-import type { AuthSessionDto } from '@/contracts/auth';
+import type { AuthSessionDto, PassDto } from '@/contracts/auth';
 import { ConflictError } from '@/shared/lib/saomeError';
 import { hashPassword } from '@/shared/lib/password';
 import { signAccessToken, signRefreshToken } from '@/shared/lib/jwt';
 import { insertUser, findUserByEmail } from '../db/users';
 import { insertTenant, findTenantByTaxId } from '../db/tenants';
+import { insertPass, getPassStatus } from '@/modules/pass/db/passes';
 
 const ACCESS_TOKEN_TTL_DEFAULT = 900; // 15 min
 
@@ -48,7 +49,7 @@ export async function registerService(
   // 2. Hash password
   const passwordHash = await hashPassword(payload.password);
 
-  // 3. Insert user + tenant in a transaction
+  // 3. Insert user + tenant + pass in a transaction
   const result = await sql.begin(async (tx) => {
     const user = await insertUser(tx as unknown as Sql, {
       email: payload.email!,
@@ -67,7 +68,17 @@ export async function registerService(
       website: payload.website ?? null,
       email: payload.email ?? null,
     });
-    return { user, tenant };
+    // Insert pass record for trial subscription
+    const pass = await insertPass(tx as unknown as Sql, {
+      tenantId: tenant.id,
+      plan: payload.plan,
+      trialDays: 14, // default 14-day trial
+    });
+    // Immediately fetch pass status so we can return it in the session response.
+    // Note: getPassStatus returns { daysRemaining, status, endDate }; plan comes from insert result.
+    // Pass is just inserted so it always exists — non-null assertion is safe here.
+    const passStatus = await getPassStatus(tx as unknown as Sql, tenant.id);
+    return { user, tenant, pass: passStatus };
   });
 
   // 4. Sign tokens
@@ -100,5 +111,11 @@ export async function registerService(
     accessToken,
     expiresIn: accessTokenTtl,
     refreshToken,
+    pass: result.pass ? {
+      endDate: result.pass.endDate.toISOString(),
+      daysRemaining: result.pass.daysRemaining,
+      status: result.pass.status,
+      plan: result.pass.plan as 'green' | 'gold' | 'platinum',
+    } satisfies PassDto : null,
   };
 }

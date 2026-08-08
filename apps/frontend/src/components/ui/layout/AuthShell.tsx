@@ -23,15 +23,16 @@ export interface AuthShellProps {
   footer?: ReactNode;
   children: ReactNode;
   langSwitcher?: ReactNode;
+  fullWidth?: boolean;
 }
 
-export function AuthShell({ title, subtitle, footer, children, langSwitcher }: AuthShellProps) {
+export function AuthShell({ title, subtitle, footer, children, langSwitcher, fullWidth }: AuthShellProps) {
   return (
     <main
       className="min-h-screen px-4 pt-24 pb-8 sm:pt-12 sm:pb-12 md:pt-16 md:pb-16"
       style={{ backgroundColor: 'var(--color-background)' }}
     >
-      <div className="mx-auto max-w-md">
+      <div className={fullWidth ? 'mx-auto' : 'mx-auto max-w-md'}>
         {langSwitcher ? <div className="mb-4 flex justify-end">{langSwitcher}</div> : null}
         <div
           className="rounded-xl border p-6 shadow-soft sm:p-8"
