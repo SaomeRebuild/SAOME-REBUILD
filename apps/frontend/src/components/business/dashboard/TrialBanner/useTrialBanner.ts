@@ -42,7 +42,7 @@ export function useTrialBanner() {
   // Should the banner render?
   const visible =
     pass !== null &&
-    pass.plan === 'green' &&
+    (pass.plan === 'green' || pass.plan === 'gold' || pass.plan === 'platinum') &&
     pass.status === 'active' &&
     daysLeft > 0;
 

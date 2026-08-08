@@ -21,12 +21,11 @@ export default function AppDashboardPage() {
 
   return (
     <div className="flex flex-col gap-4 p-4 pt-16">
-      {/* Trial warning banner — only renders for green-plan active tenants */}
+      {/* Trial warning banner — renders for all active plans during trial period */}
       {visible && (
         <TrialBanner
           daysLeft={daysLeft}
           endDate={endDate}
-          plan="green"
           onVerify={handleVerify}
         />
       )}

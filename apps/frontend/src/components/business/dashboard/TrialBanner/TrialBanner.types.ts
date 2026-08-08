@@ -10,7 +10,6 @@ export interface TrialBannerProps {
   /** Called when the user clicks "Verify Now". */
   onVerify: () => void;
   /** Plan type — only renders when 'green' */
-  plan: 'green';
 }
 
 /** The live `daysLeft` value — computed every second via setInterval. */
