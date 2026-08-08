@@ -51,11 +51,20 @@ export interface AuthTenant {
   email: string;
 }
 
+/** Pass info embedded in login/refresh response — avoids polling /api/me/pass. */
+export interface PassInfo {
+  endDate: string; // ISO 8601, e.g. "2026-08-22T00:00:00.000Z"
+  daysRemaining: number;
+  status: 'active' | 'expired' | 'cancelled';
+  plan: 'green' | 'gold' | 'platinum';
+}
+
 /** AuthSession that includes optional tenant (login/register) */
 export interface AuthSessionWithTenant extends AuthSession {
   tenant?: AuthTenant | null;
   expiresIn?: number;
   refreshToken?: string;
+  pass?: PassInfo | null; // embedded from login/refresh — no polling needed
 }
 
 /** Frontend AuthProvider state shape */

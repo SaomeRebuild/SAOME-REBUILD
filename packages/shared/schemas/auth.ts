@@ -159,6 +159,10 @@ export const jwtPayloadSchema = z.object({
 });
 export type JwtPayloadSchema = z.infer<typeof jwtPayloadSchema>;
 
+/** Pricing plan enum — mirrors passes.plan CHECK constraint in DB */
+export const planSchema = z.enum(['green', 'gold', 'platinum']);
+export type Plan = z.infer<typeof planSchema>;
+
 /** Successful login response (frontend receives this as JSON; refresh token comes via HttpOnly cookie) */
 export const authSessionSchema = z.object({
   accessToken: z.string(),
@@ -167,6 +171,15 @@ export const authSessionSchema = z.object({
     email: z.string().email(),
     role: roleSchema,
   }),
+  pass: z
+    .object({
+      endDate: z.string(),
+      daysRemaining: z.number().int().nonnegative(),
+      status: z.enum(['active', 'expired', 'cancelled']),
+      plan: planSchema,
+    })
+    .optional()
+    .nullable(),
 });
 export type AuthSession = z.infer<typeof authSessionSchema>;
 
@@ -212,3 +225,11 @@ export const registrationPayloadSchema = tenantInfoSchema.merge(
   invoiceAddress: z.string().min(1, 'validation.required').max(500),
 });
 export type RegistrationPayload = z.infer<typeof registrationPayloadSchema>;
+
+/**
+ * Registration payload with plan selection (Step 3)
+ */
+export const registrationWithPlanSchema = registrationPayloadSchema.extend({
+  plan: planSchema,
+});
+export type RegistrationWithPlanPayload = z.infer<typeof registrationWithPlanSchema>;
