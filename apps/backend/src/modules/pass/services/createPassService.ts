@@ -4,7 +4,7 @@ import { getDb } from '@/shared/db/client';
 import { createPassRequestSchema } from '../schemas/request';
 import { passResponseSchema, passStatusResponseSchema } from '../schemas/response';
 import { SaomeError } from '@/shared/lib/saomeError';
-import { insertPass, getPassStatus, findPassByTenantId } from '../db/passes';
+import { insertPass, getPassStatus, findPassByTenantId, advanceBillingCycle } from '../db/passes';
 
 export interface CreatePassResult {
   pass: z.infer<typeof passResponseSchema>;
@@ -62,6 +62,10 @@ export interface GetPassStatusResult {
   daysRemaining: number;
   status: 'active' | 'expired' | 'cancelled';
   endDate: string;
+  paidAt: string | null;
+  billingCycleEnd: string | null;
+  phase: 'trial' | 'paid' | 'expired';
+  needsRenewalNotice: boolean;
 }
 
 export async function getPassStatusService(
@@ -69,6 +73,10 @@ export async function getPassStatusService(
   tenantId: string
 ): Promise<GetPassStatusResult> {
   const db = getDb(env.HYPERDRIVE);
+
+  // Lazy update: advance billing cycle if needed (for paid users)
+  await advanceBillingCycle(db, tenantId);
+
   const result = await getPassStatus(db, tenantId);
 
   if (!result) {
@@ -80,9 +88,17 @@ export async function getPassStatusService(
     });
   }
 
-  return passStatusResponseSchema.parse({
+  // Paid user within 7 days of expiry → needs renewal notice
+  const needsRenewalNotice =
+    result.phase === 'paid' && result.daysRemaining <= 7 && result.daysRemaining >= 0;
+
+  return {
     daysRemaining: result.daysRemaining,
     status: result.status,
     endDate: result.endDate.toISOString(),
-  });
+    paidAt: result.paidAt?.toISOString() ?? null,
+    billingCycleEnd: result.billingCycleEnd?.toISOString() ?? null,
+    phase: result.phase,
+    needsRenewalNotice,
+  };
 }
