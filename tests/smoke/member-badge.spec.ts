@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 /**
  * Smoke Test: MemberBadge Component
- * 
+ *
  * Verifies the core functionality of the MemberBadge component
  * works correctly in a real browser environment.
  */
@@ -12,7 +12,7 @@ test.describe('MemberBadge Smoke Test', () => {
     await page.goto('/member-profile');
     await page.evaluate(() => localStorage.setItem('member_tier', 'gold'));
     await page.reload();
-    
+
     const badge = page.locator('[data-testid="member-badge"]');
     await expect(badge).toBeVisible();
     await expect(badge).toContainText('金牌');
@@ -22,7 +22,7 @@ test.describe('MemberBadge Smoke Test', () => {
     await page.goto('/member-profile');
     await page.evaluate(() => localStorage.setItem('member_tier', 'silver'));
     await page.reload();
-    
+
     const badge = page.locator('[data-testid="member-badge"]');
     await expect(badge).toBeVisible();
     await expect(badge).toContainText('銀牌');
@@ -32,7 +32,7 @@ test.describe('MemberBadge Smoke Test', () => {
     await page.goto('/member-profile');
     await page.evaluate(() => localStorage.setItem('member_tier', 'bronze'));
     await page.reload();
-    
+
     const badge = page.locator('[data-testid="member-badge"]');
     await expect(badge).toBeVisible();
     await expect(badge).toContainText('銅牌');
@@ -42,7 +42,7 @@ test.describe('MemberBadge Smoke Test', () => {
     await page.goto('/member-profile');
     await page.evaluate(() => localStorage.setItem('member_tier', 'gold'));
     await page.reload();
-    
+
     const badge = page.locator('[data-testid="member-badge"]');
     await expect(badge).toHaveAttribute('aria-label', '會員等級：金牌');
   });
@@ -52,7 +52,7 @@ test.describe('MemberBadge Smoke Test', () => {
     await page.goto('/member-profile');
     await page.evaluate(() => localStorage.setItem('member_tier', 'gold'));
     await page.reload();
-    
+
     const badge = page.locator('[data-testid="member-badge"]');
     await expect(badge).toBeVisible();
   });

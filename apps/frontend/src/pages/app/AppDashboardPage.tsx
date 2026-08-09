@@ -6,29 +6,21 @@ import { useNavigate } from 'react-router-dom';
 import { ComingSoonCard } from '@/components/ui';
 import { useAuth } from '@/hooks';
 import { useTranslation } from 'react-i18next';
-import { TrialBanner } from '@/components/business/dashboard/TrialBanner';
-import { useTrialBanner } from '@/components/business/dashboard/TrialBanner/useTrialBanner';
+import { PassNotification } from '@/components/business/dashboard/PassNotification';
 
 export default function AppDashboardPage() {
   const { state, logout } = useAuth();
   const { t } = useTranslation('auth');
   const navigate = useNavigate();
-  const { daysLeft, endDate, visible } = useTrialBanner();
 
-  function handleVerify() {
+  function handleCta() {
     navigate('/settings/billing');
   }
 
   return (
     <div className="flex flex-col gap-4 p-4 pt-16">
-      {/* Trial warning banner — renders for all active plans during trial period */}
-      {visible && (
-        <TrialBanner
-          daysLeft={daysLeft}
-          endDate={endDate}
-          onVerify={handleVerify}
-        />
-      )}
+      {/* Pass notification — handles trial / expired / renewal reminder */}
+      <PassNotification pass={state.pass ?? null} onCta={handleCta} />
 
       <ComingSoonCard
         title={t('app.dashboard.title', 'Tenant dashboard — coming soon')}

@@ -3,11 +3,10 @@
  * Run: npx playwright test tests/smoke/dashboard-debug.spec.ts --headed
  */
 import { test, expect } from '@playwright/test';
+import { SMOKE_CREDENTIALS } from './template';
 
-const ADMIN_EMAIL = 'admin@saome.org';
-const ADMIN_PASSWORD = 'Qwww123123!';
-const TENANT_EMAIL = 'ppp@hotmail.com';
-const TENANT_PASSWORD = 'www123123';
+const { email: ADMIN_EMAIL, password: ADMIN_PASSWORD } = SMOKE_CREDENTIALS.admin;
+const { email: TENANT_EMAIL, password: TENANT_PASSWORD } = SMOKE_CREDENTIALS.tenant;
 
 test.describe('Dashboard i18n + mobile menu debug', () => {
 
@@ -47,6 +46,7 @@ test.describe('Dashboard i18n + mobile menu debug', () => {
     if (hamburgerCount > 0) {
       await hamburger.first().click();
       await page.waitForTimeout(300);
+    }
 
       // Check what's inside the drawer
       const drawerText = await page.locator('nav.absolute').textContent();
@@ -59,7 +59,6 @@ test.describe('Dashboard i18n + mobile menu debug', () => {
       // Check for logout inside drawer
       const logoutInDrawer = await page.locator('nav.absolute [data-testid="dashboard-logout-btn"]').count();
       console.log('[MOBILE DRAWER] logout btns inside drawer:', logoutInDrawer);
-    }
   });
 
   test('tenant dashboard: i18n and mobile menu', async ({ page }) => {

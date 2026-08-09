@@ -6,6 +6,27 @@
     "subtitle": "完成驗證並綁定信用卡，避免試用期結束後服務中斷",
     "cta": "立即驗證並綁定信用卡"
   },
+  "passNotification": {
+    "trial": {
+      "ariaLabel": "試用期剩餘 {{daysLeft}} 天",
+      "title": "試用期還剩 {{daysLeft}} 天",
+      "titleUrgent": "試用期僅剩 {{daysLeft}} 天 — 立即行動！",
+      "subtitle": "完成驗證並綁定信用卡，避免試用期結束後服務中斷",
+      "cta": "立即驗證並綁定信用卡"
+    },
+    "trialExpired": {
+      "ariaLabel": "試用期已結束",
+      "title": "試用期已結束",
+      "subtitle": "您的試用期已結束，請綁定信用卡以繼續使用服務",
+      "cta": "立即續費"
+    },
+    "renewalReminder": {
+      "ariaLabel": "本月份剩餘 {{daysLeft}} 天",
+      "title": "本月份剩餘 {{daysLeft}} 天",
+      "subtitle": "請盡速付費以確保服務不中斷",
+      "cta": "前往付款"
+    }
+  },
   "dashboardHeader": {
     "logoAlt": "SAOME",
     "openMenu": "開啟選單",
