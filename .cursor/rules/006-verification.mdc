@@ -47,6 +47,20 @@ alwaysApply: true
 
 **覆蓋既有檔一律用 `Read` + `StrReplace`**。`Write` 僅限新建檔案。
 
+## Storybook 版本對齊 SOP（MANDATORY）
+
+新增任何 `.stories.tsx` 前，**必須**確認 `@storybook/react` 跟 `@storybook/react-vite` 版本一致，且都在 `package.json` 的 `devDependencies`。
+
+```bash
+# 檢查 Storybook packages 版本
+npx tsc -b apps/frontend/tsconfig.node.json --noEmit || true
+grep "@storybook" apps/frontend/package.json
+```
+
+版本不一致會導致 Storybook build fail，且 error message 通常不是直接指向版本問題。
+
+---
+
 ## Commit message 必填欄位（補強 011-dev.mdc）
 
 每條 commit message footer 必須包含驗證輸出截錄：

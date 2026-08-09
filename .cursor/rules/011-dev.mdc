@@ -34,6 +34,14 @@ alwaysApply: true
 - `Sync:` GitHub remote URL + commit SHA
 - `Self-improvement:` 若有 runs/improvements/feedback/ 連結
 
+## Feedback 同 commit 規則
+
+如果某個 feature 的 feedback（DEV LOG / runs/improvements/feedback/）是在實作過程中產生的，**同 commit** 帶進 code 變更。
+
+不要分開兩個 commit：
+- ❌ `feat(member): add MemberCard` + `docs(feedback): trace member-card dev notes`（分開）
+- ✅ `feat(member): add MemberCard` + feedback 同在一個 commit（**正確**）
+
 ## 同步狀態必須記
 
 - ✅ 本地 commit hash

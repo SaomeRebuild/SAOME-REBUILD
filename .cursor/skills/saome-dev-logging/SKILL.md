@@ -117,6 +117,10 @@
 - 先寫「症狀」「探針」兩段
 - 「根因」「修法」可以在 commit 前補
 
+**Feedback 即時寫入**：
+- 實作過程中遇到任何「比預期複雜」的問題（> 15 分鐘卡關、回頭重構、意外發現），**立即**寫進「衍生」段落
+- 不要事後補——事後補的 feedback 會失真，且下次犯同樣的錯
+
 ### Step 2 — Trace with evidence
 
 不要寫「我覺得是 X」。寫「我跑了 Y probe，輸出 Z，結論是 X」。
@@ -150,6 +154,10 @@ Refs: [原 commit hash]
 - `runs/improvements/INDEX.md`（加一條 reference）
 
 …建立連結。SAOME 的好處是「同一個 bug 不會第二次犯」——靠的就是這些 link。
+
+**DEV LOG 自問 → action item**：
+- 寫完 DEV LOG / Feedback → 讀「自問」段落
+- 在 `runs/improvements/INDEX.md` 加一條 pending action item（用 `[ ]` 標記未完成）
 
 ## 寫作紀律（DEV LOG 自己的）
 

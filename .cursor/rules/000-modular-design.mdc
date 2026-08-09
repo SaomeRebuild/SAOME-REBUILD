@@ -48,6 +48,7 @@ components/business/<scope>/<Name>/
 
 - ❌ 把 L2 業務元件寫成單一 .tsx(必須資料夾)
 - ❌ 主組件超過 100 行
+- ❌ 主組件 JSX 行數 > 50 行時**不拆分**（立即拆 sub-component，再開始寫 test）
 - ❌ L2 直接修改 shadcn L1 元件
 - ❌ 把業務邏輯寫在 JSX / event handler 裡
 - ❌ 同名元件重複存在(`<Card>` 跟 `<MyCard>` 兩者)— 詳見 `frontend/022-component-reuse.mdc`

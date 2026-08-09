@@ -79,6 +79,8 @@ components/business/<scope>/<Name>/
 
 詳見 `.cursor/rules/000-modular-design.mdc`（含 React 元件 / Hono backend / 第三方 API 包裝 / API contract 四個 Part）與 `.cursor/rules/frontend/022-component-reuse.mdc`（React 元件重用）。
 
+**sub-component 拆分門檻**：主組件 JSX 行數 > 50 行時，立即拆分 sub-component，再開始寫 test。
+
 ## Config 結構（MANDATORY）
 
 ```
@@ -132,6 +134,12 @@ apps/frontend/ **只能放 Web 特定內容**。所有可共用的程式碼必�
 - ✅ 任何 session 開頭或收到新任務時，**必須先 invoke `saome-task-router`** 判斷任務級距
 - ✅ 寫多步表單 / `<input type="email">` / `<input type="password">` 前**必須**讀 `.cursor/rules/018-form-autofill-and-multi-step-state.mdc`
 - ✅ 改 backend schema (`request.ts` / `dto.ts`) 或新增 DB migration 前**必須**讀 `.cursor/rules/019-schema-contract-drift.mdc`
+- ✅ Feedback 在實作過程中**即時**寫入 DEV LOG 的「衍生」段落，不要事後補
+- ✅ DEV LOG 寫完 → 讀「自問」段落 → 在 `runs/improvements/INDEX.md` 加 pending action
+- ✅ feature 的 code + feedback **同 commit**，不要分開兩個 commit
+- ✅ 新增任何 `.stories.tsx` 前，對齊 `@storybook/react` 跟 `@storybook/react-vite` 版本
+- ✅ 所有 smoke test credential 從 `tests/smoke/template.ts` import，禁止 hard-code 在 spec 內
+- ✅ 每次跑 smoke test 用 `npm run test:smoke`（統一 playwright config 在 root）
 
 ## Task Router 入口（MANDATORY）
 
