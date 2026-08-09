@@ -42,14 +42,17 @@ export interface AuthTenant {
   ownerUserId: string;
   name: string;
   contactName: string;
-  phoneCity: string;
+  phoneCity: string | null; // nullable — city phone is optional
   address: string;
   taxId: string;
   invoiceAddress: string | null;
-  mobile: string | null;
+  mobile: string; // required — cell phone is mandatory
   website: string | null;
   email: string;
 }
+
+/** Pass phase — derived from paid_at */
+export type PassPhase = 'trial' | 'paid' | 'expired';
 
 /** Pass info embedded in login/refresh response — avoids polling /api/me/pass. */
 export interface PassInfo {
@@ -57,6 +60,9 @@ export interface PassInfo {
   daysRemaining: number;
   status: 'active' | 'expired' | 'cancelled';
   plan: 'green' | 'gold' | 'platinum';
+  phase: PassPhase; // derived: trial (paidAt=null & days>0) | paid (paidAt!=null) | expired (paidAt=null & days=0)
+  paidAt: string | null; // ISO 8601, NULL = still in trial
+  billingCycleEnd: string | null; // ISO 8601, NULL = not yet paid
 }
 
 /** AuthSession that includes optional tenant (login/register) */

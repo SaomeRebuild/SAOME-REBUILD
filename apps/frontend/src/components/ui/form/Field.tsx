@@ -29,10 +29,11 @@ export const Field = forwardRef<HTMLDivElement, FieldProps>(function Field(
 
   let childWithProps: ReactNode = children;
   if (children && isValidElement(children)) {
-    childWithProps = cloneElement(children as ReactElement<{ id?: string; 'aria-describedby'?: string; 'aria-invalid'?: boolean }>, {
+    childWithProps = cloneElement(children as ReactElement<{ id?: string; 'aria-describedby'?: string; 'aria-invalid'?: boolean; 'aria-required'?: boolean }>, {
       id: (children.props as { id?: string }).id ?? id,
       'aria-describedby': describedBy,
       'aria-invalid': Boolean(error) || undefined,
+      'aria-required': required || undefined,
     });
   }
 

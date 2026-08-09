@@ -52,8 +52,8 @@ describe('RegisterForm — mobile field', () => {
     renderRegister();
     const mobileInput = screen.getByRole('textbox', { name: 'register.mobile' });
     expect(mobileInput).toBeInTheDocument();
-    // Should not be marked required (mobile is optional).
-    expect(mobileInput).not.toBeRequired();
+    // Mobile is required — Field marks it aria-required.
+    expect(mobileInput).toHaveAttribute('aria-required', 'true');
   });
 
   it('mobile input has autoComplete="tel"', () => {
@@ -78,16 +78,14 @@ describe('RegisterForm — mobile field', () => {
     expect(mobileInput).toHaveValue('+886912345678');
   });
 
-  it('leaving mobile blank does not block Step 1 → Step 2 progression', async () => {
+  it('leaving mobile blank blocks Step 1 → Step 2; providing mobile allows progression', async () => {
     const user = userEvent.setup();
     renderRegister();
 
-    // Fill all required Step 1 fields except mobile. The Field component
-    // associates the label via htmlFor, but in jsdom the label text is the
-    // i18n key (no provider wraps the test). We query the inputs by their
-    // registered `name` attribute instead.
+    // Fill all required Step 1 fields (mobile is now required; phoneCity is optional).
     await user.type(screen.getByRole('textbox', { name: 'register.contactName' }), '王小明');
-    await user.type(screen.getByRole('textbox', { name: 'register.phoneCity' }), '02-1234-5678');
+    // phoneCity is optional — skip it.
+    await user.type(screen.getByRole('textbox', { name: 'register.mobile' }), '0912345678');
     await user.type(screen.getByRole('textbox', { name: 'register.address' }), '台北市信義區信義路 1 號');
     await user.type(screen.getByRole('textbox', { name: 'register.taxId' }), '12345678');
     await user.type(screen.getByRole('textbox', { name: 'register.name' }), '王小明工作室');

@@ -39,6 +39,11 @@ vi.mock('../db/tenants', () => ({
   insertTenant: vi.fn(),
 }));
 
+vi.mock('../../pass/db/passes', () => ({
+  getPassStatus: vi.fn(),
+  advanceBillingCycle: vi.fn(),
+}));
+
 const FAKE_ATTEMPT_ROW = {
   id: 1,
   user_id: null,
@@ -69,6 +74,7 @@ vi.mock('../middleware/rateLimit', () => ({
 
 import { findUserByEmail } from '../db/users';
 import { findTenantByOwnerId } from '../db/tenants';
+import { getPassStatus } from '../../pass/db/passes';
 import { verifyPassword } from '@/shared/lib/password';
 import { signAccessToken, signRefreshToken } from '@/shared/lib/jwt';
 import { insertLoginAttempt } from '../db/loginAttempts';
@@ -77,6 +83,7 @@ import { loginRoute } from '../routes/login';
 
 const mockedFindUser = vi.mocked(findUserByEmail);
 const mockedFindTenant = vi.mocked(findTenantByOwnerId);
+const mockedGetPass = vi.mocked(getPassStatus);
 const mockedVerify = vi.mocked(verifyPassword);
 const mockedAccess = vi.mocked(signAccessToken);
 const mockedRefresh = vi.mocked(signRefreshToken);
@@ -109,6 +116,16 @@ const fakeUser = {
   role: 'tenant' as const,
   is_active: true,
   created_at: new Date(),
+};
+
+const fakePassStatus = {
+  plan: 'green',
+  daysRemaining: 14,
+  status: 'active' as const,
+  endDate: new Date('2026-09-01T00:00:00.000Z'),
+  phase: 'trial' as const,
+  paidAt: null,
+  billingCycleEnd: null,
 };
 
 const fakeTenant = {
@@ -152,6 +169,7 @@ describe('POST /api/auth/login', () => {
       success: true,
       attempted_at: new Date(),
     });
+    mockedGetPass.mockResolvedValue(fakePassStatus);
   });
 
   it('happy path returns 200 with auth session + Set-Cookie', async () => {

@@ -43,8 +43,14 @@ vi.mock('../db/tenants', () => ({
   insertTenant: vi.fn(),
 }));
 
+vi.mock('@/modules/pass/db/passes', () => ({
+  insertPass: vi.fn(),
+  getPassStatus: vi.fn(),
+}));
+
 import { findUserByEmail, insertUser } from '../db/users';
 import { findTenantByTaxId, insertTenant } from '../db/tenants';
+import { insertPass, getPassStatus } from '@/modules/pass/db/passes';
 import { hashPassword } from '@/shared/lib/password';
 import { signAccessToken, signRefreshToken } from '@/shared/lib/jwt';
 import { errorHandler } from '@/shared/middleware/errorHandler';
@@ -54,6 +60,8 @@ const mockedFindUserByEmail = vi.mocked(findUserByEmail);
 const mockedInsertUser = vi.mocked(insertUser);
 const mockedFindTenantByTaxId = vi.mocked(findTenantByTaxId);
 const mockedInsertTenant = vi.mocked(insertTenant);
+const mockedInsertPass = vi.mocked(insertPass);
+const mockedGetPassStatus = vi.mocked(getPassStatus);
 const mockedHash = vi.mocked(hashPassword);
 const mockedSignAccess = vi.mocked(signAccessToken);
 const mockedSignRefresh = vi.mocked(signRefreshToken);
@@ -90,6 +98,7 @@ const validPayload = {
   website: 'https://example.com',
   email: 'user@example.com',
   password: 'Password123!',
+  plan: 'green' as const,
 };
 
 async function callRegister(app: Hono<HonoEnv>, body: unknown) {
@@ -126,6 +135,27 @@ describe('POST /api/auth/register', () => {
     mockedHash.mockResolvedValue('hashed');
     mockedSignAccess.mockResolvedValue('access');
     mockedSignRefresh.mockResolvedValue('refresh');
+    mockedInsertPass.mockResolvedValue({
+      id: 'pass-1',
+      tenant_id: 'tenant-1',
+      plan: 'green',
+      trial_days: 14,
+      start_date: new Date(),
+      end_date: new Date('2026-09-01T00:00:00.000Z'),
+      status: 'active',
+      created_at: new Date(),
+      paid_at: null,
+      billing_cycle_end: null,
+    });
+    mockedGetPassStatus.mockResolvedValue({
+      plan: 'green',
+      daysRemaining: 14,
+      status: 'active',
+      endDate: new Date('2026-09-01T00:00:00.000Z'),
+      phase: 'trial',
+      paidAt: null,
+      billingCycleEnd: null,
+    });
   });
 
   it('happy path: valid payload returns 201 with auth session', async () => {

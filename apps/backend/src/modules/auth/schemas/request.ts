@@ -40,21 +40,17 @@ const taxIdSchema = z
 const mobileE164Regex = /^\+[1-9]\d{7,14}$/;
 
 export const registrationPayloadSchema = z.object({
-  // tenantInfo fields (required)
+  // tenantInfo fields
   name: z.string().min(1, 'validation.required'),
   contactName: z.string().min(1, 'validation.required'),
-  phoneCity: z.string().min(1, 'validation.required'),
+  // Mobile (cell phone) — REQUIRED; normalized to E.164 on frontend
+  mobile: z.string().regex(mobileE164Regex, 'validation.mobileInvalid'),
+  // City phone (landline) — OPTIONAL
+  phoneCity: z.string().optional().nullable(),
   address: z.string().min(1, 'validation.required'),
   taxId: taxIdSchema,
-  // invoiceAddress is optional in tenantInfo but required in the combined payload
   invoiceAddress: z.string().min(1, 'validation.required'),
   // optional tenantInfo fields
-  mobile: z
-    .string()
-    .regex(mobileE164Regex, 'validation.mobileInvalid')
-    .optional()
-    .nullable()
-    .or(z.literal('')),
   website: z.string().url().optional().nullable(),
   // accountInfo fields (confirmPassword is omitted — frontend doesn't send it)
   email: z.string().email('validation.email'),

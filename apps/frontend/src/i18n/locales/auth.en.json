@@ -73,9 +73,10 @@
       }
     },
     "contactName": "Contact name",
-    "phoneCity": "Office phone",
     "mobile": "Mobile number",
-    "mobileHint": "Optional. E.164 format preferred (e.g. +886912345678); Taiwan 09xxxxxxxx also accepted.",
+    "mobileHint": "Required. E.164 format (e.g. +886912345678) or Taiwan 09xxxxxxxx.",
+    "phoneCityHint": "Optional",
+    "phoneCity": "Office phone",
     "address": "Address",
     "taxId": "Tax ID",
     "taxIdHint": "Enter 0 if not applicable",

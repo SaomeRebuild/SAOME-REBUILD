@@ -60,11 +60,11 @@ export async function registerService(
       ownerUserId: user.id,
       name: payload.name,
       contactName: payload.contactName,
-      phoneCity: payload.phoneCity,
+      phoneCity: payload.phoneCity ?? null,
       address: payload.address,
       taxId: payload.taxId,
       invoiceAddress: payload.invoiceAddress ?? null,
-      mobile: payload.mobile ?? null,
+      mobile: payload.mobile,
       website: payload.website ?? null,
       email: payload.email ?? null,
     });
@@ -100,7 +100,7 @@ export async function registerService(
       id: result.tenant.id,
       name: result.tenant.name,
       contactName: result.tenant.contact_name,
-      phoneCity: result.tenant.phone_city,
+      phoneCity: result.tenant.phone_city ?? null,
       address: result.tenant.address,
       taxId: result.tenant.tax_id,
       invoiceAddress: result.tenant.invoice_address,
@@ -116,6 +116,9 @@ export async function registerService(
       daysRemaining: result.pass.daysRemaining,
       status: result.pass.status,
       plan: result.pass.plan as 'green' | 'gold' | 'platinum',
+      phase: result.pass.phase,
+      paidAt: result.pass.paidAt?.toISOString() ?? null,
+      billingCycleEnd: result.pass.billingCycleEnd?.toISOString() ?? null,
     } satisfies PassDto : null,
   };
 }

@@ -86,22 +86,17 @@ export function normalizePhoneToE164(input: string): string {
 export const tenantInfoSchema = z.object({
   name: z.string().min(2, 'validation.companyNameTooShort').max(200),
   contactName: z.string().min(2, 'validation.contactNameTooShort').max(100),
-  phoneCity: z.string().min(7, 'validation.phoneCityTooShort').max(30),
+  // Mobile (cell phone) — REQUIRED; normalized to E.164 before submit
+  mobile: z
+    .preprocess((v) => {
+      if (typeof v !== 'string') return v;
+      if (v.trim() === '') return null;
+      return normalizePhoneToE164(v);
+    }, z.string().regex(e164PhoneRegex, 'validation.mobileInvalid')),
+  // City phone (landline) — OPTIONAL
+  phoneCity: z.string().max(30).optional().nullable(),
   address: z.string().min(5, 'validation.addressTooShort').max(500),
   taxId: taxIdSchema,
-  mobile: z
-    .preprocess(
-      (v) => {
-        if (typeof v !== 'string') return v;
-        if (v.trim() === '') return null; // empty string -> null = "no value"
-        return normalizePhoneToE164(v);
-      },
-      z
-        .string()
-        .regex(e164PhoneRegex, 'validation.mobileInvalid')
-        .nullable(),
-    )
-    .optional(),
   invoiceAddress: z.string().max(500).optional().default(''),
 });
 export type TenantInfoInput = z.infer<typeof tenantInfoSchema>;
@@ -223,6 +218,7 @@ export const registrationPayloadSchema = tenantInfoSchema.merge(
   accountInfoBase.omit({ confirmPassword: true }),
 ).extend({
   invoiceAddress: z.string().min(1, 'validation.required').max(500),
+  // mobile is required (from tenantInfoSchema), phoneCity is optional
 });
 export type RegistrationPayload = z.infer<typeof registrationPayloadSchema>;
 

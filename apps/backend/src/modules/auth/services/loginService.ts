@@ -14,7 +14,7 @@ import { signAccessToken, signRefreshToken } from '@/shared/lib/jwt';
 import { findUserByEmail } from '../db/users';
 import { insertLoginAttempt } from '../db/loginAttempts';
 import { findTenantByOwnerId } from '../db/tenants';
-import { getPassStatus } from '../../pass/db/passes';
+import { getPassStatus, advanceBillingCycle } from '../../pass/db/passes';
 
 const ACCESS_TOKEN_TTL_DEFAULT = 900;
 
@@ -65,6 +65,8 @@ export async function loginService(
   const tenant = await findTenantByOwnerId(sql, user.id);
 
   // Pass — embedded in session to avoid a separate /api/me/pass polling call.
+  // Lazy update: advance billing cycle if needed (for paid users who haven't logged in for a while).
+  if (tenant) await advanceBillingCycle(sql, tenant.id);
   const passStatus = tenant ? await getPassStatus(sql, tenant.id) : null;
   const pass: PassDto | null = passStatus
     ? {
@@ -72,6 +74,9 @@ export async function loginService(
         daysRemaining: passStatus.daysRemaining,
         status: passStatus.status,
         plan: passStatus.plan as 'green' | 'gold' | 'platinum',
+        phase: passStatus.phase,
+        paidAt: passStatus.paidAt?.toISOString() ?? null,
+        billingCycleEnd: passStatus.billingCycleEnd?.toISOString() ?? null,
       }
     : null;
 
@@ -94,7 +99,7 @@ export async function loginService(
           id: tenant.id,
           name: tenant.name,
           contactName: tenant.contact_name,
-          phoneCity: tenant.phone_city,
+          phoneCity: tenant.phone_city ?? null,
           address: tenant.address,
           taxId: tenant.tax_id,
           invoiceAddress: tenant.invoice_address,

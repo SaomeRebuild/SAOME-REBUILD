@@ -12,11 +12,11 @@ export interface TenantsRow {
   owner_user_id: string;
   name: string;
   contact_name: string;
-  phone_city: string;
+  phone_city: string | null; // nullable — city phone is optional
   address: string;
   tax_id: string;
   invoice_address: string | null;
-  mobile: string | null;
+  mobile: string; // required — cell phone is mandatory
   website: string | null;
   email: string;
   created_at: Date;
@@ -28,11 +28,11 @@ export async function insertTenant(
     ownerUserId: string;
     name: string;
     contactName: string;
-    phoneCity: string;
+    phoneCity: string | null; // nullable
     address: string;
     taxId: string;
     invoiceAddress: string | null;
-    mobile: string | null;
+    mobile: string; // required
     website: string | null;
     email: string;
   }

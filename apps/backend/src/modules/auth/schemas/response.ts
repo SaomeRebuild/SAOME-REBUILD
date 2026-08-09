@@ -56,6 +56,16 @@ export const errorResponseDtoSchema = z.object({
   requestId: z.string(),
 });
 
+export const passDtoSchema = z.object({
+  endDate: z.string().datetime(),
+  daysRemaining: z.number().int().min(0),
+  status: z.enum(['active', 'expired', 'cancelled']),
+  plan: z.enum(['green', 'gold', 'platinum']),
+  phase: z.enum(['trial', 'paid', 'expired']),
+  paidAt: z.string().datetime().nullable(),
+  billingCycleEnd: z.string().datetime().nullable(),
+});
+export type PassDto = z.infer<typeof passDtoSchema>;
 export type AuthSessionDto = z.infer<typeof authSessionDtoSchema>;
 export type RefreshResponseDto = z.infer<typeof refreshResponseDtoSchema>;
 export type MeResponseDto = z.infer<typeof meResponseDtoSchema>;

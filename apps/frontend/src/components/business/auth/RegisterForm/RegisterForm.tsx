@@ -266,15 +266,9 @@ export function RegisterForm({ currentStep: externalStep, onStepChange }: Regist
             <input {...tenantForm.register('contactName')} autoComplete="name" className={inputCls} style={inputStyle()} {...inputFocusHandlers()} />
           </Field>
           <Field
-            label={t('register.phoneCity')}
-            required
-            error={translateFieldError(t, tenantForm.formState.errors.phoneCity?.message)}
-          >
-            <input {...tenantForm.register('phoneCity')} autoComplete="tel" className={inputCls} style={inputStyle()} {...inputFocusHandlers()} />
-          </Field>
-          <Field
             label={t('register.mobile')}
             description={t('register.mobileHint')}
+            required
             error={translateFieldError(t, tenantForm.formState.errors.mobile?.message)}
           >
             <input
@@ -285,6 +279,13 @@ export function RegisterForm({ currentStep: externalStep, onStepChange }: Regist
               style={inputStyle()}
               {...inputFocusHandlers()}
             />
+          </Field>
+          <Field
+            label={t('register.phoneCity')}
+            description={t('register.phoneCityHint')}
+            error={translateFieldError(t, tenantForm.formState.errors.phoneCity?.message)}
+          >
+            <input {...tenantForm.register('phoneCity')} autoComplete="tel" className={inputCls} style={inputStyle()} {...inputFocusHandlers()} />
           </Field>
           <Field
             label={t('register.address')}
