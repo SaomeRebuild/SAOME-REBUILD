@@ -32,11 +32,11 @@ export interface TenantDto {
   id: string;
   name: string;
   contactName: string;
-  phoneCity: string;
+  phoneCity: string | null; // nullable — city phone is optional
   address: string;
   taxId: string;
   invoiceAddress: string | null;
-  mobile: string | null;
+  mobile: string; // required — cell phone is mandatory
   website: string | null;
   email: string;
 }
@@ -94,6 +94,8 @@ export interface ErrorResponseDto {
   requestId: string;
 }
 
+export type PassPhase = 'trial' | 'paid' | 'expired';
+
 /**
  * Pass info embedded in AuthSessionDto — avoids a separate /api/me/pass polling call.
  *
@@ -108,4 +110,7 @@ export interface PassDto {
   daysRemaining: number;
   status: 'active' | 'expired' | 'cancelled';
   plan: 'green' | 'gold' | 'platinum';
+  phase: PassPhase;
+  paidAt: string | null; // ISO 8601, NULL = still in trial
+  billingCycleEnd: string | null; // ISO 8601, NULL = not yet paid
 }

@@ -28,6 +28,7 @@ import { requestIdMiddleware } from '@/shared/middleware/requestId';
 import { errorHandler } from '@/shared/middleware/errorHandler';
 import { authModule } from '@/modules/auth';
 import { passModule } from '@/modules/pass';
+import { billingCycleCronRoute } from '@/modules/pass/routes/billingCycleCron';
 
 /**
  * Default export — Worker entry point.
@@ -48,5 +49,6 @@ app.get('/health', (c) => c.json({ ok: true }));
 // Feature modules
 app.route('/api/auth', authModule);
 app.route('/api/pass', passModule);
+app.route('/api/cron/billing-cycle', billingCycleCronRoute);
 
 export default app;

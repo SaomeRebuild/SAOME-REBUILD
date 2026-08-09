@@ -13,7 +13,8 @@
     "test": "npm --workspace=apps/frontend run test",
     "typecheck": "npm --workspace=apps/frontend run typecheck",
     "pages:build": "npm --workspace=apps/frontend ci && cd apps/frontend && export PATH=\"$PWD/../node_modules/.bin:$PATH\" && tsc -b && vite build",
-    "pages:deploy": "npm --workspace=apps/frontend run pages:deploy"
+    "pages:deploy": "npm --workspace=apps/frontend run pages:deploy",
+    "test:smoke": "playwright test"
   },
   "engines": {
     "node": ">=20"
