@@ -14,8 +14,8 @@ const TOOLS = [
 ] as const;
 
 export function TenantToolbar({
-  defaultWidth,
-  onWidthChange,
+  defaultWidth: _defaultWidth,
+  onWidthChange: _onWidthChange,
 }: TenantToolbarProps) {
   const { t } = useTranslation('dashboard');
   const [activeTool, setActiveTool] = useState<string | null>(null);
