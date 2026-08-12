@@ -172,6 +172,9 @@ export const authSessionSchema = z.object({
       daysRemaining: z.number().int().nonnegative(),
       status: z.enum(['active', 'expired', 'cancelled']),
       plan: planSchema,
+      phase: z.enum(['trial', 'paid', 'expired']),
+      paidAt: z.string().datetime().nullable(),
+      billingCycleEnd: z.string().datetime().nullable(),
     })
     .optional()
     .nullable(),
