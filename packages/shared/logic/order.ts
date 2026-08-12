@@ -4,7 +4,6 @@
  * @module shared/logic/order
  */
 
-import type { CreateOrderInput } from '../schemas/order';
 import type { MemberTier } from '../schemas/member';
 
 /**
