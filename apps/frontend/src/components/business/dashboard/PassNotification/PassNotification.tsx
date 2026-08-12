@@ -24,7 +24,7 @@ function NotificationIcon({ type }: { type: 'trial' | 'trialExpired' | 'renewalR
 }
 
 export function PassNotification({ pass, onCta }: PassNotificationProps) {
-  const { t } = useTranslation('pass-notification');
+  const { t } = useTranslation('passNotification');
   const { type, daysLeft } = usePassNotification(pass);
 
   if (!type) return null;

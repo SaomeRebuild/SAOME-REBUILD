@@ -18,7 +18,7 @@ import type { TrialBannerProps } from './TrialBanner.types';
 const DAYS_URGENT_THRESHOLD = 3;
 
 export function TrialBanner({ daysLeft, endDate, onVerify }: TrialBannerProps) {
-  const { t } = useTranslation('pass-notification');
+  const { t } = useTranslation('passNotification');
 
   const isUrgent = daysLeft <= DAYS_URGENT_THRESHOLD;
 
