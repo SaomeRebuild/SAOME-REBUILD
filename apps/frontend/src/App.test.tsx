@@ -41,7 +41,7 @@ function HomePage() {
 }
 
 function LoginPage() {
-  const { t } = useTranslation();
+  const { t } = useTranslation('auth');
   return (
     <div className="flex min-h-[60vh] items-center justify-center">
       <div className="w-full max-w-sm rounded-xl border border-border bg-white p-8 text-center shadow-sm">

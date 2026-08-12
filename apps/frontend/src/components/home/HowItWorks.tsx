@@ -9,7 +9,7 @@ const steps = [
 ];
 
 export function HowItWorks() {
-  const { t } = useTranslation();
+  const { t } = useTranslation('landing');
 
   return (
     <section id="about" className="py-20 lg:py-28 mt-0" style={{ backgroundColor: 'var(--color-muted)' }}>

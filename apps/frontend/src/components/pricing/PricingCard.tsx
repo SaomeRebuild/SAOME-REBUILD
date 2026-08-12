@@ -70,7 +70,7 @@ export function PricingCard({
           className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full px-3 py-1 text-xs font-semibold"
           style={{ backgroundColor: colors.badgeBg, color: colors.badgeText }}
         >
-          {t('pricing.popular')}
+          {t('popular')}
         </div>
       )}
 
@@ -93,11 +93,11 @@ export function PricingCard({
         </div>
         {savings !== undefined && (
           <p className="mt-1 text-sm font-medium" style={{ color: '#22C55E' }}>
-            {t('pricing.saveAmount', { amount: savings })}
+            {t('saveAmount', { amount: savings })}
           </p>
         )}
         <p className="mt-1 text-xs" style={{ color: 'var(--color-muted-foreground)' }}>
-          {t('pricing.currencyNote')}
+          {t('currencyNote')}
         </p>
         <p className="mt-2 text-sm" style={{ color: 'var(--color-muted-foreground)' }}>
           {description}

@@ -11,8 +11,14 @@
  *     present, optional (no asterisk required marker), and that a
  *     '09xxxxxxxx' value flows through.
  *
- * Does NOT assert backend integration — backend tests already cover
- * that path.
+ * Query strategy: use input `name` attribute via `screen.getByRole('textbox', { name: '<nameAttr>' })`.
+ * This queries the input's accessible name, which equals the `name` attribute when the label's
+ * `htmlFor` points to the input's `id`. Since Field clones the input with `id: id` (where id is the
+ * generated React uid), the accessible name equals the label text (e.g. "手機號碼").
+ * Using `name` attr queries would need `getByAttribute('name', 'mobile')` which is less semantic.
+ * Using label text is the right way — it tests the full accessible name chain.
+ *
+ * Does NOT assert backend integration — backend tests already cover that path.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -48,24 +54,49 @@ describe('RegisterForm — mobile field', () => {
     sessionStorage.clear();
   });
 
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  const getMobileInput = () =>
+    // Field clones the input with id matching the label's htmlFor. The accessible
+    // name is the label text, which i18n resolves to "手機號碼" for zh-TW.
+    screen.getByRole('textbox', { name: '手機號碼' });
+
+  const getContactNameInput = () =>
+    screen.getByRole('textbox', { name: '聯絡人姓名' });
+
+  const getAddressInput = () =>
+    screen.getByRole('textbox', { name: '地址' });
+
+  const getTaxIdInput = () =>
+    screen.getByRole('textbox', { name: '統一編號' });
+
+  const getNameInput = () =>
+    screen.getByRole('textbox', { name: '公司 / 店家名稱' });
+
+  const getInvoiceAddressInput = () =>
+    screen.getByRole('textbox', { name: '發票寄送地址' });
+
+  const getNextButton = () =>
+    screen.getByRole('button', { name: '下一步' });
+
+  // ── Tests ───────────────────────────────────────────────────────────────
   it('renders a mobile input on Step 1 below the office-phone field', () => {
     renderRegister();
-    const mobileInput = screen.getByRole('textbox', { name: 'register.mobile' });
+    const mobileInput = getMobileInput();
     expect(mobileInput).toBeInTheDocument();
-    // Mobile is required — Field marks it aria-required.
+    // Mobile is required — Field sets aria-required on the cloned input.
     expect(mobileInput).toHaveAttribute('aria-required', 'true');
   });
 
   it('mobile input has autoComplete="tel"', () => {
     renderRegister();
-    const mobileInput = screen.getByRole('textbox', { name: 'register.mobile' });
+    const mobileInput = getMobileInput();
     expect(mobileInput.getAttribute('autocomplete')).toBe('tel');
   });
 
   it('user can type a bare Taiwan 09xxxxxxxx mobile number', async () => {
     const user = userEvent.setup();
     renderRegister();
-    const mobileInput = screen.getByRole('textbox', { name: 'register.mobile' });
+    const mobileInput = getMobileInput();
     await user.type(mobileInput, '0912345678');
     expect(mobileInput).toHaveValue('0912345678');
   });
@@ -73,7 +104,7 @@ describe('RegisterForm — mobile field', () => {
   it('user can type an international +E.164 mobile number', async () => {
     const user = userEvent.setup();
     renderRegister();
-    const mobileInput = screen.getByRole('textbox', { name: 'register.mobile' });
+    const mobileInput = getMobileInput();
     await user.type(mobileInput, '+886912345678');
     expect(mobileInput).toHaveValue('+886912345678');
   });
@@ -83,17 +114,17 @@ describe('RegisterForm — mobile field', () => {
     renderRegister();
 
     // Fill all required Step 1 fields (mobile is now required; phoneCity is optional).
-    await user.type(screen.getByRole('textbox', { name: 'register.contactName' }), '王小明');
+    await user.type(getContactNameInput(), '王小明');
     // phoneCity is optional — skip it.
-    await user.type(screen.getByRole('textbox', { name: 'register.mobile' }), '0912345678');
-    await user.type(screen.getByRole('textbox', { name: 'register.address' }), '台北市信義區信義路 1 號');
-    await user.type(screen.getByRole('textbox', { name: 'register.taxId' }), '12345678');
-    await user.type(screen.getByRole('textbox', { name: 'register.name' }), '王小明工作室');
-    await user.type(screen.getByRole('textbox', { name: 'register.invoiceAddress' }), '台北市信義區信義路 1 號');
+    await user.type(getMobileInput(), '0912345678');
+    await user.type(getAddressInput(), '台北市信義區信義路 1 號');
+    await user.type(getTaxIdInput(), '12345678');
+    await user.type(getNameInput(), '王小明工作室');
+    await user.type(getInvoiceAddressInput(), '台北市信義區信義路 1 號');
 
-    await user.click(screen.getByRole('button', { name: 'register.next' }));
+    await user.click(getNextButton());
 
-    // Step 2 should now show email field.
-    expect(await screen.findByRole('textbox', { name: 'register.accountEmail' })).toBeInTheDocument();
+    // Step 2 should now show email field (accessible name from auth.zh-TW.json).
+    expect(await screen.findByRole('textbox', { name: '登入電子信箱' })).toBeInTheDocument();
   });
 });

@@ -54,11 +54,11 @@ export function TrialBanner({ daysLeft, endDate, onVerify }: TrialBannerProps) {
           )}
         >
           {isUrgent
-            ? t('trial.titleUrgent', { daysLeft })
-            : t('trial.title', { daysLeft })}
+            ? t('trial.titleUrgent', { days: daysLeft })
+            : t('trial.title', { days: daysLeft })}
         </p>
         <p className="mt-0.5 text-sm text-[var(--color-muted-foreground)]">
-          {t('trial.subtitle')}
+          {t('trial.subtitle', { days: daysLeft })}
         </p>
       </div>
 

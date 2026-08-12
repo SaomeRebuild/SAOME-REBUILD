@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { ArrowRight } from 'lucide-react';
 
 export function CTASection() {
-  const { t } = useTranslation();
+  const { t } = useTranslation('landing');
 
   return (
     <section className="py-20 lg:py-28" style={{ backgroundColor: 'var(--color-background)' }}>

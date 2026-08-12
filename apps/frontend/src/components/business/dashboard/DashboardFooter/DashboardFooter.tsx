@@ -23,7 +23,7 @@ export function DashboardFooter({ className }: DashboardFooterProps) {
         className,
       )}
     >
-      <span data-testid="dashboard-footer-copyright">{t('dashboardFooter.copyright')}</span>
+      <span data-testid="dashboard-footer-copyright">{t('dashboardFooter.copyright', { year: new Date().getFullYear() })}</span>
       <Link
         to="/privacy"
         className="hover:text-[var(--color-foreground)] transition-colors"

@@ -77,7 +77,8 @@ describe('HomePage', () => {
 
   it('exposes marketing sections (Features, Pricing)', () => {
     renderWithRouter('/', null);
-    expect(screen.getByText(/功能/i)).toBeInTheDocument();
+    // Use getAllByText because "功能" appears in multiple sections (nav + pricing comparison)
+    expect(screen.getAllByText(/功能/i).length).toBeGreaterThan(0);
   });
 
   // ── Reverse-direction AuthGuard (AGENTS.md §Auth flow 鐵律 #3) ────────────

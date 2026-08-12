@@ -58,11 +58,11 @@ export function PassNotification({ pass, onCta }: PassNotificationProps) {
           )}
         >
           {isUrgent
-            ? t(`${type}.titleUrgent`, { daysLeft })
-            : t(`${type}.title`, { daysLeft })}
+            ? t(`${type}.titleUrgent`, { days: daysLeft })
+            : t(`${type}.title`, { days: daysLeft })}
         </p>
         <p className="mt-0.5 text-sm text-[var(--color-muted-foreground)]">
-          {t(`${type}.subtitle`)}
+          {t(`${type}.subtitle`, { days: daysLeft })}
         </p>
       </div>
 

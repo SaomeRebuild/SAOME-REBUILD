@@ -14,6 +14,6 @@ describe('DashboardFooter', () => {
 
   it('renders privacy policy link', () => {
     renderWithRouter(<DashboardFooter />);
-    expect(screen.getByRole('link', { name: /Privacy/i })).toHaveAttribute('href', '/privacy');
+    expect(screen.getByRole('link', { name: /隱私權政策/i })).toHaveAttribute('href', '/privacy');
   });
 });

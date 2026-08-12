@@ -3,19 +3,19 @@ import { ControllerTable, CollectionTable } from './PrivacyPage/tables';
 import { RETENTION_ITEMS, RIGHT_ITEMS } from './PrivacyPage/data';
 
 export function PrivacyPage() {
-  const { t } = useTranslation();
+  const { t } = useTranslation('legal');
 
   return (
     <div className="py-16 lg:py-24" style={{ backgroundColor: 'var(--color-background)' }}>
       <div className="mx-auto max-w-3xl px-4 sm:px-6">
         <p className="text-sm" style={{ color: 'var(--color-muted-foreground)' }}>
-          {t('legal.privacy.date')}
+          {t('privacy.date')}
         </p>
         <h1
           className="mt-2 text-3xl font-bold"
           style={{ fontFamily: 'var(--font-family-heading)', color: 'var(--color-foreground)' }}
         >
-          {t('legal.privacy.title')}
+          {t('privacy.title')}
         </h1>
 
         <div className="mt-10 space-y-10 text-sm leading-relaxed">
@@ -24,7 +24,7 @@ export function PrivacyPage() {
               className="mb-4 text-lg font-semibold"
               style={{ fontFamily: 'var(--font-family-heading)', color: 'var(--color-foreground)' }}
             >
-              A. {t('legal.privacy.sA')}
+              A. {t('privacy.sA')}
             </h2>
             <ControllerTable />
           </section>
@@ -34,10 +34,10 @@ export function PrivacyPage() {
               className="mb-4 text-lg font-semibold"
               style={{ fontFamily: 'var(--font-family-heading)', color: 'var(--color-foreground)' }}
             >
-              B. {t('legal.privacy.sB')}
+              B. {t('privacy.sB')}
             </h2>
             <p className="mb-3" style={{ color: 'var(--color-muted-foreground)' }}>
-              {t('legal.privacy.collection.intro')}
+              {t('privacy.collection.intro')}
             </p>
             <CollectionTable />
           </section>
@@ -47,10 +47,10 @@ export function PrivacyPage() {
               className="mb-4 text-lg font-semibold"
               style={{ fontFamily: 'var(--font-family-heading)', color: 'var(--color-foreground)' }}
             >
-              C. {t('legal.privacy.sC')}
+              C. {t('privacy.sC')}
             </h2>
             <p style={{ color: 'var(--color-muted-foreground)' }}>
-              {t('legal.privacy.processor.body')}
+              {t('privacy.processor.body')}
             </p>
           </section>
 
@@ -59,14 +59,14 @@ export function PrivacyPage() {
               className="mb-4 text-lg font-semibold"
               style={{ fontFamily: 'var(--font-family-heading)', color: 'var(--color-foreground)' }}
             >
-              D. {t('legal.privacy.sD')}
+              D. {t('privacy.sD')}
             </h2>
             <div className="space-y-3">
               <p style={{ color: 'var(--color-muted-foreground)' }}>
-                {t('legal.privacy.sharing.subProcessors')}
+                {t('privacy.sharing.subProcessors')}
               </p>
               <p style={{ color: 'var(--color-muted-foreground)' }}>
-                {t('legal.privacy.sharing.intlTransfer')}
+                {t('privacy.sharing.intlTransfer')}
               </p>
             </div>
           </section>
@@ -76,10 +76,10 @@ export function PrivacyPage() {
               className="mb-4 text-lg font-semibold"
               style={{ fontFamily: 'var(--font-family-heading)', color: 'var(--color-foreground)' }}
             >
-              E. {t('legal.privacy.sE')}
+              E. {t('privacy.sE')}
             </h2>
             <p className="mb-3" style={{ color: 'var(--color-muted-foreground)' }}>
-              {t('legal.privacy.rights.intro')}
+              {t('privacy.rights.intro')}
             </p>
             <ul
               className="list-inside list-disc space-y-1"
@@ -88,9 +88,9 @@ export function PrivacyPage() {
               {RIGHT_ITEMS.map((right) => (
                 <li key={right.titleKey}>
                   <strong style={{ color: 'var(--color-primary)' }}>
-                    {t(`legal.privacy.rights.${right.titleKey}`)}
+                    {t(`privacy.rights.${right.titleKey}`)}
                   </strong>{' '}
-                  — {t(`legal.privacy.rights.${right.descKey}`)}
+                  — {t(`privacy.rights.${right.descKey}`)}
                 </li>
               ))}
             </ul>
@@ -101,12 +101,12 @@ export function PrivacyPage() {
               className="mb-4 text-lg font-semibold"
               style={{ fontFamily: 'var(--font-family-heading)', color: 'var(--color-foreground)' }}
             >
-              F. {t('legal.privacy.sF')}
+              F. {t('privacy.sF')}
             </h2>
             <div className="space-y-3">
               {RETENTION_ITEMS.map((item) => (
                 <p key={item.key} style={{ color: 'var(--color-muted-foreground)' }}>
-                  {t(`legal.privacy.retention.${item.key}`)}
+                  {t(`privacy.retention.${item.key}`)}
                 </p>
               ))}
             </div>

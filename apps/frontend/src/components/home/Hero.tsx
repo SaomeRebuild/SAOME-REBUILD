@@ -4,7 +4,7 @@ import { ArrowRight, Play } from 'lucide-react';
 import stampCardImage from '@/assets/images/stampCardLiviing-removebg-preview.png';
 
 export function Hero() {
-  const { t } = useTranslation();
+  const { t } = useTranslation('landing');
 
   return (
     <section className="relative pt-24 pb-20 lg:pt-32 lg:pb-28">

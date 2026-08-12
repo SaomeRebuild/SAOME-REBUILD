@@ -42,12 +42,12 @@ const FEATURES: Feature[] = [
 ];
 
 const CATEGORIES = [
-  { key: 'card', labelKey: 'pricingCompare.category.card' },
-  { key: 'crm', labelKey: 'pricingCompare.category.crm' },
-  { key: 'marketing', labelKey: 'pricingCompare.category.marketing' },
-  { key: 'share', labelKey: 'pricingCompare.category.share' },
-  { key: 'offline', labelKey: 'pricingCompare.category.offline' },
-  { key: 'support', labelKey: 'pricingCompare.category.support' },
+  { key: 'card', labelKey: 'compare.category.card' },
+  { key: 'crm', labelKey: 'compare.category.crm' },
+  { key: 'marketing', labelKey: 'compare.category.marketing' },
+  { key: 'share', labelKey: 'compare.category.share' },
+  { key: 'offline', labelKey: 'compare.category.offline' },
+  { key: 'support', labelKey: 'compare.category.support' },
 ];
 
 const PLANS = {
@@ -79,7 +79,7 @@ function FeatureCell({ value }: { value: boolean | string | undefined }) {
 }
 
 export function DetailedPricingPage() {
-  const { t } = useTranslation();
+  const { t } = useTranslation('pricing');
   const [isYearly, setIsYearly] = useState(false);
 
   return (
@@ -94,13 +94,13 @@ export function DetailedPricingPage() {
               color: 'var(--color-foreground)',
             }}
           >
-            {t('pricingCompare.title')}
+            {t('compare.title')}
           </h1>
           <p
             className="mt-4 text-lg"
             style={{ color: 'var(--color-muted-foreground)' }}
           >
-            {t('pricingCompare.subtitle')}
+            {t('compare.subtitle')}
           </p>
 
           {/* Toggle */}
@@ -117,7 +117,7 @@ export function DetailedPricingPage() {
                   backgroundColor: !isYearly ? 'var(--color-primary)' : 'transparent',
                 }}
               >
-                {t('pricing.monthly')}
+                {t('monthly')}
               </button>
               <button
                 onClick={() => setIsYearly(true)}
@@ -127,7 +127,7 @@ export function DetailedPricingPage() {
                   backgroundColor: isYearly ? 'var(--color-primary)' : 'transparent',
                 }}
               >
-                {t('pricing.yearly')}
+                {t('yearly')}
               </button>
             </div>
           </div>
@@ -140,7 +140,7 @@ export function DetailedPricingPage() {
               <tr>
                 <th className="w-1/4 p-4 text-left">
                   <span className="text-sm font-medium" style={{ color: 'var(--color-muted-foreground)' }}>
-                    {t('pricingCompare.feature')}
+                    {t('compare.feature')}
                   </span>
                 </th>
                 {(['green', 'gold', 'platinum'] as Tier[]).map((tier) => (
@@ -162,7 +162,7 @@ export function DetailedPricingPage() {
                             color: 'var(--color-primary-foreground)',
                           }}
                         >
-                          {t('pricing.popular')}
+                          {t('popular')}
                         </span>
                       )}
                       <h3
@@ -172,20 +172,20 @@ export function DetailedPricingPage() {
                           color: 'var(--color-foreground)',
                         }}
                       >
-                        {t(`pricing.${tier}.name`)}
+                        {t(`${tier}.name`)}
                       </h3>
                       <p className="mt-1 text-sm" style={{ color: 'var(--color-muted-foreground)' }}>
-                        {t(`pricing.${tier}.description`)}
+                        {t(`${tier}.description`)}
                       </p>
                       <p className="mt-3 text-3xl font-bold" style={{ color: 'var(--color-primary)' }}>
                         ${isYearly ? PLANS[tier].yearly : PLANS[tier].monthly}
                         <span className="text-sm font-normal" style={{ color: 'var(--color-muted-foreground)' }}>
-                          /{t('pricing.perMonth').replace('/', '')}
+                          /{t('perMonth').replace('/', '')}
                         </span>
                       </p>
                       {isYearly && (
                         <p className="mt-1 text-xs" style={{ color: 'var(--color-muted-foreground)' }}>
-                          {t('pricingCompare.billedYearly')}
+                          {t('compare.billedYearly')}
                         </p>
                       )}
                       <Link
@@ -196,7 +196,7 @@ export function DetailedPricingPage() {
                           color: tier === 'gold' ? 'var(--color-primary-foreground)' : 'var(--color-foreground)',
                         }}
                       >
-                        {t('pricing.cta')}
+                        {t('cta')}
                       </Link>
                     </div>
                   </th>
@@ -225,7 +225,7 @@ export function DetailedPricingPage() {
                       style={{ borderColor: 'var(--color-border)' }}
                     >
                       <td className="p-4 text-sm" style={{ color: 'var(--color-foreground)' }}>
-                        {t(`pricingCompare.${feature.name}`)}
+                        {t(`compare.${feature.name}`)}
                       </td>
                       {(['green', 'gold', 'platinum'] as Tier[]).map((tier) => (
                         <td
@@ -249,7 +249,7 @@ export function DetailedPricingPage() {
         {/* CTA */}
         <div className="mt-12 text-center">
           <p className="mb-4 text-sm" style={{ color: 'var(--color-muted-foreground)' }}>
-            {t('pricingCompare.footer')}
+            {t('compare.footer')}
           </p>
           <Link
             to="/register"
@@ -259,7 +259,7 @@ export function DetailedPricingPage() {
               color: 'var(--color-primary-foreground)',
             }}
           >
-            {t('pricingCompare.startTrial')}
+            {t('compare.startTrial')}
           </Link>
         </div>
       </div>

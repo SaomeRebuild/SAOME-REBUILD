@@ -2,15 +2,15 @@ import { useTranslation } from 'react-i18next';
 import { SCOPE_ROWS } from './data';
 
 export function PartiesTable() {
-  const { t } = useTranslation();
+  const { t } = useTranslation('legal');
   const rows = [
     {
-      labelKey: 'legal.gdpr.parties.controllerLabel',
-      valueKey: 'legal.gdpr.parties.controllerAddress',
+      labelKey: 'gdpr.parties.controllerLabel',
+      valueKey: 'gdpr.parties.controllerAddress',
     },
     {
-      labelKey: 'legal.gdpr.parties.processorLabel',
-      valueKey: 'legal.gdpr.parties.processorAddress',
+      labelKey: 'gdpr.parties.processorLabel',
+      valueKey: 'gdpr.parties.processorAddress',
     },
   ] as const;
 
@@ -38,7 +38,7 @@ export function PartiesTable() {
 }
 
 export function ScopeTable() {
-  const { t } = useTranslation();
+  const { t } = useTranslation('legal');
 
   return (
     <div className="overflow-hidden rounded-lg border" style={{ borderColor: 'var(--color-border)' }}>
@@ -49,13 +49,13 @@ export function ScopeTable() {
               className="px-4 py-2 text-left font-medium"
               style={{ color: 'var(--color-primary)' }}
             >
-              {t('legal.gdpr.scope.tableHeader.item')}
+              {t('gdpr.scope.tableHeader.item')}
             </th>
             <th
               className="px-4 py-2 text-left font-medium"
               style={{ color: 'var(--color-primary)' }}
             >
-              {t('legal.gdpr.scope.tableHeader.desc')}
+              {t('gdpr.scope.tableHeader.desc')}
             </th>
           </tr>
         </thead>
@@ -66,13 +66,13 @@ export function ScopeTable() {
                 className="w-40 px-4 py-3 align-top font-medium"
                 style={{ backgroundColor: 'var(--color-muted)', color: 'var(--color-primary)' }}
               >
-                {t(`legal.gdpr.scope.${row.labelKey}`)}
+                {t(`gdpr.scope.${row.labelKey}`)}
               </td>
               <td
                 className="px-4 py-3 align-top"
                 style={{ color: 'var(--color-muted-foreground)' }}
               >
-                {t(`legal.gdpr.scope.${row.descKey}`)}
+                {t(`gdpr.scope.${row.descKey}`)}
               </td>
             </tr>
           ))}

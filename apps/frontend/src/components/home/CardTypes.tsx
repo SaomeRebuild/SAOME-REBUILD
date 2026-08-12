@@ -14,7 +14,7 @@ const cardTypes = [
 ];
 
 export function CardTypes() {
-  const { t } = useTranslation();
+  const { t } = useTranslation('landing');
   const [flippedId, setFlippedId] = useState<string | null>(null);
 
   return (

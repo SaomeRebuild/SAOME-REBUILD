@@ -1,33 +1,33 @@
 export const CONTROLLER_ROWS = [
   {
-    labelKey: 'legal.privacy.controller.table.controllerLabel',
-    valueKey: 'legal.privacy.controller.table.controllerValue',
+    labelKey: 'privacy.controller.table.controllerLabel',
+    valueKey: 'privacy.controller.table.controllerValue',
   },
   {
-    labelKey: 'legal.privacy.controller.table.contactLabel',
-    valueKey: 'legal.privacy.controller.table.contactValue',
+    labelKey: 'privacy.controller.table.contactLabel',
+    valueKey: 'privacy.controller.table.contactValue',
   },
   {
-    labelKey: 'legal.privacy.controller.table.effectiveLabel',
-    valueKey: 'legal.privacy.controller.table.effectiveValue',
+    labelKey: 'privacy.controller.table.effectiveLabel',
+    valueKey: 'privacy.controller.table.effectiveValue',
   },
 ] as const;
 
 export const COLLECTION_ROWS = [
   {
-    typeKey: 'legal.privacy.collection.row1.type',
-    purposeKey: 'legal.privacy.collection.row1.purpose',
-    basisKey: 'legal.privacy.collection.row1.basis',
+    typeKey: 'privacy.collection.row1.type',
+    purposeKey: 'privacy.collection.row1.purpose',
+    basisKey: 'privacy.collection.row1.basis',
   },
   {
-    typeKey: 'legal.privacy.collection.row2.type',
-    purposeKey: 'legal.privacy.collection.row2.purpose',
-    basisKey: 'legal.privacy.collection.row2.basis',
+    typeKey: 'privacy.collection.row2.type',
+    purposeKey: 'privacy.collection.row2.purpose',
+    basisKey: 'privacy.collection.row2.basis',
   },
   {
-    typeKey: 'legal.privacy.collection.row3.type',
-    purposeKey: 'legal.privacy.collection.row3.purpose',
-    basisKey: 'legal.privacy.collection.row3.basis',
+    typeKey: 'privacy.collection.row3.type',
+    purposeKey: 'privacy.collection.row3.purpose',
+    basisKey: 'privacy.collection.row3.basis',
   },
 ] as const;
 

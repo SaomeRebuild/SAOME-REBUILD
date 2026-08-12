@@ -11,7 +11,7 @@ interface HeaderProps {
 }
 
 export function Header({ className }: HeaderProps) {
-  const { t } = useTranslation();
+  const { t } = useTranslation('nav');
   const { state, isAuthenticated, logout } = useAuth();
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -44,11 +44,11 @@ export function Header({ className }: HeaderProps) {
   }, [isMobileMenuOpen]);
 
   const navLinks = [
-    { href: '/product', label: t('nav.product') },
-    { href: '/demo', label: t('nav.demo') },
-    { href: '/#pricing', label: t('nav.pricing') },
-    { href: '/#about', label: t('nav.about') },
-    { href: '/#features', label: t('nav.features') },
+    { href: '/product', label: t('product') },
+    { href: '/demo', label: t('demo') },
+    { href: '/#pricing', label: t('pricing') },
+    { href: '/#about', label: t('about') },
+    { href: '/#features', label: t('features') },
   ];
 
   const handleLogout = () => {
@@ -117,7 +117,7 @@ export function Header({ className }: HeaderProps) {
                     className="text-sm font-medium transition-colors hover:opacity-80"
                     style={{ color: 'var(--color-muted-foreground)' }}
                     data-testid="auth-user-email"
-                    aria-label={t('nav.openDashboard')}
+                    aria-label={t('openDashboard')}
                   >
                     {state.user?.email}
                   </Link>
@@ -129,7 +129,7 @@ export function Header({ className }: HeaderProps) {
                     data-testid="desktop-logout-btn"
                   >
                     <LogOut size={16} aria-hidden="true" />
-                    {t('nav.logout')}
+                    {t('logout')}
                   </button>
                 </>
               ) : (
@@ -139,7 +139,7 @@ export function Header({ className }: HeaderProps) {
                     className="text-sm font-medium transition-colors hover:opacity-80"
                     style={{ color: 'var(--color-muted-foreground)' }}
                   >
-                    {t('nav.login')}
+                    {t('login')}
                   </Link>
                   <Link
                     to="/register"
@@ -152,7 +152,7 @@ export function Header({ className }: HeaderProps) {
                       fontWeight: 500,
                     }}
                   >
-                    {t('nav.getStarted')}
+                    {t('getStarted')}
                   </Link>
                 </>
               )}
@@ -218,7 +218,7 @@ export function Header({ className }: HeaderProps) {
                     className="w-full rounded-md border px-4 py-3 text-center text-sm font-medium"
                     style={{ borderColor: 'var(--color-border)', color: 'var(--color-muted-foreground)' }}
                     data-testid="mobile-auth-user-email"
-                    aria-label={t('nav.openDashboard')}
+                    aria-label={t('openDashboard')}
                     onClick={() => setIsMobileMenuOpen(false)}
                   >
                     {state.user?.email}
@@ -230,7 +230,7 @@ export function Header({ className }: HeaderProps) {
                     style={{ borderColor: 'var(--color-border)', color: 'var(--color-muted-foreground)' }}
                     data-testid="mobile-logout-btn"
                   >
-                    {t('nav.logout')}
+                    {t('logout')}
                   </button>
                 </>
               ) : (
@@ -244,7 +244,7 @@ export function Header({ className }: HeaderProps) {
                     }}
                     onClick={() => setIsMobileMenuOpen(false)}
                   >
-                    {t('nav.login')}
+                    {t('login')}
                   </Link>
                   <Link
                     to="/register"
@@ -255,7 +255,7 @@ export function Header({ className }: HeaderProps) {
                     }}
                     onClick={() => setIsMobileMenuOpen(false)}
                   >
-                    {t('nav.getStarted')}
+                    {t('getStarted')}
                   </Link>
                 </>
               )}

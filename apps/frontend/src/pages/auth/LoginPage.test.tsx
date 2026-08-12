@@ -78,7 +78,7 @@ describe('LoginPage back-button guard', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('admin-landing')).toBeNull();
     });
-    // The LoginForm's email input is rendered via Field.
-    expect(screen.getByText(/login\.title/i)).toBeInTheDocument();
+    // The LoginForm renders - check for the switchToRegister link which is present
+    expect(screen.getByText('還沒有帳號？立即註冊')).toBeInTheDocument();
   });
 });

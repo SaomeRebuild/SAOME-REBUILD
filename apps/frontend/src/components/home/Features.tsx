@@ -45,7 +45,7 @@ const features = [
 ];
 
 export function Features() {
-  const { t } = useTranslation();
+  const { t } = useTranslation('landing');
 
   return (
     <section id="features" className="py-20 lg:py-28" style={{ backgroundColor: 'var(--color-background)' }}>

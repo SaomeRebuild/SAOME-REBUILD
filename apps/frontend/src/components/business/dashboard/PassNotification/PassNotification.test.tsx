@@ -14,20 +14,20 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, opts?: Record<string, unknown>) => {
       const map: Record<string, string> = {
-        'trial.title': '{{daysLeft}} days left on your trial',
-        'trial.titleUrgent': 'Only {{daysLeft}} days left — act now!',
-        'trial.subtitle': 'Verify your account and bind a credit card to avoid service interruption after the trial ends',
-        'trial.cta': 'Verify & Bind Credit Card',
-        'trialExpired.title': 'Trial period has ended',
-        'trialExpired.subtitle': 'Your trial has ended. Please bind a credit card to continue using the service',
-        'trialExpired.cta': 'Subscribe Now',
-        'renewalReminder.title': '{{daysLeft}} days remaining this month',
-        'renewalReminder.subtitle': 'Please complete payment to ensure uninterrupted service',
-        'renewalReminder.cta': 'Go to Payment',
-        'trial.ariaLabel': '{{daysLeft}} days remaining on trial',
+        'trial.title': 'Trial Ending Soon',
+        'trial.titleUrgent': 'Trial Ending Soon - Act Now!',
+        'trial.subtitle': 'Your trial will expire in {{days}} days. Upgrade to continue using all features.',
+        'trial.cta': 'Upgrade Now',
+        'trialExpired.title': 'Trial Expired',
+        'trialExpired.subtitle': 'Upgrade your plan to continue using SAOME services.',
+        'trialExpired.cta': 'View Plans',
+        'renewalReminder.title': 'Billing Renewal Reminder',
+        'renewalReminder.subtitle': 'Your {{plan}} plan will renew in {{days}} days.',
+        'renewalReminder.cta': 'Manage Plan',
+        'trial.ariaLabel': 'Trial reminder: {{days}} days remaining',
       };
       const str = map[key] ?? key;
-      return opts ? str.replace('{{daysLeft}}', String(opts.daysLeft ?? '')) : str;
+      return opts ? str.replace(/\{\{days\}\}/g, String(opts.days ?? '')) : str;
     },
   }),
 }));
@@ -63,16 +63,16 @@ describe('PassNotification', () => {
     mockUsePassNotification.mockReturnValue({ type: 'trial', daysLeft: 10 });
     const handleCta = vi.fn();
     render(<PassNotification pass={fakePass()} onCta={handleCta} />);
-    expect(screen.getByText('10 days left on your trial')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Verify & Bind Credit Card' })).toBeInTheDocument();
+    expect(screen.getByText('Your trial will expire in 10 days. Upgrade to continue using all features.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Upgrade Now' })).toBeInTheDocument();
   });
 
   it('renders trial expired notification', () => {
     mockUsePassNotification.mockReturnValue({ type: 'trialExpired', daysLeft: 0 });
     const handleCta = vi.fn();
     render(<PassNotification pass={fakePass({ daysRemaining: 0, phase: 'expired' })} onCta={handleCta} />);
-    expect(screen.getByText('Trial period has ended')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Subscribe Now' })).toBeInTheDocument();
+    expect(screen.getByText('Trial Expired')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'View Plans' })).toBeInTheDocument();
   });
 
   it('renders renewal reminder notification', () => {
@@ -84,8 +84,8 @@ describe('PassNotification', () => {
         onCta={handleCta}
       />,
     );
-    expect(screen.getByText('5 days remaining this month')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Go to Payment' })).toBeInTheDocument();
+    expect(screen.getByText('Your {{plan}} plan will renew in 5 days.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Manage Plan' })).toBeInTheDocument();
   });
 
   it('calls onCta when CTA button is clicked', async () => {
@@ -93,7 +93,7 @@ describe('PassNotification', () => {
     const handleCta = vi.fn();
     const user = userEvent.setup();
     render(<PassNotification pass={fakePass()} onCta={handleCta} />);
-    await user.click(screen.getByRole('button', { name: 'Verify & Bind Credit Card' }));
+    await user.click(screen.getByRole('button', { name: 'Upgrade Now' }));
     expect(handleCta).toHaveBeenCalledOnce();
   });
 });

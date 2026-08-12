@@ -34,7 +34,7 @@ export const MemberBadge = ({
   size = 'md',
   className = '',
 }: MemberBadgeProps) => {
-  const { t } = useTranslation();
+  const { t } = useTranslation('member');
   // Validate tier
   const validatedTier = memberTierSchema.parse(tier);
   const displayName = t(`member.tier.${validatedTier}`);

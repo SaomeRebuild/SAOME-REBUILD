@@ -9,7 +9,7 @@ const stats = [
 ];
 
 export function SocialProof() {
-  const { t } = useTranslation();
+  const { t } = useTranslation('landing');
 
   return (
     <section

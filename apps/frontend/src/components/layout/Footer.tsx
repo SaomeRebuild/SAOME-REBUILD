@@ -3,20 +3,20 @@ import { useTranslation } from 'react-i18next';
 import { LanguageSwitcher } from '../shared/LanguageSwitcher';
 
 export function Footer() {
-  const { t } = useTranslation();
+  const { t } = useTranslation(['landing', 'nav']);
 
   const footerLinks = [
-    { href: '/product', label: t('nav.product') },
-    { href: '/demo', label: t('nav.demo') },
-    { href: '/pricing/compare', label: t('nav.pricingCompare') },
-    { href: '/#about', label: t('footer.about') },
-    { href: '/#features', label: t('footer.features') },
+    { href: '/product', label: t('product', { ns: 'nav' }) },
+    { href: '/demo', label: t('demo', { ns: 'nav' }) },
+    { href: '/pricing/compare', label: t('pricingCompare', { ns: 'nav' }) },
+    { href: '/#about', label: t('about', { ns: 'nav' }) },
+    { href: '/#features', label: t('features', { ns: 'nav' }) },
   ];
 
   const legalLinks = [
-    { to: '/privacy', label: t('footer.privacy') },
-    { to: '/terms', label: t('footer.terms') },
-    { to: '/gdpr', label: t('footer.gdpr') },
+    { to: '/privacy', label: t('privacy', { ns: 'nav' }) },
+    { to: '/terms', label: t('terms', { ns: 'nav' }) },
+    { to: '/gdpr', label: t('gdpr', { ns: 'nav' }) },
   ];
 
   return (
@@ -50,7 +50,7 @@ export function Footer() {
               SAOME
             </Link>
             <p className="text-sm" style={{ color: 'var(--color-muted-foreground)' }}>
-              {t('footer.slogan')}
+              {t('slogan', { ns: 'landing' })}
             </p>
           </div>
 
@@ -72,7 +72,7 @@ export function Footer() {
               className="text-sm font-medium"
               style={{ color: 'var(--color-foreground)' }}
             >
-              {t('footer.contact')}
+              {t('contact', { ns: 'landing' })}
             </p>
             <a
               href="mailto:hello@saome.org"
@@ -114,7 +114,7 @@ export function Footer() {
               </a>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-xs" style={{ color: 'var(--color-muted-foreground)' }}>{t('footer.securePayments')}</span>
+              <span className="text-xs" style={{ color: 'var(--color-muted-foreground)' }}>{t('securePayments', { ns: 'landing' })}</span>
               <div className="flex items-center gap-1">
                 <svg width="38" height="24" viewBox="0 0 38 24" fill="none" aria-label="Visa" role="img">
                   <rect width="38" height="24" rx="4" fill="#1A1F71" />
@@ -137,7 +137,7 @@ export function Footer() {
           style={{ borderColor: 'var(--color-border)' }}
         >
           <p className="text-sm" style={{ color: 'var(--color-muted-foreground)' }}>
-            {t('footer.copyright')}
+            {t('copyright', { year: new Date().getFullYear(), ns: 'landing' })}
           </p>
           <div className="flex gap-6">
             {legalLinks.map((link) => (

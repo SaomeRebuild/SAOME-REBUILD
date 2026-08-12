@@ -20,7 +20,7 @@ export function DashboardHeaderActions({ className }: DashboardHeaderActionsProp
   // Explicitly specify namespaces: ['dashboard', 'translation']
   // t('dashboard.dashboardHeader.*')  → dashboard namespace
   // t('nav.login')                    → translation namespace
-  const { t } = useTranslation(['dashboard', 'translation']);
+  const { t } = useTranslation(['dashboard', 'nav']);
   const { state, isAuthenticated, logout } = useAuth();
 
   const dashboardPath =

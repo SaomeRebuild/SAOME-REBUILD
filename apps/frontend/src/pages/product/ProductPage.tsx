@@ -92,7 +92,7 @@ function FeatureCard({
 }
 
 export function ProductPage() {
-  const { t } = useTranslation();
+  const { t } = useTranslation('landing');
 
   return (
     <div style={{ backgroundColor: 'var(--color-background)' }}>

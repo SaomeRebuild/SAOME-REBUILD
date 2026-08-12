@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { COLLECTION_ROWS, CONTROLLER_ROWS } from './data';
 
 export function ControllerTable() {
-  const { t } = useTranslation();
+  const { t } = useTranslation('legal');
 
   return (
     <div className="overflow-hidden rounded-lg border" style={{ borderColor: 'var(--color-border)' }}>
@@ -28,7 +28,7 @@ export function ControllerTable() {
 }
 
 export function CollectionTable() {
-  const { t } = useTranslation();
+  const { t } = useTranslation('legal');
 
   return (
     <div className="overflow-hidden rounded-lg border" style={{ borderColor: 'var(--color-border)' }}>
@@ -39,19 +39,19 @@ export function CollectionTable() {
               className="px-4 py-2 text-left font-medium"
               style={{ color: 'var(--color-primary)' }}
             >
-              {t('legal.privacy.collection.tableHeader.type')}
+              {t('privacy.collection.tableHeader.type')}
             </th>
             <th
               className="px-4 py-2 text-left font-medium"
               style={{ color: 'var(--color-primary)' }}
             >
-              {t('legal.privacy.collection.tableHeader.purpose')}
+              {t('privacy.collection.tableHeader.purpose')}
             </th>
             <th
               className="px-4 py-2 text-left font-medium"
               style={{ color: 'var(--color-primary)' }}
             >
-              {t('legal.privacy.collection.tableHeader.basis')}
+              {t('privacy.collection.tableHeader.basis')}
             </th>
           </tr>
         </thead>
