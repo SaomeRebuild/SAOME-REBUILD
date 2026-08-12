@@ -27,7 +27,7 @@ vi.mock('react-i18next', () => ({
         'trial.ariaLabel': 'Trial reminder: {{days}} days remaining',
       };
       const str = map[key] ?? key;
-      return opts ? str.replace(/\{\{days\}\}/g, String(opts.days ?? '')) : str;
+      return opts ? str.replace(/\{\{days\}\}/g, String(opts.days ?? '')).replace(/\{\{plan\}\}/g, String(opts.plan ?? '')) : str;
     },
   }),
 }));
@@ -53,14 +53,14 @@ describe('PassNotification', () => {
   });
 
   it('renders nothing when type is null', () => {
-    mockUsePassNotification.mockReturnValue({ type: null, daysLeft: 0 });
+    mockUsePassNotification.mockReturnValue({ type: null, daysLeft: 0, plan: '' });
     const handleCta = vi.fn();
     render(<PassNotification pass={null} onCta={handleCta} />);
     expect(document.body.textContent).toBe('');
   });
 
   it('renders trial notification with correct text', () => {
-    mockUsePassNotification.mockReturnValue({ type: 'trial', daysLeft: 10 });
+    mockUsePassNotification.mockReturnValue({ type: 'trial', daysLeft: 10, plan: '' });
     const handleCta = vi.fn();
     render(<PassNotification pass={fakePass()} onCta={handleCta} />);
     expect(screen.getByText('Your trial will expire in 10 days. Upgrade to continue using all features.')).toBeInTheDocument();
@@ -68,7 +68,7 @@ describe('PassNotification', () => {
   });
 
   it('renders trial expired notification', () => {
-    mockUsePassNotification.mockReturnValue({ type: 'trialExpired', daysLeft: 0 });
+    mockUsePassNotification.mockReturnValue({ type: 'trialExpired', daysLeft: 0, plan: '' });
     const handleCta = vi.fn();
     render(<PassNotification pass={fakePass({ daysRemaining: 0, phase: 'expired' })} onCta={handleCta} />);
     expect(screen.getByText('Trial Expired')).toBeInTheDocument();
@@ -76,7 +76,7 @@ describe('PassNotification', () => {
   });
 
   it('renders renewal reminder notification', () => {
-    mockUsePassNotification.mockReturnValue({ type: 'renewalReminder', daysLeft: 5 });
+    mockUsePassNotification.mockReturnValue({ type: 'renewalReminder', daysLeft: 5, plan: 'gold' });
     const handleCta = vi.fn();
     render(
       <PassNotification
@@ -84,12 +84,12 @@ describe('PassNotification', () => {
         onCta={handleCta}
       />,
     );
-    expect(screen.getByText('Your {{plan}} plan will renew in 5 days.')).toBeInTheDocument();
+    expect(screen.getByText('Your gold plan will renew in 5 days.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Manage Plan' })).toBeInTheDocument();
   });
 
   it('calls onCta when CTA button is clicked', async () => {
-    mockUsePassNotification.mockReturnValue({ type: 'trial', daysLeft: 10 });
+    mockUsePassNotification.mockReturnValue({ type: 'trial', daysLeft: 10, plan: '' });
     const handleCta = vi.fn();
     const user = userEvent.setup();
     render(<PassNotification pass={fakePass()} onCta={handleCta} />);
