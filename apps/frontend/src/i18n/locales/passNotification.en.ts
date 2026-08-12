@@ -16,6 +16,6 @@ export default {
     ariaLabel: 'Billing renewal reminder: {{days}} days remaining',
     title: 'Billing Renewal Reminder',
     subtitle: 'Your {{plan}} plan will renew in {{days}} days.',
-    cta: 'Manage Plan',
+    cta: 'Pay & Renew',
   },
 };

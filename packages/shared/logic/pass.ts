@@ -33,8 +33,38 @@ export function calculateExpirationDate(
 }
 
 /**
+ * Get plan display name (green/gold/platinum → 綠卡/金卡/白金卡)
+ *
+ * @param plan - Plan tier
+ * @returns Localized plan name
+ */
+export function getPlanDisplayName(plan: string): string {
+  const names: Record<string, string> = {
+    green: '綠卡',
+    gold: '金卡',
+    platinum: '白金卡',
+  };
+  return names[plan] ?? plan;
+}
+
+/**
+ * Get plan display name in English
+ *
+ * @param plan - Plan tier
+ * @returns English plan name
+ */
+export function getPlanDisplayNameEn(plan: string): string {
+  const names: Record<string, string> = {
+    green: 'Green Card',
+    gold: 'Gold Card',
+    platinum: 'Platinum Card',
+  };
+  return names[plan] ?? plan;
+}
+
+/**
  * Get pass tier display name
- * 
+ *
  * @param tier - Pass tier
  * @returns Localized tier name
  */

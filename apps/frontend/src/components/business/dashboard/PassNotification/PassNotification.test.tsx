@@ -23,12 +23,13 @@ vi.mock('react-i18next', () => ({
         'trialExpired.cta': 'View Plans',
         'renewalReminder.title': 'Billing Renewal Reminder',
         'renewalReminder.subtitle': 'Your {{plan}} plan will renew in {{days}} days.',
-        'renewalReminder.cta': 'Manage Plan',
+        'renewalReminder.cta': 'Pay & Renew',
         'trial.ariaLabel': 'Trial reminder: {{days}} days remaining',
       };
       const str = map[key] ?? key;
       return opts ? str.replace(/\{\{days\}\}/g, String(opts.days ?? '')).replace(/\{\{plan\}\}/g, String(opts.plan ?? '')) : str;
     },
+    i18n: { language: 'en' },
   }),
 }));
 
@@ -84,8 +85,8 @@ describe('PassNotification', () => {
         onCta={handleCta}
       />,
     );
-    expect(screen.getByText('Your gold plan will renew in 5 days.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Manage Plan' })).toBeInTheDocument();
+    expect(screen.getByText('Your Gold Card plan will renew in 5 days.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Pay & Renew' })).toBeInTheDocument();
   });
 
   it('calls onCta when CTA button is clicked', async () => {

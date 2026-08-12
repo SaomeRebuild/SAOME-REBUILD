@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { AlertTriangle, CheckCircle, CreditCard } from 'lucide-react';
 import { SubmitButton } from '@/components/ui/form/SubmitButton';
 import { cn } from '@/lib/utils';
+import { getPlanDisplayName, getPlanDisplayNameEn } from '@saome/shared/logic';
 import type { PassNotificationProps } from './PassNotification.types';
 import { usePassNotification } from './usePassNotification';
 
@@ -24,18 +25,22 @@ function NotificationIcon({ type }: { type: 'trial' | 'trialExpired' | 'renewalR
 }
 
 export function PassNotification({ pass, onCta }: PassNotificationProps) {
-  const { t } = useTranslation('passNotification');
+  const { t, i18n } = useTranslation('passNotification');
   const { type, daysLeft, plan } = usePassNotification(pass);
 
   if (!type) return null;
 
   const isUrgent = type === 'trial' && daysLeft <= DAYS_URGENT_THRESHOLD;
 
+  const planDisplayName = i18n.language === 'zh-TW'
+    ? getPlanDisplayName(plan)
+    : getPlanDisplayNameEn(plan);
+
   return (
     <div
       role="alert"
       aria-live="polite"
-      aria-label={t(`${type}.ariaLabel`, { days: daysLeft, plan })}
+      aria-label={t(`${type}.ariaLabel`, { days: daysLeft, plan: planDisplayName })}
       className={cn(
         'flex flex-col gap-3 rounded-xl border px-4 py-3 sm:flex-row sm:items-center',
         type === 'trialExpired'
@@ -62,7 +67,7 @@ export function PassNotification({ pass, onCta }: PassNotificationProps) {
             : t(`${type}.title`, { days: daysLeft })}
         </p>
         <p className="mt-0.5 text-sm text-[var(--color-muted-foreground)]">
-          {t(`${type}.subtitle`, { days: daysLeft, plan })}
+          {t(`${type}.subtitle`, { days: daysLeft, plan: planDisplayName })}
         </p>
       </div>
 

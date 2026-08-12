@@ -15,7 +15,7 @@ export default {
   renewalReminder: {
     ariaLabel: '帳單續約提醒：還有 {{days}} 天',
     title: '帳單到期提醒',
-    subtitle: '您的 {{plan}} 方案將在 {{days}} 天後續約。',
-    cta: '管理方案',
+    subtitle: '您的 {{plan}} 方案將在 {{days}} 天後到期。',
+    cta: '繳費續約',
   },
 };
