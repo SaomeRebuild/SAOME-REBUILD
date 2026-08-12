@@ -32,6 +32,7 @@ function computeDaysLeft(endDate: string): number {
 export function usePassNotification(pass: PassInfo | null): {
   type: NotificationType;
   daysLeft: number;
+  plan: string;
 } {
   // Derive static values from pass (no setInterval needed — backend already
   // computes daysRemaining; we just use it directly).
@@ -56,20 +57,20 @@ export function usePassNotification(pass: PassInfo | null): {
   }, [endDate]);
 
   if (!pass || pass.status === 'cancelled') {
-    return { type: null, daysLeft: 0 };
+    return { type: null, daysLeft: 0, plan: '' };
   }
 
   if (!pass.paidAt) {
     // Unpaid: trial
     return rawDays > 0
-      ? { type: 'trial', daysLeft }
-      : { type: 'trialExpired', daysLeft: 0 };
+      ? { type: 'trial', daysLeft, plan: '' }
+      : { type: 'trialExpired', daysLeft: 0, plan: '' };
   }
 
   // Paid: renewal reminder if within 7 days of billing_cycle_end
   if (rawDays <= 7) {
-    return { type: 'renewalReminder', daysLeft };
+    return { type: 'renewalReminder', daysLeft, plan: pass.plan };
   }
 
-  return { type: null, daysLeft: 0 };
+  return { type: null, daysLeft: 0, plan: '' };
 }

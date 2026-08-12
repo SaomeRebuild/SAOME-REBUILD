@@ -13,6 +13,7 @@ export type NotificationType = 'trial' | 'trialExpired' | 'renewalReminder' | nu
 export interface PassNotificationState {
   type: NotificationType;
   daysLeft: number;
+  plan: string;
 }
 
 /** Props passed into the component */

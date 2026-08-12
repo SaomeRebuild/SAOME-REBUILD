@@ -25,7 +25,7 @@ function NotificationIcon({ type }: { type: 'trial' | 'trialExpired' | 'renewalR
 
 export function PassNotification({ pass, onCta }: PassNotificationProps) {
   const { t } = useTranslation('passNotification');
-  const { type, daysLeft } = usePassNotification(pass);
+  const { type, daysLeft, plan } = usePassNotification(pass);
 
   if (!type) return null;
 
@@ -35,7 +35,7 @@ export function PassNotification({ pass, onCta }: PassNotificationProps) {
     <div
       role="alert"
       aria-live="polite"
-      aria-label={t(`${type}.ariaLabel`, { daysLeft })}
+      aria-label={t(`${type}.ariaLabel`, { days: daysLeft, plan })}
       className={cn(
         'flex flex-col gap-3 rounded-xl border px-4 py-3 sm:flex-row sm:items-center',
         type === 'trialExpired'
@@ -62,7 +62,7 @@ export function PassNotification({ pass, onCta }: PassNotificationProps) {
             : t(`${type}.title`, { days: daysLeft })}
         </p>
         <p className="mt-0.5 text-sm text-[var(--color-muted-foreground)]">
-          {t(`${type}.subtitle`, { days: daysLeft })}
+          {t(`${type}.subtitle`, { days: daysLeft, plan })}
         </p>
       </div>
 
