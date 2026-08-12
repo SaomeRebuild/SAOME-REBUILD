@@ -8,7 +8,7 @@
 把「SAOME-REBUILD 清理 + 抽 frontend 推 saome-frontend」這次成功流程標準化，避免下次新 repo 又踩一樣的坑：
 - 把 owner-agent 私房意外推到業主 repo
 - 沒有 defensive .gitignore
-- 沒有 i18n 雙語 SOP
+- 沒有 i18n namespace 雙語 SOP（i18n 已遷移至 `.ts` namespace 格式，見 `023-shared-package.mdc`）
 
 ## 適用範圍
 
@@ -26,6 +26,15 @@
 - `README.md`（repo 對外說明）
 - `.gitignore`（defensive 版本，見下方範本）
 - `wrangler.jsonc`（若用 Cloudflare Workers）
+- i18n 命名空間結構（見下方 i18n 章節）
+
+### i18n 雙語 SOP
+
+新 repo 若涉及 UI 字串，必須依 `023-shared-package.mdc` 建立 i18n 結構：
+1. `packages/shared/i18n/` 放 per-namespace `.ts` 檔（如 `auth.zh-TW.ts`、`auth.en.ts`）
+2. namespace key 必為 camelCase（如 `auth`、`dashboard`）
+3. 禁止 `translation` namespace（已拆分為 feature namespace）
+4. 翻譯紀律：zh-TW 全中文、en 全英文，禁止中英夾雜
 
 ### Defensive .gitignore 範本（所有 saome-* repo 必含）
 

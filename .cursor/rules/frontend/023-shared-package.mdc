@@ -16,7 +16,7 @@ alwaysApply: true
 | 業務邏輯純函式 | `validateEmail()`, `calcDiscount()` |
 | 常數 | `MEMBER_ROLE`, `PASS_TIER` |
 | API contracts | request/response types |
-| i18n 翻譯檔 | zh-TW.json, en.json |
+| i18n 翻譯檔 | zh-TW.ts, en.ts |
 | BDD feature | `.feature` 與 step definitions |
 
 ## frontend/（apps/frontend/）放什麼 ✅
@@ -46,33 +46,41 @@ alwaysApply: true
 | 規則 | 說明 |
 |---|---|
 | **namespace key** | 必為 camelCase（如 `passNotification`、`landing`） |
-| **檔名格式** | `{namespace}.{locale}.json`（如 `passNotification.zh-TW.json`） |
+| **檔名格式** | `{namespace}.{locale}.ts`（如 `passNotification.zh-TW.ts`） |
 | **禁止 hyphen** | 禁止在 namespace key 使用 hyphen（如 `pass-notification`） |
 | **禁止 `translation`** | 廢除 `translation` namespace；所有 key 必須分散至 feature namespace |
 
 ### 原因
 
-`translation` namespace 會隨 feature 增加而無限膨脹。單一檔案（479 行）的缺點：
+`translation` namespace 會隨 feature 增加而無限膨脹。單一檔案的缺點：
 - 新增 key 時容易放錯位置
-- 檔名 vs resources key mismatch（`pass-notification.zh-TW.json` vs `passNotification`）難以察覺
+- 檔名 vs resources key mismatch（`passNotification.zh-TW.ts` vs `passNotification`）難以察覺
 - 未來 React Native 化時難以拆分
 
 ### 現有 Namespace 清單
 
 | namespace | 用途 | 檔案 |
 |---|---|---|
-| `auth` | 登入、註冊、表單驗證 | `auth.{locale}.json` |
-| `dashboard` | Dashboard layout | `dashboard.{locale}.json` |
-| `landing` | Landing Page、Hero、Features、定價說明 | `landing.{locale}.json` |
-| `legal` | 服務條款、隱私權、DPA | `legal.{locale}.json` |
-| `passNotification` | Pass 通知（trial、renewalReminder） | `passNotification.{locale}.json` |
-| `pricing` | 定價頁 | `pricing.{locale}.json` |
-| `theme` | 主題切換 | `theme.{locale}.json` |
+| `auth` | 登入、註冊、表單驗證 | `auth.{locale}.ts` |
+| `dashboard` | Dashboard layout | `dashboard.{locale}.ts` |
+| `landing` | Landing Page、Hero、Features、定價說明 | `landing.{locale}.ts` |
+| `legal` | 服務條款、隱私權、DPA | `legal.{locale}.ts` |
+| `passNotification` | Pass 通知（trial、renewalReminder） | `passNotification.{locale}.ts` |
+| `pricing` | 定價頁 | `pricing.{locale}.ts` |
+| `theme` | 主題切換 | `theme.{locale}.ts` |
+| `nav` | 導航 | `nav.{locale}.ts` |
+| `member` | 會員相關 | `member.{locale}.ts` |
 
-### 遷移進度
+### 翻譯書寫紀律（MANDATORY）
 
-- `translation` namespace（`en.json`、`zh-TW.json`）— ⏳ **進行中**，479 行待拆分
-- 其他 namespace — ✅ 已就緒
+| 語言 | 規定 |
+|---|---|
+| zh-TW | 嚴格使用全中文，禁止摻雜英文單字（如 `Pass`、`QR Code` 應改為 `卡片`、`QR 碼`） |
+| en | 嚴格使用全英文，禁止摻雜中文或其他語言 |
+
+理由：中英夾雜對非英語人士造成閱讀障礙，且破壞翻譯風格一致性。
+
+例外：若某英文術語有約定俗成的中文譯名（如 `API`、`URL`），可使用該譯名，但禁止直接寫原形。
 
 ### 觸發關鍵字
 

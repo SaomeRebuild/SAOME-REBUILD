@@ -1,7 +1,5 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
-import zhTW from './locales/zh-TW.ts';
-import en from './locales/en.ts';
 import authZhTW from './locales/auth.zh-TW.ts';
 import authEn from './locales/auth.en.ts';
 import dashboardZhTW from './locales/dashboard.zh-TW.ts';
@@ -23,7 +21,6 @@ import memberEn from './locales/member.en.ts';
 
 const resources = {
   'zh-TW': {
-    translation: zhTW,
     auth: authZhTW,
     dashboard: dashboardZhTW,
     passNotification: passNotificationZhTW,
@@ -35,7 +32,6 @@ const resources = {
     member: memberZhTW,
   },
   en: {
-    translation: en,
     auth: authEn,
     dashboard: dashboardEn,
     passNotification: passNotificationEn,

@@ -56,6 +56,7 @@ export const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+$/.test(email);
 - [ ] 沒在 component 直接寫商業邏輯？
 - [ ] 沒在 component 直接用 localStorage / window？
 - [ ] i18n key 都在 shared/ i18n/ 內？
+- [ ] 翻譯嚴格遵守全中文（zh-TW）或全英文（en），禁止中英夾雜？
 
 ## 觸發關鍵字
 

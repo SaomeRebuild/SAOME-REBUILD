@@ -1,7 +1,5 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
-import zhTW from '../i18n/locales/zh-TW.ts';
-import en from '../i18n/locales/en.ts';
 import authZhTW from '../i18n/locales/auth.zh-TW.ts';
 import authEn from '../i18n/locales/auth.en.ts';
 import dashboardZhTW from '../i18n/locales/dashboard.zh-TW.ts';
@@ -25,7 +23,6 @@ if (!i18n.isInitialized) {
   i18n.use(initReactI18next).init({
     resources: {
       'zh-TW': {
-        translation: zhTW,
         auth: authZhTW,
         dashboard: dashboardZhTW,
         passNotification: passNotificationZhTW,
@@ -37,7 +34,6 @@ if (!i18n.isInitialized) {
         member: memberZhTW,
       },
       en: {
-        translation: en,
         auth: authEn,
         dashboard: dashboardEn,
         passNotification: passNotificationEn,
