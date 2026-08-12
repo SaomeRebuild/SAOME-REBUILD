@@ -25,7 +25,7 @@ export default {
     trustedBy: '已受超過 500 店家信任',
     active_members: '活躍會員',
     merchants: '合作店家',
-    passes_issued: '已發送 Pass',
+    passes_issued: '已發送卡片',
     avg_engagement: '平均參與度提升',
   },
   features: {
@@ -40,7 +40,7 @@ export default {
     multiTenantTitle: '自由設計卡片',
     multiTenantDesc: '自己定義卡片的外觀',
     geoTitle: '地理位置自動觸發',
-    geoDesc: '會員接近指定地點或到達特定日期時，Pass 自動顯示在鎖定畫面，可直接開啟使用。',
+    geoDesc: '會員接近指定地點或到達特定日期時，卡片自動顯示在鎖定畫面，可直接開啟使用。',
     memberTitle: '會員管理系統',
     memberDesc: '使用信件跟會員溝通，管理會員的生命週期，掌握每位會員的旅程。',
     emailTitle: '會員郵箱行銷',
