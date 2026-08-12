@@ -1,4 +1,14 @@
 {
+  "tenantToolbar": {
+    "charts": "圖表",
+    "cardEditor": "卡片編輯器",
+    "members": "會員",
+    "email": "郵件",
+    "billing": "帳單",
+    "settings": "設定",
+    "expandTooltip": "展開工具列",
+    "collapseTooltip": "收合工具列"
+  },
   "trialBanner": {
     "ariaLabel": "試用期剩餘 {{daysLeft}} 天",
     "title": "試用期還剩 {{daysLeft}} 天",

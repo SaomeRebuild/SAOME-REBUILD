@@ -22,9 +22,9 @@ export interface DashboardShellProps {
 
 export function DashboardShell({ navItems = [], children, className }: DashboardShellProps) {
   return (
-    <div className={`flex min-h-dvh flex-col ${className ?? ''}`}>
+    <div className={`flex flex-col ${className ?? ''}`} style={{ minHeight: '100dvh' }}>
       <DashboardHeader navItems={navItems} />
-      <main className="flex-1">{children}</main>
+      <main className="flex min-h-0 flex-1 flex-col">{children}</main>
       <DashboardFooter />
     </div>
   );

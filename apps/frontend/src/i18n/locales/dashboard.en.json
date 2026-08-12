@@ -1,4 +1,14 @@
 {
+  "tenantToolbar": {
+    "charts": "Charts",
+    "cardEditor": "Card Editor",
+    "members": "Members",
+    "email": "Email",
+    "billing": "Billing",
+    "settings": "Settings",
+    "expandTooltip": "Expand toolbar",
+    "collapseTooltip": "Collapse toolbar"
+  },
   "trialBanner": {
     "ariaLabel": "{{daysLeft}} days remaining on trial",
     "title": "{{daysLeft}} days left on your trial",

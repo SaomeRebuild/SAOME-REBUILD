@@ -476,6 +476,14 @@
     }
   },
   "dashboard": {
+    "tenantToolbar": {
+      "charts": "圖表",
+      "cardEditor": "卡片編輯器",
+      "members": "會員",
+      "email": "郵件",
+      "billing": "帳單",
+      "settings": "設定"
+    },
     "dashboardHeader": {
       "logoAlt": "SAOME",
       "logout": "Logout",

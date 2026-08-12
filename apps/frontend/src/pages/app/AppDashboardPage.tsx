@@ -3,37 +3,43 @@
  */
 
 import { useNavigate } from 'react-router-dom';
-import { ComingSoonCard } from '@/components/ui';
+import { TenantToolbar } from '@/components/business/dashboard/TenantToolbar';
+import { TenantContentArea } from '@/components/business/dashboard/TenantContentArea';
+import { DashboardBanner } from '@/components/business/dashboard/DashboardBanner';
 import { useAuth } from '@/hooks';
-import { useTranslation } from 'react-i18next';
-import { PassNotification } from '@/components/business/dashboard/PassNotification';
 
 export default function AppDashboardPage() {
-  const { state, logout } = useAuth();
-  const { t } = useTranslation('auth');
+  const { state } = useAuth();
   const navigate = useNavigate();
+  const hasBanner = Boolean(state.pass);
 
   function handleCta() {
     navigate('/settings/billing');
   }
 
   return (
-    <div className="flex flex-col gap-4 p-4 pt-16">
-      {/* Pass notification — handles trial / expired / renewal reminder */}
-      <PassNotification pass={state.pass ?? null} onCta={handleCta} />
+    <div className="flex h-full flex-col p-4 pt-16">
+      {/* Banner area — handles trial / expired / renewal reminder */}
+      <div
+        className="transition-all duration-300 ease-out"
+        style={{
+          maxHeight: hasBanner ? '200px' : '0px',
+          opacity: hasBanner ? 1 : 0,
+          overflow: 'hidden',
+        }}
+      >
+        <div className={hasBanner ? 'pt-0' : ''}>
+          <DashboardBanner pass={state.pass ?? undefined} onCta={handleCta} />
+        </div>
+      </div>
 
-      <ComingSoonCard
-        title={t('app.dashboard.title', 'Tenant dashboard — coming soon')}
-        description={t('app.dashboard.description', 'The tenant app is under construction.')}
-        action={
-          <div className="flex flex-col gap-2">
-            <p className="text-sm text-neutral-700">{state.tenant?.name}</p>
-            <button type="button" onClick={logout} className="min-h-[44px] rounded border border-neutral-300 px-4 py-2 text-sm">
-              {t('app.dashboard.logout', 'Sign out')}
-            </button>
-          </div>
-        }
-      />
+      {/* Main layout — toolbar + content, fills remaining height */}
+      <div className={`flex min-h-0 flex-1 items-stretch ${hasBanner ? 'pt-4' : ''}`}>
+        <TenantToolbar defaultWidth={280} minWidth={80} maxWidth={400} />
+        <div className="flex min-h-0 flex-1 flex-col">
+          <TenantContentArea />
+        </div>
+      </div>
     </div>
   );
 }
