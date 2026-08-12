@@ -1,11 +1,11 @@
-{
+export default {
   "login": {
     "title": "Sign in",
     "subtitle": "Welcome back to SAOME",
     "email": "Email",
     "password": "Password",
     "submit": "Sign in",
-    "submitting": "Signing in…",
+    "submitting": "Signing in...",
     "locked": {
       "message": "Too many attempts. Please try again in {{seconds}} seconds."
     },
@@ -16,7 +16,8 @@
       "required": "This field is required",
       "unknown": "Sign-in failed. Please try again."
     },
-    "switchToRegister": "Don't have an account? Sign up"
+    "switchToRegister": "Don't have an account? Sign up",
+    "comingSoon": "Coming soon. Please check back later."
   },
   "validation": {
     "required": "This field is required",
@@ -74,12 +75,12 @@
     },
     "contactName": "Contact name",
     "mobile": "Mobile number",
-    "mobileHint": "Required. E.164 format (e.g. +886912345678) or Taiwan 09xxxxxxxx.",
+    "mobileHint": "Required. For receiving coupon push notifications. E.164 format (e.g. +886912345678) or Taiwan 09xxxxxxxx.",
     "phoneCityHint": "Optional",
     "phoneCity": "Office phone",
     "address": "Address",
     "taxId": "Tax ID",
-    "taxIdHint": "Enter 0 if not applicable",
+    "taxIdHint": "Enter 0 if not required",
     "name": "Company / Store name",
     "invoiceAddress": "Invoice mailing address",
     "email": "Email (contact)",
@@ -89,7 +90,7 @@
     "password": "Password",
     "confirmPassword": "Confirm password",
     "submit": "Complete registration",
-    "submitting": "Registering…",
+    "submitting": "Registering...",
     "error": {
       "conflict": "This email or tax ID is already in use",
       "validation": "Please review the highlighted fields",

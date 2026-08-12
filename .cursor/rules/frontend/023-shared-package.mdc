@@ -37,6 +37,47 @@ alwaysApply: true
 - ❌ 把 TypeScript 介面定義在 app 內（要搬 packages/shared/）
 - ❌ 把 i18n key 寫在 app 內（要搬 packages/shared/）
 
+## i18n Namespace 規範（MANDATORY）
+
+> 觸發：新增 i18n namespace、建立翻譯檔。
+
+### 命名規則
+
+| 規則 | 說明 |
+|---|---|
+| **namespace key** | 必為 camelCase（如 `passNotification`、`landing`） |
+| **檔名格式** | `{namespace}.{locale}.json`（如 `passNotification.zh-TW.json`） |
+| **禁止 hyphen** | 禁止在 namespace key 使用 hyphen（如 `pass-notification`） |
+| **禁止 `translation`** | 廢除 `translation` namespace；所有 key 必須分散至 feature namespace |
+
+### 原因
+
+`translation` namespace 會隨 feature 增加而無限膨脹。單一檔案（479 行）的缺點：
+- 新增 key 時容易放錯位置
+- 檔名 vs resources key mismatch（`pass-notification.zh-TW.json` vs `passNotification`）難以察覺
+- 未來 React Native 化時難以拆分
+
+### 現有 Namespace 清單
+
+| namespace | 用途 | 檔案 |
+|---|---|---|
+| `auth` | 登入、註冊、表單驗證 | `auth.{locale}.json` |
+| `dashboard` | Dashboard layout | `dashboard.{locale}.json` |
+| `landing` | Landing Page、Hero、Features、定價說明 | `landing.{locale}.json` |
+| `legal` | 服務條款、隱私權、DPA | `legal.{locale}.json` |
+| `passNotification` | Pass 通知（trial、renewalReminder） | `passNotification.{locale}.json` |
+| `pricing` | 定價頁 | `pricing.{locale}.json` |
+| `theme` | 主題切換 | `theme.{locale}.json` |
+
+### 遷移進度
+
+- `translation` namespace（`en.json`、`zh-TW.json`）— ⏳ **進行中**，479 行待拆分
+- 其他 namespace — ✅ 已就緒
+
+### 觸發關鍵字
+
+「新增 i18n」「翻譯 key」「namespace」「i18n 檔案」**必須**引用本節。
+
 ## 結構範例
 
 ```

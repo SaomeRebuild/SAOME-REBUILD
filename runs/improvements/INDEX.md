@@ -7,6 +7,9 @@
 
 | 日期 | 主題 | 路徑 | 影響 / 後續 |
 |------|------|------|------|
+| 2026-08-12 | i18n namespace split：`translation` → 9 feature namespaces | runs/improvements/feedback/20260812-i18n-namespace-split-dev-log.md | 38 個測試失敗待修；`.json` → `.ts` 為不必要複雜化；根因：PowerShell UTF-8 腐化 + 錯誤解讀 Node.js 24 ESM JSON import 限制 |
+| 2026-08-12 | i18n namespace split feedback（`.json` → `.ts` 根因分析）| runs/improvements/feedback/20260812-i18n-namespace-split-feedback.md | 技術債：P1（38 tests）、P2（locale 格式）、P2（PowerShell encoding）；下個 agent 提示詞：`runs/decisions/2026-08-12-i18n-test-fix-prompt.md` |
+| 2026-08-12 | Dashboard renewalReminder i18n + schema drift + TS6198 三連環 | DEV/08-2026/0812-renewal-reminder-i18n-schema-chain.md | `passNotification` namespace load fail；`authSessionSchema.pass` 缺 3 欄位 strip；`TenantToolbar` TS6198 CI block |
 | 2026-08-08 | Bug-7 TrialBanner：useAuth.refresh() 漏寫 pass + plan filter 商業邏輯錯誤 | runs/improvements/feedback/20260808-bug7-trial-banner-pass-state.md | `useAuth.refresh()` 加 `pass`；`visible` 接受全部 plan（commits `c76d992` + `a39a379`）；新增三層排除法：CI → 本地 → DB |
 | 2026-08-08 | Bug-7 TrialBanner i18n namespace + layout overlay | DEV/08-2026/0808-trial-banner-i18n-layout.md | 建 `dashboard.{zh-TW,en}.json` namespace；`AppDashboardPage` 加 `pt-16`（commits `3bdb313` + `e851e6a`）|
 | 2026-08-07 | Bug-7 refresh route 沒回 user/tenant（deploy gap）| runs/improvements/feedback/20260807-bug7-refresh-deploy-gap.md | `routes/refresh.ts` 改 `c.json(result)`；加 user/tenant assertion；commit `52b23aa` |

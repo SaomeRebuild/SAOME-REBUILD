@@ -1,9 +1,0 @@
-{
-  "light": "淺色",
-  "dark": "深色",
-  "system": "跟隨系統",
-  "toggleLabel": "切換主題",
-  "currentLabel": "主題：{{resolved}}",
-  "resolvedLight": "淺色模式",
-  "resolvedDark": "深色模式"
-}

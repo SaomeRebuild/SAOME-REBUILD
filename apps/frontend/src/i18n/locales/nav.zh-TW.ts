@@ -1,0 +1,15 @@
+export default {
+  product: '商品細節',
+  demo: '演示',
+  pricing: '定價',
+  pricingCompare: '詳細定價',
+  about: '關於我們',
+  features: '功能',
+  privacy: '隱私權政策',
+  terms: '服務條款',
+  gdpr: '資料處理協議',
+  openDashboard: '前往儀表板',
+  logout: '登出',
+  login: '登入',
+  getStarted: '開始使用',
+};

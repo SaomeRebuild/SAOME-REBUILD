@@ -1,15 +1,25 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
-import zhTW from './locales/zh-TW.json';
-import en from './locales/en.json';
-import authZhTW from './locales/auth.zh-TW.json';
-import authEn from './locales/auth.en.json';
-import dashboardZhTW from './locales/dashboard.zh-TW.json';
-import dashboardEn from './locales/dashboard.en.json';
-import passNotificationZhTW from './locales/pass-notification.zh-TW.json';
-import passNotificationEn from './locales/pass-notification.en.json';
-import themeZhTW from './locales/theme.zh-TW.json';
-import themeEn from './locales/theme.en.json';
+import zhTW from './locales/zh-TW.ts';
+import en from './locales/en.ts';
+import authZhTW from './locales/auth.zh-TW.ts';
+import authEn from './locales/auth.en.ts';
+import dashboardZhTW from './locales/dashboard.zh-TW.ts';
+import dashboardEn from './locales/dashboard.en.ts';
+import passNotificationZhTW from './locales/passNotification.zh-TW.ts';
+import passNotificationEn from './locales/passNotification.en.ts';
+import themeZhTW from './locales/theme.zh-TW.ts';
+import themeEn from './locales/theme.en.ts';
+import landingZhTW from './locales/landing.zh-TW.ts';
+import landingEn from './locales/landing.en.ts';
+import legalZhTW from './locales/legal.zh-TW.ts';
+import legalEn from './locales/legal.en.ts';
+import pricingZhTW from './locales/pricing.zh-TW.ts';
+import pricingEn from './locales/pricing.en.ts';
+import navZhTW from './locales/nav.zh-TW.ts';
+import navEn from './locales/nav.en.ts';
+import memberZhTW from './locales/member.zh-TW.ts';
+import memberEn from './locales/member.en.ts';
 
 const resources = {
   'zh-TW': {
@@ -18,6 +28,11 @@ const resources = {
     dashboard: dashboardZhTW,
     passNotification: passNotificationZhTW,
     theme: themeZhTW,
+    landing: landingZhTW,
+    legal: legalZhTW,
+    pricing: pricingZhTW,
+    nav: navZhTW,
+    member: memberZhTW,
   },
   en: {
     translation: en,
@@ -25,6 +40,11 @@ const resources = {
     dashboard: dashboardEn,
     passNotification: passNotificationEn,
     theme: themeEn,
+    landing: landingEn,
+    legal: legalEn,
+    pricing: pricingEn,
+    nav: navEn,
+    member: memberEn,
   },
 };
 

@@ -1,0 +1,15 @@
+export default {
+  product: 'Product',
+  demo: 'Demo',
+  pricing: 'Pricing',
+  pricingCompare: 'Detailed Pricing',
+  about: 'About',
+  features: 'Features',
+  privacy: 'Privacy Policy',
+  terms: 'Terms of Service',
+  gdpr: 'Data Processing Agreement',
+  openDashboard: 'Open dashboard',
+  logout: 'Logout',
+  login: 'Login',
+  getStarted: 'Get Started',
+};
