@@ -6,6 +6,8 @@ import authZhTW from './locales/auth.zh-TW.json';
 import authEn from './locales/auth.en.json';
 import dashboardZhTW from './locales/dashboard.zh-TW.json';
 import dashboardEn from './locales/dashboard.en.json';
+import passNotificationZhTW from './locales/pass-notification.zh-TW.json';
+import passNotificationEn from './locales/pass-notification.en.json';
 import themeZhTW from './locales/theme.zh-TW.json';
 import themeEn from './locales/theme.en.json';
 
@@ -14,12 +16,14 @@ const resources = {
     translation: zhTW,
     auth: authZhTW,
     dashboard: dashboardZhTW,
+    passNotification: passNotificationZhTW,
     theme: themeZhTW,
   },
   en: {
     translation: en,
     auth: authEn,
     dashboard: dashboardEn,
+    passNotification: passNotificationEn,
     theme: themeEn,
   },
 };

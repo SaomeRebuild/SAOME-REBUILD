@@ -9,34 +9,6 @@
     "expandTooltip": "Expand toolbar",
     "collapseTooltip": "Collapse toolbar"
   },
-  "trialBanner": {
-    "ariaLabel": "{{daysLeft}} days remaining on trial",
-    "title": "{{daysLeft}} days left on your trial",
-    "titleUrgent": "Only {{daysLeft}} days left — act now!",
-    "subtitle": "Verify your account and bind a credit card to avoid service interruption after the trial ends",
-    "cta": "Verify & Bind Credit Card"
-  },
-  "passNotification": {
-    "trial": {
-      "ariaLabel": "{{daysLeft}} days remaining on trial",
-      "title": "{{daysLeft}} days left on your trial",
-      "titleUrgent": "Only {{daysLeft}} days left — act now!",
-      "subtitle": "Verify your account and bind a credit card to avoid service interruption after the trial ends",
-      "cta": "Verify & Bind Credit Card"
-    },
-    "trialExpired": {
-      "ariaLabel": "Trial period has ended",
-      "title": "Trial period has ended",
-      "subtitle": "Your trial has ended. Please bind a credit card to continue using the service",
-      "cta": "Subscribe Now"
-    },
-    "renewalReminder": {
-      "ariaLabel": "{{daysLeft}} days remaining this month",
-      "title": "{{daysLeft}} days remaining this month",
-      "subtitle": "Please complete payment to ensure uninterrupted service",
-      "cta": "Go to Payment"
-    }
-  },
   "dashboardHeader": {
     "logoAlt": "SAOME",
     "openMenu": "Open menu",

@@ -18,7 +18,7 @@ import type { TrialBannerProps } from './TrialBanner.types';
 const DAYS_URGENT_THRESHOLD = 3;
 
 export function TrialBanner({ daysLeft, endDate, onVerify }: TrialBannerProps) {
-  const { t } = useTranslation('dashboard');
+  const { t } = useTranslation('pass-notification');
 
   const isUrgent = daysLeft <= DAYS_URGENT_THRESHOLD;
 
@@ -26,7 +26,7 @@ export function TrialBanner({ daysLeft, endDate, onVerify }: TrialBannerProps) {
     <div
       role="alert"
       aria-live="polite"
-      aria-label={`${t('trialBanner.ariaLabel', { daysLeft })} ${endDate}`}
+      aria-label={`${t('trial.ariaLabel', { daysLeft })} ${endDate}`}
       className={cn(
         'flex flex-col gap-3 rounded-xl border px-4 py-3 sm:flex-row sm:items-center',
         isUrgent
@@ -54,11 +54,11 @@ export function TrialBanner({ daysLeft, endDate, onVerify }: TrialBannerProps) {
           )}
         >
           {isUrgent
-            ? t('trialBanner.titleUrgent', { daysLeft })
-            : t('trialBanner.title', { daysLeft })}
+            ? t('trial.titleUrgent', { daysLeft })
+            : t('trial.title', { daysLeft })}
         </p>
         <p className="mt-0.5 text-sm text-[var(--color-muted-foreground)]">
-          {t('trialBanner.subtitle')}
+          {t('trial.subtitle')}
         </p>
       </div>
 
@@ -72,7 +72,7 @@ export function TrialBanner({ daysLeft, endDate, onVerify }: TrialBannerProps) {
             : 'bg-[var(--color-primary)] text-[var(--color-on-primary)] hover:bg-[var(--color-primary)]/90',
         )}
       >
-        {t('trialBanner.cta')}
+        {t('trial.cta')}
       </SubmitButton>
     </div>
   );

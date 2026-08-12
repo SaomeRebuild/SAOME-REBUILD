@@ -24,7 +24,7 @@ function NotificationIcon({ type }: { type: 'trial' | 'trialExpired' | 'renewalR
 }
 
 export function PassNotification({ pass, onCta }: PassNotificationProps) {
-  const { t } = useTranslation('dashboard');
+  const { t } = useTranslation('pass-notification');
   const { type, daysLeft } = usePassNotification(pass);
 
   if (!type) return null;
@@ -35,7 +35,7 @@ export function PassNotification({ pass, onCta }: PassNotificationProps) {
     <div
       role="alert"
       aria-live="polite"
-      aria-label={t(`passNotification.${type}.ariaLabel`, { daysLeft })}
+      aria-label={t(`${type}.ariaLabel`, { daysLeft })}
       className={cn(
         'flex flex-col gap-3 rounded-xl border px-4 py-3 sm:flex-row sm:items-center',
         type === 'trialExpired'
@@ -58,11 +58,11 @@ export function PassNotification({ pass, onCta }: PassNotificationProps) {
           )}
         >
           {isUrgent
-            ? t(`passNotification.${type}.titleUrgent`, { daysLeft })
-            : t(`passNotification.${type}.title`, { daysLeft })}
+            ? t(`${type}.titleUrgent`, { daysLeft })
+            : t(`${type}.title`, { daysLeft })}
         </p>
         <p className="mt-0.5 text-sm text-[var(--color-muted-foreground)]">
-          {t(`passNotification.${type}.subtitle`)}
+          {t(`${type}.subtitle`)}
         </p>
       </div>
 
@@ -76,7 +76,7 @@ export function PassNotification({ pass, onCta }: PassNotificationProps) {
             : 'bg-[var(--color-primary)] text-[var(--color-on-primary)] hover:bg-[var(--color-primary)]/90',
         )}
       >
-        {t(`passNotification.${type}.cta`)}
+        {t(`${type}.cta`)}
       </SubmitButton>
     </div>
   );

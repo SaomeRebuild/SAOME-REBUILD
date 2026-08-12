@@ -14,17 +14,17 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, opts?: Record<string, unknown>) => {
       const map: Record<string, string> = {
-        'passNotification.trial.title': '{{daysLeft}} days left on your trial',
-        'passNotification.trial.titleUrgent': 'Only {{daysLeft}} days left — act now!',
-        'passNotification.trial.subtitle': 'Verify your account and bind a credit card to avoid service interruption after the trial ends',
-        'passNotification.trial.cta': 'Verify & Bind Credit Card',
-        'passNotification.trialExpired.title': 'Trial period has ended',
-        'passNotification.trialExpired.subtitle': 'Your trial has ended. Please bind a credit card to continue using the service',
-        'passNotification.trialExpired.cta': 'Subscribe Now',
-        'passNotification.renewalReminder.title': '{{daysLeft}} days remaining this month',
-        'passNotification.renewalReminder.subtitle': 'Please complete payment to ensure uninterrupted service',
-        'passNotification.renewalReminder.cta': 'Go to Payment',
-        'passNotification.trial.ariaLabel': '{{daysLeft}} days remaining on trial',
+        'trial.title': '{{daysLeft}} days left on your trial',
+        'trial.titleUrgent': 'Only {{daysLeft}} days left — act now!',
+        'trial.subtitle': 'Verify your account and bind a credit card to avoid service interruption after the trial ends',
+        'trial.cta': 'Verify & Bind Credit Card',
+        'trialExpired.title': 'Trial period has ended',
+        'trialExpired.subtitle': 'Your trial has ended. Please bind a credit card to continue using the service',
+        'trialExpired.cta': 'Subscribe Now',
+        'renewalReminder.title': '{{daysLeft}} days remaining this month',
+        'renewalReminder.subtitle': 'Please complete payment to ensure uninterrupted service',
+        'renewalReminder.cta': 'Go to Payment',
+        'trial.ariaLabel': '{{daysLeft}} days remaining on trial',
       };
       const str = map[key] ?? key;
       return opts ? str.replace('{{daysLeft}}', String(opts.daysLeft ?? '')) : str;
