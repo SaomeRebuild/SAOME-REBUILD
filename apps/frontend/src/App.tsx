@@ -17,6 +17,13 @@ import { ROUTES } from '@/config/routes';
 import { AuthGuard } from '@/components/ui';
 import { useAuth } from '@/hooks';
 import type { Role } from '@saome/shared/types/auth';
+import { ComingSoonView } from '@/pages/app/dashboard';
+import ChartsPage from '@/pages/app/dashboard/charts';
+import CardBuilderPage from '@/pages/app/dashboard/card-builder';
+import MembersPage from '@/pages/app/dashboard/members';
+import EmailPage from '@/pages/app/dashboard/email';
+import BillingPage from '@/pages/app/dashboard/billing';
+import SettingsPage from '@/pages/app/dashboard/settings';
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -73,7 +80,16 @@ function AppRoutes() {
             <AppDashboardPage />
           </DashboardShell>
         </AuthGuard>
-      } />
+      }>
+        {/* Nested routes — render inside AppDashboardPage's <Outlet /> */}
+        <Route index element={<ComingSoonView title="Welcome" description="Select a tool from the sidebar to get started." />} />
+        <Route path="charts" element={<ChartsPage />} />
+        <Route path="card-builder" element={<CardBuilderPage />} />
+        <Route path="members" element={<MembersPage />} />
+        <Route path="email" element={<EmailPage />} />
+        <Route path="billing" element={<BillingPage />} />
+        <Route path="settings" element={<SettingsPage />} />
+      </Route>
       <Route path={ROUTES.adminDashboard} element={
         <AuthGuard
           authenticated={isAuthenticated ? true : state.loading ? undefined : false}
