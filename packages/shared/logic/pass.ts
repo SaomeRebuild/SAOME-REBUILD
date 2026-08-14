@@ -70,9 +70,9 @@ export function getPlanDisplayNameEn(plan: string): string {
  */
 export function getPassTierDisplayName(tier: PassTier): string {
   const names: Record<PassTier, string> = {
-    basic: '基本版',
-    premium: '進階版',
-    enterprise: '企業版',
+    green: '綠卡',
+    gold: '金卡',
+    platinum: '白金卡',
   };
   return names[tier];
 }

@@ -6,7 +6,11 @@
 
 import { z } from 'zod';
 
-export const passTierSchema = z.enum(['basic', 'premium', 'enterprise']);
+/**
+ * Pass Plan enum — mirrors passes.plan CHECK constraint in DB
+ * Values: 'green' | 'gold' | 'platinum'
+ */
+export const passTierSchema = z.enum(['green', 'gold', 'platinum']);
 export type PassTier = z.infer<typeof passTierSchema>;
 
 export const passStatusSchema = z.enum(['active', 'expired', 'cancelled']);

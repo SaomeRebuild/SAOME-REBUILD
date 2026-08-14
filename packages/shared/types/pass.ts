@@ -5,9 +5,10 @@
  */
 
 /**
- * Pass tier levels
+ * Pass tier levels — mirrors passes.plan CHECK constraint in DB
+ * Values: 'green' | 'gold' | 'platinum'
  */
-export type PassTier = 'basic' | 'premium' | 'enterprise';
+export type PassTier = 'green' | 'gold' | 'platinum';
 
 /**
  * Pass status
