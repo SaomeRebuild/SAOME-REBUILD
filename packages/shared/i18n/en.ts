@@ -103,9 +103,9 @@ export const en = {
   pass: {
     title: 'Pass',
     tier: {
-      basic: 'Basic',
-      premium: 'Premium',
-      enterprise: 'Enterprise',
+      green: 'Green Card',
+      gold: 'Gold Card',
+      platinum: 'Platinum Card',
     },
     active: 'Active',
     expired: 'Expired',

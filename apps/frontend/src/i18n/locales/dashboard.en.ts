@@ -29,12 +29,34 @@ export default {
   },
   tenantToolbar: {
     charts: 'Charts',
-    cardEditor: 'Card Editor',
+    cardBuilder: 'Card Builder',
     members: 'Members',
     email: 'Email',
     billing: 'Billing',
     settings: 'Settings',
     expandTooltip: 'Expand toolbar',
     collapseTooltip: 'Collapse toolbar',
+  },
+  toolPages: {
+    charts: {
+      title: 'Charts',
+      description: 'View member data and trend analysis.',
+    },
+    members: {
+      title: 'Members',
+      description: 'Manage your member list.',
+    },
+    email: {
+      title: 'Email',
+      description: 'Send emails to members.',
+    },
+    billing: {
+      title: 'Billing',
+      description: 'View and manage your bills.',
+    },
+    settings: {
+      title: 'Settings',
+      description: 'Adjust your account settings.',
+    },
   },
 };

@@ -29,12 +29,34 @@ export default {
   },
   tenantToolbar: {
     charts: '數據分析',
-    cardEditor: '卡片編輯器',
+    cardBuilder: '卡片建置器',
     members: '會員管理',
     email: '電子郵件',
     billing: '帳單',
     settings: '設定',
     expandTooltip: '展開工具列',
     collapseTooltip: '收合工具列',
+  },
+  toolPages: {
+    charts: {
+      title: '數據分析',
+      description: '查看會員數據與趨勢分析。',
+    },
+    members: {
+      title: '會員管理',
+      description: '管理您的會員名單。',
+    },
+    email: {
+      title: '電子郵件',
+      description: '發送電子郵件給會員。',
+    },
+    billing: {
+      title: '帳單',
+      description: '查看與管理您的帳單。',
+    },
+    settings: {
+      title: '設定',
+      description: '調整您的帳戶設定。',
+    },
   },
 };

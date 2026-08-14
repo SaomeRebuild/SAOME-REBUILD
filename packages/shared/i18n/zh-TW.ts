@@ -103,9 +103,9 @@ export const zhTW = {
   pass: {
     title: '通行證',
     tier: {
-      basic: '基本版',
-      premium: '進階版',
-      enterprise: '企業版',
+      green: '綠卡',
+      gold: '金卡',
+      platinum: '白金卡',
     },
     active: '有效',
     expired: '已過期',
