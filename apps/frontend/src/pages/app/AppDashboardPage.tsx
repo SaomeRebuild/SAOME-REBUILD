@@ -3,8 +3,8 @@
  */
 
 import { useNavigate } from 'react-router-dom';
+import { Outlet } from 'react-router-dom';
 import { TenantToolbar } from '@/components/business/dashboard/TenantToolbar';
-import { TenantContentArea } from '@/components/business/dashboard/TenantContentArea';
 import { DashboardBanner } from '@/components/business/dashboard/DashboardBanner';
 import { useAuth } from '@/hooks';
 
@@ -35,9 +35,9 @@ export default function AppDashboardPage() {
 
       {/* Main layout — toolbar + content, fills remaining height */}
       <div className={`flex min-h-0 flex-1 items-stretch ${hasBanner ? 'pt-4' : ''}`}>
-        <TenantToolbar defaultWidth={280} minWidth={80} maxWidth={400} />
+        <TenantToolbar />
         <div className="flex min-h-0 flex-1 flex-col">
-          <TenantContentArea />
+          <Outlet />
         </div>
       </div>
     </div>

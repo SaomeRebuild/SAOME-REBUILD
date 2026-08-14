@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { TenantToolbar } from './TenantToolbar';
 import { TenantToolbarItem } from './TenantToolbarItem';
 import { BarChart3 } from 'lucide-react';
@@ -9,7 +10,7 @@ vi.mock('react-i18next', () => ({
     t: (key: string) => {
       const translations: Record<string, string> = {
         'tenantToolbar.charts': 'Charts',
-        'tenantToolbar.cardEditor': 'Card Editor',
+        'tenantToolbar.cardBuilder': 'Card Builder',
         'tenantToolbar.members': 'Members',
         'tenantToolbar.email': 'Email',
         'tenantToolbar.billing': 'Billing',
@@ -22,65 +23,107 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
+function renderWithRouter(initialPath = '/app/dashboard') {
+  return render(
+    <MemoryRouter initialEntries={[initialPath]}>
+      <TenantToolbar />
+    </MemoryRouter>
+  );
+}
+
 describe('TenantToolbar', () => {
-  it('renders 7 buttons when expanded (6 tools + collapse)', () => {
-    render(<TenantToolbar />);
-    // When expanded: 6 tool buttons + 1 collapse button = 7
-    expect(screen.getAllByRole('button')).toHaveLength(7);
+  it('renders collapse button when expanded', () => {
+    renderWithRouter();
+    expect(screen.getByRole('button', { name: 'Collapse toolbar' })).toBeInTheDocument();
+  });
+
+  it('renders all 6 tool links', () => {
+    renderWithRouter();
+    const links = screen.getAllByRole('link');
+    expect(links).toHaveLength(6);
   });
 
   it('renders tool icons and labels', () => {
-    render(<TenantToolbar />);
-    // Filter out expand and collapse buttons to get tool buttons
-    const toolButtons = screen.getAllByRole('button').filter((btn) =>
-      btn.getAttribute('aria-label') !== 'Expand toolbar' && btn.getAttribute('aria-label') !== 'Collapse toolbar'
-    );
-    expect(toolButtons[0]).toHaveAttribute('aria-label', 'Charts');
+    renderWithRouter();
+    expect(screen.getByRole('link', { name: /Charts/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Members/i })).toBeInTheDocument();
   });
 
-  it('toggles active state on click', () => {
-    render(<TenantToolbar />);
-    const toolButtons = screen.getAllByRole('button').filter((btn) =>
-      btn.getAttribute('aria-label') !== 'Expand toolbar' && btn.getAttribute('aria-label') !== 'Collapse toolbar'
-    );
-    const firstButton = toolButtons[0];
-    expect(firstButton).not.toHaveAttribute('aria-current', 'page');
-    fireEvent.click(firstButton);
-    expect(firstButton).toHaveAttribute('aria-current', 'page');
+  it('sets aria-current on active tool based on URL', () => {
+    renderWithRouter('/app/dashboard/charts');
+    expect(screen.getByRole('link', { name: /Charts/i })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: /Members/i })).not.toHaveAttribute('aria-current');
   });
 
-  it('has collapse toggle button when expanded', () => {
-    render(<TenantToolbar />);
-    expect(screen.getByRole('button', { name: 'Collapse toolbar' })).toBeInTheDocument();
+  it('renders collapse button that toggles to expand', async () => {
+    renderWithRouter();
+    const collapseBtn = screen.getByRole('button', { name: 'Collapse toolbar' });
+    collapseBtn.click();
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Expand toolbar' })).toBeInTheDocument();
+    });
   });
 });
 
 describe('TenantToolbarItem', () => {
-  it('renders with correct props', () => {
-    const mockOnClick = vi.fn();
+  it('renders as link when href is provided', () => {
     render(
-      <TenantToolbarItem
-        id="test-tool"
-        i18nKey="tenantToolbar.charts"
-        icon={BarChart3}
-        isActive={false}
-        onClick={mockOnClick}
-      />
+      <MemoryRouter>
+        <TenantToolbarItem
+          id="test-tool"
+          i18nKey="tenantToolbar.charts"
+          icon={BarChart3}
+          isActive={false}
+          href="/app/dashboard/charts"
+        />
+      </MemoryRouter>
+    );
+    expect(screen.getByRole('link', { name: 'Charts' })).toBeInTheDocument();
+  });
+
+  it('renders as button when href is not provided', () => {
+    render(
+      <MemoryRouter>
+        <TenantToolbarItem
+          id="test-tool"
+          i18nKey="tenantToolbar.charts"
+          icon={BarChart3}
+          isActive={false}
+          onClick={vi.fn()}
+        />
+      </MemoryRouter>
     );
     expect(screen.getByRole('button', { name: 'Charts' })).toBeInTheDocument();
   });
 
-  it('calls onClick when clicked', () => {
+  it('applies active styling when isActive is true', () => {
+    render(
+      <MemoryRouter>
+        <TenantToolbarItem
+          id="test-tool"
+          i18nKey="tenantToolbar.charts"
+          icon={BarChart3}
+          isActive={true}
+          href="/app/dashboard/charts"
+        />
+      </MemoryRouter>
+    );
+    expect(screen.getByRole('link', { name: 'Charts' })).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('calls onClick when clicked as button', () => {
     const mockOnClick = vi.fn();
     render(
-      <TenantToolbarItem
-        id="test-tool"
-        i18nKey="tenantToolbar.charts"
-        icon={BarChart3}
-        onClick={mockOnClick}
-      />
+      <MemoryRouter>
+        <TenantToolbarItem
+          id="test-tool"
+          i18nKey="tenantToolbar.charts"
+          icon={BarChart3}
+          onClick={mockOnClick}
+        />
+      </MemoryRouter>
     );
-    fireEvent.click(screen.getByRole('button'));
+    screen.getByRole('button').click();
     expect(mockOnClick).toHaveBeenCalledOnce();
   });
 });

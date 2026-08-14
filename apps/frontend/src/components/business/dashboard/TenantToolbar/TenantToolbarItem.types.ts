@@ -9,6 +9,8 @@ export interface TenantToolbarItemProps {
   icon: LucideIcon;
   /** Whether the tool is currently active */
   isActive?: boolean;
-  /** Click handler */
+  /** Link destination — when provided, renders as <Link> instead of <button> */
+  href?: string;
+  /** Click handler (only used when href is not provided) */
   onClick?: () => void;
 }
