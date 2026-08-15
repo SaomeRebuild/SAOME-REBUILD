@@ -20,6 +20,8 @@ import memberZhTW from './locales/member.zh-TW.ts';
 import memberEn from './locales/member.en.ts';
 import cardBuilderZhTW from './locales/cardBuilder.zh-TW.ts';
 import cardBuilderEn from './locales/cardBuilder.en.ts';
+import cardEditorZhTW from './locales/cardEditor.zh-TW.ts';
+import cardEditorEn from './locales/cardEditor.en.ts';
 
 const resources = {
   'zh-TW': {
@@ -33,6 +35,7 @@ const resources = {
     nav: navZhTW,
     member: memberZhTW,
     cardBuilder: cardBuilderZhTW,
+    cardEditor: cardEditorZhTW,
   },
   en: {
     auth: authEn,
@@ -45,6 +48,7 @@ const resources = {
     nav: navEn,
     member: memberEn,
     cardBuilder: cardBuilderEn,
+    cardEditor: cardEditorEn,
   },
 };
 

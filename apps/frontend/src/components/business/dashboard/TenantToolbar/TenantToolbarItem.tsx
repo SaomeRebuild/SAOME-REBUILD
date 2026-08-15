@@ -10,6 +10,7 @@ export function TenantToolbarItem({
   isActive = false,
   href,
   onClick,
+  isMobile = false,
 }: TenantToolbarItemProps) {
   const { t } = useTranslation('dashboard');
   const labelText = t(i18nKey);
@@ -17,7 +18,7 @@ export function TenantToolbarItem({
   const content = (
     <>
       <Icon
-        size={20}
+        size={isMobile ? 22 : 20}
         aria-hidden="true"
         className="transition-transform duration-200"
       />
@@ -34,7 +35,9 @@ export function TenantToolbarItem({
     'hover:[&_svg]:scale-125',
     isActive
       ? 'border-[#F97316] bg-[#F97316] text-white shadow-md hover:shadow-[6px_8px_16px_rgba(255,255,255,0.15)] hover:scale-105 hover:-translate-y-1'
-      : 'text-muted-foreground hover:bg-[#F97316] hover:text-white hover:font-bold'
+      : 'text-muted-foreground hover:bg-[#F97316] hover:text-white hover:font-bold',
+    // Mobile-specific styles
+    isMobile && 'flex-row !justify-start !gap-3 !p-3'
   );
 
   if (href) {
@@ -45,6 +48,7 @@ export function TenantToolbarItem({
         aria-label={labelText}
         aria-current={isActive ? 'page' : undefined}
         className={baseClasses}
+        onClick={onClick}
       >
         {content}
       </Link>

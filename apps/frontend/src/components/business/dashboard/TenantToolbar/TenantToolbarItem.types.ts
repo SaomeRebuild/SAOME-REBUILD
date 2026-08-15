@@ -13,4 +13,6 @@ export interface TenantToolbarItemProps {
   href?: string;
   /** Click handler (only used when href is not provided) */
   onClick?: () => void;
+  /** Whether the item is rendered in mobile menu (horizontal layout) */
+  isMobile?: boolean;
 }

@@ -36,6 +36,9 @@ export default {
     settings: '設定',
     expandTooltip: '展開工具列',
     collapseTooltip: '收合工具列',
+    openMenu: '開啟工具選單',
+    closeMenu: '關閉工具選單',
+    menuTitle: '工具選單',
   },
   toolPages: {
     charts: {

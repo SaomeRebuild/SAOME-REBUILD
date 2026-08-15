@@ -7,6 +7,8 @@
 
 | 日期 | 主題 | 路徑 | 影響 / 後續 |
 |------|------|------|------|
+| 2026-08-15 | Nested Routes Decision：`AppDashboardPage` + `<Outlet />` 架構確認 | runs/decisions/2026-08-15-nested-routes-dashboard.md | Dashboard 6 個子頁面的 routing 架構；影響 `AppDashboardPage`、`DashboardShell` wrapper 移除 |
+| 2026-08-15 | PassTier Schema Drift：`basic/premium/enterprise` → `green/gold/platinum` 與 DB 對齊 | DEV/08-2026/0815-pass-tier-schema-drift.md | `schemas/pass.ts`、`types/pass.ts`、`logic/pass.ts`、i18n 同步；`passTierSchema` 從未被 runtime 引用所以 typecheck 一直過 |
 | 2026-08-12 | i18n namespace split：`translation` → 9 feature namespaces | runs/improvements/feedback/20260812-i18n-namespace-split-dev-log.md | 38 個測試失敗待修；`.json` → `.ts` 為不必要複雜化；根因：PowerShell UTF-8 腐化 + 錯誤解讀 Node.js 24 ESM JSON import 限制 |
 | 2026-08-12 | i18n namespace split feedback（`.json` → `.ts` 根因分析）| runs/improvements/feedback/20260812-i18n-namespace-split-feedback.md | 技術債：P1（38 tests）、P2（locale 格式）、P2（PowerShell encoding）；下個 agent 提示詞：`runs/decisions/2026-08-12-i18n-test-fix-prompt.md` |
 | 2026-08-12 | Dashboard renewalReminder i18n + schema drift + TS6198 三連環 | DEV/08-2026/0812-renewal-reminder-i18n-schema-chain.md | `passNotification` namespace load fail；`authSessionSchema.pass` 缺 3 欄位 strip；`TenantToolbar` TS6198 CI block |

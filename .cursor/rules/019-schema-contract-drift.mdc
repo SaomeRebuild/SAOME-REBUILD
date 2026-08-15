@@ -96,7 +96,35 @@ describe('schema conformance (shared vs backend)', () => {
 
 任一缺一 → 後續 drift 又會出現。
 
-### 5. backward compatibility
+### 5. DB CHECK constraint — zod enum 必同步
+
+DB migration 裡的 `CHECK (column IN ('a', 'b', 'c'))` 是一個**隱性 schema**。
+zod enum 必須跟它對齊，否則 application 允許的值 DB 會 reject，反之亦然。
+
+| 範例 | 根因 |
+|---|---|
+| `passTierSchema = ['basic', 'premium', 'enterprise']` 但 DB CHECK 是 `('green', 'gold', 'platinum')` | typecheck 一直過，但 runtime insert/update fail |
+| `passTierSchema` 從未被 runtime 引用（backend 直接拿 DB row 組 object） | 沒有 coverage 保護，drift 不會被發現 |
+
+**鐵律**：每個 enum-type column 的 DB CHECK constraint 必須同步到 zod enum，且**必加 Vitest conformance test**斷言兩邊值集合相同。
+
+```ts
+// packages/shared/schemas/pass.test.ts
+import { describe, it, expect } from 'vitest';
+import { passTierSchema } from '../pass';
+import { passSchema as dbPassPlanSchema } from '@saome/shared/schemas/auth';
+
+it('passTierSchema enum values match DB CHECK constraint', () => {
+  // DB: passes.plan CHECK (plan IN ('green', 'gold', 'platinum'))
+  expect(passTierSchema.options).toEqual(['green', 'gold', 'platinum']);
+  // passTierSchema must equal planSchema (same domain)
+  expect(passTierSchema.options).toEqual(dbPassPlanSchema.options);
+});
+```
+
+**修法**：`packages/shared/schemas/pass.ts` 的 `passTierSchema` 註解已加 `// mirrors passes.plan CHECK constraint in DB`，未來任何修改 CHECK constraint 的 migration 必須同步更新此 enum。
+
+### 6. backward compatibility
 
 如果新增欄位要 default（例如 `invoice_address` 從 NOT NULL 變成
 NULL-able），**必須** 在 migration 裡明確寫 default value 或 `USING`
@@ -124,6 +152,10 @@ ALTER TABLE public.tenants ADD COLUMN email text;  -- NOT NULL 預設，但沒 d
 - `.cursor/skills/saome-form-integrity/SKILL.md` — Step E schema drift check
 - `.cursor/rules/018-form-autofill-and-multi-step-state.mdc` — 同源 bug 的 sibling rule
 - `runs/improvements/feedback/20260731-register-autofill-schema-drift.md`
-  — 完整事故記錄
+  — Register 表單 autofill + schema drift 三連環事故記錄
+- `DEV/08-2026/0815-pass-tier-schema-drift.md`
+  — PassTier `basic/premium/enterprise` vs DB `green/gold/platinum` drift（`passTierSchema` 從未被 runtime 引用所以 typecheck 一直過）
 - `apps/backend/src/modules/auth/schemas/request.ts` — TODO 來源檔
-- `apps/backend/migrations/001_init_users_tenants.sql` — Round 1 缺欄位的 migration
+- `apps/backend/migrations/004_init_passes.sql` — Pass plan CHECK constraint 定義
+- `packages/shared/schemas/pass.ts` — `passTierSchema`（已加 comment 說明等於 `planSchema`）
+- `packages/shared/schemas/auth.ts` — `planSchema`（`passTierSchema` 的 source of truth）

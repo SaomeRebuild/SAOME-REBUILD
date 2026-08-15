@@ -36,6 +36,9 @@ export default {
     settings: 'Settings',
     expandTooltip: 'Expand toolbar',
     collapseTooltip: 'Collapse toolbar',
+    openMenu: 'Open tools menu',
+    closeMenu: 'Close tools menu',
+    menuTitle: 'Tools Menu',
   },
   toolPages: {
     charts: {
