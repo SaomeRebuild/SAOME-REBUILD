@@ -1,27 +1,29 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
-import authZhTW from './locales/auth.zh-TW.ts';
-import authEn from './locales/auth.en.ts';
-import dashboardZhTW from './locales/dashboard.zh-TW.ts';
-import dashboardEn from './locales/dashboard.en.ts';
-import passNotificationZhTW from './locales/passNotification.zh-TW.ts';
-import passNotificationEn from './locales/passNotification.en.ts';
-import themeZhTW from './locales/theme.zh-TW.ts';
-import themeEn from './locales/theme.en.ts';
-import landingZhTW from './locales/landing.zh-TW.ts';
-import landingEn from './locales/landing.en.ts';
-import legalZhTW from './locales/legal.zh-TW.ts';
-import legalEn from './locales/legal.en.ts';
-import pricingZhTW from './locales/pricing.zh-TW.ts';
-import pricingEn from './locales/pricing.en.ts';
-import navZhTW from './locales/nav.zh-TW.ts';
-import navEn from './locales/nav.en.ts';
-import memberZhTW from './locales/member.zh-TW.ts';
-import memberEn from './locales/member.en.ts';
-import cardBuilderZhTW from './locales/cardBuilder.zh-TW.ts';
-import cardBuilderEn from './locales/cardBuilder.en.ts';
-import cardEditorZhTW from './locales/cardEditor.zh-TW.ts';
-import cardEditorEn from './locales/cardEditor.en.ts';
+import authZhTW from './locales/auth.zh-TW';
+import authEn from './locales/auth.en';
+import dashboardZhTW from './locales/dashboard.zh-TW';
+import dashboardEn from './locales/dashboard.en';
+import passNotificationZhTW from './locales/passNotification.zh-TW';
+import passNotificationEn from './locales/passNotification.en';
+import themeZhTW from './locales/theme.zh-TW';
+import themeEn from './locales/theme.en';
+import landingZhTW from './locales/landing.zh-TW';
+import landingEn from './locales/landing.en';
+import legalZhTW from './locales/legal.zh-TW';
+import legalEn from './locales/legal.en';
+import pricingZhTW from './locales/pricing.zh-TW';
+import pricingEn from './locales/pricing.en';
+import navZhTW from './locales/nav.zh-TW';
+import navEn from './locales/nav.en';
+import memberZhTW from './locales/member.zh-TW';
+import memberEn from './locales/member.en';
+import cardBuilderZhTW from './locales/cardBuilder.zh-TW';
+import cardBuilderEn from './locales/cardBuilder.en';
+import cardEditorZhTW from './locales/cardEditor.zh-TW';
+import cardEditorEn from './locales/cardEditor.en';
+import passCardZhTW from './locales/passCard.zh-TW';
+import passCardEn from './locales/passCard.en';
 
 const resources = {
   'zh-TW': {
@@ -36,6 +38,7 @@ const resources = {
     member: memberZhTW,
     cardBuilder: cardBuilderZhTW,
     cardEditor: cardEditorZhTW,
+    passCard: passCardZhTW,
   },
   en: {
     auth: authEn,
@@ -49,6 +52,7 @@ const resources = {
     member: memberEn,
     cardBuilder: cardBuilderEn,
     cardEditor: cardEditorEn,
+    passCard: passCardEn,
   },
 };
 

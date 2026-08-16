@@ -1,23 +1,29 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
-import authZhTW from '../i18n/locales/auth.zh-TW.ts';
-import authEn from '../i18n/locales/auth.en.ts';
-import dashboardZhTW from '../i18n/locales/dashboard.zh-TW.ts';
-import dashboardEn from '../i18n/locales/dashboard.en.ts';
-import passNotificationZhTW from '../i18n/locales/passNotification.zh-TW.ts';
-import passNotificationEn from '../i18n/locales/passNotification.en.ts';
-import themeZhTW from '../i18n/locales/theme.zh-TW.ts';
-import themeEn from '../i18n/locales/theme.en.ts';
-import landingZhTW from '../i18n/locales/landing.zh-TW.ts';
-import landingEn from '../i18n/locales/landing.en.ts';
-import legalZhTW from '../i18n/locales/legal.zh-TW.ts';
-import legalEn from '../i18n/locales/legal.en.ts';
-import pricingZhTW from '../i18n/locales/pricing.zh-TW.ts';
-import pricingEn from '../i18n/locales/pricing.en.ts';
-import navZhTW from '../i18n/locales/nav.zh-TW.ts';
-import navEn from '../i18n/locales/nav.en.ts';
-import memberZhTW from '../i18n/locales/member.zh-TW.ts';
-import memberEn from '../i18n/locales/member.en.ts';
+import authZhTW from '../i18n/locales/auth.zh-TW';
+import authEn from '../i18n/locales/auth.en';
+import dashboardZhTW from '../i18n/locales/dashboard.zh-TW';
+import dashboardEn from '../i18n/locales/dashboard.en';
+import passNotificationZhTW from '../i18n/locales/passNotification.zh-TW';
+import passNotificationEn from '../i18n/locales/passNotification.en';
+import themeZhTW from '../i18n/locales/theme.zh-TW';
+import themeEn from '../i18n/locales/theme.en';
+import landingZhTW from '../i18n/locales/landing.zh-TW';
+import landingEn from '../i18n/locales/landing.en';
+import legalZhTW from '../i18n/locales/legal.zh-TW';
+import legalEn from '../i18n/locales/legal.en';
+import pricingZhTW from '../i18n/locales/pricing.zh-TW';
+import pricingEn from '../i18n/locales/pricing.en';
+import navZhTW from '../i18n/locales/nav.zh-TW';
+import navEn from '../i18n/locales/nav.en';
+import memberZhTW from '../i18n/locales/member.zh-TW';
+import memberEn from '../i18n/locales/member.en';
+import cardBuilderZhTW from '../i18n/locales/cardBuilder.zh-TW';
+import cardBuilderEn from '../i18n/locales/cardBuilder.en';
+import cardEditorZhTW from '../i18n/locales/cardEditor.zh-TW';
+import cardEditorEn from '../i18n/locales/cardEditor.en';
+import passCardZhTW from '../i18n/locales/passCard.zh-TW';
+import passCardEn from '../i18n/locales/passCard.en';
 
 if (!i18n.isInitialized) {
   i18n.use(initReactI18next).init({
@@ -32,6 +38,9 @@ if (!i18n.isInitialized) {
         pricing: pricingZhTW,
         nav: navZhTW,
         member: memberZhTW,
+        cardBuilder: cardBuilderZhTW,
+        cardEditor: cardEditorZhTW,
+        passCard: passCardZhTW,
       },
       en: {
         auth: authEn,
@@ -43,6 +52,9 @@ if (!i18n.isInitialized) {
         pricing: pricingEn,
         nav: navEn,
         member: memberEn,
+        cardBuilder: cardBuilderEn,
+        cardEditor: cardEditorEn,
+        passCard: passCardEn,
       },
     },
     lng: 'zh-TW',
