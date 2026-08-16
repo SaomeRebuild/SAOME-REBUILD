@@ -1,0 +1,82 @@
+---
+description: L2 元件建立清單 — 強制在實作前檢查 i18n、測試覆蓋、模組化結構。
+alwaysApply: true
+---
+
+# Vibe Coding L2 元件建立清單（MANDATORY）
+
+> 觸發：「做卡片預覽」「新增元件」「拉一個 component」「實作元件」
+>
+> 每次建立 L2 業務元件前，**必須**逐項確認。
+
+## 為什麼這條規則存在
+
+2026-08-16 三次 i18n drift 任務觀察：
+- `PassCardPreview` 勉強用 `cardBuilder` namespace，導致 `t('passCard.defaultName')` 變成 raw key
+- 新增 namespace 時沒有對照既有範例，導致 key structure drift
+- sub-component 測試落後於元件建立
+
+詳見 `runs/improvements/feedback/20260816-vibe-coding-workflow-optimization.md`。
+
+---
+
+## Checklist（順序執行）
+
+### 1. i18n（第一優先）
+
+> 翻譯是元件的綁定資源。**先建立翻譯，再建立元件**。
+
+| 動作 | 說明 |
+|------|------|
+| 建立 namespace 檔案 | `src/i18n/locales/{namespace}.{locale}.ts` |
+| 確認 flat key 結構 | 對照 `passCard`（flat）與 `auth`（nested）範例 |
+| 更新 `src/i18n/index.ts` | import + resources |
+| 更新 `src/test/i18n.ts` | 同步 import + resources |
+| 執行 smoke test | `npm run verify:i18n` 確認無 raw key |
+
+#### 元件化判斷
+
+| 情境 | 策略 |
+|------|------|
+| 元件跨 feature 重用 | 自己的 component-bound namespace |
+| 單一 feature 專用 | feature namespace 的 sub-key |
+| 多個元件共用翻譯 | feature namespace |
+
+詳見 `.cursor/rules/frontend/023-shared-package.mdc` 的「元件化原則」段落。
+
+### 2. 元件結構
+
+| 動作 | 標準 |
+|------|------|
+| 建立資料夾 | `components/business/{scope}/{Name}/` |
+| 主組件 ≤ 100 行 | 超過則拆分 sub-component |
+| 業務邏輯拆 hook | 不在 JSX 內寫商業邏輯 |
+| 色彩 / spacing 走 token | 禁用 hard-code hex |
+| 所有翻譯走 i18n | 禁用 hard-code 字串 |
+
+### 3. 測試覆蓋
+
+| 動作 | 標準 |
+|------|------|
+| 建立 `.test.tsx` | Vitest + RTL |
+| 建立 `.stories.tsx` | Storybook |
+| 執行 smoke test | `npm run verify:i18n` |
+| 執行全部測試 | `npm test` |
+
+### 4. Smoke Test（可選）
+
+| 動作 | 說明 |
+|------|------|
+| Playwright probe | 驗證 production bundle 無 localhost URL |
+
+---
+
+## 觸發關鍵字
+
+「做卡片預覽」「新增元件」「拉一個 component」「實作元件」「建立 L2」**必須**引用此 rule。
+
+## 參照
+
+- `.cursor/rules/frontend/023-shared-package.mdc` — i18n namespace 規範（含元件化原則）
+- `runs/improvements/feedback/20260816-vibe-coding-workflow-optimization.md` — 背景事故記錄
+- `apps/frontend/scripts/verify-i18n-keys.mjs` — i18n smoke test script

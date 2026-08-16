@@ -50,6 +50,90 @@ alwaysApply: true
 | **禁止 hyphen** | 禁止在 namespace key 使用 hyphen（如 `pass-notification`） |
 | **禁止 `translation`** | 廢除 `translation` namespace；所有 key 必須分散至 feature namespace |
 
+### 元件化原則（MANDATORY）
+
+> 每個**業務元件**（L2）需要翻譯時，應該有自己的 **component-bound namespace**，而不是放在 feature namespace。
+
+#### 為什麼要元件化
+
+| 情境 | 問題 |
+|------|------|
+| 把 `PassCardPreview` 翻譯放在 `cardBuilder` namespace | `PassCardPreview` 跨 feature 重用時，必須攜帶整個 `cardBuilder` namespace |
+| 把 `PassCardPreview` 翻譯放在 `cardBuilder` namespace | 翻譯 key 結構跟 namespace 名稱不同（`passCard.defaultName` vs `cardBuilder`） |
+| 多人開發時改 `cardBuilder` namespace | 影響 `PassCardPreview` 的翻譯，耦合過高 |
+
+#### 何時用 component namespace（首選）
+
+- L2 元件跨 feature 重用
+- 例：`passCard`（`PassCardPreview`、`TemplateCardPreview` 都用）
+- 例：`memberBadge`（跨 Dashboard / Member 頁面使用）
+
+#### 何時用 feature namespace 的 sub-key
+
+- 多個 L2 元件共用同一套翻譯，且都在同一 feature 內
+- 例：`dashboard.cardTypeSelector.*`（`CardTypeSelector` + `CardBuilderEditor` 共同使用）
+
+#### 何時用共享的 feature namespace
+
+- 頁面 layout 翻譯（如 `dashboard.header.*`）
+- 全域 UI 元素（如 `nav.*`）
+- 多個 feature 共同使用（如 `theme.*`）
+
+#### 實作範例
+
+```typescript
+// ✅ 正確：元件與 namespace 一對一綁定
+// namespace: passCard
+// 元件：PassCardPreview, TemplateCardPreview（共用語，翻譯在 passCard）
+const { t } = useTranslation('passCard');
+t('defaultName'); // 在 passCard namespace 內找 key
+```
+
+```typescript
+// ❌ 錯誤：把元件翻譯放在 feature namespace
+// namespace: cardBuilder
+// 元件：PassCardPreview（不該用 cardBuilder namespace）
+const { t } = useTranslation('cardBuilder');
+t('passCard.defaultName'); // 變成 cardBuilder.passCard.defaultName
+```
+
+### 新增 Namespace 的 Checklist（必跑）
+
+> 新增任何 i18n namespace 前，**必須**逐項確認。
+
+#### 1. 元件化判斷
+
+| 問題 | 回答 |
+|------|------|
+| 這個翻譯屬於哪個 L2 元件？ | 找對應的 component namespace |
+| 元件是否跨 feature 重用？ | 是 → component namespace；否 → feature namespace |
+| 多個元件是否共用同一套翻譯？ | 是 → feature namespace 的 sub-key |
+
+#### 2. key 結構確認
+
+| 檢查 | 標準 |
+|------|------|
+| 翻譯檔是 **flat key** | ✅ `export default { defaultName: '未命名卡片' }` |
+| 不是 nested object | ❌ `export default { passCard: { defaultName: '未命名卡片' } }` |
+| 對照既有範例 | `auth`、`dashboard` namespace 的 key 結構 |
+
+#### 3. 使用方式確認
+
+| 正確 | 錯誤 |
+|------|------|
+| `useTranslation('passCard')` + `t('defaultName')` | `t('passCard.defaultName')`（多了 namespace 前綴） |
+
+#### 4. 同步 test i18n
+
+- `apps/frontend/src/test/i18n.ts` **必須**同步 import + resources
+- 否則 unit test 環境無法正確解析翻譯
+
+#### 5. 執行 smoke test
+
+```bash
+npm run verify:i18n  # 驗證 namespace 的 key 都可正確解析
+```
+
 ### 原因
 
 `translation` namespace 會隨 feature 增加而無限膨脹。單一檔案的缺點：
