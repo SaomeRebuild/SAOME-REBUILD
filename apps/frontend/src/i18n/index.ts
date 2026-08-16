@@ -1,5 +1,6 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
+import { detectDeviceLanguage } from '@saome/shared/i18n/detectLanguage';
 import authZhTW from './locales/auth.zh-TW';
 import authEn from './locales/auth.en';
 import dashboardZhTW from './locales/dashboard.zh-TW';
@@ -66,7 +67,8 @@ function getInitialLanguage(): string {
   } catch {
     // SSR or blocked localStorage — fall through
   }
-  return 'zh-TW';
+  // Unauthenticated visitor: detect from browser language
+  return detectDeviceLanguage();
 }
 
 /** Persist + change in one call. Used by all language switchers. */

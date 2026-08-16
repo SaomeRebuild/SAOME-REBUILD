@@ -4,6 +4,12 @@ import i18n from 'i18next';
 import { afterEach, vi, beforeAll } from 'vitest';
 import { cleanup } from '@testing-library/react';
 
+// ── i18n default language ───────────────────────────────────────────────────
+// jsdom's navigator.language defaults to 'en', which would cause
+// detectDeviceLanguage() to return 'en' during i18n.init() and break tests
+// that expect zh-TW default. Force zh-TW for all unit tests.
+process.env.TEST_LANG = 'zh-TW';
+
 afterEach(() => {
   cleanup();
 });

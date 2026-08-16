@@ -6,10 +6,12 @@ import { fileURLToPath } from 'node:url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const sharedRoot = path.resolve(__dirname, '../../packages/shared')
+const rootNodeModules = path.resolve(__dirname, '../../node_modules')
 
 // More specific alias MUST come before generic ones — Vite matches array form
 // by declaration order; the first match wins (prefix matching).
 const alias = [
+  { find: 'zustand', replacement: path.resolve(rootNodeModules, 'zustand') },
   { find: /^@saome\/shared\/schemas\/auth$/, replacement: path.resolve(sharedRoot, 'schemas/auth.ts') },
   { find: /^@saome\/shared\/schemas\/member$/, replacement: path.resolve(sharedRoot, 'schemas/member.ts') },
   { find: /^@saome\/shared\/schemas\/order$/, replacement: path.resolve(sharedRoot, 'schemas/order.ts') },
@@ -25,6 +27,7 @@ const alias = [
   { find: /^@saome\/shared\/types$/, replacement: path.resolve(sharedRoot, 'types/index.ts') },
   { find: /^@saome\/shared\/constants\/role$/, replacement: path.resolve(sharedRoot, 'constants/role.ts') },
   { find: /^@saome\/shared\/constants$/, replacement: path.resolve(sharedRoot, 'constants/index.ts') },
+  { find: /^@saome\/shared\/i18n\/detectLanguage$/, replacement: path.resolve(sharedRoot, 'i18n/detectLanguage.ts') },
   { find: /^@saome\/shared\/i18n\/zh-TW$/, replacement: path.resolve(sharedRoot, 'i18n/zh-TW.ts') },
   { find: /^@saome\/shared\/i18n\/en$/, replacement: path.resolve(sharedRoot, 'i18n/en.ts') },
   { find: /^@saome\/shared\/i18n$/, replacement: path.resolve(sharedRoot, 'i18n/index.ts') },

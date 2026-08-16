@@ -6,12 +6,14 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const sharedRoot = resolve(__dirname, '../../packages/shared');
+const rootNodeModules = resolve(__dirname, '../../node_modules');
 
 // IMPORTANT: Vite alias `find` matches by prefix in declaration order. More
 // specific paths MUST come before less specific ones, otherwise
 // `@saome/shared` will swallow `@saome/shared/schemas/member` and rewrite it
 // to `index.ts`, leaving `/schemas/member` dangling.
 const aliasArray: { find: string | RegExp; replacement: string }[] = [
+  { find: 'zustand', replacement: resolve(rootNodeModules, 'zustand') },
   { find: '@', replacement: resolve(__dirname, './src') },
   // Most specific first
   { find: '@saome/shared/schemas/auth', replacement: resolve(sharedRoot, 'schemas/auth.ts') },
@@ -31,6 +33,7 @@ const aliasArray: { find: string | RegExp; replacement: string }[] = [
   { find: '@saome/shared/constants', replacement: resolve(sharedRoot, 'constants/index.ts') },
   { find: '@saome/shared/i18n/zh-TW', replacement: resolve(sharedRoot, 'i18n/zh-TW.ts') },
   { find: '@saome/shared/i18n/en', replacement: resolve(sharedRoot, 'i18n/en.ts') },
+  { find: '@saome/shared/i18n/detectLanguage', replacement: resolve(sharedRoot, 'i18n/detectLanguage.ts') },
   { find: '@saome/shared/i18n', replacement: resolve(sharedRoot, 'i18n/index.ts') },
   { find: '@saome/shared/bdd', replacement: resolve(sharedRoot, 'bdd/index.ts') },
   // Least specific last
