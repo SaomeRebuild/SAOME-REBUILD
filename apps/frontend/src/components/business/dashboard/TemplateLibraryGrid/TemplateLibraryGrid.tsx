@@ -32,7 +32,12 @@ export function TemplateLibraryGrid({
               key={template.id}
               id={template.id}
               name={template.name}
-              imageUrl={template.imageUrl}
+              backgroundColor={template.backgroundColor}
+              textColor={template.textColor}
+              cardType={template.cardType}
+              issuerName={template.issuerName}
+              issuerLogo={template.issuerLogo}
+              showPhoneFrame={template.showPhoneFrame}
               onEdit={onEdit}
               onSend={onSend}
               onDelete={onDelete}

@@ -65,5 +65,13 @@ export default {
     untitled: '未命名卡片',
     togglePreview: '預覽',
     closePreview: '關閉預覽',
+    // 卡片正反面切換
+    cardSide: '卡片檢視',
+    front: '正面',
+    back: '反面',
+    // PassCardPreview
+    passTypeDefault: '卡片',
+    cardHolderDefault: '持卡人',
+    cardType: '卡片類型',
   },
 };

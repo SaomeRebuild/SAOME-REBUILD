@@ -24,11 +24,9 @@ describe('TemplateCard', () => {
     vi.clearAllMocks();
   });
 
-  it('renders card image with alt text', () => {
+  it('renders card name', () => {
     render(<TemplateCard {...defaultProps} />);
-    const img = screen.getByRole('img');
-    expect(img).toBeInTheDocument();
-    expect(img).toHaveAttribute('alt', 'My Template');
+    expect(screen.getByText('My Template')).toBeInTheDocument();
   });
 
   it('always shows all three action buttons without hover', () => {

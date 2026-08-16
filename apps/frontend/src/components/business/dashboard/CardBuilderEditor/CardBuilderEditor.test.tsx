@@ -5,14 +5,21 @@
  * 測試使用翻譯 key（如 'pageTitle'）而非翻譯後的中文字。
  */
 
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CardBuilderEditor } from './CardBuilderEditor';
+import { useCardBuilderStore } from './CardBuilderEditor.store';
 
 // Mock: vi.fn(key => key) makes t() return the key as text
 vi.mock('react-i18next', () => {
   return { useTranslation: vi.fn(() => ({ t: vi.fn((key: string) => key) })) };
+});
+
+// 每個測試後清理 store 狀態
+afterEach(() => {
+  useCardBuilderStore.getState().reset();
+  cleanup();
 });
 
 describe('CardBuilderEditor', () => {
@@ -65,13 +72,17 @@ describe('CardBuilderEditor', () => {
     expect(screen.getAllByText('step1.cardTypes.stamp_card').length).toBeGreaterThan(0);
   });
 
-  it('enables Next button only when card type is selected', () => {
+  it('enables Next button only when card type is selected', async () => {
+    const user = userEvent.setup();
     render(<CardBuilderEditor />);
 
     const nextButton = screen.getByRole('button', { name: /step1\.next/ });
     expect(nextButton).toBeDisabled();
 
-    fireEvent.click(screen.getByRole('button', { name: /step1\.cardTypes\.stamp_card/ }));
+    const pointCardButton = screen.getByRole('button', { name: /step1\.cardTypes\.stamp_card/ });
+    await user.click(pointCardButton);
+
+    // 按下卡片後，next 按鈕應該啟用
     expect(nextButton).not.toBeDisabled();
   });
 

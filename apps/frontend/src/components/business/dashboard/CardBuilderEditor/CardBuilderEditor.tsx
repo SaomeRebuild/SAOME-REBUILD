@@ -9,22 +9,35 @@
  * - Mobile: CardBuilderEditorPreview 改由 MobilePreviewPanel 提供（Bottom Sheet）
  */
 
-import { useState } from 'react';
-import type { CardBuilderEditorProps, CardType, EditorStep } from './CardBuilderEditor.types';
+import type { CardBuilderEditorProps, EditorStep } from './CardBuilderEditor.types';
 import { CardBuilderEditorHeader } from './CardBuilderEditorHeader';
 import { CardBuilderEditorWorkspace } from './CardBuilderEditorWorkspace';
 import { CardBuilderEditorPreview } from './CardBuilderEditorPreview';
 import { MobilePreviewPanel } from './MobilePreviewPanel';
+import { useCardBuilderStore } from './CardBuilderEditor.store';
 
 export function CardBuilderEditor({
   initialName = '',
   onSave: _onSave,
   onBack: _onBack,
 }: CardBuilderEditorProps) {
-  const [name, setName] = useState(initialName);
-  const [step, setStep] = useState<EditorStep>(1);
-  const [cardType, setCardType] = useState<CardType | null>(null);
-  const [completedSteps, setCompletedSteps] = useState<Set<EditorStep>>(new Set());
+  // 使用 store 管理卡片編輯器狀態
+  const {
+    name,
+    cardType,
+    step,
+    completedSteps,
+    cardSide,
+    setName,
+    setStep,
+    setCompletedStep,
+    setCardSide,
+  } = useCardBuilderStore();
+
+  // 初始化名稱（只在 mount 時執行一次）
+  if (name === '' && initialName !== '') {
+    setName(initialName);
+  }
 
   function handleStepChange(newStep: EditorStep) {
     if (newStep < step) {
@@ -33,7 +46,7 @@ export function CardBuilderEditor({
     }
 
     if (newStep === 2 && cardType) {
-      setCompletedSteps((prev) => new Set([...prev, 1]));
+      setCompletedStep(1);
       setStep(newStep);
     } else if (newStep > step) {
       setStep(newStep);
@@ -58,21 +71,24 @@ export function CardBuilderEditor({
           step={step}
           onStepChange={handleStepChange}
           cardType={cardType}
-          onCardTypeChange={setCardType}
+          onCardTypeChange={useCardBuilderStore.getState().setCardType}
           onBack={_onBack}
           className="flex-2 lg:w-2/3"
         />
 
         {/* 右欄位：即時預覽區 — 1/3 寬度，Desktop only */}
         <CardBuilderEditorPreview
-          name={name}
-          cardType={cardType}
+          cardSide={cardSide}
+          onCardSideChange={setCardSide}
           className="flex-1 lg:w-1/3"
         />
       </div>
 
       {/* Mobile 預覽面板（Bottom Sheet） */}
-      <MobilePreviewPanel name={name} cardType={cardType} />
+      <MobilePreviewPanel
+        cardSide={cardSide}
+        onCardSideChange={setCardSide}
+      />
     </div>
   );
 }

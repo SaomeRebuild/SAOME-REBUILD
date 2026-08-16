@@ -6,6 +6,7 @@
 import { useTranslation } from 'react-i18next';
 import type { EditorStep } from './CardBuilderEditor.types';
 import { CardBuilderEditorSteps } from './CardBuilderEditorSteps';
+import { Building2 } from 'lucide-react';
 
 interface CardBuilderEditorHeaderProps {
   name: string;
@@ -28,9 +29,10 @@ export function CardBuilderEditorHeader({
     <header className="flex flex-col gap-4 border-b border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
       {/* 左：h1 標題 */}
       <h1
-        className="text-xl font-bold text-foreground"
+        className="flex items-center gap-2 text-xl font-bold text-foreground"
         style={{ fontFamily: 'var(--font-family-heading)' }}
       >
+        <Building2 size={20} className="text-muted-foreground" aria-hidden="true" />
         {t('pageTitle')}
       </h1>
 

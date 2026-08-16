@@ -5,3 +5,4 @@ export type {
   EditorStep,
   CardType,
 } from './CardBuilderEditor.types';
+export type { CardSide } from './CardBuilderEditorPreview';

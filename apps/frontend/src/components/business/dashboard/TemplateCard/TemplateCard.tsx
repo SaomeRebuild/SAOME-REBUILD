@@ -1,18 +1,23 @@
 /**
  * TemplateCard — business component
- * Single layout: image on left, three action buttons stacked vertically on right.
+ * Single layout: card preview in the middle, three action buttons stacked vertically on bottom.
+ * Optionally wraps preview in a phone frame SVG.
  */
-
 import type { TemplateCardProps } from './TemplateCard.types';
 import { PencilLine, Send, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-
-const PLACEHOLDER_IMAGE = '/pic/cards/stampCardLiviing-removebg-preview.png';
+import { TemplateCardPreview } from './TemplateCardPreview';
+import { PhoneFrame } from '@/components/ui/phone/PhoneFrame';
 
 export function TemplateCard({
   id,
   name,
-  imageUrl = PLACEHOLDER_IMAGE,
+  backgroundColor = '#1a1a1a',
+  textColor = '#ffffff',
+  cardType,
+  issuerName,
+  issuerLogo,
+  showPhoneFrame = true,
   onEdit,
   onSend,
   onDelete,
@@ -20,15 +25,30 @@ export function TemplateCard({
   const { t } = useTranslation('cardBuilder');
 
   return (
-    <div className="flex flex-col overflow-hidden rounded-xl border border-border bg-card p-3">
-      {/* Top: card preview image */}
-      <div className="h-80 w-64 flex-shrink-0 overflow-hidden rounded-lg bg-muted self-center">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={imageUrl}
-          alt={name ?? id}
-          className="h-full w-full object-contain"
-        />
+    <div className="flex flex-col overflow-hidden rounded-[12px] border border-border bg-card p-3">
+      {/* Top: card preview */}
+      <div className="relative flex w-full items-center justify-center overflow-hidden px-4 pt-6 pb-4">
+        {showPhoneFrame ? (
+          <PhoneFrame className="w-full max-w-[220px] shadow-sm">
+            <TemplateCardPreview
+              name={name}
+              cardType={cardType}
+              issuerName={issuerName}
+              issuerLogo={issuerLogo}
+              backgroundColor={backgroundColor}
+              textColor={textColor}
+            />
+          </PhoneFrame>
+        ) : (
+          <TemplateCardPreview
+            name={name}
+            cardType={cardType}
+            issuerName={issuerName}
+            issuerLogo={issuerLogo}
+            backgroundColor={backgroundColor}
+            textColor={textColor}
+          />
+        )}
       </div>
 
       {/* Bottom: three buttons in a row */}

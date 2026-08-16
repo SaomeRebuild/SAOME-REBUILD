@@ -1,7 +1,12 @@
 export interface TemplateCardData {
   id: string;
   name?: string;
-  imageUrl?: string;
+  backgroundColor?: string;
+  textColor?: string;
+  cardType?: 'stamp_card' | 'cashback_card' | 'reward_card' | 'membership_card' | 'discount_card' | 'coupon_card' | 'multipass' | 'gift_card';
+  issuerName?: string;
+  issuerLogo?: string;
+  showPhoneFrame?: boolean;
 }
 
 export interface TemplateLibraryGridProps {

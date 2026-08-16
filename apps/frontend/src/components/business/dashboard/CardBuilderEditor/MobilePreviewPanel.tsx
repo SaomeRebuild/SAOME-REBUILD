@@ -14,14 +14,17 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { ChevronUp, Eye } from 'lucide-react';
 import { CardBuilderEditorPreview } from './CardBuilderEditorPreview';
-import type { CardType } from './CardBuilderEditor.types';
+import type { CardSide } from './CardBuilderEditorPreview';
 
 interface MobilePreviewPanelProps {
-  name: string;
-  cardType: CardType | null;
+  cardSide?: CardSide;
+  onCardSideChange?: (side: CardSide) => void;
 }
 
-export function MobilePreviewPanel({ name, cardType }: MobilePreviewPanelProps) {
+export function MobilePreviewPanel({
+  cardSide,
+  onCardSideChange,
+}: MobilePreviewPanelProps) {
   const { t } = useTranslation('cardEditor');
   const [isExpanded, setIsExpanded] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -92,10 +95,10 @@ export function MobilePreviewPanel({ name, cardType }: MobilePreviewPanelProps) 
 
             {/* 預覽內容 — 可滾動 */}
             <div className="flex-1 overflow-y-auto p-4">
-              <div className="flex h-full min-h-48 items-center justify-center">
+              <div className="flex min-h-[calc(100%-2rem)] flex-col items-center justify-start gap-4 pt-2">
                 <CardBuilderEditorPreview
-                  name={name}
-                  cardType={cardType}
+                  cardSide={cardSide}
+                  onCardSideChange={onCardSideChange}
                   forceVisible
                 />
               </div>

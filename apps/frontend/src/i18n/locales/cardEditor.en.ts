@@ -65,5 +65,13 @@ export default {
     untitled: 'Untitled Card',
     togglePreview: 'Preview',
     closePreview: 'Close Preview',
+    // Card front/back toggle
+    cardSide: 'Card Side',
+    front: 'Front',
+    back: 'Back',
+    // PassCardPreview
+    passTypeDefault: 'Card',
+    cardHolderDefault: 'Card Holder',
+    cardType: 'Card Type',
   },
 };

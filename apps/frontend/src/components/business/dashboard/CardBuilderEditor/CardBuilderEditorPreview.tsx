@@ -5,23 +5,31 @@
 import type { HTMLAttributes } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Eye } from 'lucide-react';
-import type { CardType } from './CardBuilderEditor.types';
+import { PreviewWrapper } from './PreviewWrapper';
+import { useCardBuilderStore } from './CardBuilderEditor.store';
+
+export type CardSide = 'front' | 'back';
 
 interface CardBuilderEditorPreviewProps extends HTMLAttributes<HTMLDivElement> {
-  name: string;
-  cardType?: CardType | null;
   /** 強制顯示預覽區（用於 Mobile Bottom Sheet，覆蓋 hidden lg:flex） */
   forceVisible?: boolean;
+  /** 目前顯示的卡片面 */
+  cardSide?: CardSide;
+  /** 卡片面切換時 callback */
+  onCardSideChange?: (side: CardSide) => void;
 }
 
 export function CardBuilderEditorPreview({
-  name,
-  cardType,
   forceVisible = false,
+  cardSide = 'front',
+  onCardSideChange,
   className,
   ...rest
 }: CardBuilderEditorPreviewProps) {
   const { t } = useTranslation('cardEditor');
+
+  // 從 store 取得卡片資料
+  const { name, cardType, issuerName, issuerLogo, holderName, backgroundColor, textColor } = useCardBuilderStore();
 
   return (
     <aside className={`
@@ -35,24 +43,62 @@ export function CardBuilderEditorPreview({
         <span className="text-sm font-medium">{t('preview.title')}</span>
       </div>
 
-      {/* 卡片預覽 */}
-      <div className="flex h-64 w-full max-w-sm items-center justify-center rounded-xl border-2 border-dashed border-border bg-card p-6">
+      {/* 卡片預覽（手機框架 + 卡片本體） */}
+      <div className="flex h-auto w-full max-w-sm items-center justify-center rounded-xl border-2 border-dashed border-border bg-card p-4">
         {cardType ? (
-          <div className="flex flex-col items-center gap-3 text-center">
-            <span className="text-4xl" aria-hidden="true">
-              {/* TODO: 根據 cardType 顯示對應的卡片圖示 */}
-              🎴
-            </span>
-            <p className="font-semibold text-foreground">
-              {name || t('preview.untitled')}
-            </p>
-            <p className="text-sm text-muted-foreground">
-              {t(`step1.cardTypes.${cardType}`)}
-            </p>
-          </div>
+          <PreviewWrapper
+            name={name}
+            cardType={cardType}
+            issuerName={issuerName}
+            issuerLogo={issuerLogo}
+            holderName={holderName}
+            backgroundColor={backgroundColor}
+            textColor={textColor}
+            side={cardSide}
+            showPhoneFrame={true}
+          />
         ) : (
           <p className="text-muted-foreground">{t('preview.empty')}</p>
         )}
+      </div>
+
+      {/* 卡片正反面切換按鈕 */}
+      <div className="flex w-full max-w-sm items-center justify-between">
+        <span className="text-sm text-muted-foreground">
+          {t('preview.cardSide')}
+        </span>
+        <div className="flex rounded-lg border border-border bg-muted p-1">
+          <button
+            type="button"
+            onClick={() => onCardSideChange?.('front')}
+            className={`
+              flex-1 cursor-pointer rounded-md px-3 py-1.5 text-sm font-medium
+              transition-all duration-150
+              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1
+              ${cardSide === 'front'
+                ? 'bg-primary text-on-primary shadow-sm'
+                : 'text-muted-foreground hover:bg-muted-foreground/10 hover:text-foreground active:scale-95'
+              }
+            `}
+          >
+            {t('preview.front')}
+          </button>
+          <button
+            type="button"
+            onClick={() => onCardSideChange?.('back')}
+            className={`
+              flex-1 cursor-pointer rounded-md px-3 py-1.5 text-sm font-medium
+              transition-all duration-150
+              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1
+              ${cardSide === 'back'
+                ? 'bg-primary text-on-primary shadow-sm'
+                : 'text-muted-foreground hover:bg-muted-foreground/10 hover:text-foreground active:scale-95'
+              }
+            `}
+          >
+            {t('preview.back')}
+          </button>
+        </div>
       </div>
     </aside>
   );
