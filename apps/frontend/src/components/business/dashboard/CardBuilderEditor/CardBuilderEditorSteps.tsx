@@ -17,7 +17,8 @@ const STEP_KEYS: Array<{ key: EditorStep; labelKey: string }> = [
   { key: 2, labelKey: 'steps.cardSettings' },
   { key: 3, labelKey: 'steps.cardDesign' },
   { key: 4, labelKey: 'steps.cardInfo' },
-  { key: 5, labelKey: 'steps.save' },
+  { key: 5, labelKey: 'steps.customizePlaceCard' },
+  { key: 6, labelKey: 'steps.save' },
 ];
 
 export function CardBuilderEditorSteps({

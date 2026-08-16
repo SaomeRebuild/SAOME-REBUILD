@@ -25,6 +25,7 @@ export default {
     cardSettings: '卡片設定',
     cardDesign: '卡片設計',
     cardInfo: '卡片資訊',
+    customizePlaceCard: '客製化桌牌',
     save: '保存',
   },
 
@@ -44,7 +45,7 @@ export default {
     next: '下一步',
   },
 
-  // Step 2-5（預留）
+  // Step 2-4（預留）
   step2: {
     title: '卡片設定',
   },
@@ -54,7 +55,12 @@ export default {
   step4: {
     title: '卡片資訊',
   },
+  // Step 5: 客製化桌牌
   step5: {
+    title: '客製化桌牌',
+  },
+  // Step 6: 保存
+  step6: {
     title: '保存',
   },
 

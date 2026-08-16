@@ -29,7 +29,7 @@ export function CardBuilderEditorWorkspace({
   const { t } = useTranslation('cardEditor');
 
   function handleNext() {
-    if (step < 5) {
+    if (step < 6) {
       onStepChange((step + 1) as EditorStep);
     }
   }
@@ -85,7 +85,7 @@ export function CardBuilderEditorWorkspace({
       )}
 
       {/* Step 2-5: 預留（陸續實作） */}
-      {step > 1 && (
+      {step > 1 && step < 5 && (
         <section className="flex flex-col items-center justify-center gap-4 py-12">
           <p className="text-muted-foreground">
             {t(`step${step}.title`)}
@@ -120,8 +120,95 @@ export function CardBuilderEditorWorkspace({
                 active:scale-[0.98]
               "
             >
-              {step < 5 ? t('step1.next') : t('actions.save')}
+              {t('step1.next')}
               <ChevronRight size={16} aria-hidden="true" />
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* Step 5: 客製化桌牌（預留） */}
+      {step === 5 && (
+        <section className="flex flex-col items-center justify-center gap-4 py-12">
+          <p className="text-muted-foreground">
+            {t('step5.title')}
+          </p>
+          <p className="text-sm text-muted-foreground/60">
+            {t('comingSoon')}
+          </p>
+          {/* 上一步 / 下一步按鈕 */}
+          <div className="flex items-center gap-4 pt-4">
+            <button
+              type="button"
+              onClick={handlePrev}
+              className="
+                flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5
+                text-sm font-medium text-foreground
+                transition-all duration-150
+                hover:scale-[1.02] hover:border-primary hover:text-primary
+                active:scale-[0.98]
+              "
+            >
+              <ChevronLeft size={16} aria-hidden="true" />
+              {t('actions.prev')}
+            </button>
+            <button
+              type="button"
+              onClick={handleNext}
+              className="
+                flex items-center gap-2 rounded-lg bg-primary px-6 py-2.5
+                text-sm font-semibold text-on-primary
+                transition-all duration-150
+                hover:scale-[1.02] hover:shadow-[var(--shadow-glow)]
+                active:scale-[0.98]
+              "
+            >
+              {t('actions.save')}
+              <ChevronRight size={16} aria-hidden="true" />
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* Step 6: 保存（預留） */}
+      {step === 6 && (
+        <section className="flex flex-col items-center justify-center gap-4 py-12">
+          <p className="text-muted-foreground">
+            {t('step6.title')}
+          </p>
+          <p className="text-sm text-muted-foreground/60">
+            {t('comingSoon')}
+          </p>
+          {/* 上一步 / 儲存按鈕 */}
+          <div className="flex items-center gap-4 pt-4">
+            <button
+              type="button"
+              onClick={handlePrev}
+              className="
+                flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5
+                text-sm font-medium text-foreground
+                transition-all duration-150
+                hover:scale-[1.02] hover:border-primary hover:text-primary
+                active:scale-[0.98]
+              "
+            >
+              <ChevronLeft size={16} aria-hidden="true" />
+              {t('actions.prev')}
+            </button>
+            <button
+              type="button"
+              onClick={handleNext}
+              disabled
+              className="
+                flex items-center gap-2 rounded-lg bg-primary px-6 py-2.5
+                text-sm font-semibold text-on-primary
+                transition-all duration-150
+                hover:scale-[1.02] hover:shadow-[var(--shadow-glow)]
+                active:scale-[0.98]
+                disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100
+              "
+            >
+              {t('actions.save')}
             </button>
           </div>
         </section>

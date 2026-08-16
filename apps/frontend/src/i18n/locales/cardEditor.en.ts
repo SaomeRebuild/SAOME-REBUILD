@@ -25,6 +25,7 @@ export default {
     cardSettings: 'Card Settings',
     cardDesign: 'Card Design',
     cardInfo: 'Card Info',
+    customizePlaceCard: 'Customize Table Card',
     save: 'Save',
   },
 
@@ -44,7 +45,7 @@ export default {
     next: 'Next',
   },
 
-  // Step 2-5 (reserved)
+  // Step 2-4 (reserved)
   step2: {
     title: 'Card Settings',
   },
@@ -54,7 +55,12 @@ export default {
   step4: {
     title: 'Card Info',
   },
+  // Step 5: Customize Table Card
   step5: {
+    title: 'Customize Table Card',
+  },
+  // Step 6: Save
+  step6: {
     title: 'Save',
   },
 

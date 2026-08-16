@@ -2,7 +2,7 @@
  * CardBuilderEditor — 主元件 Props
  */
 
-export type EditorStep = 1 | 2 | 3 | 4 | 5;
+export type EditorStep = 1 | 2 | 3 | 4 | 5 | 6;
 
 export type CardType =
   | 'stamp_card'

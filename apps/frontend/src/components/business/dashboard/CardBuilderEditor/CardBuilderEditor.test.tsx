@@ -34,12 +34,13 @@ describe('CardBuilderEditor', () => {
     expect(input).toBeInTheDocument();
   });
 
-  it('renders all 5 steps', () => {
+  it('renders all 6 steps', () => {
     render(<CardBuilderEditor />);
     expect(screen.getByText('steps.selectType')).toBeInTheDocument();
     expect(screen.getByText('steps.cardSettings')).toBeInTheDocument();
     expect(screen.getByText('steps.cardDesign')).toBeInTheDocument();
     expect(screen.getByText('steps.cardInfo')).toBeInTheDocument();
+    expect(screen.getByText('steps.customizePlaceCard')).toBeInTheDocument();
     expect(screen.getByText('steps.save')).toBeInTheDocument();
   });
 
