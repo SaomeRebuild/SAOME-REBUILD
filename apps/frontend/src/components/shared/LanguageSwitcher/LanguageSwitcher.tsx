@@ -1,4 +1,4 @@
-import i18n from '../../../i18n';
+import { setLanguage } from '../../../i18n';
 import type { LanguageCode } from './LanguageSwitcher.types';
 
 const LANGUAGES: { code: LanguageCode; label: string }[] = [
@@ -19,7 +19,7 @@ export function LanguageSwitcher({ separator = '|' }: LanguageSwitcherProps) {
             <span style={{ color: 'var(--color-border)' }}>{separator}</span>
           )}
           <button
-            onClick={() => i18n.changeLanguage(lang.code)}
+            onClick={() => setLanguage(lang.code)}
             className="text-sm transition-colors hover:opacity-80 rounded px-1"
             style={{ color: 'var(--color-foreground)' }}
           >

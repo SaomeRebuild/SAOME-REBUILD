@@ -3,6 +3,7 @@
  */
 
 import { useTranslation } from 'react-i18next';
+import { setLanguage } from '../../../../i18n';
 
 export function AuthLanguageSwitcher() {
   const { i18n } = useTranslation();
@@ -10,7 +11,7 @@ export function AuthLanguageSwitcher() {
   return (
     <button
       type="button"
-      onClick={() => i18n.changeLanguage(next)}
+      onClick={() => setLanguage(next)}
       className="min-h-[32px] rounded border border-neutral-300 px-3 py-1 text-xs text-neutral-700 hover:bg-neutral-50"
       aria-label="Toggle language"
     >

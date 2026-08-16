@@ -2,4 +2,8 @@ export default {
   light: 'Light',
   dark: 'Dark',
   system: 'System',
+  toggleLabel: 'Toggle theme',
+  currentLabel: 'Theme: {{resolved}}',
+  resolvedLight: 'Light mode',
+  resolvedDark: 'Dark mode',
 };

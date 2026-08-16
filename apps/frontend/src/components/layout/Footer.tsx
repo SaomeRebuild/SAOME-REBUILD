@@ -56,14 +56,14 @@ export function Footer() {
 
           <nav className="flex flex-col gap-3">
             {footerLinks.map((link) => (
-              <a
+              <Link
                 key={link.href}
-                href={link.href}
+                to={link.href}
                 className="text-sm transition-colors hover:opacity-80"
                 style={{ color: 'var(--color-muted-foreground)' }}
               >
                 {link.label}
-              </a>
+              </Link>
             ))}
           </nav>
 

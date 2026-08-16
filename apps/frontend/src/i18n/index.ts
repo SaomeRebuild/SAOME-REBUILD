@@ -56,6 +56,31 @@ const resources = {
   },
 };
 
+const LANGUAGE_KEY = 'saome.lang';
+
+/** Read persisted language, mirroring the useTheme pattern. */
+function getInitialLanguage(): string {
+  try {
+    const persisted = localStorage.getItem(LANGUAGE_KEY);
+    if (persisted === 'en' || persisted === 'zh-TW') return persisted;
+  } catch {
+    // SSR or blocked localStorage — fall through
+  }
+  return 'zh-TW';
+}
+
+/** Persist + change in one call. Used by all language switchers. */
+export function setLanguage(lang: 'en' | 'zh-TW') {
+  try {
+    localStorage.setItem(LANGUAGE_KEY, lang);
+  } catch {
+    // SSR or blocked localStorage — ignore
+  }
+  void i18n.changeLanguage(lang);
+}
+
+export { LANGUAGE_KEY };
+
 // Do NOT use `void` here — Vite/Rollup tree-shakes unhandled promise rejections
 // in production, causing i18n.init() to be silently dropped. Without init,
 // all namespaces (dashboard, theme, etc.) return raw keys at render time.
@@ -63,7 +88,7 @@ i18n
   .use(initReactI18next)
   .init({
     resources,
-    lng: 'zh-TW',
+    lng: getInitialLanguage(),
     fallbackLng: 'en',
     interpolation: {
       escapeValue: false,

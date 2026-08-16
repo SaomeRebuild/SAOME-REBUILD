@@ -31,17 +31,16 @@ function renderApp() {
   );
 }
 
+/**
+ * Render the app. i18n is initialized synchronously by `./i18n` import above.
+ * The `isInitialized` guard is only to prevent double-init side-effects.
+ */
 if (i18n.isInitialized) {
-  // Module loaded in order; init already done.
   renderApp();
 } else {
-  // Race: `./i18n` hasn't finished yet. Call init() again (no-op if already in
-  // progress; i18next guards against double-init).
-  i18n.init({
-    resources: {},
-    lng: 'zh-TW',
-    fallbackLng: 'en',
-    interpolation: { escapeValue: false },
-  });
+  // This branch should NOT be reached because `./i18n` calls init() synchronously.
+  // If it IS reached, it means module loading order is broken.
+  // Calling init() again with empty resources would erase all translations.
+  console.error('[i18n] init() was not called by ./i18n — translations will be missing.');
   renderApp();
 }

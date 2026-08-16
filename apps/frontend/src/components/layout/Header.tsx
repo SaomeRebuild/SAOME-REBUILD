@@ -98,14 +98,14 @@ export function Header({ className }: HeaderProps) {
 
             <nav className="hidden items-center gap-8 lg:flex">
               {navLinks.map((link) => (
-                <a
+                <Link
                   key={link.href}
-                  href={link.href}
+                  to={link.href}
                   className="text-sm font-medium transition-colors hover:opacity-80"
                   style={{ color: 'var(--color-muted-foreground)' }}
                 >
                   {link.label}
-                </a>
+                </Link>
               ))}
             </nav>
 
@@ -196,15 +196,15 @@ export function Header({ className }: HeaderProps) {
             </div>
             <div className="flex flex-col gap-1 px-4">
               {navLinks.map((link) => (
-                <a
+                <Link
                   key={link.href}
-                  href={link.href}
+                  to={link.href}
                   className="rounded-md px-3 py-3 text-base font-medium transition-colors hover:opacity-80"
                   style={{ color: 'var(--color-muted-foreground)' }}
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
                   {link.label}
-                </a>
+                </Link>
               ))}
             </div>
             <div
