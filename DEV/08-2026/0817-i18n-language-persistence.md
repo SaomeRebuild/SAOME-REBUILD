@@ -116,6 +116,27 @@ Init 時：`lng: getInitialLanguage()` 而非 hardcoded `'zh-TW'`。
 - `packages/shared/i18n/zh-TW.ts`
 - `packages/shared/i18n/index.ts`
 
+### Phase 5：加入 Browser Language Detection
+
+修好 localStorage 持久化後，未登入訪客（無 localStorage 語言偏好）預設語言仍是 hardcoded `'zh-TW'`。需要從瀏覽器語言設定自動偵測。
+
+**新增 `packages/shared/i18n/`**：
+
+| 檔案 | 用途 |
+|------|------|
+| `detectLanguage.ts` | 純函式，讀 `navigator.languages[0]` 與 `navigator.language`，fallback 為 `'zh-TW'` |
+| `detectLanguage.web.ts` | Vite 自動選擇的 browser shim（移除 test env guard） |
+| `index.ts` | barrel export |
+
+**Frontend config 更新**：
+
+| 檔案 | 變動 |
+|------|------|
+| `vite.config.ts` | 加 `zustand` + `@saome/shared/i18n/detectLanguage` aliases |
+| `vitest.config.ts` | 同上 |
+| `test/setup.ts` | 設 `process.env.TEST_LANG='zh-TW'` 覆寫 jsdom 的 `navigator.language='en'` |
+| `i18n/index.ts` | `getInitialLanguage()` 改呼叫 `detectDeviceLanguage()` 而非 hardcoded fallback |
+
 ---
 
 ## 驗證結果
@@ -135,6 +156,7 @@ Init 時：`lng: getInitialLanguage()` 而非 hardcoded `'zh-TW'`。
 - [x] `auth.en.ts` key drift → 已實作
 - [x] `theme.zh-TW.ts` key drift → 已實作
 - [x] `packages/shared/i18n/` 死程式碼 → 已刪除
+- [x] Browser Language Detection → 已實作
 
 ---
 
@@ -143,6 +165,7 @@ Init 時：`lng: getInitialLanguage()` 而非 hardcoded `'zh-TW'`。
 - **下次怎麼不犯？**
   1. Marketing Shell（Header / Footer）所有內部連結預設用 `<Link to>` 而非 `<a href>`
   2. i18n 實作時，鏡像 `useTheme` 的 localStorage 持久化模式
+  3. Browser 偵測 utility 要區分「在 browser 執行時的實作」與「在 test jsdom 環境的 fallback」
 
 - **哪條 rule 該補？**
   `013-rwd.mdc` 已有 `<a href>` vs `<Link to>` 的 mobile-first 行為差異說明，但缺少「Marketing Shell Header/Footer 的連結應該用 `<Link to>` 以避免 i18n 重置」的具體約束。
