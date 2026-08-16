@@ -8,6 +8,7 @@
 | 日期 | 主題 | 路徑 | 影響 / 後續 |
 |------|------|------|------|
 | 2026-08-16 | Vibe Coding 工作流優化：i18n 沒有元件化規則、三次 namespace drift 迴圈 | runs/improvements/feedback/20260816-vibe-coding-workflow-optimization.md | 新增 rule `025` (L2 checklist)、`023` (i18n 元件化原則)；新增 `scripts/verify-i18n-keys.mjs` |
+| 2026-08-17 | CI npm cache drift：`cache: 'npm'` 未綁定 `package-lock.json`，workspace 新增 dep 後 cache restore 舊 lockfile | runs/improvements/feedback/20260817-ci-npm-cache-lockfile-drift.md | workflow 補 `cache-dependency-path`；rule `016` 需補第 8 surface |
 | 2026-08-15 | Nested Routes Decision：`AppDashboardPage` + `<Outlet />` 架構確認 | runs/decisions/2026-08-15-nested-routes-dashboard.md | Dashboard 6 個子頁面的 routing 架構；影響 `AppDashboardPage`、`DashboardShell` wrapper 移除 |
 | 2026-08-15 | PassTier Schema Drift：`basic/premium/enterprise` → `green/gold/platinum` 與 DB 對齊 | DEV/08-2026/0815-pass-tier-schema-drift.md | `schemas/pass.ts`、`types/pass.ts`、`logic/pass.ts`、i18n 同步；`passTierSchema` 從未被 runtime 引用所以 typecheck 一直過 |
 | 2026-08-12 | i18n namespace split：`translation` → 9 feature namespaces | runs/improvements/feedback/20260812-i18n-namespace-split-dev-log.md | 38 個測試失敗待修；`.json` → `.ts` 為不必要複雜化；根因：PowerShell UTF-8 腐化 + 錯誤解讀 Node.js 24 ESM JSON import 限制 |
@@ -32,6 +33,8 @@
 | 2026-08-16 | 普查 `cardBuilder`、`cardEditor` namespace（確認無需拆分） | ✅ done |
 | 2026-08-16 | 加 `025-vibe-coding-l2-checklist.mdc` rule | ✅ done |
 | 2026-08-16 | 普查 `auth`、`landing`、`legal`、`passNotification`、`theme` 的 cross-locale drift | ⏳ pending |
+| 2026-08-17 | `016-config-and-tsconfig-discipline.mdc` 補第 8 surface：CI cache `cache-dependency-path` 綁定 `package-lock.json` | ⏳ pending |
+| 2026-08-17 | `025-vibe-coding-l2-checklist.mdc` 或新建 `026-ci-workflow-checklist.mdc`：加 CI workflow 修改 checklist（新增 dep 前確認 cache key） | ⏳ pending |
 
 ## 使用方式
 
