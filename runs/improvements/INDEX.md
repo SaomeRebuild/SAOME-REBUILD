@@ -7,6 +7,7 @@
 
 | 日期 | 主題 | 路徑 | 影響 / 後續 |
 |------|------|------|------|
+| 2026-08-16 | Vibe Coding 工作流優化：i18n 沒有元件化規則、三次 namespace drift 迴圈 | runs/improvements/feedback/20260816-vibe-coding-workflow-optimization.md | 新增 rule `025` (L2 checklist)、`023` (i18n 元件化原則)；新增 `scripts/verify-i18n-keys.mjs` |
 | 2026-08-15 | Nested Routes Decision：`AppDashboardPage` + `<Outlet />` 架構確認 | runs/decisions/2026-08-15-nested-routes-dashboard.md | Dashboard 6 個子頁面的 routing 架構；影響 `AppDashboardPage`、`DashboardShell` wrapper 移除 |
 | 2026-08-15 | PassTier Schema Drift：`basic/premium/enterprise` → `green/gold/platinum` 與 DB 對齊 | DEV/08-2026/0815-pass-tier-schema-drift.md | `schemas/pass.ts`、`types/pass.ts`、`logic/pass.ts`、i18n 同步；`passTierSchema` 從未被 runtime 引用所以 typecheck 一直過 |
 | 2026-08-12 | i18n namespace split：`translation` → 9 feature namespaces | runs/improvements/feedback/20260812-i18n-namespace-split-dev-log.md | 38 個測試失敗待修；`.json` → `.ts` 為不必要複雜化；根因：PowerShell UTF-8 腐化 + 錯誤解讀 Node.js 24 ESM JSON import 限制 |
@@ -21,6 +22,16 @@
 | 2026-07-27 | SDD / BDD / TDD 三層流程試跑 | runs/improvements/feedback/20260727-sdd-bdd-tdd-flow-test.md | 觀察用，無規範變更 |
 | 2026-07-27 | Cloudflare Pages 部署 + lockfile 跨平台 binding | runs/improvements/feedback/20260727-cloudflare-pages-deploy.md | 補強 rule `015` + `016` + deploy skill；commit `80a97b7` 修 lockfile；新增 `apps/frontend/scripts/audit-lockfile-bindings.cjs` |
 | 2026-07-27 | Dependabot 5 漏洞 deferred | runs/improvements/feedback/20260727-dependabot-deferred.md | 等 SPEC-002 `dependabot-triage` 開工復工 |
+
+## Pending Action Items
+
+| 日期 | 動作 | 狀態 |
+|------|------|------|
+| 2026-08-16 | `023-shared-package.mdc` 加 i18n 元件化原則 + namespace checklist | ✅ done |
+| 2026-08-16 | 加 `scripts/verify-i18n-keys.mjs` i18n smoke test | ✅ done |
+| 2026-08-16 | 普查 `cardBuilder`、`cardEditor` namespace（確認無需拆分） | ✅ done |
+| 2026-08-16 | 加 `025-vibe-coding-l2-checklist.mdc` rule | ✅ done |
+| 2026-08-16 | 普查 `auth`、`landing`、`legal`、`passNotification`、`theme` 的 cross-locale drift | ⏳ pending |
 
 ## 使用方式
 
