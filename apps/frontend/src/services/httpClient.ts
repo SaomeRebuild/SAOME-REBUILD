@@ -61,6 +61,7 @@ export class HttpClient {
 
     // Attach Bearer token if available (set by AuthProvider on login/refresh)
     const token = getAccessToken();
+    console.debug('[httpClient] token from authStore:', token ? 'present (' + token.slice(0, 20) + '...)' : 'NULL — this is why 401!');
     const reqHeaders: Record<string, string> = {
       Accept: 'application/json',
       ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
@@ -76,7 +77,9 @@ export class HttpClient {
     });
 
     if (res.status === 401 && retryOn401 && path !== api.paths.refresh) {
+      console.debug('[httpClient] 401! Attempting refresh to get new token...');
       const newToken = await this.tryRefresh();
+      console.debug('[httpClient] tryRefresh result:', newToken ? 'got token (' + newToken.slice(0, 20) + '...)' : 'FAILED — no token');
       if (newToken) {
         setAccessToken(newToken);
         return this.request<T>(method, path, { ...init, retryOn401: false });

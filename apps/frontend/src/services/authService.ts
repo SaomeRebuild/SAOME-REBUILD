@@ -32,6 +32,7 @@ interface MeResponse {
  */
 function syncToken(session: AuthSessionWithTenant) {
   if (session.accessToken) {
+    console.debug('[authService.syncToken] setting token:', session.accessToken.slice(0, 20) + '...');
     setAccessToken(session.accessToken);
   }
 }
@@ -54,7 +55,9 @@ export const authService = {
     // response, so this single call is enough for AuthProvider to recover
     // the user/tenant on mount.
     const session = await httpClient.post<AuthSessionWithTenant>(api.paths.refresh);
+    console.debug('[authService.refresh] got session, accessToken:', session.accessToken ? 'present (' + session.accessToken.slice(0, 20) + '...)' : 'MISSING');
     syncToken(session);
+    console.debug('[authService.refresh] authStore token now:', getAccessToken() ? 'set' : 'still null');
     return session;
   },
 
