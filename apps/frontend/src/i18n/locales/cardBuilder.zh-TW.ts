@@ -14,6 +14,7 @@ export default {
     checkingAuth: '驗證中...',
     building: '建立中...',
     buildErrorDetail: '建立卡片失敗：{{detail}}',
+    sessionExpired: '登入已過期，請重新登入後再試。',
   },
   templateLibrary: {
     title: '我的模板庫',

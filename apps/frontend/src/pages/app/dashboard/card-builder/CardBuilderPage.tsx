@@ -16,6 +16,7 @@ import { TemplateLibraryGrid } from '@/components/business/dashboard/TemplateLib
 import { CardBuilderEditor } from '@/components/business/dashboard/CardBuilderEditor';
 import { authService } from '@/services/authService';
 import { cardService } from '@/services/cardService';
+import { ROUTES } from '@/services/httpClient';
 import { PlusCircle, LayoutGrid, Loader2, AlertCircle } from 'lucide-react';
 
 // TODO: Replace with API call when backend is ready.
@@ -50,13 +51,16 @@ export default function CardBuilderPage() {
   }, []);
 
   /**
-   * Handle "從頭建置" — create a draft template via POST /api/cards.
-   * After creation, navigate to the editor with the template ID.
+   * Handle "從頭建置" — refresh session then create a draft template.
+   * Shows "please re-login" if the session has expired.
    */
   const handleBuildFromScratch = useCallback(async () => {
     setBuildError(null);
     setIsBuilding(true);
+    setAuthReady(false);
     try {
+      // Ensure session is fresh before calling POST /api/cards
+      await authService.refresh();
       const template = await cardService.create({
         cardType: 'stamp_card',
         name: '',
@@ -64,10 +68,19 @@ export default function CardBuilderPage() {
       window.location.href = `/app/dashboard/card-builder?id=${template.id}`;
     } catch (err) {
       console.error('Failed to create template:', err);
+      const isUnauthorized =
+        err instanceof Error &&
+        (err.message.includes('401') || err.message.includes('UNAUTHORIZED') || err.message.includes('Invalid or expired'));
+      if (isUnauthorized) {
+        // Expired session — redirect to login, returning here keeps the error visible
+        window.location.href = ROUTES.login;
+        return;
+      }
       const msg = err instanceof Error ? err.message : String(err);
       setBuildError(t('toolbar.buildErrorDetail', { detail: msg }));
     } finally {
       setIsBuilding(false);
+      setAuthReady(true);
     }
   }, [t]);
 

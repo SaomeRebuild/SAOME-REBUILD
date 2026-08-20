@@ -14,6 +14,7 @@ export default {
     checkingAuth: 'Verifying...',
     building: 'Building...',
     buildErrorDetail: 'Failed to create card: {{detail}}',
+    sessionExpired: 'Session expired. Please log in again.',
   },
   templateLibrary: {
     title: 'My Template Library',
