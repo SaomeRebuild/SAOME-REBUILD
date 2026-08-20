@@ -51,13 +51,15 @@ describe('PassCardPreview', () => {
     expect(card.style.aspectRatio).toBe('375 / 503');
   });
 
-  it('renders holder name on back side', () => {
-    render(<PassCardPreview name="測試卡片" side="back" holderName="張三" />);
+  it('renders holder name on front side', () => {
+    render(<PassCardPreview name="測試卡片" side="front" holderName="張三" />);
+    // Front side renders holder name in footer
     expect(screen.getByText('張三')).toBeInTheDocument();
   });
 
-  it('renders default holder name when not provided on back side', () => {
-    render(<PassCardPreview name="測試卡片" side="back" />);
+  it('renders barcode on front side', () => {
+    render(<PassCardPreview name="測試卡片" side="front" />);
+    // Front side renders barcode number
     expect(screen.getByText('4938591027384')).toBeInTheDocument();
   });
 

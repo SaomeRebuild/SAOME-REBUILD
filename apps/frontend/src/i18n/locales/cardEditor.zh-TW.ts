@@ -32,6 +32,7 @@ export default {
   // Step 1: 卡片類型選擇器
   step1: {
     title: '選擇卡片類型',
+    nameRequired: '請填寫卡片名稱',
     cardTypes: {
       stamp_card: '集點卡',
       cashback_card: '現金回饋卡',
@@ -45,9 +46,37 @@ export default {
     next: '下一步',
   },
 
-  // Step 2-4（預留）
+  // Step 2: 卡片設定（Base — 所有卡種共用）
   step2: {
     title: '卡片設定',
+    barcode: {
+      title: '條碼格式',
+      qrCode: 'QR 碼',
+      pdf417: 'PDF 417',
+    },
+    storeName: {
+      title: '店名',
+      placeholder: '請輸入店名',
+      required: '店名為必填欄位',
+    },
+    issuerName: {
+      title: '發卡機構名稱',
+      placeholder: '請輸入發卡機構名稱',
+      required: '發卡機構名稱為必填欄位',
+    },
+    passValidDays: {
+      title: '卡片有效天數',
+      placeholder: '例：30',
+      unit: '天',
+      hint: '留空表示無期限。填寫後到期日將自動清除。',
+    },
+    expiryDate: {
+      title: '到期日設定',
+      hint: '設定後有效天數將自動清除。',
+    },
+    currency: {
+      title: '貨幣',
+    },
   },
   step3: {
     title: '卡片設計',
@@ -79,5 +108,13 @@ export default {
     passTypeDefault: '卡片',
     cardHolderDefault: '持卡人',
     cardType: '卡片類型',
+    // 卡片反面
+    backSide: {
+      description: '卡片描述',
+      automaticUpdates: '自動更新',
+      allowNotifications: '允許通知',
+      removePass: '移除票卡',
+      termsOrLinks: '條文或連結',
+    },
   },
 };

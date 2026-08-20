@@ -4,13 +4,17 @@
  *   - Top: page title + "Build from Scratch" + "Public Templates" buttons
  *   - Bottom: multi-column template library grid
  *
- * When user clicks "從頭建置", shows CardBuilderEditor instead.
+ * Routing:
+ *   - /app/dashboard/card-builder          → Library mode (no ?id=)
+ *   - /app/dashboard/card-builder?id=...   → Editor mode (has ?id=)
  */
 
-import { useState } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router-dom';
 import { TemplateLibraryGrid } from '@/components/business/dashboard/TemplateLibraryGrid';
 import { CardBuilderEditor } from '@/components/business/dashboard/CardBuilderEditor';
+import { cardService } from '@/services/cardService';
 import { PlusCircle, LayoutGrid } from 'lucide-react';
 
 // TODO: Replace with API call when backend is ready.
@@ -21,14 +25,40 @@ const MOCK_TEMPLATES = Array.from({ length: 10 }, (_, i) => ({
 
 export default function CardBuilderPage() {
   const { t } = useTranslation('cardBuilder');
+  const [searchParams] = useSearchParams();
   const [showEditor, setShowEditor] = useState(false);
 
-  function handleBuildFromScratch() {
-    setShowEditor(true);
-  }
+  // Sync showEditor with URL ?id= param
+  useEffect(() => {
+    const id = searchParams.get('id');
+    setShowEditor(Boolean(id));
+  }, [searchParams]);
+
+  // Get templateId from URL params
+  const templateId = searchParams.get('id');
+
+  /**
+   * Handle "從頭建置" — create a draft template via POST /api/cards.
+   * After creation, navigate to the editor with the template ID.
+   */
+  const handleBuildFromScratch = useCallback(async () => {
+    try {
+      // Create a minimal draft: no name yet, default cardType is 'stamp_card'
+      const template = await cardService.create({
+        cardType: 'stamp_card',
+        name: '',
+      });
+      // Navigate to editor mode with the new template ID
+      window.location.href = `/app/dashboard/card-builder?id=${template.id}`;
+    } catch (err) {
+      console.error('Failed to create template:', err);
+      // TODO: Show error toast
+    }
+  }, []);
 
   function handleBackToLibrary() {
-    setShowEditor(false);
+    // Navigate to library mode (remove ?id= param)
+    window.location.href = '/app/dashboard/card-builder';
   }
 
   function handlePublicTemplates() {
@@ -36,8 +66,11 @@ export default function CardBuilderPage() {
     console.log('Public templates');
   }
 
+  /**
+   * Handle "Edit" — fetch existing template and load into editor.
+   */
   function handleEdit(id: string) {
-    console.log('Edit template:', id);
+    window.location.href = `/app/dashboard/card-builder?id=${id}`;
   }
 
   function handleSend(id: string) {
@@ -54,8 +87,11 @@ export default function CardBuilderPage() {
       <div className="flex h-full w-full flex-col overflow-auto p-6 gap-6">
         {showEditor ? (
           <>
-            {/* Editor mode: show CardBuilderEditor */}
-            <CardBuilderEditor onBack={handleBackToLibrary} />
+            {/* Editor mode: show CardBuilderEditor with templateId from URL */}
+            <CardBuilderEditor
+              templateId={templateId}
+              onBack={handleBackToLibrary}
+            />
           </>
         ) : (
           <>

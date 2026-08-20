@@ -26,4 +26,6 @@ export default defineConfig({
     stdout: 'ignore',
     stderr: 'pipe',
   },
+  // Point to the cursor-sandbox-cache where browsers are installed
+  browsersDir: 'C:\\Users\\user\\AppData\\Local\\Temp\\cursor-sandbox-cache\\10604e2124b203b912e54123131434ef\\playwright',
 });

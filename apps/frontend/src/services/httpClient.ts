@@ -10,6 +10,7 @@
 
 import { api } from '@/config/api';
 import { limits } from '@/config/limits';
+import { getAccessToken, setAccessToken } from './authStore';
 import { ROUTES } from '@/config/routes';
 
 export class SaomeApiError extends Error {
@@ -57,20 +58,27 @@ export class HttpClient {
   ): Promise<T> {
     const { body, headers, retryOn401 = true } = init ?? {};
     const url = `${this.baseUrl}${path}`;
+
+    // Attach Bearer token if available (set by AuthProvider on login/refresh)
+    const token = getAccessToken();
+    const reqHeaders: Record<string, string> = {
+      Accept: 'application/json',
+      ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(headers ?? {}),
+    };
+
     const res = await this.fetchImpl(url, {
       method,
-      headers: {
-        Accept: 'application/json',
-        ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-        ...(headers ?? {}),
-      },
+      headers: reqHeaders,
       body: body === undefined ? undefined : JSON.stringify(body),
       credentials: 'include',
     });
 
     if (res.status === 401 && retryOn401 && path !== api.paths.refresh) {
-      const refreshed = await this.tryRefresh();
-      if (refreshed) {
+      const newToken = await this.tryRefresh();
+      if (newToken) {
+        setAccessToken(newToken);
         return this.request<T>(method, path, { ...init, retryOn401: false });
       }
     }
@@ -108,16 +116,22 @@ export class HttpClient {
     return (await res.json()) as T;
   }
 
-  private async tryRefresh(): Promise<boolean> {
+  /**
+   * Refresh the session via the HttpOnly refresh cookie.
+   * Returns the new accessToken from the server response, or null on failure.
+   */
+  private async tryRefresh(): Promise<string | null> {
     try {
-      await this.fetchImpl(`${this.baseUrl}${api.paths.refresh}`, {
+      const res = await this.fetchImpl(`${this.baseUrl}${api.paths.refresh}`, {
         method: 'POST',
         headers: { Accept: 'application/json' },
         credentials: 'include',
       });
-      return true;
+      if (!res.ok) return null;
+      const body = await res.json();
+      return body.accessToken ?? null;
     } catch {
-      return false;
+      return null;
     }
   }
 

@@ -14,6 +14,8 @@ interface CardBuilderEditorHeaderProps {
   step: EditorStep;
   onStepChange: (step: EditorStep) => void;
   completedSteps?: Set<EditorStep>;
+  /** Step 1 的驗證狀態（由 Workspace 計算後傳入） */
+  isStep1Blocked?: boolean;
 }
 
 export function CardBuilderEditorHeader({
@@ -22,22 +24,31 @@ export function CardBuilderEditorHeader({
   step,
   onStepChange,
   completedSteps,
+  isStep1Blocked = false,
 }: CardBuilderEditorHeaderProps) {
   const { t } = useTranslation('cardEditor');
 
   return (
-    <header className="flex flex-col gap-4 border-b border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
-      {/* 左：h1 標題 */}
-      <h1
-        className="flex items-center gap-2 text-xl font-bold text-foreground"
-        style={{ fontFamily: 'var(--font-family-heading)' }}
-      >
-        <Building2 size={20} className="text-muted-foreground" aria-hidden="true" />
-        {t('pageTitle')}
-      </h1>
+    <header className="border-b border-border bg-card p-4">
+      {/* 第一行：標題 + 步驟指示器 */}
+      <div className="mb-4 flex items-center justify-between gap-4">
+        <h1
+          className="flex items-center gap-2 text-xl font-bold text-foreground shrink-0"
+          style={{ fontFamily: 'var(--font-family-heading)' }}
+        >
+          <Building2 size={20} className="text-muted-foreground" aria-hidden="true" />
+          {t('pageTitle')}
+        </h1>
 
-      {/* 中：卡片名稱輸入框 */}
-      <div className="flex-1 sm:max-w-xs">
+        <CardBuilderEditorSteps
+          currentStep={step}
+          onStepClick={onStepChange}
+          completedSteps={completedSteps}
+        />
+      </div>
+
+      {/* 第二行：卡片名稱輸入框（獨占一行，不被步驟壓縮） */}
+      <div className="max-w-md">
         <label htmlFor="card-name" className="sr-only">
           {t('cardNameLabel')}
         </label>
@@ -54,14 +65,18 @@ export function CardBuilderEditorHeader({
             focus:border-primary focus:outline-none focus:ring-2 focus:ring-ring
           "
         />
+        {/* 卡片名稱必填警示（名稱為空時隨時顯示） */}
+        {isStep1Blocked && (
+          <p
+            className="mt-1.5 flex items-center gap-1.5 text-xs"
+            style={{ color: 'var(--color-destructive)' }}
+            role="alert"
+          >
+            <span aria-hidden="true">⚠</span>
+            {t('step1.nameRequired')}
+          </p>
+        )}
       </div>
-
-      {/* 右：步驟指示器 */}
-      <CardBuilderEditorSteps
-        currentStep={step}
-        onStepClick={onStepChange}
-        completedSteps={completedSteps}
-      />
     </header>
   );
 }

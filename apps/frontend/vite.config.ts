@@ -16,6 +16,7 @@ const alias = [
   { find: /^@saome\/shared\/schemas\/member$/, replacement: path.resolve(sharedRoot, 'schemas/member.ts') },
   { find: /^@saome\/shared\/schemas\/order$/, replacement: path.resolve(sharedRoot, 'schemas/order.ts') },
   { find: /^@saome\/shared\/schemas\/pass$/, replacement: path.resolve(sharedRoot, 'schemas/pass.ts') },
+  { find: /^@saome\/shared\/schemas\/cardBuilder$/, replacement: path.resolve(sharedRoot, 'schemas/cardBuilder.ts') },
   { find: /^@saome\/shared\/schemas$/, replacement: path.resolve(sharedRoot, 'schemas/index.ts') },
   { find: /^@saome\/shared\/logic\/member$/, replacement: path.resolve(sharedRoot, 'logic/member.ts') },
   { find: /^@saome\/shared\/logic\/order$/, replacement: path.resolve(sharedRoot, 'logic/order.ts') },

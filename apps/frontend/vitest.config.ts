@@ -20,6 +20,7 @@ const aliasArray: { find: string | RegExp; replacement: string }[] = [
   { find: '@saome/shared/schemas/member', replacement: resolve(sharedRoot, 'schemas/member.ts') },
   { find: '@saome/shared/schemas/order', replacement: resolve(sharedRoot, 'schemas/order.ts') },
   { find: '@saome/shared/schemas/pass', replacement: resolve(sharedRoot, 'schemas/pass.ts') },
+  { find: '@saome/shared/schemas/cardBuilder', replacement: resolve(sharedRoot, 'schemas/cardBuilder.ts') },
   { find: '@saome/shared/schemas', replacement: resolve(sharedRoot, 'schemas/index.ts') },
   { find: '@saome/shared/logic/member', replacement: resolve(sharedRoot, 'logic/member.ts') },
   { find: '@saome/shared/logic/order', replacement: resolve(sharedRoot, 'logic/order.ts') },

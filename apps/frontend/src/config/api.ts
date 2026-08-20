@@ -11,5 +11,9 @@ export const api = {
     login: '/api/auth/login',
     refresh: '/api/auth/refresh',
     me: '/api/auth/me',
+    // Cards module
+    cards: '/api/cards',
+    cardById: (id: string) => `/api/cards/${id}`,
+    cardPublish: (id: string) => `/api/cards/${id}/publish`,
   },
 } as const;

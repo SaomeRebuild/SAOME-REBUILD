@@ -29,7 +29,7 @@ export function CardBuilderEditorPreview({
   const { t } = useTranslation('cardEditor');
 
   // 從 store 取得卡片資料
-  const { name, cardType, issuerName, issuerLogo, holderName, backgroundColor, textColor } = useCardBuilderStore();
+  const { name, cardType, issuerName, issuerLogo, holderName, backgroundColor, textColor, barcodeType, storeName } = useCardBuilderStore();
 
   return (
     <aside className={`
@@ -54,6 +54,8 @@ export function CardBuilderEditorPreview({
             holderName={holderName}
             backgroundColor={backgroundColor}
             textColor={textColor}
+            barcodeType={barcodeType}
+            storeName={storeName}
             side={cardSide}
             showPhoneFrame={true}
           />

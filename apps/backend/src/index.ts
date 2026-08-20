@@ -13,6 +13,8 @@
  *
  * Modules:
  *   - /api/auth  → authModule (register / login / refresh / me)
+ *   - /api/pass  → passModule (subscription management)
+ *   - /api/cards → cardsModule (card builder templates)
  *
  * Health check:
  *   - GET /health → { ok: true } (no DB, no auth)
@@ -29,6 +31,7 @@ import { errorHandler } from '@/shared/middleware/errorHandler';
 import { authModule } from '@/modules/auth';
 import { passModule } from '@/modules/pass';
 import { billingCycleCronRoute } from '@/modules/pass/routes/billingCycleCron';
+import { cardsModule } from '@/modules/cards';
 
 /**
  * Default export — Worker entry point.
@@ -50,5 +53,6 @@ app.get('/health', (c) => c.json({ ok: true }));
 app.route('/api/auth', authModule);
 app.route('/api/pass', passModule);
 app.route('/api/cron/billing-cycle', billingCycleCronRoute);
+app.route('/api/cards', cardsModule);
 
 export default app;

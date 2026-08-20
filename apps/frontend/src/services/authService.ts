@@ -13,6 +13,7 @@
 
 import { httpClient } from './httpClient';
 import { api } from '@/config/api';
+import { setAccessToken } from './authStore';
 import type {
   LoginCredentials,
   RegistrationPayload,
@@ -26,20 +27,35 @@ interface MeResponse {
   tenant: AuthTenant | null;
 }
 
+/**
+ * Helper: extract and sync the accessToken from any session response.
+ */
+function syncToken(session: AuthSessionWithTenant) {
+  if (session.accessToken) {
+    setAccessToken(session.accessToken);
+  }
+}
+
 export const authService = {
   async login(creds: LoginCredentials): Promise<AuthSessionWithTenant> {
-    return httpClient.post<AuthSessionWithTenant>(api.paths.login, creds);
+    const session = await httpClient.post<AuthSessionWithTenant>(api.paths.login, creds);
+    syncToken(session);
+    return session;
   },
 
   async register(payload: RegistrationPayload): Promise<AuthSessionWithTenant> {
-    return httpClient.post<AuthSessionWithTenant>(api.paths.register, payload);
+    const session = await httpClient.post<AuthSessionWithTenant>(api.paths.register, payload);
+    syncToken(session);
+    return session;
   },
 
   async refresh(): Promise<AuthSessionWithTenant> {
     // Bug-7 follow-up: backend now returns the full session in the refresh
     // response, so this single call is enough for AuthProvider to recover
     // the user/tenant on mount.
-    return httpClient.post<AuthSessionWithTenant>(api.paths.refresh);
+    const session = await httpClient.post<AuthSessionWithTenant>(api.paths.refresh);
+    syncToken(session);
+    return session;
   },
 
   async me(): Promise<MeResponse> {
@@ -48,7 +64,6 @@ export const authService = {
 
   /** Local-only logout: drop in-memory token. Server cookie is cleared by the browser. */
   logout(): void {
-    // No-op server-side; backend provides /api/auth/logout later. For MVP, the
-    // refresh cookie will expire naturally, and the AuthProvider clears state.
+    setAccessToken(null);
   },
 };

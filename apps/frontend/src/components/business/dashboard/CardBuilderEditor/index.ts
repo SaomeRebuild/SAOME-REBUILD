@@ -1,4 +1,5 @@
 export { CardBuilderEditor } from './CardBuilderEditor';
+export { Step2CardSettings } from './Step2CardSettings';
 export type {
   CardBuilderEditorProps,
   CardBuilderEditorData,

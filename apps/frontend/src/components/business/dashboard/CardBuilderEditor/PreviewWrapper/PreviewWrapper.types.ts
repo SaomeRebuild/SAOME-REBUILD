@@ -3,6 +3,7 @@
  */
 
 import type { PassCardPreviewProps } from '../CardPreview/PassCardPreview.types';
+import type { BarcodeType } from '@saome/shared/schemas/cardBuilder';
 
 export interface PreviewWrapperProps {
   /** 卡片名稱 */
@@ -21,6 +22,10 @@ export interface PreviewWrapperProps {
   side?: 'front' | 'back';
   /** 持有人名稱 */
   holderName?: string;
+  /** Barcode 格式 */
+  barcodeType?: BarcodeType;
+  /** 店名 */
+  storeName?: string;
   /** 是否顯示手機框架 */
   showPhoneFrame?: boolean;
 }

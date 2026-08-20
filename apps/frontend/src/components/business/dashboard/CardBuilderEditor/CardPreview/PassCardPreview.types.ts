@@ -1,5 +1,6 @@
 import type { HTMLAttributes } from 'react';
 import type { CardType } from '@/components/business/dashboard/CardBuilderEditor/CardBuilderEditor.types';
+import type { BarcodeType } from '@saome/shared/schemas/cardBuilder';
 
 /** 卡片預覽 Props */
 export interface PassCardPreviewProps extends HTMLAttributes<HTMLDivElement> {
@@ -19,6 +20,10 @@ export interface PassCardPreviewProps extends HTMLAttributes<HTMLDivElement> {
   side?: 'front' | 'back';
   /** 持有人名稱（背面顯示） */
   holderName?: string;
+  /** 店名 */
+  storeName?: string;
+  /** Barcode 格式 */
+  barcodeType?: BarcodeType;
   /** 緊湊模式（用於手機框架內，縮小字體和間距） */
   compact?: boolean;
 }

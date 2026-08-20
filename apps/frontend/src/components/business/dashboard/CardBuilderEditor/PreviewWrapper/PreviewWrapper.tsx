@@ -15,6 +15,8 @@ export function PreviewWrapper({
   textColor,
   side = 'front',
   holderName,
+  barcodeType,
+  storeName,
   showPhoneFrame = true,
 }: PreviewWrapperProps) {
   const cardContent = (
@@ -27,6 +29,8 @@ export function PreviewWrapper({
       textColor={textColor}
       side={side}
       holderName={holderName}
+      barcodeType={barcodeType}
+      storeName={storeName}
     />
   );
 
@@ -42,6 +46,8 @@ export function PreviewWrapper({
           textColor={textColor}
           side={side}
           holderName={holderName}
+          barcodeType={barcodeType}
+          storeName={storeName}
           compact={true}
         />
       </PhoneFrame>

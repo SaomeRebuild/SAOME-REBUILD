@@ -15,6 +15,8 @@ export type CardType =
   | 'gift_card';
 
 export interface CardBuilderEditorProps {
+  /** Template ID（edit 模式）。若為 null，則為新建模式 */
+  templateId?: string | null;
   /** 初始卡片名稱（可選） */
   initialName?: string;
   /** 完成時 callback */
