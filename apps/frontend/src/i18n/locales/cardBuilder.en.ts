@@ -11,6 +11,7 @@ export default {
   toolbar: {
     buildFromScratch: 'Build from Scratch',
     publicTemplates: 'Public Templates',
+    checkingAuth: 'Verifying...',
     building: 'Building...',
     buildErrorDetail: 'Failed to create card: {{detail}}',
   },

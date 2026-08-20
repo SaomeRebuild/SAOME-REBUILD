@@ -14,6 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 import { TemplateLibraryGrid } from '@/components/business/dashboard/TemplateLibraryGrid';
 import { CardBuilderEditor } from '@/components/business/dashboard/CardBuilderEditor';
+import { authService } from '@/services/authService';
 import { cardService } from '@/services/cardService';
 import { PlusCircle, LayoutGrid, Loader2, AlertCircle } from 'lucide-react';
 
@@ -29,6 +30,7 @@ export default function CardBuilderPage() {
   const [showEditor, setShowEditor] = useState(false);
   const [isBuilding, setIsBuilding] = useState(false);
   const [buildError, setBuildError] = useState<string | null>(null);
+  const [authReady, setAuthReady] = useState(false);
 
   // Sync showEditor with URL ?id= param
   useEffect(() => {
@@ -38,6 +40,14 @@ export default function CardBuilderPage() {
 
   // Get templateId from URL params
   const templateId = searchParams.get('id');
+
+  // Block interaction until auth session is confirmed (prevents race condition
+  // where we call POST /api/cards before AuthProvider's mount refresh completes).
+  useEffect(() => {
+    authService.refresh()
+      .then(() => setAuthReady(true))
+      .catch(() => setAuthReady(false));
+  }, []);
 
   /**
    * Handle "從頭建置" — create a draft template via POST /api/cards.
@@ -112,15 +122,17 @@ export default function CardBuilderPage() {
                 <button
                   type="button"
                   onClick={handleBuildFromScratch}
-                  disabled={isBuilding}
+                  disabled={isBuilding || !authReady}
                   className="flex items-center gap-2 rounded-lg border border-primary bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary transition-transform duration-150 hover:scale-[1.02] hover:shadow-[var(--shadow-glow)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {isBuilding ? (
+                  {!authReady ? (
+                    <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+                  ) : isBuilding ? (
                     <Loader2 size={16} className="animate-spin" aria-hidden="true" />
                   ) : (
                     <PlusCircle size={16} aria-hidden="true" />
                   )}
-                  {isBuilding ? t('toolbar.building') : t('toolbar.buildFromScratch')}
+                  {!authReady ? t('toolbar.checkingAuth') : isBuilding ? t('toolbar.building') : t('toolbar.buildFromScratch')}
                 </button>
                 <button
                   type="button"

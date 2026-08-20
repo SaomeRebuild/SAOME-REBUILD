@@ -11,6 +11,7 @@ export default {
   toolbar: {
     buildFromScratch: '從頭建置',
     publicTemplates: '公共模板',
+    checkingAuth: '驗證中...',
     building: '建立中...',
     buildErrorDetail: '建立卡片失敗：{{detail}}',
   },
