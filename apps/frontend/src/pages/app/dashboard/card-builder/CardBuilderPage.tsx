@@ -54,7 +54,8 @@ export default function CardBuilderPage() {
       window.location.href = `/app/dashboard/card-builder?id=${template.id}`;
     } catch (err) {
       console.error('Failed to create template:', err);
-      setBuildError(t('toolbar.buildError', { defaultValue: '建立卡片失敗，請稍後再試' }));
+      const msg = err instanceof Error ? err.message : String(err);
+      setBuildError(t('toolbar.buildErrorDetail', { detail: msg }));
     } finally {
       setIsBuilding(false);
     }
