@@ -40,10 +40,10 @@ export const refreshRoute = new Hono<HonoEnv>().post('/', async (c) => {
     const domainAttr = refreshCookieDomain(origin);
     const secureAttr = refreshCookieSecure(origin);
     const sameSiteAttr = refreshCookieSameSite(origin);
-    c.res.headers.append(
-      'Set-Cookie',
-      `saome_refresh=${result.refreshToken}; HttpOnly${secureAttr}${sameSiteAttr}; Path=/api/auth${domainAttr}; Max-Age=2592000`,
-    );
+    const cookieHeader = `saome_refresh=${result.refreshToken}; HttpOnly${secureAttr}${sameSiteAttr}; Path=/api/auth${domainAttr}; Max-Age=2592000`;
+    const jsonResponse = c.json(result);
+    jsonResponse.headers.append('Set-Cookie', cookieHeader);
+    return jsonResponse;
   }
   return c.json(result);
 });
