@@ -13,7 +13,7 @@
 
 import { httpClient } from './httpClient';
 import { api } from '@/config/api';
-import { setAccessToken } from './authStore';
+import { getAccessToken, setAccessToken } from './authStore';
 import type {
   LoginCredentials,
   RegistrationPayload,
