@@ -15,7 +15,7 @@ import { useSearchParams } from 'react-router-dom';
 import { TemplateLibraryGrid } from '@/components/business/dashboard/TemplateLibraryGrid';
 import { CardBuilderEditor } from '@/components/business/dashboard/CardBuilderEditor';
 import { cardService } from '@/services/cardService';
-import { PlusCircle, LayoutGrid } from 'lucide-react';
+import { PlusCircle, LayoutGrid, Loader2, AlertCircle } from 'lucide-react';
 
 // TODO: Replace with API call when backend is ready.
 const MOCK_TEMPLATES = Array.from({ length: 10 }, (_, i) => ({
@@ -27,6 +27,8 @@ export default function CardBuilderPage() {
   const { t } = useTranslation('cardBuilder');
   const [searchParams] = useSearchParams();
   const [showEditor, setShowEditor] = useState(false);
+  const [isBuilding, setIsBuilding] = useState(false);
+  const [buildError, setBuildError] = useState<string | null>(null);
 
   // Sync showEditor with URL ?id= param
   useEffect(() => {
@@ -42,19 +44,21 @@ export default function CardBuilderPage() {
    * After creation, navigate to the editor with the template ID.
    */
   const handleBuildFromScratch = useCallback(async () => {
+    setBuildError(null);
+    setIsBuilding(true);
     try {
-      // Create a minimal draft: no name yet, default cardType is 'stamp_card'
       const template = await cardService.create({
         cardType: 'stamp_card',
         name: '',
       });
-      // Navigate to editor mode with the new template ID
       window.location.href = `/app/dashboard/card-builder?id=${template.id}`;
     } catch (err) {
       console.error('Failed to create template:', err);
-      // TODO: Show error toast
+      setBuildError(t('toolbar.buildError', { defaultValue: '建立卡片失敗，請稍後再試' }));
+    } finally {
+      setIsBuilding(false);
     }
-  }, []);
+  }, [t]);
 
   function handleBackToLibrary() {
     // Navigate to library mode (remove ?id= param)
@@ -107,10 +111,15 @@ export default function CardBuilderPage() {
                 <button
                   type="button"
                   onClick={handleBuildFromScratch}
-                  className="flex items-center gap-2 rounded-lg border border-primary bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary transition-transform duration-150 hover:scale-[1.02] hover:shadow-[var(--shadow-glow)] active:scale-[0.98]"
+                  disabled={isBuilding}
+                  className="flex items-center gap-2 rounded-lg border border-primary bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary transition-transform duration-150 hover:scale-[1.02] hover:shadow-[var(--shadow-glow)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  <PlusCircle size={16} aria-hidden="true" />
-                  {t('toolbar.buildFromScratch')}
+                  {isBuilding ? (
+                    <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+                  ) : (
+                    <PlusCircle size={16} aria-hidden="true" />
+                  )}
+                  {isBuilding ? t('toolbar.building') : t('toolbar.buildFromScratch')}
                 </button>
                 <button
                   type="button"
@@ -122,6 +131,17 @@ export default function CardBuilderPage() {
                 </button>
               </div>
             </div>
+
+            {/* Error banner when build fails */}
+            {buildError && (
+              <div
+                className="flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+                role="alert"
+              >
+                <AlertCircle size={16} aria-hidden="true" />
+                {buildError}
+              </div>
+            )}
 
             {/* Bottom: template library grid */}
             <TemplateLibraryGrid

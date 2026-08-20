@@ -11,6 +11,8 @@ export default {
   toolbar: {
     buildFromScratch: 'Build from Scratch',
     publicTemplates: 'Public Templates',
+    building: 'Building...',
+    buildError: 'Failed to create card. Please try again.',
   },
   templateLibrary: {
     title: 'My Template Library',

@@ -11,6 +11,8 @@ export default {
   toolbar: {
     buildFromScratch: '從頭建置',
     publicTemplates: '公共模板',
+    building: '建立中...',
+    buildError: '建立卡片失敗，請稍後再試。',
   },
   templateLibrary: {
     title: '我的模板庫',
