@@ -34,8 +34,14 @@ describe('TemplateLibraryGrid', () => {
         onDelete={mockOnDelete}
       />
     );
-    const imgs = screen.getAllByRole('img');
-    expect(imgs).toHaveLength(2);
+    // TemplateCard has no <img> — TemplateCardPreview uses Lucide Barcode SVG.
+    // Verify via the three action buttons per card (6 buttons total for 2 templates).
+    const editBtns = screen.getAllByRole('button', { name: 'templateCard.edit' });
+    const sendBtns = screen.getAllByRole('button', { name: 'templateCard.send' });
+    const deleteBtns = screen.getAllByRole('button', { name: 'templateCard.delete' });
+    expect(editBtns).toHaveLength(2);
+    expect(sendBtns).toHaveLength(2);
+    expect(deleteBtns).toHaveLength(2);
   });
 
   it('renders each card with edit, send, and delete buttons', () => {

@@ -77,13 +77,18 @@ describe('CardBuilderEditor', () => {
     const user = userEvent.setup();
     render(<CardBuilderEditor />);
 
+    // Pre-fill name so isStep1Valid passes (requires both name.trim() AND cardType)
+    const nameInput = screen.getByPlaceholderText('cardNamePlaceholder');
+    await user.clear(nameInput);
+    await user.type(nameInput, 'My Card');
+
     const nextButton = screen.getByRole('button', { name: /step1\.next/ });
     expect(nextButton).toBeDisabled();
 
     const pointCardButton = screen.getByRole('button', { name: /step1\.cardTypes\.stamp_card/ });
     await user.click(pointCardButton);
 
-    // 按下卡片後，next 按鈕應該啟用
+    // After both name + cardType are set, next button should be enabled
     expect(nextButton).not.toBeDisabled();
   });
 

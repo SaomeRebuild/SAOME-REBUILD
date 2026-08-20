@@ -35,7 +35,8 @@ describe('PassCardPreview', () => {
 
   it('renders issuer name when provided', () => {
     render(<PassCardPreview name="測試卡片" issuerName="測試機構" />);
-    expect(screen.getByText('測試機構')).toBeInTheDocument();
+    // issuerName appears in both Header and Body strip, so use getAllByText
+    expect(screen.getAllByText('測試機構').length).toBeGreaterThan(0);
   });
 
   it('renders card type label', () => {
