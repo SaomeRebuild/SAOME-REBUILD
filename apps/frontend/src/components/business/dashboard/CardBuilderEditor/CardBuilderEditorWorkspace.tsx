@@ -40,6 +40,7 @@ export function CardBuilderEditorWorkspace({
   const isStep2Valid = Boolean(storeName.trim() && issuerName.trim());
 
   async function handleNext() {
+    console.log('[handleNext] step:', step, 'cardId:', cardId);
     if (step < 6) {
       // Read directly from DOM to ensure we get the actual rendered values
       const storeNameEl = document.querySelector<HTMLInputElement>('#storeName');
@@ -47,6 +48,7 @@ export function CardBuilderEditorWorkspace({
       const currentStoreName = storeNameEl?.value ?? '';
       const currentIssuerName = issuerNameEl?.value ?? '';
       const isStep2Valid = Boolean(currentStoreName.trim() && currentIssuerName.trim());
+      console.log('[handleNext] currentStoreName:', currentStoreName, 'currentIssuerName:', currentIssuerName, 'isStep2Valid:', isStep2Valid, 'step:', step);
 
       if (step === 2 && !isStep2Valid) return;
       if (step === 2 && cardId && onSave) {
