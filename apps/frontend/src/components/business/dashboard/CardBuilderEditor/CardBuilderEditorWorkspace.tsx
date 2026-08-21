@@ -54,7 +54,9 @@ export function CardBuilderEditorWorkspace({
       if (step === 2 && cardId && onSave) {
         await onSave(cardId, { storeName: currentStoreName, issuerName: currentIssuerName });
       }
+      console.log('[handleNext] about to call onStepChange with', step + 1);
       onStepChange((step + 1) as EditorStep);
+      console.log('[handleNext] onStepChange called');
     }
   }
 

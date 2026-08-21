@@ -128,7 +128,9 @@ export function CardBuilderEditor({
       setCompletedStep(1);
       setStep(newStep);
     } else if (newStep > step) {
+      console.log('[handleStepChange] newStep > step, calling setStep:', newStep);
       setStep(newStep);
+      console.log('[handleStepChange] setStep called');
     }
   }
 
