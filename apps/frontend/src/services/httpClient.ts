@@ -180,6 +180,9 @@ export class HttpClient {
   post<T>(path: string, body?: unknown) {
     return this.request<T>('POST', path, { body });
   }
+  patch<T>(path: string, body?: unknown) {
+    return this.request<T>('PATCH', path, { body });
+  }
 }
 
 export const httpClient = new HttpClient();

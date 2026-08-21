@@ -11,6 +11,7 @@
  * - GET    /:id       — Get a single template by ID
  * - PUT    /:id       — Update a template
  * - POST   /:id/publish — Publish a template
+ * - PATCH  /:id/touch  — Reset draft TTL (auto-save keep-alive)
  * - DELETE /:id       — Delete a template
  */
 
@@ -21,6 +22,7 @@ import { listCardsRoute } from './routes/list';
 import { getCardRoute } from './routes/getById';
 import { updateCardRoute } from './routes/update';
 import { publishCardRoute } from './routes/publish';
+import { touchCardRoute } from './routes/touch';
 import { deleteCardRoute } from './routes/delete';
 
 /**
@@ -33,6 +35,7 @@ export const cardsModule = new Hono<HonoEnv>()
   .route('/', getCardRoute)
   .route('/', updateCardRoute)
   .route('/', publishCardRoute)
+  .route('/', touchCardRoute)
   .route('/', deleteCardRoute);
 
 // Default export for `app.route('/api/cards', cardsModule)`

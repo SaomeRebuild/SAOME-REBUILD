@@ -15,6 +15,8 @@ export interface TemplateDto {
   settings: TemplateSettings;
   createdAt: string; // ISO 8601
   updatedAt: string; // ISO 8601
+  /** TTL for draft templates. NULL/undefined = no expiration. */
+  expiresAt?: string; // ISO 8601
 }
 
 export interface CreateTemplateResponse {

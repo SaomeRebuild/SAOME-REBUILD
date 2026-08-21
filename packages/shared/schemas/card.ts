@@ -86,6 +86,7 @@ export const templateDtoSchema = z.object({
   settings: templateSettingsSchema,
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
+  expiresAt: z.string().datetime().optional(),
 });
 
 export type TemplateDto = z.infer<typeof templateDtoSchema>;

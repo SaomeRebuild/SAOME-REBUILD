@@ -89,4 +89,13 @@ export const cardService = {
   async delete(id: string): Promise<void> {
     await httpClient.post<DeleteTemplateResponse>(api.paths.cardById(id));
   },
+
+  /**
+   * Touch a draft template — reset its TTL to now() + 24h.
+   * Called by the auto-save debounced effect to keep active drafts alive.
+   */
+  async touch(id: string): Promise<TemplateDto> {
+    const res = await httpClient.patch<UpdateTemplateResponse>(api.paths.cardTouch(id));
+    return res.template;
+  },
 };

@@ -12,6 +12,7 @@ import {
   findTemplatesByTenantId,
   updateTemplate,
   deleteTemplate,
+  touchExpiresAt,
 } from '../db/templates';
 import { NotFoundError } from '@/shared/lib/saomeError';
 import type {
@@ -41,6 +42,11 @@ function toDto(row: TemplatesRow): TemplateDto {
     settings: (typeof row.settings === 'string' ? JSON.parse(row.settings) : row.settings) as TemplateSettings,
     createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
     updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : String(row.updated_at),
+    expiresAt: row.expires_at instanceof Date
+      ? row.expires_at.toISOString()
+      : row.expires_at != null
+        ? String(row.expires_at)
+        : undefined,
   };
 }
 
@@ -174,4 +180,26 @@ export async function deleteTemplateService(
 
   await deleteTemplate(sql, templateId);
   return { success: true };
+}
+
+/**
+ * Touch a draft template — reset its expires_at to now() + 24h.
+ * Called by frontend auto-save to keep drafts alive.
+ */
+export async function touchTemplateService(
+  sql: Sql,
+  templateId: string,
+  tenantId: string,
+): Promise<UpdateTemplateResponse> {
+  // Ownership check
+  const existing = await findTemplateById(sql, templateId);
+  if (!existing || existing.tenant_id !== tenantId) {
+    throw new NotFoundError('common.error.notFound', 'Template not found');
+  }
+  if (existing.status !== 'draft') {
+    // Touching a published template is a no-op
+    return { template: toDto(existing) };
+  }
+  const row = await touchExpiresAt(sql, templateId);
+  return { template: toDto(row) };
 }

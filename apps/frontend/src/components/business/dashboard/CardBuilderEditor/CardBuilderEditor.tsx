@@ -13,7 +13,7 @@
  * - 編輯模式（有 templateId）：mount 時從 API 取得既有的 settings 並載入 store
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import type { CardBuilderEditorProps, EditorStep } from './CardBuilderEditor.types';
 import { CardBuilderEditorHeader } from './CardBuilderEditorHeader';
 import { CardBuilderEditorWorkspace } from './CardBuilderEditorWorkspace';
@@ -32,6 +32,7 @@ export function CardBuilderEditor({
   // 使用 store 管理卡片編輯器狀態
   const {
     name,
+    cardId,
     cardType,
     step,
     completedSteps,
@@ -71,6 +72,36 @@ export function CardBuilderEditor({
       setCardId(null);
     }
   }, [templateId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ============================================================
+  // Auto-save keep-alive: touch TTL every 5 minutes
+  // ============================================================
+  const touchTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (!cardId) return;
+
+    // Touch immediately on mount / cardId change
+    cardService.touch(cardId).catch((err) => {
+      console.warn('[CardBuilderEditor] touch failed:', err);
+    });
+
+    // Re-touch every 5 minutes to keep the draft alive
+    touchTimerRef.current = setInterval(() => {
+      if (cardId) {
+        cardService.touch(cardId).catch((err) => {
+          console.warn('[CardBuilderEditor] touch keep-alive failed:', err);
+        });
+      }
+    }, 5 * 60 * 1000);
+
+    return () => {
+      if (touchTimerRef.current) {
+        clearInterval(touchTimerRef.current);
+        touchTimerRef.current = null;
+      }
+    };
+  }, [cardId]);
 
   function handleStepChange(newStep: EditorStep) {
     if (newStep < step) {
