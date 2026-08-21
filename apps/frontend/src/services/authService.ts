@@ -13,7 +13,7 @@
 
 import { httpClient } from './httpClient';
 import { api } from '@/config/api';
-import { getAccessToken, setAccessToken } from './authStore';
+import { getAccessToken, setAccessToken, withRefreshMutex } from './authStore';
 import type {
   LoginCredentials,
   RegistrationPayload,
@@ -54,10 +54,17 @@ export const authService = {
     // Bug-7 follow-up: backend now returns the full session in the refresh
     // response, so this single call is enough for AuthProvider to recover
     // the user/tenant on mount.
-    const session = await httpClient.post<AuthSessionWithTenant>(api.paths.refresh);
-    console.debug('[authService.refresh] got session, accessToken:', session.accessToken ? 'present (' + session.accessToken.slice(0, 20) + '...)' : 'MISSING');
-    syncToken(session);
-    console.debug('[authService.refresh] authStore token now:', getAccessToken() ? 'set' : 'still null');
+    //
+    // Concurrency fix: wrap in withRefreshMutex so that if multiple code paths
+    // call refresh() simultaneously (e.g. CardBuilderPage + httpClient 401 retry),
+    // they all share the same in-flight request rather than racing on
+    // setAccessToken and corrupting each other's results.
+    const session = await withRefreshMutex(async () => {
+      const result = await httpClient.post<AuthSessionWithTenant>(api.paths.refresh);
+      if (result.accessToken) setAccessToken(result.accessToken);
+      console.debug('[authService.refresh] authStore token now:', getAccessToken() ? 'set' : 'still null');
+      return result;
+    });
     return session;
   },
 

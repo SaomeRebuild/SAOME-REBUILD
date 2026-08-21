@@ -122,6 +122,12 @@ export class HttpClient {
   /**
    * Refresh the session via the HttpOnly refresh cookie.
    * Returns the new accessToken from the server response, or null on failure.
+   *
+   * NOTE: This does NOT call setAccessToken. The caller (httpClient.request's
+   * 401 branch) sets the token after a successful retry. We intentionally avoid
+   * writing to authStore here so that:
+   *   1. A concurrent authService.refresh() keeps full ownership of authStore
+   *   2. Silent retries don't stomp on each other's token state
    */
   private async tryRefresh(): Promise<string | null> {
     try {
