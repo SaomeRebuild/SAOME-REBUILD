@@ -3,12 +3,14 @@
  *
  * Implementation: sessionStorage (synchronous read/write).
  *
- * Why sessionStorage instead of a module-level variable:
- *   Module-level `_accessToken` is async — a read can happen before a
- *   concurrent write completes, returning stale null even though the write
- *   eventually succeeds. This caused a race condition where httpClient.read
- *   a stale token during an in-flight refresh, sending NULL to /api/cards
- *   and triggering a spurious 401.
+ * Stores both:
+ *   - saome.accessToken  — the JWT access token (Bearer auth)
+ *   - saome.refreshToken — the refresh token (used as Bearer auth on
+ *                            cross-origin refresh calls; avoids the
+ *                            SameSite=None cookie scoping issue where the
+ *                            browser refuses to attach a cookie scoped to
+ *                            Domain=saome-backend.josh1989213.workers.dev
+ *                            when the frontend is on saome-frontend.*)
  *
  * sessionStorage.read and sessionStorage.write are synchronous, so
  * getAccessToken() always reflects the latest persisted value.
@@ -18,22 +20,37 @@
  * than each spawning a new request.
  */
 
-const _STORAGE_KEY = 'saome.accessToken';
+const _ACCESS_TOKEN_KEY = 'saome.accessToken';
+const _REFRESH_TOKEN_KEY = 'saome.refreshToken';
 
 /** Guards concurrent refresh calls so they share one in-flight request. */
 let _refreshPromise: Promise<unknown> | null = null;
 
 export function getAccessToken(): string | null {
   if (typeof window === 'undefined') return null;
-  return sessionStorage.getItem(_STORAGE_KEY);
+  return sessionStorage.getItem(_ACCESS_TOKEN_KEY);
+}
+
+export function getRefreshToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  return sessionStorage.getItem(_REFRESH_TOKEN_KEY);
 }
 
 export function setAccessToken(token: string | null): void {
   if (typeof window === 'undefined') return;
   if (token === null) {
-    sessionStorage.removeItem(_STORAGE_KEY);
+    sessionStorage.removeItem(_ACCESS_TOKEN_KEY);
   } else {
-    sessionStorage.setItem(_STORAGE_KEY, token);
+    sessionStorage.setItem(_ACCESS_TOKEN_KEY, token);
+  }
+}
+
+export function setRefreshToken(token: string | null): void {
+  if (typeof window === 'undefined') return;
+  if (token === null) {
+    sessionStorage.removeItem(_REFRESH_TOKEN_KEY);
+  } else {
+    sessionStorage.setItem(_REFRESH_TOKEN_KEY, token);
   }
 }
 

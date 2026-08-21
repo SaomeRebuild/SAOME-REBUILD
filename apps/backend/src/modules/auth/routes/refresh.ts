@@ -1,5 +1,14 @@
 /**
  * POST /api/auth/refresh
+ *
+ * Accepts refresh token from either:
+ *   1. HttpOnly cookie (saome_refresh) — browser auto-sends for same-origin
+ *   2. Authorization: Bearer header — for cross-origin calls from SPA
+ *      where the cookie's Domain=.saome-backend.josh1989213.workers.dev
+ *      prevents the browser from attaching it.
+ *
+ * The frontend now stores the refresh token in sessionStorage and sends
+ * it as Authorization: Bearer on cross-origin refresh calls.
  */
 
 import { Hono } from 'hono';
@@ -23,11 +32,19 @@ function getRefreshCookie(cookieHeader: string | undefined): string | undefined 
   return undefined;
 }
 
+/** Extract Bearer token from Authorization header. */
+function getBearerToken(authHeader: string | undefined): string | undefined {
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return undefined;
+  return authHeader.slice('Bearer '.length).trim();
+}
+
 export const refreshRoute = new Hono<HonoEnv>().post('/', async (c) => {
+  // Try cookie first, fall back to Authorization header
   const cookieHeader = c.req.header('Cookie');
-  const token = getRefreshCookie(cookieHeader);
+  const authHeader = c.req.header('Authorization');
+  const token = getRefreshCookie(cookieHeader) ?? getBearerToken(authHeader);
   if (!token) {
-    throw new AuthError('auth.error.missingRefreshToken', 'Missing refresh cookie');
+    throw new AuthError('auth.error.missingRefreshToken', 'Missing refresh cookie or Authorization header');
   }
   const sql = getDb(c.env.HYPERDRIVE);
   const jwtSecret = (c.env as { JWT_SECRET?: string }).JWT_SECRET ?? 'dev-insecure-secret';

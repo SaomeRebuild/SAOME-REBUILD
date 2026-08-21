@@ -10,7 +10,7 @@
 
 import { api } from '@/config/api';
 import { limits } from '@/config/limits';
-import { getAccessToken, setAccessToken } from './authStore';
+import { getAccessToken, setAccessToken, getRefreshToken } from './authStore';
 import { ROUTES } from '@/config/routes';
 
 export class SaomeApiError extends Error {
@@ -120,16 +120,46 @@ export class HttpClient {
   }
 
   /**
-   * Refresh the session via the HttpOnly refresh cookie.
+   * Refresh the session via the HttpOnly refresh cookie or Authorization header.
    * Returns the new accessToken from the server response, or null on failure.
+   *
+   * Strategy:
+   *   1. If refreshToken is in sessionStorage (cross-origin case): send as
+   *      Authorization: Bearer header. This bypasses the SameSite=None cookie
+   *      scoping issue where the browser refuses to attach
+   *      Domain=saome-backend.* cookies on cross-origin requests.
+   *   2. Fall back to sending the HttpOnly cookie via credentials: 'include'.
    *
    * NOTE: This does NOT call setAccessToken. The caller (httpClient.request's
    * 401 branch) sets the token after a successful retry. We intentionally avoid
-   * writing to authStore here so that:
-   *   1. A concurrent authService.refresh() keeps full ownership of authStore
-   *   2. Silent retries don't stomp on each other's token state
+   * writing to authStore here so that a concurrent authService.refresh() keeps
+   * full ownership of authStore token state.
    */
   private async tryRefresh(): Promise<string | null> {
+    const refreshToken = getRefreshToken();
+
+    // Primary: send refresh token as Authorization: Bearer (cross-origin safe)
+    if (refreshToken) {
+      console.debug('[httpClient.tryRefresh] using Authorization: Bearer (cross-origin)');
+      try {
+        const res = await this.fetchImpl(`${this.baseUrl}${api.paths.refresh}`, {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            Authorization: `Bearer ${refreshToken}`,
+          },
+          credentials: 'include',
+        });
+        if (!res.ok) return null;
+        const body = await res.json();
+        return body.accessToken ?? null;
+      } catch {
+        return null;
+      }
+    }
+
+    // Fallback: rely on HttpOnly cookie (same-origin only)
+    console.debug('[httpClient.tryRefresh] no sessionStorage token, using cookie fallback');
     try {
       const res = await this.fetchImpl(`${this.baseUrl}${api.paths.refresh}`, {
         method: 'POST',

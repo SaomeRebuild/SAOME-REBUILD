@@ -13,7 +13,7 @@
 
 import { httpClient } from './httpClient';
 import { api } from '@/config/api';
-import { getAccessToken, setAccessToken, withRefreshMutex } from './authStore';
+import { setAccessToken, setRefreshToken, withRefreshMutex } from './authStore';
 import type {
   LoginCredentials,
   RegistrationPayload,
@@ -28,25 +28,31 @@ interface MeResponse {
 }
 
 /**
- * Helper: extract and sync the accessToken from any session response.
+ * Helper: extract and sync tokens from any session response.
+ * Stores both accessToken (Bearer auth) and refreshToken (for cross-origin
+ * refresh calls that can't rely on HttpOnly cookies).
  */
-function syncToken(session: AuthSessionWithTenant) {
+function syncTokens(session: { accessToken?: string | null; refreshToken?: string | null }) {
   if (session.accessToken) {
-    console.debug('[authService.syncToken] setting token:', session.accessToken.slice(0, 20) + '...');
+    console.debug('[authService.syncTokens] setting accessToken:', session.accessToken.slice(0, 20) + '...');
     setAccessToken(session.accessToken);
+  }
+  if (session.refreshToken) {
+    console.debug('[authService.syncTokens] setting refreshToken:', session.refreshToken.slice(0, 20) + '...');
+    setRefreshToken(session.refreshToken);
   }
 }
 
 export const authService = {
   async login(creds: LoginCredentials): Promise<AuthSessionWithTenant> {
     const session = await httpClient.post<AuthSessionWithTenant>(api.paths.login, creds);
-    syncToken(session);
+    syncTokens(session);
     return session;
   },
 
   async register(payload: RegistrationPayload): Promise<AuthSessionWithTenant> {
     const session = await httpClient.post<AuthSessionWithTenant>(api.paths.register, payload);
-    syncToken(session);
+    syncTokens(session);
     return session;
   },
 
@@ -61,8 +67,7 @@ export const authService = {
     // setAccessToken and corrupting each other's results.
     const session = await withRefreshMutex(async () => {
       const result = await httpClient.post<AuthSessionWithTenant>(api.paths.refresh);
-      if (result.accessToken) setAccessToken(result.accessToken);
-      console.debug('[authService.refresh] authStore token now:', getAccessToken() ? 'set' : 'still null');
+      syncTokens(result);
       return result;
     });
     return session;
@@ -72,8 +77,9 @@ export const authService = {
     return httpClient.get<MeResponse>(api.paths.me);
   },
 
-  /** Local-only logout: drop in-memory token. Server cookie is cleared by the browser. */
+  /** Local-only logout: drop all tokens. Server cookie is cleared by the browser. */
   logout(): void {
     setAccessToken(null);
+    setRefreshToken(null);
   },
 };
