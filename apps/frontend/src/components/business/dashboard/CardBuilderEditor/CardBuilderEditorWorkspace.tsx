@@ -52,7 +52,12 @@ export function CardBuilderEditorWorkspace({
 
       if (step === 2 && !isStep2Valid) return;
       if (step === 2 && cardId && onSave) {
-        await onSave(cardId, { storeName: currentStoreName, issuerName: currentIssuerName });
+        try {
+          await onSave(cardId, { storeName: currentStoreName, issuerName: currentIssuerName });
+        } catch (err) {
+          // Auto-save failure should not block navigation
+          console.error('[handleNext] onSave failed:', err);
+        }
       }
       console.log('[handleNext] about to call onStepChange with', step + 1);
       onStepChange((step + 1) as EditorStep);
