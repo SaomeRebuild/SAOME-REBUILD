@@ -41,7 +41,7 @@ export type Currency = z.infer<typeof currencySchema>;
 
 // ===== Template Status =====
 
-export const templateStatusSchema = z.enum(['draft', 'published']);
+export const templateStatusSchema = z.enum(['draft', 'published', 'abandoned']);
 
 export type TemplateStatus = z.infer<typeof templateStatusSchema>;
 
@@ -66,6 +66,8 @@ export const templateSettingsSchema = z.object({
   passValidDays: z.number().int().positive().nullable().optional(),
   expiryDate: z.string().optional(),
   currency: currencySchema.optional(),
+  // Membership card extension
+  isPaid: z.boolean().optional(),
   // Step 3-4 (TBD)
   issuerLogo: z.string().optional(),
   backgroundColor: z.string().optional(),
@@ -87,7 +89,6 @@ export const templateDtoSchema = z.object({
   settings: templateSettingsSchema,
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
-  expiresAt: z.string().datetime().optional(),
 });
 
 export type TemplateDto = z.infer<typeof templateDtoSchema>;
@@ -96,8 +97,13 @@ export type TemplateDto = z.infer<typeof templateDtoSchema>;
 
 /**
  * POST /api/cards — Create a new template draft
+ *
+ * id is optional: if provided, it is used as the template UUID (client-generated
+ * so we can redirect to the editor immediately). If omitted, the DB generates one.
  */
 export const createTemplateSchema = z.object({
+  /** Client-generated UUID for immediate redirect. */
+  id: z.string().uuid().optional(),
   name: z.string().optional(),
   /** Card type. NULL = user has not selected a type yet (orphan draft). */
   cardType: cardTypeSchema.optional(),
