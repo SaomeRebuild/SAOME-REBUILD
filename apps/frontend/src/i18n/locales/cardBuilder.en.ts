@@ -25,4 +25,9 @@ export default {
     send: 'Send Card',
     delete: 'Delete',
   },
+  toast: {
+    draftAbandoned: 'Draft discarded',
+    draftRestored: 'Draft restored',
+    undo: 'Undo',
+  },
 };

@@ -16,5 +16,7 @@ export const api = {
     cardById: (id: string) => `/api/cards/${id}`,
     cardPublish: (id: string) => `/api/cards/${id}/publish`,
     cardTouch: (id: string) => `/api/cards/${id}/touch`,
+    cardAbandon: (id: string) => `/api/cards/${id}/abandon`,
+    cardDrafts: '/api/cards/drafts',
   },
 } as const;

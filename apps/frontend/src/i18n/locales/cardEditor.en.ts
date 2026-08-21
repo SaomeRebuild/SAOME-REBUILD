@@ -25,6 +25,8 @@ export default {
     cardSettings: 'Card Settings',
     cardDesign: 'Card Design',
     cardInfo: 'Card Info',
+    geolocation: 'Geolocation',
+    cardLogic: 'Card Logic',
     customizePlaceCard: 'Customize Table Card',
     save: 'Save',
   },
@@ -77,6 +79,11 @@ export default {
     currency: {
       title: 'Currency',
     },
+    membershipExtension: {
+      title: 'Membership Card Options',
+      isPaid: 'Requires payment',
+      isPaidHint: 'When enabled, members must pay to obtain this card',
+    },
   },
   step3: {
     title: 'Card Design',
@@ -84,12 +91,20 @@ export default {
   step4: {
     title: 'Card Info',
   },
-  // Step 5: Customize Table Card
+  // Step 5: Geolocation
   step5: {
+    title: 'Geolocation',
+  },
+  // Step 6: Card Logic
+  step6: {
+    title: 'Card Logic',
+  },
+  // Step 7: Customize Table Card
+  step7: {
     title: 'Customize Table Card',
   },
-  // Step 6: Save
-  step6: {
+  // Step 8: Save
+  step8: {
     title: 'Save',
   },
 

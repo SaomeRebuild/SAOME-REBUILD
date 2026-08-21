@@ -25,6 +25,8 @@ import cardEditorZhTW from './locales/cardEditor.zh-TW';
 import cardEditorEn from './locales/cardEditor.en';
 import passCardZhTW from './locales/passCard.zh-TW';
 import passCardEn from './locales/passCard.en';
+import confirmDraftZhTW from './locales/confirmDraft.zh-TW';
+import confirmDraftEn from './locales/confirmDraft.en';
 
 const resources = {
   'zh-TW': {
@@ -40,6 +42,7 @@ const resources = {
     cardBuilder: cardBuilderZhTW,
     cardEditor: cardEditorZhTW,
     passCard: passCardZhTW,
+    confirmDraft: confirmDraftZhTW,
   },
   en: {
     auth: authEn,
@@ -54,6 +57,7 @@ const resources = {
     cardBuilder: cardBuilderEn,
     cardEditor: cardEditorEn,
     passCard: passCardEn,
+    confirmDraft: confirmDraftEn,
   },
 };
 

@@ -25,4 +25,9 @@ export default {
     send: '發送卡片',
     delete: '刪除卡片',
   },
+  toast: {
+    draftAbandoned: '草稿已放棄',
+    draftRestored: '已復原草稿',
+    undo: '復原',
+  },
 };

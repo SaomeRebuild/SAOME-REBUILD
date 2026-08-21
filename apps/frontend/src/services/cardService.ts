@@ -4,12 +4,14 @@
  * Uses `httpClient` for transport.
  *
  * Endpoints:
- * - POST   /api/cards       — Create a new template draft
- * - GET    /api/cards       — List all templates for the tenant
- * - GET    /api/cards/:id   — Get a single template by ID
- * - PUT    /api/cards/:id   — Update a template
+ * - POST   /api/cards          — Create a new template draft
+ * - GET    /api/cards          — List all templates for the tenant
+ * - GET    /api/cards/drafts   — Get the most recent draft (for "從頭建置" resume check)
+ * - GET    /api/cards/:id      — Get a single template by ID
+ * - PUT    /api/cards/:id      — Update a template
  * - POST   /api/cards/:id/publish — Publish a template
- * - DELETE /api/cards/:id   — Delete a template
+ * - PATCH  /api/cards/:id/abandon — Mark a draft as abandoned
+ * - DELETE /api/cards/:id      — Delete a template
  */
 
 import { httpClient } from './httpClient';
@@ -40,6 +42,14 @@ interface DeleteTemplateResponse {
   success: boolean;
 }
 
+interface AbandonTemplateResponse {
+  success: boolean;
+}
+
+interface GetLatestDraftResponse {
+  draft: TemplateDto | null;
+}
+
 export const cardService = {
   /**
    * Create a new card template draft.
@@ -47,6 +57,16 @@ export const cardService = {
    */
   async create(payload: CreateTemplatePayload): Promise<TemplateDto> {
     const res = await httpClient.post<CreateTemplateResponse>(api.paths.cards, payload);
+    return res.template;
+  },
+
+  /**
+   * Create a new draft and return its ID.
+   * Used by CardBuilderPage when user clicks "從頭建置".
+   * The UUID is generated client-side so we can redirect immediately.
+   */
+  async createDraft(id: string): Promise<TemplateDto> {
+    const res = await httpClient.post<CreateTemplateResponse>(api.paths.cards, { id });
     return res.template;
   },
 
@@ -97,5 +117,23 @@ export const cardService = {
   async touch(id: string): Promise<TemplateDto> {
     const res = await httpClient.patch<UpdateTemplateResponse>(api.paths.cardTouch(id));
     return res.template;
+  },
+
+  /**
+   * Get the most recent draft template for the authenticated tenant.
+   * Used by "從頭建置" to check if a resume-worthy draft exists.
+   * Returns null if no draft is found.
+   */
+  async getLatestDraft(): Promise<TemplateDto | null> {
+    const res = await httpClient.get<GetLatestDraftResponse>(api.paths.cardDrafts);
+    return res.draft;
+  },
+
+  /**
+   * Mark a draft template as abandoned.
+   * The draft remains in the DB for pg_cron TTL cleanup, but is excluded from resume queries.
+   */
+  async abandon(id: string): Promise<void> {
+    await httpClient.patch<AbandonTemplateResponse>(api.paths.cardAbandon(id));
   },
 };

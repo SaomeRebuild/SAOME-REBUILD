@@ -25,6 +25,8 @@ export default {
     cardSettings: '卡片設定',
     cardDesign: '卡片設計',
     cardInfo: '卡片資訊',
+    geolocation: '地理位置',
+    cardLogic: '卡片邏輯',
     customizePlaceCard: '客製化桌牌',
     save: '保存',
   },
@@ -77,6 +79,11 @@ export default {
     currency: {
       title: '貨幣',
     },
+    membershipExtension: {
+      title: '會員卡選項',
+      isPaid: '需收費',
+      isPaidHint: '開啟後，會員需支付費用才能領取此卡',
+    },
   },
   step3: {
     title: '卡片設計',
@@ -84,12 +91,20 @@ export default {
   step4: {
     title: '卡片資訊',
   },
-  // Step 5: 客製化桌牌
+  // Step 5: 地理位置
   step5: {
+    title: '地理位置',
+  },
+  // Step 6: 卡片邏輯
+  step6: {
+    title: '卡片邏輯',
+  },
+  // Step 7: 客製化桌牌
+  step7: {
     title: '客製化桌牌',
   },
-  // Step 6: 保存
-  step6: {
+  // Step 8: 保存
+  step8: {
     title: '保存',
   },
 
