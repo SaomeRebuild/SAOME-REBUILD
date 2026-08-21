@@ -8,6 +8,8 @@
 | 日期 | 主題 | 路徑 | 影響 / 後續 |
 |------|------|------|------|
 | 2026-08-21 | Session/Cookie 跨域問題 + JWT_SECRET 未設定：`Authorization: Bearer` header 修復跨域 refresh；`wrangler secret put` pipe 模式破壞特殊字元密鑰，改用 Dashboard 手動設定 | runs/improvements/feedback/20260821-session-cookie-cross-origin.md | `saome-github-deploy` skill 需補充 backend secrets checklist |
+| 2026-08-21 | CardBuilder Step 2 PUT 500：`updateTemplate` 用 `$N` + tagged template 混合，postgres.js 把 `$1` 視為 dollar-quoted delimiter；四次嘗試後改用所有值 `${}` tagged injection | runs/improvements/feedback/20260821-card-builder-update-template-500.md | `000-modular-design.mdc` Part B 禁止清單應加 postgres.js antipattern |
+| 2026-08-21 | CardBuilder 草稿 TTL 定時清理：`expires_at` + pg_cron 每小時清理 orphan draft；`card_type` 改 nullable 區分有意義草稿；`touchExpiresAt` keep-alive | DEV/08-2026/0821-card-builder-draft-ttl-cleanup.md | TTL 時長 / 頻率待優化；Production migration CI/CD 待建立 |
 | 2026-08-21 | CardBuilder Extension Pattern：`templateSettingsSchema` flat + `cardTypeExtensions` map；Option B 勝過 Nested Schema，確保新增卡種不影響 base schema | runs/decisions/2026-08-21-card-type-extension-pattern.md | 待填入各卡種商業欄位 |
 | 2026-08-21 | CardBuilder Step 2 Base Fields + Card Back UI | DEV/08-2026/0821-card-back-ui-and-extension-pattern.md | Extension pattern 決策見 decision log |
 | 2026-08-17 | CI npm cache drift：`cache: 'npm'` 未綁定 `package-lock.json`，workspace 新增 dep 後 cache restore 舊 lockfile | runs/improvements/feedback/20260817-ci-npm-cache-lockfile-drift.md | workflow 補 `cache-dependency-path`；rule `016` 需補第 8 surface |
@@ -40,6 +42,7 @@
 | 2026-08-17 | `016-config-and-tsconfig-discipline.mdc` 補第 8 surface：CI cache `cache-dependency-path` 綁定 `package-lock.json` | ⏳ pending |
 | 2026-08-17 | `025-vibe-coding-l2-checklist.mdc` 或新建 `026-ci-workflow-checklist.mdc`：加 CI workflow 修改 checklist（新增 dep 前確認 cache key） | ⏳ pending |
 | 2026-08-21 | `saome-github-deploy` skill 補充：部署後端前，確認 `wrangler secret list` 所有 secrets 已正確設定 | ⏳ pending |
+| 2026-08-21 | `000-modular-design.mdc` Part B 禁止清單加：動態 UPDATE 不得用 `$N` + tagged template 混合（postgres.js antipattern）；加 `apps/backend/src/modules/cards/db/templates.test.ts` 覆蓋 `updateTemplate` | ⏳ pending |
 
 ## 使用方式
 

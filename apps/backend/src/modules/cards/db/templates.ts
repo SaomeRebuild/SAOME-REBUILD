@@ -150,44 +150,27 @@ export async function updateTemplate(
   id: string,
   input: UpdateTemplateInput,
 ): Promise<TemplatesRow> {
-  const sets: string[] = [];
-  const values: unknown[] = [];
-  let idx = 1;
-
-  if (input.name !== undefined) {
-    sets.push(`name = $${idx++}`);
-    values.push(input.name);
-  }
-  if (input.cardType !== undefined) {
-    sets.push(`card_type = $${idx++}`);
-    values.push(input.cardType);
-  }
-  if (input.settings !== undefined) {
-    sets.push(`settings = $${idx++}`);
-    values.push(JSON.stringify(input.settings));
-  }
-  if (input.status !== undefined) {
-    sets.push(`status = $${idx++}`);
-    values.push(input.status);
-    // Auto-clear expires_at when publishing
-    if (input.status === 'published') {
-      sets.push(`expires_at = NULL`);
-    }
-  }
-
-  if (sets.length === 0) {
-    throw new Error('updateTemplate: no fields to update');
-  }
-
-  // Append id as the last parameter; idx is now the 1-based position of id.
-  values.push(id);
-
+  // Collect name, cardType, settings, status in tagged template to avoid $N collisions
+  // with postgres.js dollar-quoting. The id is always passed as ${id} — not as a $N
+  // positional placeholder — so it never collides with the column-value $1/$2/$3.
   const rows = await sql<TemplatesRow[]>`
     UPDATE templates
-       SET ${sql.unsafe(sets.join(', '))}
-     WHERE id = $${idx}
+       SET
+         ${input.name !== undefined ? sql`name = ${input.name}` : sql``}
+         ${input.name !== undefined && (input.cardType !== undefined || input.settings !== undefined || input.status !== undefined) ? sql`,` : sql``}
+         ${input.cardType !== undefined ? sql`card_type = ${input.cardType}` : sql``}
+         ${input.cardType !== undefined && (input.settings !== undefined || input.status !== undefined) ? sql`,` : sql``}
+         ${input.settings !== undefined ? sql`settings = ${JSON.stringify(input.settings)}` : sql``}
+         ${input.settings !== undefined && input.status !== undefined ? sql`,` : sql``}
+         ${input.status !== undefined
+           ? input.status === 'published'
+             ? sql`status = ${input.status}, expires_at = NULL`
+             : sql`status = ${input.status}`
+           : sql``}
+     WHERE id = ${id}
     RETURNING id, tenant_id, status, name, card_type, settings, created_at, updated_at, expires_at
   `;
+
   if (!rows[0]) {
     throw new Error('updateTemplate: template not found');
   }

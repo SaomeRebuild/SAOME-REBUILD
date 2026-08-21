@@ -3,7 +3,7 @@
  */
 import { chromium } from '@playwright/test';
 
-const BASE = 'http://localhost:5173';
+const BASE = 'https://saome-frontend.josh1989213.workers.dev';
 
 async function main() {
   const browser = await chromium.launch({ headless: true });
