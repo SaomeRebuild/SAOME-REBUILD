@@ -179,13 +179,13 @@ export async function updateTemplate(
     throw new Error('updateTemplate: no fields to update');
   }
 
-  // Append id as the last parameter
+  // Append id as the last parameter; idx is now the 1-based position of id.
   values.push(id);
 
   const rows = await sql<TemplatesRow[]>`
     UPDATE templates
        SET ${sql.unsafe(sets.join(', '))}
-     WHERE id = $${idx - 1}
+     WHERE id = $${idx}
     RETURNING id, tenant_id, status, name, card_type, settings, created_at, updated_at, expires_at
   `;
   if (!rows[0]) {
