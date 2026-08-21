@@ -15,7 +15,9 @@ interface CardBuilderEditorWorkspaceProps extends HTMLAttributes<HTMLDivElement>
   step: EditorStep;
   onStepChange: (step: EditorStep) => void;
   cardType?: CardType | null;
+  cardId?: string | null;
   onCardTypeChange: (type: CardType) => void;
+  onSave?: (cardId: string, settings: Record<string, unknown>) => Promise<void>;
   onBack?: () => void;
 }
 
@@ -23,24 +25,29 @@ export function CardBuilderEditorWorkspace({
   step,
   onStepChange,
   cardType,
+  cardId,
   onCardTypeChange,
+  onSave,
   onBack,
   className,
   ...rest
 }: CardBuilderEditorWorkspaceProps) {
   const { t } = useTranslation('cardEditor');
-  const name = useCardBuilderStore((s) => s.name);
   const storeName = useCardBuilderStore((s) => s.storeName);
   const issuerName = useCardBuilderStore((s) => s.issuerName);
 
-  /** Step 1: 卡片名稱 + 卡種都必須填寫 */
-  const isStep1Valid = Boolean(name.trim() && cardType);
   /** Step 2: 店名 + 發卡機構都必須填寫 */
   const isStep2Valid = Boolean(storeName.trim() && issuerName.trim());
 
-  function handleNext() {
+  async function handleNext() {
     if (step < 6) {
       if (step === 2 && !isStep2Valid) return;
+      if (step === 2 && cardId && onSave) {
+        // Read from store directly to avoid stale closure
+        const currentStoreName = useCardBuilderStore.getState().storeName;
+        const currentIssuerName = useCardBuilderStore.getState().issuerName;
+        await onSave(cardId, { storeName: currentStoreName, issuerName: currentIssuerName });
+      }
       onStepChange((step + 1) as EditorStep);
     }
   }
@@ -78,7 +85,7 @@ export function CardBuilderEditorWorkspace({
             <button
               type="button"
               onClick={handleNext}
-              disabled={!isStep1Valid}
+              disabled={!cardType}
               className="
                 flex items-center gap-2 rounded-lg bg-primary px-6 py-2.5
                 text-sm font-semibold text-on-primary

@@ -103,13 +103,28 @@ export function CardBuilderEditor({
     };
   }, [cardId]);
 
-  function handleStepChange(newStep: EditorStep) {
+  async function handleStepChange(newStep: EditorStep) {
     if (newStep < step) {
       setStep(newStep);
       return;
     }
 
-    if (newStep === 2 && cardType) {
+    // Read current values directly from store to avoid stale closure
+    const currentCardType = useCardBuilderStore.getState().cardType;
+    const currentName = useCardBuilderStore.getState().name;
+
+    if (newStep === 2 && currentCardType) {
+      // Step 1 完成：建立草稿，存入 name + cardType
+      try {
+        const template = await cardService.create({
+          name: currentName || '未命名卡片',
+          cardType: currentCardType,
+        });
+        setCardId(template.id);
+      } catch (err) {
+        console.error('Failed to create draft on Step 1 complete:', err);
+        return; // 不跳 step
+      }
       setCompletedStep(1);
       setStep(newStep);
     } else if (newStep > step) {
@@ -145,7 +160,11 @@ export function CardBuilderEditor({
             step={step}
             onStepChange={handleStepChange}
             cardType={cardType}
+            cardId={cardId}
             onCardTypeChange={useCardBuilderStore.getState().setCardType}
+            onSave={async (id, settings) => {
+              await cardService.update(id, { settings });
+            }}
             onBack={_onBack}
             className="flex-2 lg:w-2/3"
           />

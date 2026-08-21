@@ -71,7 +71,7 @@ export const cardService = {
    * Usually called when user completes a step (auto-save).
    */
   async update(id: string, payload: UpdateTemplatePayload): Promise<TemplateDto> {
-    const res = await httpClient.post<UpdateTemplateResponse>(api.paths.cardById(id), payload);
+    const res = await httpClient.put<UpdateTemplateResponse>(api.paths.cardById(id), payload);
     return res.template;
   },
 
@@ -87,7 +87,7 @@ export const cardService = {
    * Delete a template.
    */
   async delete(id: string): Promise<void> {
-    await httpClient.post<DeleteTemplateResponse>(api.paths.cardById(id));
+    await httpClient.delete<DeleteTemplateResponse>(api.paths.cardById(id));
   },
 
   /**
