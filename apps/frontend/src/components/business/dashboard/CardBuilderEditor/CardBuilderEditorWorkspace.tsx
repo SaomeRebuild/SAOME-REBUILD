@@ -41,11 +41,15 @@ export function CardBuilderEditorWorkspace({
 
   async function handleNext() {
     if (step < 6) {
+      // Read directly from DOM to ensure we get the actual rendered values
+      const storeNameEl = document.querySelector<HTMLInputElement>('#storeName');
+      const issuerNameEl = document.querySelector<HTMLInputElement>('#issuerName');
+      const currentStoreName = storeNameEl?.value ?? '';
+      const currentIssuerName = issuerNameEl?.value ?? '';
+      const isStep2Valid = Boolean(currentStoreName.trim() && currentIssuerName.trim());
+
       if (step === 2 && !isStep2Valid) return;
       if (step === 2 && cardId && onSave) {
-        // Read from store directly to avoid stale closure
-        const currentStoreName = useCardBuilderStore.getState().storeName;
-        const currentIssuerName = useCardBuilderStore.getState().issuerName;
         await onSave(cardId, { storeName: currentStoreName, issuerName: currentIssuerName });
       }
       onStepChange((step + 1) as EditorStep);
