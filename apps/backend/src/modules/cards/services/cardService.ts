@@ -55,14 +55,14 @@ function toDto(row: TemplatesRow): TemplateDto {
  *
  * @param sql - Database client
  * @param tenantId - Tenant ID from JWT
- * @param cardType - Card type (required)
+ * @param cardType - Card type (optional — NULL if user has not selected yet)
  * @param name - Optional template name
  * @param settings - Optional initial settings
  */
 export async function createTemplateService(
   sql: Sql,
   tenantId: string,
-  cardType: string,
+  cardType: string | undefined,
   name?: string,
   settings?: Partial<TemplateSettings>,
 ): Promise<CreateTemplateResponse> {

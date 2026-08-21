@@ -65,10 +65,14 @@ export type TemplateSettings = z.infer<typeof templateSettingsSchema>;
 
 /**
  * POST /api/cards — Create a new template draft
+ *
+ * cardType is nullable: a draft can be created without selecting a card type yet.
+ * The orphan draft will have card_type = NULL in the DB.
  */
 export const createTemplateSchema = z.object({
   name: z.string().optional(),
-  cardType: cardTypeSchema,
+  /** Card type. Optional — user may start editing without selecting a type. */
+  cardType: cardTypeSchema.optional(),
   settings: templateSettingsSchema.optional(),
 });
 
