@@ -11,7 +11,8 @@ export interface TemplateDto {
   id: string;
   status: 'draft' | 'published';
   name: string;
-  cardType: CardType;
+  /** Card type. NULL/undefined = user has not selected a type yet. */
+  cardType?: CardType;
   settings: TemplateSettings;
   createdAt: string; // ISO 8601
   updatedAt: string; // ISO 8601

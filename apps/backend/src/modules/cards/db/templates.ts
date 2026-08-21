@@ -12,7 +12,8 @@ export interface TemplatesRow {
   tenant_id: string;
   status: 'draft' | 'published';
   name: string;
-  card_type: CardType;
+  /** Card type. NULL = user has not selected a type yet (orphan draft). */
+  card_type?: CardType;
   settings: TemplateSettings;
   created_at: Date;
   updated_at: Date;
@@ -59,7 +60,8 @@ export interface TemplateSettings {
 export interface CreateTemplateInput {
   tenantId: string;
   name?: string;
-  cardType: CardType;
+  /** Card type. NULL = user has not selected a type yet. */
+  cardType?: CardType;
   settings?: Partial<TemplateSettings>;
   /** ISO 8601 timestamp. Defaults to now() + 24h in insertTemplate. */
   expiresAt?: string;
@@ -92,7 +94,7 @@ export async function insertTemplate(
     ) VALUES (
       ${input.tenantId},
       ${input.name ?? '未命名卡片'},
-      ${input.cardType},
+      ${input.cardType ?? null},
       ${JSON.stringify(input.settings ?? {})}::jsonb,
       ${input.expiresAt ?? sql`(now() + interval '24 hours')`}
     )

@@ -52,7 +52,6 @@ export default function CardBuilderPage() {
     setIsBuilding(true);
     try {
       const template = await cardService.create({
-        cardType: 'stamp_card',
         name: '',
       });
       window.location.href = `/app/dashboard/card-builder?id=${template.id}`;

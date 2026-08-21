@@ -82,7 +82,8 @@ export const templateDtoSchema = z.object({
   id: z.string().uuid(),
   status: templateStatusSchema,
   name: z.string(),
-  cardType: cardTypeSchema,
+  /** Card type. NULL = user has not selected a type yet. */
+  cardType: cardTypeSchema.optional(),
   settings: templateSettingsSchema,
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
@@ -98,7 +99,8 @@ export type TemplateDto = z.infer<typeof templateDtoSchema>;
  */
 export const createTemplateSchema = z.object({
   name: z.string().optional(),
-  cardType: cardTypeSchema,
+  /** Card type. NULL = user has not selected a type yet (orphan draft). */
+  cardType: cardTypeSchema.optional(),
   settings: templateSettingsSchema.optional(),
 });
 
