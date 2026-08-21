@@ -33,35 +33,43 @@ export function CardBuilderEditorWorkspace({
   ...rest
 }: CardBuilderEditorWorkspaceProps) {
   const { t } = useTranslation('cardEditor');
-  const storeName = useCardBuilderStore((s) => s.storeName);
-  const issuerName = useCardBuilderStore((s) => s.issuerName);
 
-  /** Step 2: 店名 + 發卡機構都必須填寫 */
-  const isStep2Valid = Boolean(storeName.trim() && issuerName.trim());
+  /** Step 2: Read values from DOM (source of truth for user input) */
+  function getStep2Values() {
+    const storeNameEl = document.querySelector<HTMLInputElement>('#storeName');
+    const issuerNameEl = document.querySelector<HTMLInputElement>('#issuerName');
+    return {
+      storeName: storeNameEl?.value ?? '',
+      issuerName: issuerNameEl?.value ?? '',
+    };
+  }
+
+  function isStep2Valid() {
+    const { storeName, issuerName } = getStep2Values();
+    return Boolean(storeName.trim() && issuerName.trim());
+  }
 
   async function handleNext() {
     console.log('[handleNext] step:', step, 'cardId:', cardId);
     if (step < 6) {
-      // Read directly from DOM to ensure we get the actual rendered values
-      const storeNameEl = document.querySelector<HTMLInputElement>('#storeName');
-      const issuerNameEl = document.querySelector<HTMLInputElement>('#issuerName');
-      const currentStoreName = storeNameEl?.value ?? '';
-      const currentIssuerName = issuerNameEl?.value ?? '';
-      const isStep2Valid = Boolean(currentStoreName.trim() && currentIssuerName.trim());
-      console.log('[handleNext] currentStoreName:', currentStoreName, 'currentIssuerName:', currentIssuerName, 'isStep2Valid:', isStep2Valid, 'step:', step);
-
-      if (step === 2 && !isStep2Valid) return;
+      if (step === 2 && !isStep2Valid()) return;
       if (step === 2 && cardId && onSave) {
         try {
-          await onSave(cardId, { storeName: currentStoreName, issuerName: currentIssuerName });
+          const { storeName, issuerName } = getStep2Values();
+          const { barcodeType, passValidDays, expiryDate, currency } = useCardBuilderStore.getState();
+          await onSave(cardId, {
+            barcodeType,
+            storeName,
+            issuerName,
+            passValidDays,
+            expiryDate,
+            currency,
+          });
         } catch (err) {
-          // Auto-save failure should not block navigation
           console.error('[handleNext] onSave failed:', err);
         }
       }
-      console.log('[handleNext] about to call onStepChange with', step + 1);
       onStepChange((step + 1) as EditorStep);
-      console.log('[handleNext] onStepChange called');
     }
   }
 
@@ -121,7 +129,7 @@ export function CardBuilderEditorWorkspace({
           <h2 className="text-lg font-semibold text-foreground">
             {t('step2.title')}
           </h2>
-          <Step2CardSettings showValidation={!isStep2Valid} />
+          <Step2CardSettings showValidation={!isStep2Valid()} />
           {/* 上一步 / 下一步按鈕 */}
           <div className="flex items-center justify-between pt-2">
             <button
@@ -141,7 +149,7 @@ export function CardBuilderEditorWorkspace({
             <button
               type="button"
               onClick={handleNext}
-              disabled={!isStep2Valid}
+              disabled={!isStep2Valid()}
               className="
                 flex items-center gap-2 rounded-lg bg-primary px-6 py-2.5
                 text-sm font-semibold text-on-primary

@@ -8,12 +8,11 @@ import { Building2 } from 'lucide-react';
 interface PassCardPreviewHeaderProps {
   cardType?: string | null;
   issuerLogo?: string;
-  issuerName?: string;
   name?: string;
   compact?: boolean;
 }
 
-export function PassCardPreviewHeader({ cardType, issuerLogo, issuerName, name, compact }: PassCardPreviewHeaderProps) {
+export function PassCardPreviewHeader({ cardType, issuerLogo, name, compact }: PassCardPreviewHeaderProps) {
   const { t } = useTranslation('passCard');
 
   return (
@@ -24,7 +23,7 @@ export function PassCardPreviewHeader({ cardType, issuerLogo, issuerName, name, 
           {issuerLogo ? (
             <img
               src={issuerLogo}
-              alt={issuerName ?? t('defaultIssuerName')}
+              alt={t('defaultIssuerName')}
               className={compact ? 'h-5 w-5' : 'h-8 w-8'}
               style={{ borderRadius: 'inherit', objectFit: 'contain' }}
             />
@@ -32,7 +31,7 @@ export function PassCardPreviewHeader({ cardType, issuerLogo, issuerName, name, 
             <Building2 size={compact ? 16 : 24} className="text-neutral-400" aria-hidden="true" />
           )}
           <span className={compact ? 'text-xs font-bold leading-tight text-neutral-950' : 'text-sm font-bold text-neutral-950'}>
-            {issuerName || name || t('defaultIssuerName')}
+            {name || t('defaultIssuerName')}
           </span>
         </div>
       </div>

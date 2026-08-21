@@ -14,13 +14,11 @@ import { useTranslation } from 'react-i18next';
 export function PassCardPreview({
   name,
   cardType,
-  issuerName,
   issuerLogo,
   backgroundColor,
   textColor,
   side = 'front',
   holderName,
-  storeName,
   barcodeType,
   className,
   compact = false,
@@ -48,7 +46,6 @@ export function PassCardPreview({
           <>
             <PassCardPreviewHeader
               cardType={cardType}
-              issuerName={issuerName}
               issuerLogo={issuerLogo}
               name={name}
               compact={compact}
@@ -66,7 +63,7 @@ export function PassCardPreview({
             </div>
 
             {/* Body */}
-            <PassCardPreviewBody storeName={storeName} issuerName={issuerName} compact={compact} />
+            <PassCardPreviewBody compact={compact} />
 
             {/* Footer / Barcode */}
             <PassCardPreviewFooter holderName={holderName} barcodeType={barcodeType} compact={compact} />

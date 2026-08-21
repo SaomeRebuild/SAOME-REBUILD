@@ -28,8 +28,8 @@ export function CardBuilderEditorPreview({
 }: CardBuilderEditorPreviewProps) {
   const { t } = useTranslation('cardEditor');
 
-  // 從 store 取得卡片資料
-  const { name, cardType, issuerName, issuerLogo, holderName, backgroundColor, textColor, barcodeType, storeName } = useCardBuilderStore();
+  // 從 store 取得卡片資料（issuerName, storeName 不傳入預覽：不需即時預覽）
+  const { name, cardType, issuerLogo, holderName, backgroundColor, textColor, barcodeType } = useCardBuilderStore();
 
   return (
     <aside className={`
@@ -49,13 +49,11 @@ export function CardBuilderEditorPreview({
           <PreviewWrapper
             name={name}
             cardType={cardType}
-            issuerName={issuerName}
             issuerLogo={issuerLogo}
             holderName={holderName}
             backgroundColor={backgroundColor}
             textColor={textColor}
             barcodeType={barcodeType}
-            storeName={storeName}
             side={cardSide}
             showPhoneFrame={true}
           />

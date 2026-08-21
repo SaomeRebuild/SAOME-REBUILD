@@ -8,8 +8,6 @@ export interface PassCardPreviewProps extends HTMLAttributes<HTMLDivElement> {
   name?: string;
   /** 卡片類型 */
   cardType?: CardType | null;
-  /** 發卡機構名稱（可選） */
-  issuerName?: string;
   /** 發卡機構標誌（可選，URL 或 SVG） */
   issuerLogo?: string;
   /** 卡片背景色 */
@@ -20,8 +18,6 @@ export interface PassCardPreviewProps extends HTMLAttributes<HTMLDivElement> {
   side?: 'front' | 'back';
   /** 持有人名稱（背面顯示） */
   holderName?: string;
-  /** 店名 */
-  storeName?: string;
   /** Barcode 格式 */
   barcodeType?: BarcodeType;
   /** 緊湊模式（用於手機框架內，縮小字體和間距） */

@@ -10,8 +10,6 @@ export interface PreviewWrapperProps {
   name: string;
   /** 卡片類型 */
   cardType?: PassCardPreviewProps['cardType'];
-  /** 發卡機構名稱 */
-  issuerName?: string;
   /** 發卡機構標誌 */
   issuerLogo?: string;
   /** 卡片背景色 */
@@ -24,8 +22,6 @@ export interface PreviewWrapperProps {
   holderName?: string;
   /** Barcode 格式 */
   barcodeType?: BarcodeType;
-  /** 店名 */
-  storeName?: string;
   /** 是否顯示手機框架 */
   showPhoneFrame?: boolean;
 }

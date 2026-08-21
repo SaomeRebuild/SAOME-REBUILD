@@ -1,16 +1,14 @@
 /**
  * PassCardPreview — 卡片正面預覽（Body / Secondary Fields 部分）
- * Apple Pass 風格：淡色分隔線 + 標籤/值對
+ * Apple Pass 風格：淡色分隔線 + 標籤/值對（靜態顯示，不含動態 issuerName / storeName）
  */
 import { useTranslation } from 'react-i18next';
 
 interface PassCardPreviewBodyProps {
-  storeName?: string;
-  issuerName?: string;
   compact?: boolean;
 }
 
-export function PassCardPreviewBody({ storeName, issuerName, compact }: PassCardPreviewBodyProps) {
+export function PassCardPreviewBody({ compact }: PassCardPreviewBodyProps) {
   const { t } = useTranslation('passCard');
 
   return (
@@ -18,13 +16,13 @@ export function PassCardPreviewBody({ storeName, issuerName, compact }: PassCard
       {/* 分隔線 - Apple Pass 風格 */}
       <div className="h-px w-full bg-neutral-200" />
 
-      {/* 發卡機構 */}
+      {/* 左右欄位 */}
       <div className={compact ? 'flex items-center justify-between py-0.5' : 'flex items-center justify-between py-1'}>
         <span className={compact ? 'text-[9px] text-neutral-500' : 'text-xs text-neutral-500'}>
           {t('fieldLabelLeft')}
         </span>
         <span className={compact ? 'text-[9px] font-medium text-neutral-900' : 'text-xs font-medium text-neutral-900'}>
-          {issuerName || storeName || t('fieldLabelRight')}
+          {t('fieldLabelRight')}
         </span>
       </div>
 

@@ -33,12 +33,6 @@ describe('PassCardPreview', () => {
     expect(buildingIcon).toBeInTheDocument();
   });
 
-  it('renders issuer name when provided', () => {
-    render(<PassCardPreview name="測試卡片" issuerName="測試機構" />);
-    // issuerName appears in both Header and Body strip, so use getAllByText
-    expect(screen.getAllByText('測試機構').length).toBeGreaterThan(0);
-  });
-
   it('renders card type label', () => {
     render(<PassCardPreview name="測試卡片" cardType="stamp_card" />);
     // cardType is rendered directly without i18n lookup
