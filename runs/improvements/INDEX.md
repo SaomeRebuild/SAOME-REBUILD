@@ -7,7 +7,9 @@
 
 | 日期 | 主題 | 路徑 | 影響 / 後續 |
 |------|------|------|------|
-| 2026-08-21 | Session/Cookie 跨域問題 + JWT_SECRET 未設定：`Authorization: Bearer` header 修復跨域 refresh；`wrangler secret put` pipe 模式破壞特殊字元密鑰，改用 Dashboard 手動設定 | runs/improvements/feedback/20260821-session-cookie-cross-origin.md | `saome-github-deploy` skill 需補充 backend secrets checklist |
+| 2026-08-22 | `expires_at` 欄位未 apply → 所有 card API 500；Migration 006 未 apply production → 移除 `expires_at` 所有 SQL 依賴作為繞過 | runs/improvements/feedback/20260822-draft-abandon-500-bug.md | 待 apply Migration 006 後 revert 繞過；新增 migration 應立即 apply 或加 pipeline check |
+| 2026-08-22 | CardBuilder Step 2 issuerName 預填失敗 + Membership Extension `isPaid` checkbox：`useAuth()` 回傳 `{ state }` 不是 `{ tenant }` 直接解構；後端 `templates.ts` 和 `request.ts` 的 `TemplateSettings` 漏 `isPaid` | DEV/08-2026/0822-card-builder-step2-issuer-fix-and-membership-extension.md | 下次新增 settings 欄位時，同步檢查 shared schema → backend request.ts → backend db interface 三層 |
+| 2026-08-21 | Session/Cookie 跨域問題 + JWT_SECRET 未設定 | runs/improvements/feedback/20260821-session-cookie-cross-origin.md | `saome-github-deploy` skill 需補充 backend secrets checklist |
 | 2026-08-21 | CardBuilder Step 2 PUT 500：`updateTemplate` 用 `$N` + tagged template 混合，postgres.js 把 `$1` 視為 dollar-quoted delimiter；四次嘗試後改用所有值 `${}` tagged injection | runs/improvements/feedback/20260821-card-builder-update-template-500.md | `000-modular-design.mdc` Part B 禁止清單應加 postgres.js antipattern |
 | 2026-08-21 | CardBuilder 草稿 TTL 定時清理：`expires_at` + pg_cron 每小時清理 orphan draft；`card_type` 改 nullable 區分有意義草稿；`touchExpiresAt` keep-alive | DEV/08-2026/0821-card-builder-draft-ttl-cleanup.md | TTL 時長 / 頻率待優化；Production migration CI/CD 待建立 |
 | 2026-08-21 | CardBuilder Extension Pattern：`templateSettingsSchema` flat + `cardTypeExtensions` map；Option B 勝過 Nested Schema，確保新增卡種不影響 base schema | runs/decisions/2026-08-21-card-type-extension-pattern.md | 待填入各卡種商業欄位 |
@@ -43,6 +45,8 @@
 | 2026-08-17 | `025-vibe-coding-l2-checklist.mdc` 或新建 `026-ci-workflow-checklist.mdc`：加 CI workflow 修改 checklist（新增 dep 前確認 cache key） | ⏳ pending |
 | 2026-08-21 | `saome-github-deploy` skill 補充：部署後端前，確認 `wrangler secret list` 所有 secrets 已正確設定 | ⏳ pending |
 | 2026-08-21 | `000-modular-design.mdc` Part B 禁止清單加：動態 UPDATE 不得用 `$N` + tagged template 混合（postgres.js antipattern）；加 `apps/backend/src/modules/cards/db/templates.test.ts` 覆蓋 `updateTemplate` | ⏳ pending |
+| 2026-08-22 | `useAuth` hook JSDoc 加 explicit return type 說明，避免 `{ tenant }` vs `{ state: { tenant } }` 解構錯誤 | ⏳ pending |
+| 2026-08-22 | `019-schema-contract-drift.mdc` 檢查清單加第四層：backend request schema (`request.ts`) 也需同步 `isPaid` | ⏳ pending |
 
 ## 使用方式
 

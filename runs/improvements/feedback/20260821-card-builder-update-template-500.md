@@ -98,3 +98,33 @@ await sql`UPDATE t SET ${input.name !== undefined ? sql`name = ${input.name}` : 
 - 本地 commit: pending
 - DEV LOG: `DEV/08-2026/0821-card-builder-step2-update-500.md`
 - DEV LOG（TTL 實作）: `DEV/08-2026/0821-card-builder-draft-ttl-cleanup.md`
+
+## 衍生問題：Migration 006 未即時 apply（2026-08-22）
+
+### 問題
+
+Migration `006_add_templates_expires_at.sql` 建立後，**workaround**（移除 SQL 中的 `expires_at` 欄位）被 commit 進 `templates.ts`，導致 production 功能與 code 不同步。直到 MCP reconnected 才補上 migration。
+
+### 根因
+
+| 步驟 | 預期 | 實際 |
+|------|------|------|
+| 1. 建立 migration | migration 檔進 git | ✅ 完成 |
+| 2. Apply migration | 立即透過 Supabase MCP apply 到 DB | ❌ MCP timeout，沒有 retry 就放棄 |
+| 3. Code 更新 | migration apply 後才 commit | ❌ 先 commit workaround 再等 migration |
+
+### Migration Apply Checklist（MANDATORY）
+
+> 新增任何 migration 檔後，**必須**逐項確認才能 close session。
+
+| # | 檢查項 | 失敗時的行動 |
+|---|--------|--------------|
+| 1 | 透過 `saome_supabase` MCP 執行 migration SQL | 嘗試 `supabase` CLI (`npx supabase db push --project-ref <ref>`)，若需要 login 等用戶操作 |
+| 2 | 確認 `execute_sql` 回傳 `[]`（DDL success）而非錯誤 | 若 `ALTER TABLE` 報 "column already exists"，表示 migration 已 apply，可安全继续 |
+| 3 | Commit message footer 必填 MCP apply 結果 | `Migration: 006_add_templates_expires_at applied via saome_supabase MCP` |
+| 4 | 若 MCP 持續 timeout，**不要** commit workaround | 留在本地，等 MCP reconnected 再 apply |
+
+### 受影響的 rule 段落
+
+- `019-schema-contract-drift.mdc` § Migration 紀律：新增 `migration apply` 為第 5 步的必要動作
+- `000-modular-design.mdc` Part B § DB queries：DDL migration 屬於 DB schema 變更，視為 contract drift 預防
