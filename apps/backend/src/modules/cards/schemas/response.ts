@@ -9,15 +9,13 @@ import type { CardType, TemplateSettings } from '../db/templates';
 
 export interface TemplateDto {
   id: string;
-  status: 'draft' | 'published';
+  status: 'draft' | 'published' | 'abandoned';
   name: string;
   /** Card type. NULL/undefined = user has not selected a type yet. */
   cardType?: CardType;
   settings: TemplateSettings;
   createdAt: string; // ISO 8601
   updatedAt: string; // ISO 8601
-  /** TTL for draft templates. NULL/undefined = no expiration. */
-  expiresAt?: string; // ISO 8601
 }
 
 export interface CreateTemplateResponse {

@@ -10,14 +10,14 @@ import type { Sql } from '@/shared/db/client';
 export interface TemplatesRow {
   id: string;
   tenant_id: string;
-  status: 'draft' | 'published';
+  status: 'draft' | 'published' | 'abandoned';
   name: string;
   /** Card type. NULL = user has not selected a type yet (orphan draft). */
   card_type?: CardType;
   settings: TemplateSettings;
   created_at: Date;
   updated_at: Date;
-  /** TTL for draft templates. NULL = no expiration. Auto-set on insert, cleared on publish. */
+  /** Draft TTL: now() + 24h. NULL = published/never-expires. */
   expires_at?: Date;
 }
 
@@ -37,6 +37,7 @@ export type CardType =
  *
  * Step 1: name, cardType
  * Step 2: barcodeType, storeName, issuerName, passValidDays, expiryDate, currency
+ * Membership extension: isPaid
  * Step 3-4: TBD (backgroundColor, textColor, etc.)
  */
 export interface TemplateSettings {
@@ -54,17 +55,19 @@ export interface TemplateSettings {
   textColor?: string;
   holderName?: string;
   cardSide?: 'front' | 'back';
+  // Membership card extension
+  isPaid?: boolean;
 }
 
 /** Input for creating a new template */
 export interface CreateTemplateInput {
+  /** UUID. If omitted, the DB generates one via gen_random_uuid(). */
+  id?: string;
   tenantId: string;
   name?: string;
   /** Card type. NULL = user has not selected a type yet. */
   cardType?: CardType;
   settings?: Partial<TemplateSettings>;
-  /** ISO 8601 timestamp. Defaults to now() + 24h in insertTemplate. */
-  expiresAt?: string;
 }
 
 /** Input for updating a template */
@@ -72,7 +75,7 @@ export interface UpdateTemplateInput {
   name?: string;
   cardType?: CardType;
   settings?: Partial<TemplateSettings>;
-  status?: 'draft' | 'published';
+  status?: 'draft' | 'published' | 'abandoned';
 }
 
 /**
@@ -86,17 +89,17 @@ export async function insertTemplate(
 ): Promise<TemplatesRow> {
   const rows = await sql<TemplatesRow[]>`
     INSERT INTO templates (
+      id,
       tenant_id,
       name,
       card_type,
-      settings,
-      expires_at
+      settings
     ) VALUES (
+      ${input.id ?? sql`gen_random_uuid()`},
       ${input.tenantId},
       ${input.name ?? '未命名卡片'},
       ${input.cardType ?? null},
-      ${JSON.stringify(input.settings ?? {})}::jsonb,
-      ${input.expiresAt ?? sql`(now() + interval '24 hours')`}
+      ${JSON.stringify(input.settings ?? {})}::jsonb
     )
     RETURNING id, tenant_id, status, name, card_type, settings, created_at, updated_at, expires_at
   `;
@@ -162,11 +165,7 @@ export async function updateTemplate(
          ${input.cardType !== undefined && (input.settings !== undefined || input.status !== undefined) ? sql`,` : sql``}
          ${input.settings !== undefined ? sql`settings = ${JSON.stringify(input.settings)}` : sql``}
          ${input.settings !== undefined && input.status !== undefined ? sql`,` : sql``}
-         ${input.status !== undefined
-           ? input.status === 'published'
-             ? sql`status = ${input.status}, expires_at = NULL`
-             : sql`status = ${input.status}`
-           : sql``}
+         ${input.status !== undefined ? sql`status = ${input.status}` : sql``}
      WHERE id = ${id}
     RETURNING id, tenant_id, status, name, card_type, settings, created_at, updated_at, expires_at
   `;
@@ -178,8 +177,8 @@ export async function updateTemplate(
 }
 
 /**
- * Touch a draft template — reset its expires_at to now() + 24h.
- * Used by the frontend auto-save to keep drafts alive.
+ * Touch a draft template — reset its expires_at to now() + 24h to keep it alive.
+ * No-op for published/abandoned templates.
  */
 export async function touchExpiresAt(
   sql: Sql,
@@ -189,12 +188,33 @@ export async function touchExpiresAt(
     UPDATE templates
        SET expires_at = now() + interval '24 hours'
      WHERE id = ${id}
+       AND status = 'draft'
     RETURNING id, tenant_id, status, name, card_type, settings, created_at, updated_at, expires_at
   `;
   if (!rows[0]) {
     throw new Error('touchExpiresAt: template not found');
   }
   return rows[0];
+}
+
+/**
+ * Find the most recent draft template for a tenant.
+ * Used when user clicks "從頭建置" to check if a resume-worthy draft exists.
+ * Excludes abandoned drafts.
+ */
+export async function findLatestDraftByTenant(
+  sql: Sql,
+  tenantId: string,
+): Promise<TemplatesRow | null> {
+  const rows = await sql<TemplatesRow[]>`
+    SELECT id, tenant_id, status, name, card_type, settings, created_at, updated_at, expires_at
+      FROM templates
+     WHERE tenant_id = ${tenantId}
+       AND status = 'draft'
+     ORDER BY updated_at DESC
+     LIMIT 1
+  `;
+  return rows[0] ?? null;
 }
 
 /**

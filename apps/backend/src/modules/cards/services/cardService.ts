@@ -42,11 +42,6 @@ function toDto(row: TemplatesRow): TemplateDto {
     settings: (typeof row.settings === 'string' ? JSON.parse(row.settings) : row.settings) as TemplateSettings,
     createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
     updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : String(row.updated_at),
-    expiresAt: row.expires_at instanceof Date
-      ? row.expires_at.toISOString()
-      : row.expires_at != null
-        ? String(row.expires_at)
-        : undefined,
   };
 }
 
@@ -58,6 +53,7 @@ function toDto(row: TemplatesRow): TemplateDto {
  * @param cardType - Card type (optional — NULL if user has not selected yet)
  * @param name - Optional template name
  * @param settings - Optional initial settings
+ * @param id - Optional client-generated UUID (for immediate redirect)
  */
 export async function createTemplateService(
   sql: Sql,
@@ -65,8 +61,10 @@ export async function createTemplateService(
   cardType: string | undefined,
   name?: string,
   settings?: Partial<TemplateSettings>,
+  id?: string,
 ): Promise<CreateTemplateResponse> {
   const input: CreateTemplateInput = {
+    id,
     tenantId,
     name: name ?? '未命名卡片',
     cardType: cardType as CreateTemplateInput['cardType'],
@@ -131,7 +129,7 @@ export async function updateTemplateService(
   name?: string,
   cardType?: string,
   settings?: Partial<TemplateSettings>,
-  status?: 'draft' | 'published',
+  status?: 'draft' | 'published' | 'abandoned',
 ): Promise<UpdateTemplateResponse> {
   // Ownership check
   const existing = await findTemplateById(sql, templateId);
