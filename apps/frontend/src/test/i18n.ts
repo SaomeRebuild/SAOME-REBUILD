@@ -24,6 +24,8 @@ import cardEditorZhTW from '../i18n/locales/cardEditor.zh-TW';
 import cardEditorEn from '../i18n/locales/cardEditor.en';
 import passCardZhTW from '../i18n/locales/passCard.zh-TW';
 import passCardEn from '../i18n/locales/passCard.en';
+import confirmDraftZhTW from '../i18n/locales/confirmDraft.zh-TW';
+import confirmDraftEn from '../i18n/locales/confirmDraft.en';
 
 if (!i18n.isInitialized) {
   i18n.use(initReactI18next).init({
@@ -41,6 +43,7 @@ if (!i18n.isInitialized) {
         cardBuilder: cardBuilderZhTW,
         cardEditor: cardEditorZhTW,
         passCard: passCardZhTW,
+        confirmDraft: confirmDraftZhTW,
       },
       en: {
         auth: authEn,
@@ -55,6 +58,7 @@ if (!i18n.isInitialized) {
         cardBuilder: cardBuilderEn,
         cardEditor: cardEditorEn,
         passCard: passCardEn,
+        confirmDraft: confirmDraftEn,
       },
     },
     lng: 'zh-TW',

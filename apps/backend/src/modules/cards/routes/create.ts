@@ -36,14 +36,17 @@ export const createCardRoute = new Hono<HonoEnv>()
       });
     }
 
-    const { name, cardType, settings } = parsed.data;
+    const { id, name, cardType, settings } = parsed.data;
+    console.log('[createCard] creating template:', { id, name, cardType, tenantId: tenant.id });
     const result = await createTemplateService(
       sql,
       tenant.id,
       cardType,
       name,
       settings,
+      id,
     );
+    console.log('[createCard] template created:', result.template.id);
 
     return c.json(result, 201);
   });
