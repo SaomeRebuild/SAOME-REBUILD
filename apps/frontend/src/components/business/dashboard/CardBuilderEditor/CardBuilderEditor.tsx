@@ -9,11 +9,14 @@
  * - Mobile: CardBuilderEditorPreview 改由 MobilePreviewPanel 提供（Bottom Sheet）
  *
  * 資料流：
- * - 新建模式（無 templateId）：使用者從頭建置，store 為初始狀態
- * - 編輯模式（有 templateId）：mount 時從 API 取得既有的 settings 並載入 store
+ * - 新建模式（無 ?id= URL）：store 為初始狀態
+ * - 編輯模式（有 ?id= URL）：mount 時從 API 取得既有的 settings 並載入 store
+ * - URL 追蹤：自己監聽 window.location（而非靠父層 prop），這樣 pushState /
+ *   navigate 更新 URL 時能即時感應到並 fetch
  */
 
 import { useEffect, useState, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import type { CardBuilderEditorProps, EditorStep } from './CardBuilderEditor.types';
 import { CardBuilderEditorHeader } from './CardBuilderEditorHeader';
 import { CardBuilderEditorWorkspace } from './CardBuilderEditorWorkspace';
@@ -23,11 +26,11 @@ import { useCardBuilderStore } from './CardBuilderEditor.store';
 import { cardService } from '@/services/cardService';
 
 export function CardBuilderEditor({
-  templateId,
   onSave: _onSave,
   onBack: _onBack,
 }: CardBuilderEditorProps) {
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [searchParams] = useSearchParams();
 
   // 使用 store 管理卡片編輯器狀態
   const {
@@ -42,19 +45,31 @@ export function CardBuilderEditor({
     setCompletedStep,
     setCardSide,
     setCardId,
+    setCardType,
     loadSettings,
     reset,
   } = useCardBuilderStore();
 
-  // 初始化：根據 mode（新建或編輯）載入資料
+  // 從 URL 讀取 templateId（自己監聽 URL，而非靠父層 prop）
+  // 這樣 pushState / navigate 更新 URL 時能即時觸發 fetch
+  const templateId = searchParams.get('id');
+
+  // 初始化：根據 URL（新建或編輯）載入資料
   useEffect(() => {
     if (templateId) {
-      // 編輯模式：fetch 既有的 template settings
+      // 編輯模式：reset 舊的 stale 資料，再 fetch 既有的 template settings
+      // 否則上一個 draft 的 storeName/barcodeType 等值會殘留，
+      // 而 loadSettings 的 ?? fallback 不會覆蓋這些舊值（因為新值也是空字串）。
+      reset();
+      setCardId(templateId);
       setIsLoading(true);
       cardService.getById(templateId)
         .then((template) => {
-          setCardId(template.id);
           loadSettings(template.settings);
+          // cardType 存在 DB card_type 欄位（不在 settings JSONB），需要獨立設定
+          if (template.cardType) {
+            setCardType(template.cardType);
+          }
           if (template.name) {
             setName(template.name);
           }
@@ -70,8 +85,31 @@ export function CardBuilderEditor({
       // 新建模式：reset store 並設定 cardId 為 null
       reset();
       setCardId(null);
+      setIsLoading(false);
     }
   }, [templateId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ============================================================
+  // Auto-save: name changes → debounced PUT /cards/:id
+  // ============================================================
+  const nameSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!cardId) return;
+    if (name === '') return; // Don't save empty name on first mount
+
+    // Debounce: save name 1s after user stops typing
+    if (nameSaveTimerRef.current) clearTimeout(nameSaveTimerRef.current);
+    nameSaveTimerRef.current = setTimeout(() => {
+      cardService.update(cardId, { name }).catch((err) => {
+        console.warn('[CardBuilderEditor] name auto-save failed:', err);
+      });
+    }, 1000);
+
+    return () => {
+      if (nameSaveTimerRef.current) clearTimeout(nameSaveTimerRef.current);
+    };
+  }, [cardId, name]);
 
   // ============================================================
   // Auto-save keep-alive: touch TTL every 5 minutes
@@ -114,16 +152,31 @@ export function CardBuilderEditor({
     const currentName = useCardBuilderStore.getState().name;
 
     if (newStep === 2 && currentCardType) {
-      // Step 1 完成：建立草稿，存入 name + cardType
-      try {
-        const template = await cardService.create({
-          name: currentName || '未命名卡片',
-          cardType: currentCardType,
-        });
-        setCardId(template.id);
-      } catch (err) {
-        console.error('Failed to create draft on Step 1 complete:', err);
-        return; // 不跳 step
+      // Step 1 完成：cardType 已經知道
+      if (!cardId) {
+        // 新建：建立草稿（含 cardType）
+        try {
+          const template = await cardService.create({
+            name: currentName || '未命名卡片',
+            cardType: currentCardType,
+            settings: { isPaid: false },
+          });
+          setCardId(template.id);
+        } catch (err) {
+          console.error('Failed to create draft on Step 1 complete:', err);
+          return; // 不跳 step
+        }
+      } else {
+        // 繼續：更新既有草稿（從 resume 回來的）
+        try {
+          await cardService.update(cardId, {
+            name: currentName,
+            cardType: currentCardType,
+          });
+        } catch (err) {
+          console.error('Failed to update draft on Step 1 continue:', err);
+          // 不 block 前進，update 失敗只是沒存到
+        }
       }
       setCompletedStep(1);
       setStep(newStep);

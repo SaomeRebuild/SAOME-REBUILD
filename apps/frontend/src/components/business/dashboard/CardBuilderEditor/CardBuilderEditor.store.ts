@@ -42,6 +42,10 @@ interface CardBuilderState {
   /** 貨幣選擇 */
   currency: 'TWD' | 'ZAR';
 
+  // ===== Membership Card Extension =====
+  /** 會員卡是否收費（僅 membership_card 使用） */
+  isPaid: boolean;
+
   // Actions
   setCardId: (cardId: string | null) => void;
   setName: (name: string) => void;
@@ -59,6 +63,7 @@ interface CardBuilderState {
   setPassValidDays: (passValidDays: number | null) => void;
   setExpiryDate: (expiryDate: string) => void;
   setCurrency: (currency: 'TWD' | 'ZAR') => void;
+  setIsPaid: (isPaid: boolean) => void;
   /** 從既有 template 的 settings 載入 store */
   loadSettings: (settings: Partial<TemplateSettings>) => void;
   reset: () => void;
@@ -83,6 +88,9 @@ const initialState = {
   passValidDays: null,
   expiryDate: '',
   currency: 'TWD' as const,
+
+  // ===== Membership Card Extension =====
+  isPaid: false,
 };
 
 export const useCardBuilderStore = create<CardBuilderState>((set) => ({
@@ -106,6 +114,7 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
   setPassValidDays: (passValidDays) => set({ passValidDays }),
   setExpiryDate: (expiryDate) => set({ expiryDate }),
   setCurrency: (currency) => set({ currency }),
+  setIsPaid: (isPaid) => set({ isPaid }),
 
   loadSettings: (settings) => set((state) => ({
     name: settings.name ?? state.name,
@@ -120,7 +129,8 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
     passValidDays: settings.passValidDays !== undefined ? settings.passValidDays : state.passValidDays,
     expiryDate: settings.expiryDate ?? state.expiryDate,
     currency: settings.currency ?? state.currency,
+    isPaid: settings.isPaid ?? state.isPaid,
   })),
 
-  reset: () => set({ ...initialState }),
+  reset: () => set({ ...initialState, isPaid: initialState.isPaid }),
 }));

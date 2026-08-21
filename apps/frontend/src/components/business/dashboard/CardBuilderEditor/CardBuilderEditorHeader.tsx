@@ -30,8 +30,9 @@ export function CardBuilderEditorHeader({
 
   return (
     <header className="border-b border-border bg-card p-4">
-      {/* 第一行：標題 + 步驟指示器 */}
-      <div className="mb-4 flex items-center justify-between gap-4">
+      {/* 第一行：水平排列（標題靠左、步驟靠右） */}
+      <div className="mb-4 flex items-center justify-between gap-6">
+        {/* 左側：標題 */}
         <h1
           className="flex items-center gap-2 text-xl font-bold text-foreground shrink-0"
           style={{ fontFamily: 'var(--font-family-heading)' }}
@@ -40,6 +41,7 @@ export function CardBuilderEditorHeader({
           {t('pageTitle')}
         </h1>
 
+        {/* 右側：步驟指示器 */}
         <CardBuilderEditorSteps
           currentStep={step}
           onStepClick={onStepChange}

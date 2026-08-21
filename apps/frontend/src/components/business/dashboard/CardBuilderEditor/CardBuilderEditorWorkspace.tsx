@@ -51,12 +51,12 @@ export function CardBuilderEditorWorkspace({
 
   async function handleNext() {
     console.log('[handleNext] step:', step, 'cardId:', cardId);
-    if (step < 6) {
+    if (step < 8) {
       if (step === 2 && !isStep2Valid()) return;
       if (step === 2 && cardId && onSave) {
         try {
           const { storeName, issuerName } = getStep2Values();
-          const { barcodeType, passValidDays, expiryDate, currency } = useCardBuilderStore.getState();
+          const { barcodeType, passValidDays, expiryDate, currency, isPaid } = useCardBuilderStore.getState();
           await onSave(cardId, {
             barcodeType,
             storeName,
@@ -64,6 +64,7 @@ export function CardBuilderEditorWorkspace({
             passValidDays,
             expiryDate,
             currency,
+            isPaid,
           });
         } catch (err) {
           console.error('[handleNext] onSave failed:', err);
@@ -166,11 +167,11 @@ export function CardBuilderEditorWorkspace({
         </section>
       )}
 
-      {/* Step 3-4: 預留（陸續實作） */}
-      {step > 2 && step < 5 && (
+      {/* Step 3: 卡片設計（預留） */}
+      {step === 3 && (
         <section className="flex flex-col items-center justify-center gap-4 py-12">
           <p className="text-muted-foreground">
-            {t(`step${step}.title`)}
+            {t('step3.title')}
           </p>
           <p className="text-sm text-muted-foreground/60">
             {t('comingSoon')}
@@ -209,7 +210,50 @@ export function CardBuilderEditorWorkspace({
         </section>
       )}
 
-      {/* Step 5: 客製化桌牌（預留） */}
+      {/* Step 4: 卡片資訊（預留） */}
+      {step === 4 && (
+        <section className="flex flex-col items-center justify-center gap-4 py-12">
+          <p className="text-muted-foreground">
+            {t('step4.title')}
+          </p>
+          <p className="text-sm text-muted-foreground/60">
+            {t('comingSoon')}
+          </p>
+          {/* 上一步 / 下一步按鈕 */}
+          <div className="flex items-center gap-4 pt-4">
+            <button
+              type="button"
+              onClick={handlePrev}
+              className="
+                flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5
+                text-sm font-medium text-foreground
+                transition-all duration-150
+                hover:scale-[1.02] hover:border-primary hover:text-primary
+                active:scale-[0.98]
+              "
+            >
+              <ChevronLeft size={16} aria-hidden="true" />
+              {t('actions.prev')}
+            </button>
+            <button
+              type="button"
+              onClick={handleNext}
+              className="
+                flex items-center gap-2 rounded-lg bg-primary px-6 py-2.5
+                text-sm font-semibold text-on-primary
+                transition-all duration-150
+                hover:scale-[1.02] hover:shadow-[var(--shadow-glow)]
+                active:scale-[0.98]
+              "
+            >
+              {t('step1.next')}
+              <ChevronRight size={16} aria-hidden="true" />
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* Step 5: 地理位置（預留） */}
       {step === 5 && (
         <section className="flex flex-col items-center justify-center gap-4 py-12">
           <p className="text-muted-foreground">
@@ -245,14 +289,14 @@ export function CardBuilderEditorWorkspace({
                 active:scale-[0.98]
               "
             >
-              {t('actions.save')}
+              {t('step1.next')}
               <ChevronRight size={16} aria-hidden="true" />
             </button>
           </div>
         </section>
       )}
 
-      {/* Step 6: 保存（預留） */}
+      {/* Step 6: 卡片邏輯（預留） */}
       {step === 6 && (
         <section className="flex flex-col items-center justify-center gap-4 py-12">
           <p className="text-muted-foreground">
@@ -261,7 +305,93 @@ export function CardBuilderEditorWorkspace({
           <p className="text-sm text-muted-foreground/60">
             {t('comingSoon')}
           </p>
-          {/* 上一步 / 儲存按鈕 */}
+          {/* 上一步 / 下一步按鈕 */}
+          <div className="flex items-center gap-4 pt-4">
+            <button
+              type="button"
+              onClick={handlePrev}
+              className="
+                flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5
+                text-sm font-medium text-foreground
+                transition-all duration-150
+                hover:scale-[1.02] hover:border-primary hover:text-primary
+                active:scale-[0.98]
+              "
+            >
+              <ChevronLeft size={16} aria-hidden="true" />
+              {t('actions.prev')}
+            </button>
+            <button
+              type="button"
+              onClick={handleNext}
+              className="
+                flex items-center gap-2 rounded-lg bg-primary px-6 py-2.5
+                text-sm font-semibold text-on-primary
+                transition-all duration-150
+                hover:scale-[1.02] hover:shadow-[var(--shadow-glow)]
+                active:scale-[0.98]
+              "
+            >
+              {t('step1.next')}
+              <ChevronRight size={16} aria-hidden="true" />
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* Step 7: 客製化桌牌（預留） */}
+      {step === 7 && (
+        <section className="flex flex-col items-center justify-center gap-4 py-12">
+          <p className="text-muted-foreground">
+            {t('step7.title')}
+          </p>
+          <p className="text-sm text-muted-foreground/60">
+            {t('comingSoon')}
+          </p>
+          {/* 上一步 / 下一步按鈕 */}
+          <div className="flex items-center gap-4 pt-4">
+            <button
+              type="button"
+              onClick={handlePrev}
+              className="
+                flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5
+                text-sm font-medium text-foreground
+                transition-all duration-150
+                hover:scale-[1.02] hover:border-primary hover:text-primary
+                active:scale-[0.98]
+              "
+            >
+              <ChevronLeft size={16} aria-hidden="true" />
+              {t('actions.prev')}
+            </button>
+            <button
+              type="button"
+              onClick={handleNext}
+              className="
+                flex items-center gap-2 rounded-lg bg-primary px-6 py-2.5
+                text-sm font-semibold text-on-primary
+                transition-all duration-150
+                hover:scale-[1.02] hover:shadow-[var(--shadow-glow)]
+                active:scale-[0.98]
+              "
+            >
+              {t('step1.next')}
+              <ChevronRight size={16} aria-hidden="true" />
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* Step 8: 保存（預留） */}
+      {step === 8 && (
+        <section className="flex flex-col items-center justify-center gap-4 py-12">
+          <p className="text-muted-foreground">
+            {t('step8.title')}
+          </p>
+          <p className="text-sm text-muted-foreground/60">
+            {t('comingSoon')}
+          </p>
+          {/* 上一步 / 保存按鈕 */}
           <div className="flex items-center gap-4 pt-4">
             <button
               type="button"
