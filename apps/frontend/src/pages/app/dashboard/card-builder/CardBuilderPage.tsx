@@ -14,7 +14,6 @@ import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 import { TemplateLibraryGrid } from '@/components/business/dashboard/TemplateLibraryGrid';
 import { CardBuilderEditor } from '@/components/business/dashboard/CardBuilderEditor';
-import { authService } from '@/services/authService';
 import { cardService } from '@/services/cardService';
 import { ROUTES } from '@/services/httpClient';
 import { PlusCircle, LayoutGrid, Loader2, AlertCircle } from 'lucide-react';
@@ -31,7 +30,6 @@ export default function CardBuilderPage() {
   const [showEditor, setShowEditor] = useState(false);
   const [isBuilding, setIsBuilding] = useState(false);
   const [buildError, setBuildError] = useState<string | null>(null);
-  const [authReady, setAuthReady] = useState(false);
 
   // Sync showEditor with URL ?id= param
   useEffect(() => {
@@ -42,25 +40,17 @@ export default function CardBuilderPage() {
   // Get templateId from URL params
   const templateId = searchParams.get('id');
 
-  // Block interaction until auth session is confirmed (prevents race condition
-  // where we call POST /api/cards before AuthProvider's mount refresh completes).
-  useEffect(() => {
-    authService.refresh()
-      .then(() => setAuthReady(true))
-      .catch(() => setAuthReady(false));
-  }, []);
-
   /**
-   * Handle "從頭建置" — refresh session then create a draft template.
-   * Shows "please re-login" if the session has expired.
+   * Handle "從頭建置" — create a draft template.
+   * httpClient already handles 401 → tryRefresh retry internally,
+   * so there's no need to pre-refresh here. Having two concurrent refreshes
+   * (one from CardBuilderPage mount + one from this button) is the root cause
+   * of the token NULL race (Bug: concurrent refresh 2026-08-21).
    */
   const handleBuildFromScratch = useCallback(async () => {
     setBuildError(null);
     setIsBuilding(true);
-    setAuthReady(false);
     try {
-      // Ensure session is fresh before calling POST /api/cards
-      await authService.refresh();
       const template = await cardService.create({
         cardType: 'stamp_card',
         name: '',
@@ -72,7 +62,6 @@ export default function CardBuilderPage() {
         err instanceof Error &&
         (err.message.includes('401') || err.message.includes('UNAUTHORIZED') || err.message.includes('Invalid or expired'));
       if (isUnauthorized) {
-        // Expired session — redirect to login, returning here keeps the error visible
         window.location.href = ROUTES.login;
         return;
       }
@@ -80,7 +69,6 @@ export default function CardBuilderPage() {
       setBuildError(t('toolbar.buildErrorDetail', { detail: msg }));
     } finally {
       setIsBuilding(false);
-      setAuthReady(true);
     }
   }, [t]);
 
@@ -135,17 +123,15 @@ export default function CardBuilderPage() {
                 <button
                   type="button"
                   onClick={handleBuildFromScratch}
-                  disabled={isBuilding || !authReady}
+                  disabled={isBuilding}
                   className="flex items-center gap-2 rounded-lg border border-primary bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary transition-transform duration-150 hover:scale-[1.02] hover:shadow-[var(--shadow-glow)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {!authReady ? (
-                    <Loader2 size={16} className="animate-spin" aria-hidden="true" />
-                  ) : isBuilding ? (
+                  {isBuilding ? (
                     <Loader2 size={16} className="animate-spin" aria-hidden="true" />
                   ) : (
                     <PlusCircle size={16} aria-hidden="true" />
                   )}
-                  {!authReady ? t('toolbar.checkingAuth') : isBuilding ? t('toolbar.building') : t('toolbar.buildFromScratch')}
+                  {isBuilding ? t('toolbar.building') : t('toolbar.buildFromScratch')}
                 </button>
                 <button
                   type="button"
