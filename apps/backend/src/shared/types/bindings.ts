@@ -52,6 +52,11 @@ export interface Env {
 
   /** API base URL (for redirect URLs in tokens). Default: api.saome.org. */
   API_BASE_URL?: string;
+
+  /** Base URL for the public image proxy endpoint (GET /api/cards/:id/image/:type).
+   *  Used by generate-upload-url.ts to construct the publicUrl returned to the frontend.
+   *  Set via wrangler.jsonc vars.R2_PUBLIC_URL. */
+  R2_PUBLIC_URL?: string;
 }
 
 /**

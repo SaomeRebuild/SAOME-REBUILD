@@ -32,9 +32,6 @@ const UPLOAD_URL_TTL_SECONDS = 3600;
 /** R2 bucket name */
 const R2_BUCKET_NAME = 'saome';
 
-/** R2 public URL base — used so frontend can display the uploaded image */
-const R2_PUBLIC_URL = `https://pub.saome.workers.dev`;
-
 /** Request body schema */
 const generateUploadUrlSchema = z.object({
   imageType: z.enum(['logo', 'background', 'icon']),
@@ -120,11 +117,12 @@ export const generateUploadUrlRoute = new Hono<HonoEnv>()
 
     // Return the key — frontend will use it to construct the public read URL
     // based on the R2 bucket's public URL pattern.
-    // For example: https://saome-assets.pages.dev/{key}
+    // For example: https://saome-backend.josh1989213.workers.dev/api/cards/{id}/image/logo?token={jwt}
+    const R2_PUBLIC_URL = c.env.R2_PUBLIC_URL ?? `https://saome-backend.josh1989213.workers.dev`;
     return c.json({
       uploadUrl,
       key,
-      publicUrl: `${R2_PUBLIC_URL}/${key}`,
+      publicUrl: `${R2_PUBLIC_URL}/api/cards/${templateId}/image/${imageType}`,
     });
   });
 
