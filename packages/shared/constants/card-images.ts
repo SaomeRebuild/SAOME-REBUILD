@@ -11,11 +11,11 @@
  */
 export const CARD_IMAGE_KEYS = {
   /** Issuer logo image — will be cropped to 960x960px before upload. */
-  LOGO: 'issuer-logo.png',
+  logo: 'issuer-logo.png',
   /** Background image for the pass. */
-  BACKGROUND: 'background.png',
+  background: 'background.png',
   /** Icon/thumbnail image. */
-  ICON: 'icon.png',
+  icon: 'icon.png',
 } as const;
 
 /**
@@ -38,20 +38,25 @@ export function buildImageKey(
   templateId: string,
   imageType: CardImageType,
 ): string {
-  return `${tenantId}/${templateId}/${CARD_IMAGE_KEYS[imageType]}`;
+  const filename = CARD_IMAGE_KEYS[imageType];
+  if (!filename) {
+    throw new Error(`buildImageKey: unknown imageType "${imageType}"`);
+  }
+  return `${tenantId}/${templateId}/${filename}`;
 }
 
 /**
  * Logo crop configuration.
  * Based on PassCreator specifications for the logo field.
  *
+ * Logo: Width up to 960 pixels, height flexible.
  * @see https://passcreator.com/documentation/pass-components/
  */
 export const LOGO_CROP_CONFIG = {
-  /** Output width in pixels. Must be at least 960px per PassCreator spec. */
+  /** Output width in pixels. Width capped at 960px per PassCreator spec. */
   OUTPUT_WIDTH: 960,
-  /** Output height in pixels. Square format: 960x960px. */
-  OUTPUT_HEIGHT: 960,
+  /** Output height in pixels. Flexible — preserves natural aspect ratio. */
+  OUTPUT_HEIGHT: null,
   /** Minimum input image width in pixels. User must upload >= 960px wide image. */
   MIN_INPUT_WIDTH: 960,
   /** Allowed MIME types for upload. */

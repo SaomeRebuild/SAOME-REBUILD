@@ -30,11 +30,22 @@ export function getAuthenticatedUser(c: Context<HonoEnv>): AuthenticatedUser {
 }
 
 export const requireAuth: MiddlewareHandler<HonoEnv> = async (c, next) => {
-  const auth = c.req.header('Authorization');
-  if (!auth || !auth.startsWith('Bearer ')) {
+  // Support both Authorization header and ?token= query param.
+  // ?token= is required for <img src> requests which don't send cookies.
+  let token: string | undefined;
+
+  const authHeader = c.req.header('Authorization');
+  if (authHeader?.startsWith('Bearer ')) {
+    token = authHeader.slice('Bearer '.length).trim();
+  } else {
+    // Try ?token= query param (for <img> requests without cookies)
+    token = c.req.query('token');
+  }
+
+  if (!token) {
     throw new AuthError('auth.error.missingToken', 'Missing or malformed Authorization header');
   }
-  const token = auth.slice('Bearer '.length).trim();
+
   const secret = (c.env as { JWT_SECRET?: string }).JWT_SECRET ?? '';
   let payload;
   try {

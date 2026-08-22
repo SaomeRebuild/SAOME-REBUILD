@@ -33,6 +33,7 @@ export default {
   logoUpload: {
     title: '上傳 Logo',
     selectFile: '選擇圖片',
+    replace: '更換圖片',
     dragging: '拖曳調整顯示區域，滾輪縮放',
     uploading: '上傳中...',
     success: 'Logo 上傳成功',

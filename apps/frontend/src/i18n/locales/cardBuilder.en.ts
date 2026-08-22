@@ -33,6 +33,7 @@ export default {
   logoUpload: {
     title: 'Upload Logo',
     selectFile: 'Select Image',
+    replace: 'Replace Image',
     dragging: 'Drag to reposition, scroll to zoom',
     uploading: 'Uploading...',
     success: 'Logo uploaded successfully',

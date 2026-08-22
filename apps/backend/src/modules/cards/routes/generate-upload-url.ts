@@ -24,13 +24,16 @@ import { findTenantByOwnerId } from '@/modules/auth/db/tenants';
 import { findTemplateById } from '../db/templates';
 import { NotFoundError, ValidationError } from '@/shared/lib/saomeError';
 import { z } from 'zod';
-import { buildImageKey, type CardImageType } from '@saome/shared/constants/card-images';
+import { buildImageKey, type CardImageType, CARD_IMAGE_KEYS } from '@saome/shared/constants/card-images';
 
 /** 1 hour = 3600 seconds for pre-signed URL validity */
 const UPLOAD_URL_TTL_SECONDS = 3600;
 
 /** R2 bucket name */
 const R2_BUCKET_NAME = 'saome';
+
+/** R2 public URL base — used so frontend can display the uploaded image */
+const R2_PUBLIC_URL = `https://pub.saome.workers.dev`;
 
 /** Request body schema */
 const generateUploadUrlSchema = z.object({
@@ -73,6 +76,13 @@ export const generateUploadUrlRoute = new Hono<HonoEnv>()
 
     const { imageType } = parsed.data;
 
+    // Validate imageType is a known CardImageType (defensive: guard against typos)
+    if (!CARD_IMAGE_KEYS[imageType as CardImageType]) {
+      throw new ValidationError('common.error.validationFailed', {
+        issues: [{ path: 'imageType', i18nKey: 'common.error.validationFailed' }],
+      });
+    }
+
     // Map frontend imageType string to shared CardImageType
     const cardImageType: CardImageType = imageType as CardImageType;
 
@@ -114,6 +124,7 @@ export const generateUploadUrlRoute = new Hono<HonoEnv>()
     return c.json({
       uploadUrl,
       key,
+      publicUrl: `${R2_PUBLIC_URL}/${key}`,
     });
   });
 

@@ -26,6 +26,7 @@ import { touchCardRoute } from './routes/touch';
 import { deleteCardRoute } from './routes/delete';
 import { getLatestDraftRoute } from './routes/getLatestDraft';
 import { generateUploadUrlRoute } from './routes/generate-upload-url';
+import { getImageRoute } from './routes/getImage';
 
 /**
  * Mounted at /api/cards in src/index.ts.
@@ -34,6 +35,7 @@ import { generateUploadUrlRoute } from './routes/generate-upload-url';
  * parameterized routes (/:id) to avoid matching issues.
  * - /drafts must come before /:id
  * - /:id/generate-upload-url must come before /:id
+ * - /:id/image/:type must come before /:id
  * - /:id/publish must come before /:id
  * - /:id/touch must come before /:id
  */
@@ -43,6 +45,7 @@ export const cardsModule = new Hono<HonoEnv>()
   .route('/', createCardRoute)       // POST /
   .route('/', listCardsRoute)        // GET /
   .route('/', generateUploadUrlRoute) // POST /:id/generate-upload-url — MUST be before /:id
+  .route('/', getImageRoute)         // GET /:id/image/:type — MUST be before /:id
   .route('/', publishCardRoute)       // POST /:id/publish — MUST be before /:id
   .route('/', touchCardRoute)        // PATCH /:id/touch — MUST be before /:id
   .route('/', getCardRoute)          // GET /:id — AFTER all /:id/* routes

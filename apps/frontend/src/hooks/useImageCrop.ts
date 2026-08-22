@@ -12,6 +12,7 @@
  */
 
 import { useState, useCallback, useRef } from 'react';
+import { LOGO_CROP_CONFIG } from '@saome/shared/constants/card-images';
 
 export interface CropState {
   /** Focal point X (0-1, relative to original image width). */
@@ -27,10 +28,10 @@ export interface CropState {
 }
 
 export interface UseImageCropOptions {
-  /** Output width in pixels. */
+  /** Output width in pixels (used for canvas width). */
   outputWidth: number;
-  /** Output height in pixels. */
-  outputHeight: number;
+  /** Output height in pixels. Pass null for flexible height (preserves aspect ratio). */
+  outputHeight: number | null;
   /** Minimum zoom scale (default: 0.5). */
   minScale?: number;
   /** Maximum zoom scale (default: 3.0). */
@@ -62,6 +63,8 @@ export interface UseImageCropReturn {
   originalFile: File | null;
   /** Loaded image URL (for preview). */
   imageUrl: string | null;
+  /** Computed output dimensions based on natural dimensions (width capped at 960). */
+  outputDimensions: { width: number; height: number };
 }
 
 const DEFAULT_MIN_SCALE = 0.5;
@@ -86,8 +89,10 @@ const DEFAULT_INITIAL_SCALE = 1.0;
  */
 export function useImageCrop(options: UseImageCropOptions): UseImageCropReturn {
   const {
-    outputWidth,
-    outputHeight,
+    // Deprecated: output dimensions are now computed internally in cropImage()
+    // (width capped at 960, height flexible). These are kept for interface compat.
+    outputWidth: _outputWidth,
+    outputHeight: _outputHeight,
     minScale = DEFAULT_MIN_SCALE,
     maxScale = DEFAULT_MAX_SCALE,
     initialScale = DEFAULT_INITIAL_SCALE,
@@ -187,41 +192,39 @@ export function useImageCrop(options: UseImageCropOptions): UseImageCropReturn {
       throw new Error('No image loaded');
     }
 
+    const { focalX, focalY, scale, naturalWidth, naturalHeight } = cropState;
+
+    if (naturalWidth === 0 || naturalHeight === 0) {
+      throw new Error('Image dimensions not yet available');
+    }
+
     const canvas = document.createElement('canvas');
-    canvas.width = outputWidth;
-    canvas.height = outputHeight;
     const ctx = canvas.getContext('2d');
     if (!ctx) {
       throw new Error('Failed to get canvas context');
     }
 
-    const { focalX, focalY, scale, naturalWidth, naturalHeight } = cropState;
+    // Output: square (OUTPUT_WIDTH × OUTPUT_WIDTH), matching the UI 200×200 crop window.
+    const MAX_LOGO_SIZE = LOGO_CROP_CONFIG.OUTPUT_WIDTH;
 
-    // Calculate source rectangle from focal point and scale
-    // When scale > 1: we zoom in (show less of the source image)
-    // When scale < 1: we zoom out (show more of the source image)
-    const sourceWidth = naturalWidth / scale;
-    const sourceHeight = naturalHeight / scale;
-    const sourceX = focalX * naturalWidth - sourceWidth / 2;
-    const sourceY = focalY * naturalHeight - sourceHeight / 2;
+    // Square source region size: use the tighter image dimension after zoom.
+    // This keeps the crop square regardless of source aspect ratio.
+    const sourceSizeW = naturalWidth / scale;
+    const sourceSizeH = naturalHeight / scale;
+    const squareSize = Math.min(sourceSizeW, sourceSizeH);
 
-    // Clamp source coordinates to image bounds
-    const clampedSourceX = Math.max(0, sourceX);
-    const clampedSourceY = Math.max(0, sourceY);
-    const clampedSourceWidth = Math.min(sourceWidth, naturalWidth - clampedSourceX);
-    const clampedSourceHeight = Math.min(sourceHeight, naturalHeight - clampedSourceY);
+    // Center the square region on the focal point, clamped to image bounds.
+    const rawX = focalX * naturalWidth - squareSize / 2;
+    const rawY = focalY * naturalHeight - squareSize / 2;
+    const srcX = Math.max(0, rawX);
+    const srcY = Math.max(0, rawY);
+    const srcW = Math.min(squareSize, naturalWidth - srcX);
+    const srcH = Math.min(squareSize, naturalHeight - srcY);
 
-    ctx.drawImage(
-      img,
-      clampedSourceX,
-      clampedSourceY,
-      clampedSourceWidth,
-      clampedSourceHeight,
-      0,
-      0,
-      outputWidth,
-      outputHeight,
-    );
+    canvas.width = MAX_LOGO_SIZE;
+    canvas.height = MAX_LOGO_SIZE;
+
+    ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, MAX_LOGO_SIZE, MAX_LOGO_SIZE);
 
     return new Promise<Blob>((resolve, reject) => {
       canvas.toBlob(
@@ -236,7 +239,7 @@ export function useImageCrop(options: UseImageCropOptions): UseImageCropReturn {
         1.0,
       );
     });
-  }, [cropState, outputWidth, outputHeight]);
+  }, [cropState]);
 
   const resetCrop = useCallback(() => {
     setCropState({
@@ -250,6 +253,15 @@ export function useImageCrop(options: UseImageCropOptions): UseImageCropReturn {
 
   const hasImage = imageUrl !== null && isImageLoaded;
 
+  // Output dimensions: width capped at 960, height flexible
+  const MAX_LOGO_WIDTH = 960;
+  const logoW = cropState.naturalWidth > 0
+    ? Math.min(cropState.naturalWidth, MAX_LOGO_WIDTH)
+    : MAX_LOGO_WIDTH;
+  const logoH = cropState.naturalWidth > 0
+    ? Math.round((cropState.naturalHeight / cropState.naturalWidth) * logoW)
+    : 0;
+
   return {
     cropState,
     imageRef,
@@ -262,5 +274,6 @@ export function useImageCrop(options: UseImageCropOptions): UseImageCropReturn {
     hasImage,
     originalFile,
     imageUrl,
+    outputDimensions: { width: logoW, height: logoH },
   };
 }

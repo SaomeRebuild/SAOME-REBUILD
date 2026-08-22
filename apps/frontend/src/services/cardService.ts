@@ -21,6 +21,7 @@ import type {
   UpdateTemplatePayload,
   TemplateDto,
 } from '@saome/shared/schemas/card';
+import type { CardImageType } from '@saome/shared/constants/card-images';
 
 interface CreateTemplateResponse {
   template: TemplateDto;
@@ -147,9 +148,9 @@ export const cardService = {
    */
   async generateLogoUploadUrl(
     templateId: string,
-    imageType: 'logo' | 'background' | 'icon',
-  ): Promise<{ uploadUrl: string; key: string }> {
-    const res = await httpClient.post<{ uploadUrl: string; key: string }>(
+    imageType: CardImageType,
+  ): Promise<{ uploadUrl: string; key: string; publicUrl: string }> {
+    const res = await httpClient.post<{ uploadUrl: string; key: string; publicUrl: string }>(
       api.paths.cardGenerateUploadUrl(templateId),
       { imageType },
     );

@@ -18,9 +18,12 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Upload, X, ZoomIn, ZoomOut, Check, AlertCircle, RotateCcw } from 'lucide-react';
+import { Upload, X, ZoomIn, ZoomOut, Check, AlertCircle, RotateCcw, Image as ImageIcon } from 'lucide-react';
 import { useImageCrop } from '@/hooks/useImageCrop';
 import { cardService } from '@/services/cardService';
+import { api } from '@/config/api';
+import { getAccessToken } from '@/services/authStore';
+import { useCardBuilderStore } from '../CardBuilderEditor.store';
 import { LOGO_CROP_CONFIG } from '@saome/shared/constants/card-images';
 import type {
   LogoUploaderProps,
@@ -28,31 +31,32 @@ import type {
   ValidationError,
 } from './LogoUploader.types';
 
-const CROP_SIZE = 200; // Preview window size in pixels
+const MAX_PREVIEW_W = 400; // Max preview container width in pixels (keeps UI sane)
+const CROP_WINDOW_SIZE = 200; // Fixed-size crop window (export preview)
 const MAX_SCALE = LOGO_CROP_CONFIG.MAX_SCALE;
-// Fixed floor for the hook's internal state management
 const MIN_SCALE = LOGO_CROP_CONFIG.MIN_SCALE;
 
 /**
- * Dynamic minimum scale so the image ALWAYS fills (or exceeds) the crop window.
+ * Compute the minimum scale so the image ALWAYS fills (or exceeds) the crop window.
  * This prevents the "stuck in middle" bug where the user can't pan beyond
  * the fully-visible image bounds.
  *
- * For a 1920×960 image (landscape): baseScale=0.208, so minScale must be >= 1
- * For a 960×1920 image (portrait): baseScale=0.104, so minScale must be >= 1
- * For a 960×960 image (square): baseScale=1, so minScale can be 0.5
- *
- * We compute this in the render function using actual natural dimensions.
+ * The crop window is a fixed 200x200 square. The preview container is proportional
+ * to the natural aspect ratio, capped at MAX_PREVIEW_W wide.
+ * For non-square images, the image can't fully fit in the window without one axis
+ * exceeding — so minScale must be >= 1 to prevent panning to empty space.
  */
-function computeMinScale(naturalWidth: number, naturalHeight: number): number {
+function computeMinScale(
+  naturalWidth: number,
+  naturalHeight: number,
+  containerWidth: number,
+  containerHeight: number,
+): number {
   if (naturalWidth === 0 || naturalHeight === 0) return 0.5;
-  const shorter = Math.min(naturalWidth, naturalHeight);
-  // baseScale = CROP_SIZE / shorter → scale needed to make shorter fill 200px
-  // To fill the window, we need: shorter * baseScale * minScale >= CROP_SIZE
-  // → minScale >= 1 (always, for non-square images)
-  const baseScale = CROP_SIZE / shorter;
-  const minScale = 1 / baseScale; // = shorter / CROP_SIZE
-  return Math.max(0.5, minScale); // never go below 0.5
+  const shorter = Math.min(containerWidth, containerHeight);
+  const baseScale = shorter / Math.min(naturalWidth, naturalHeight);
+  const minScale = 1 / baseScale;
+  return Math.max(0.5, minScale);
 }
 
 /**
@@ -74,55 +78,21 @@ function validateFile(file: File): ValidationError | null {
   return null;
 }
 
-/**
- * Validate image dimensions.
- * The image must be large enough that when the SHORTER edge fills the 960px output,
- * the LONGER edge is still >= 960px.
- *
- * For example:
- * - 960x960 image: shorter=960, longer=960 → PASS
- * - 1920x960 image: shorter=960, longer=1920 → PASS (crop to 960x960 leaves 960px headroom)
- * - 480x960 image: shorter=480, longer=960 → FAIL (shorter < 960)
- * - 960x480 image: shorter=480, longer=960 → FAIL (shorter < 960)
- */
-async function validateImageDimensions(
-  file: File,
-): Promise<{ isValid: boolean; width: number; height: number }> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      // Check: can we crop 960x960 from this image?
-      // We need the shorter edge >= 960 so the 960px output doesn't exceed image bounds
-      const shorter = Math.min(img.naturalWidth, img.naturalHeight);
-      const isValid = shorter >= LOGO_CROP_CONFIG.OUTPUT_WIDTH;
-      resolve({
-        isValid,
-        width: img.naturalWidth,
-        height: img.naturalHeight,
-      });
-    };
-    img.onerror = () => {
-      resolve({ isValid: false, width: 0, height: 0 });
-    };
-    img.src = URL.createObjectURL(file);
-  });
-}
 
 export function LogoUploader({
   templateId,
-  currentLogoUrl,
   onLogoUploaded,
-  onLogoRemoved,
   className = '',
 }: LogoUploaderProps) {
   const { t } = useTranslation('cardBuilder');
+  const setIssuerLogo = useCardBuilderStore((s) => s.setIssuerLogo);
 
   // Component state
   const [state, setState] = useState<LogoUploaderState>('idle');
   const [validationError, setValidationError] = useState<ValidationError | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  /** True when image is loaded but too small to save */
-  const [isImageTooSmall, setIsImageTooSmall] = useState(false);
+  /** Tracks the last uploaded logo key for reliable preview display after success. */
+  const [lastUploadedLogoKey, setLastUploadedLogoKey] = useState<string | null>(null);
 
   // Refs
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -137,6 +107,7 @@ export function LogoUploader({
   const {
     cropState,
     imageUrl,
+    imageRef,
     onImageLoad,
     loadImage,
     setFocalPoint,
@@ -152,9 +123,6 @@ export function LogoUploader({
     initialScale: 1,
   });
 
-  // Dynamic min scale: never allow zoom-out beyond filling the window
-  const dynamicMinScale = computeMinScale(cropState.naturalWidth, cropState.naturalHeight);
-
   // Sync image element ref
   useEffect(() => {
     // The onImageLoad callback handles setting the ref and detecting dimensions
@@ -169,6 +137,31 @@ export function LogoUploader({
     };
   }, [imageUrl]);
 
+  // Refs to hold latest values for the non-passive wheel listener (avoids re-attaching on every render)
+  const cropStateRef = useRef(cropState);
+  const stateRef = useRef(state);
+  cropStateRef.current = cropState;
+  stateRef.current = state;
+
+  // Non-passive wheel listener: preventDefault() actually fires, stopping page scroll
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const onWheel = (e: WheelEvent) => {
+      if (!hasImage || stateRef.current !== 'cropping') return;
+      e.preventDefault();
+
+      const safeMin = MIN_SCALE;
+      const delta = e.deltaY > 0 ? -0.1 : 0.1;
+      const newScale = Math.max(safeMin, Math.min(MAX_SCALE, cropStateRef.current.scale + delta));
+      setScale(newScale);
+    };
+
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [hasImage, setScale]);
+
   /**
    * Handle file selection.
    */
@@ -182,27 +175,6 @@ export function LogoUploader({
       if (fileError) {
         setValidationError(fileError);
         setState('error');
-        return;
-      }
-
-      // Validate image dimensions
-      const { isValid } = await validateImageDimensions(file);
-      if (!isValid) {
-        setValidationError({
-          type: 'tooSmall',
-          message: 'validation.tooSmall',
-        });
-        // Still load the image so user can see the crop UI,
-        // but will be blocked from saving
-        try {
-          await loadImage(file);
-          setIsImageTooSmall(true);
-          setState('cropping');
-        } catch {
-          setUploadError(t('logoUpload.error'));
-          setState('error');
-        }
-        e.target.value = '';
         return;
       }
 
@@ -227,7 +199,16 @@ export function LogoUploader({
    * Handle apply crop — crop image, upload to R2, update template.
    */
   const handleApplyCrop = useCallback(async () => {
-    if (!hasImage || isImageTooSmall) return;
+    if (!hasImage) return;
+
+    // Defensive: ensure imageRef is actually populated before drawing.
+    // Even if hasImage is true, imageRef.current may lag by one render.
+    const img = imageRef.current;
+    if (!img) {
+      setUploadError(t('logoUpload.error'));
+      setState('error');
+      return;
+    }
 
     setState('uploading');
     setUploadError(null);
@@ -251,14 +232,23 @@ export function LogoUploader({
         },
       });
 
-      // 4. Update template with issuerLogo (store the R2 key)
+      // 4. Fetch current settings, merge with new issuerLogo, then write back.
+      //    This avoids wiping out other fields (barcodeType, storeName, etc.)
+      const currentTemplate = await cardService.getById(templateId);
+      // Defensive: settings can be a string (malformed DB row) or object
+      const rawSettings = currentTemplate.settings;
+      const safeSettings: Record<string, unknown> =
+        typeof rawSettings === 'string' ? JSON.parse(rawSettings) : (rawSettings ?? {});
       await cardService.update(templateId, {
         settings: {
+          ...safeSettings,
           issuerLogo: key,
         },
       });
 
       // 5. Success — report to parent
+      setIssuerLogo(key); // Sync to Zustand store so Step 2 save includes it
+      setLastUploadedLogoKey(key); // Capture key for reliable preview display
       setState('success');
       onLogoUploaded(key);
 
@@ -271,7 +261,7 @@ export function LogoUploader({
       setUploadError(t('error'));
       setState('error');
     }
-  }, [hasImage, isImageTooSmall, cropImage, templateId, onLogoUploaded, t]);
+  }, [hasImage, imageRef, cropImage, templateId, onLogoUploaded, setIssuerLogo, t]);
 
   /**
    * Handle cancel cropping — reset to idle.
@@ -280,40 +270,36 @@ export function LogoUploader({
     resetCrop();
     setValidationError(null);
     setUploadError(null);
-    setIsImageTooSmall(false);
     setState('idle');
   }, [resetCrop]);
 
-  /**
-   * Handle remove logo — reset template issuerLogo.
-   */
-  const handleRemove = useCallback(async () => {
-    try {
-      await cardService.update(templateId, {
-        settings: {
-          issuerLogo: undefined,
-        },
-      });
-      onLogoRemoved?.();
-      setIsImageTooSmall(false);
-      setState('idle');
-    } catch (err) {
-      console.error('[LogoUploader] Remove failed:', err);
-      setUploadError(t('error'));
-    }
-  }, [templateId, onLogoRemoved, t]);
-
   // ===== Compute derived values for rendering and drag =====
 
-  // At scale=1, the image's shorter edge fills CROP_SIZE.
+  // Container matches natural aspect ratio, capped at MAX_PREVIEW_W wide
+  const containerW = cropState.naturalWidth > 0
+    ? Math.min(cropState.naturalWidth, MAX_PREVIEW_W)
+    : MAX_PREVIEW_W;
+  const containerH = cropState.naturalWidth > 0
+    ? Math.round(containerW * (cropState.naturalHeight / cropState.naturalWidth))
+    : MAX_PREVIEW_W;
+
+  // At scale=1: shorter edge of image fills the shorter edge of container.
   // This is the "base" scale that shows the full image letterboxed.
   const baseScale = cropState.naturalWidth > 0
-    ? CROP_SIZE / Math.min(cropState.naturalWidth, cropState.naturalHeight)
+    ? Math.min(containerW, containerH) / Math.min(cropState.naturalWidth, cropState.naturalHeight)
     : 1;
 
   // Actual display dimensions after zoom
   const displayWidth = cropState.naturalWidth * baseScale * cropState.scale;
   const displayHeight = cropState.naturalHeight * baseScale * cropState.scale;
+
+  // Dynamic minimum scale for this image
+  const dynamicMinScale = computeMinScale(
+    cropState.naturalWidth,
+    cropState.naturalHeight,
+    containerW,
+    containerH,
+  );
 
   // ===== Drag to pan (update focal point) =====
 
@@ -357,61 +343,42 @@ export function LogoUploader({
 
   // ===== Scroll to zoom =====
 
-  const handleWheel = useCallback(
-    (e: React.WheelEvent<HTMLDivElement>) => {
-      if (!hasImage || state !== 'cropping') return;
-      e.preventDefault();
-
-      // Delta-based zoom (never zoom out beyond filling the window)
-      const delta = e.deltaY > 0 ? -0.1 : 0.1;
-      const newScale = Math.max(
-        dynamicMinScale,
-        Math.min(MAX_SCALE, cropState.scale + delta),
-      );
-      setScale(newScale);
-    },
-    [hasImage, state, cropState.scale, setScale],
-  );
-
   // ===== Scale slider =====
 
   const handleScaleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      setScale(parseFloat(e.target.value));
+      const raw = e.target.valueAsNumber;
+      // dynamicMinScale is the scale where the image just fills the crop window.
+      // We allow zoom-out below that (user might want the image smaller intentionally),
+      // but we never allow below 0.5 (too small to be useful).
+      const safeMin = Math.min(dynamicMinScale, 0.5);
+      const newScale = Math.max(safeMin, Math.min(MAX_SCALE, raw));
+      setScale(newScale);
     },
-    [setScale],
+    [setScale, dynamicMinScale],
   );
 
   // ===== Calculate image CSS for the crop window =====
 
   /**
-   * Position the image so the focal point aligns with the crop window center.
+   * Position the image so the focal point aligns with the container center.
    *
-   * The crop window is a fixed 200×200 square in the container center.
-   * The image is letterboxed inside this window (shorter edge = 200px at scale=1).
-   *
-   * Math:
-   * - window center is at container center (relative offset = 0 in absolute positioning)
-   * - image position: we want focalX * displayWidth to be at window center
-   * - left = windowCenter - focalX * displayWidth
+   * The container is a rectangle sized to the natural aspect ratio (capped at MAX_PREVIEW_W).
+   * The image is letterboxed inside this container.
    */
   function calculateImageStyle(): React.CSSProperties {
-    const { focalX, focalY, scale, naturalWidth, naturalHeight } = cropState;
+    const { focalX, focalY, naturalWidth, naturalHeight } = cropState;
 
     if (naturalWidth === 0 || naturalHeight === 0) {
       return { display: 'none' };
     }
 
-    // At scale=1: shorter edge fills CROP_SIZE (letterboxed)
-    const shorterEdge = Math.min(naturalWidth, naturalHeight);
-    const baseScale = CROP_SIZE / shorterEdge;
+    const dw = displayWidth;
+    const dh = displayHeight;
 
-    const dw = naturalWidth * baseScale * scale;
-    const dh = naturalHeight * baseScale * scale;
-
-    // Position so focal point is at the window center
-    const left = CROP_SIZE / 2 - focalX * dw;
-    const top = CROP_SIZE / 2 - focalY * dh;
+    // Position so focal point is at the container center
+    const left = containerW / 2 - focalX * dw;
+    const top = containerH / 2 - focalY * dh;
 
     return {
       position: 'absolute',
@@ -419,36 +386,61 @@ export function LogoUploader({
       top: `${top}px`,
       width: `${dw}px`,
       height: `${dh}px`,
+      objectFit: 'contain',
     };
   }
 
-  // ===== Idle state: show upload button or current logo =====
+  // ===== Idle / Success state: show cropped preview with "replace" option =====
 
-  if (state === 'idle') {
+  if (state === 'idle' || state === 'success') {
+    // Priority for display URL:
+    // 1. lastUploadedLogoKey — just uploaded, supersedes everything
+    // 2. Zustand store issuerLogo — from prior sessions or parent init
+    const issuerLogo = useCardBuilderStore.getState().issuerLogo;
+    const previewKey = lastUploadedLogoKey ?? issuerLogo ?? null;
+    const displayUrl = previewKey
+      ? `${api.baseUrl}${api.paths.cardImage(templateId, 'logo')}?token=${getAccessToken() ?? ''}`
+      : undefined;
+
+    const showPreview = Boolean(displayUrl);
+
     return (
       <div className={`flex flex-col items-center gap-4 ${className}`}>
-        {currentLogoUrl ? (
+        {showPreview && displayUrl ? (
           <div className="flex flex-col items-center gap-3">
-            <img
-              src={currentLogoUrl}
-              alt="Current logo"
-              className="h-24 w-24 rounded-lg object-contain bg-muted"
-            />
+            {/* Cropped logo preview — maintain square ratio */}
+            <div className="relative h-32 w-32 overflow-hidden rounded-xl bg-muted">
+              <img
+                src={displayUrl}
+                alt="Logo"
+                className="h-full w-full object-contain"
+              />
+              {/* Success badge — visible for 2 seconds after upload */}
+              {state === 'success' && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-success">
+                    <Check size={16} className="text-white" aria-hidden="true" />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Replace button */}
             <button
               type="button"
-              onClick={handleRemove}
+              onClick={() => fileInputRef.current?.click()}
               className="
-                flex items-center gap-2 rounded-lg border border-destructive/50 px-3 py-1.5
-                text-sm font-medium text-destructive
-                transition-all duration-150
-                hover:bg-destructive/10
+                flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2
+                text-sm font-medium text-foreground transition-all duration-150
+                hover:border-primary hover:text-primary
               "
             >
-              <X size={14} aria-hidden="true" />
-              {t('logoUpload.remove')}
+              <ImageIcon size={14} aria-hidden="true" />
+              {t('logoUpload.replace')}
             </button>
           </div>
         ) : (
+          /* No logo yet: show upload prompt */
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
@@ -467,6 +459,11 @@ export function LogoUploader({
             </span>
           </button>
         )}
+
+        {state === 'success' && (
+          <p className="text-xs text-success/80">{t('logoUpload.success')}</p>
+        )}
+
         <input
           ref={fileInputRef}
           type="file"
@@ -511,40 +508,6 @@ export function LogoUploader({
     );
   }
 
-  // ===== Success state =====
-
-  if (state === 'success') {
-    return (
-      <div className={`flex flex-col items-center gap-4 ${className}`}>
-        <div className="flex flex-col items-center gap-2 rounded-xl border border-success/30 bg-success/5 p-6">
-              <Check size={32} className="text-success" aria-hidden="true" />
-          <p className="text-sm font-medium text-success">
-            {t('logoUpload.success')}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          className="
-            flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2
-            text-sm font-medium text-foreground transition-all duration-150
-            hover:border-primary hover:text-primary
-          "
-        >
-          <Upload size={14} aria-hidden="true" />
-          {t('selectFile')}
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/png,image/jpeg"
-          onChange={handleFileSelect}
-          className="sr-only"
-        />
-      </div>
-    );
-  }
-
   // ===== Cropping / Uploading state =====
 
   return (
@@ -565,24 +528,24 @@ export function LogoUploader({
             {t('logoUpload.dragging')}
           </p>
 
-          {/* Crop container — full image visible, square window as overlay indicator */}
+          {/* Crop container — full image visible, 200x200 window with SVG mask overlay */}
           <div
             ref={containerRef}
-            className="relative flex items-center justify-center overflow-hidden rounded-xl bg-[#1a1a1a]"
+            className="relative overflow-hidden rounded-xl"
             style={{
-              width: '100%',
-              height: 280,
+              width: containerW,
+              height: containerH,
               cursor: 'grab',
               touchAction: 'none',
               userSelect: 'none',
+              backgroundColor: '#1a1a1a',
             }}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerLeave={handlePointerUp}
-            onWheel={handleWheel}
           >
-            {/* Full image — letterboxed in a virtual 200x200 crop area */}
+            {/* Bright full image — visible through the SVG mask "hole" */}
             {imageUrl && cropState.naturalWidth > 0 && (
               <img
                 src={imageUrl}
@@ -592,7 +555,8 @@ export function LogoUploader({
               />
             )}
 
-            {/* Hidden image for dimension detection */}
+            {/* Hidden image for dimension detection — onLoad ensures dimensions
+                are captured even when element mounts before image finishes loading. */}
             <img
               ref={onImageLoad}
               src={imageUrl ?? ''}
@@ -600,24 +564,54 @@ export function LogoUploader({
               className="absolute opacity-0"
               style={{ width: 1, height: 1 }}
               draggable={false}
+              onLoad={(e) => onImageLoad(e.currentTarget)}
             />
 
-            {/* Semi-transparent mask everywhere except the crop window */}
-            <div
-              className="pointer-events-none absolute rounded"
-              style={{
-                width: CROP_SIZE,
-                height: CROP_SIZE,
-                boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.3)',
-              }}
-            />
+            {/* SVG mask layer: dim everything except the 200x200 center crop window.
+                Implementation:
+                  - <mask> defines a hole: white = visible, black = hidden
+                  - <rect> covers full container in dark color, masked so center is transparent
+            */}
+            <svg
+              className="pointer-events-none absolute inset-0"
+              width={containerW}
+              height={containerH}
+              style={{ display: 'block' }}
+            >
+              <defs>
+                <mask id="logo-crop-mask">
+                  {/* Outer rect: full container = white (mask shows the overlay) */}
+                  <rect width={containerW} height={containerH} fill="white" />
+                  {/* Inner rect: 200x200 center crop window = black (mask hides overlay there,
+                    letting bright image show through) */}
+                  <rect
+                    x={(containerW - CROP_WINDOW_SIZE) / 2}
+                    y={(containerH - CROP_WINDOW_SIZE) / 2}
+                    width={CROP_WINDOW_SIZE}
+                    height={CROP_WINDOW_SIZE}
+                    rx="0.5rem"
+                    fill="black"
+                  />
+                </mask>
+              </defs>
+              {/* Dark overlay: visible in white mask areas (outside crop), hidden in black (crop window) */}
+              <rect
+                width={containerW}
+                height={containerH}
+                fill="rgba(0,0,0,0.5)"
+                mask="url(#logo-crop-mask)"
+              />
+            </svg>
 
-            {/* Crop border — white square outline */}
+            {/* 200x200 crop window — white border overlay */}
             <div
-              className="pointer-events-none absolute rounded border-2 border-white/80"
+              className="pointer-events-none absolute rounded border-2 border-white/70"
               style={{
-                width: CROP_SIZE,
-                height: CROP_SIZE,
+                width: CROP_WINDOW_SIZE,
+                height: CROP_WINDOW_SIZE,
+                left: '50%',
+                top: '50%',
+                transform: 'translate(-50%, -50%)',
               }}
             />
           </div>
@@ -627,7 +621,7 @@ export function LogoUploader({
             <ZoomOut size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
             <input
               type="range"
-              min={dynamicMinScale}
+              min={0.5}
               max={MAX_SCALE}
               step={0.1}
               value={cropState.scale}
@@ -640,16 +634,6 @@ export function LogoUploader({
               {cropState.scale.toFixed(1)}x
             </span>
           </div>
-
-          {/* Size warning */}
-          {isImageTooSmall && (
-            <div className="flex items-center gap-2 rounded-lg border border-warning/50 bg-warning/10 px-4 py-2">
-              <AlertCircle size={14} className="shrink-0 text-warning" aria-hidden="true" />
-              <p className="text-xs text-warning">
-                {t('logoUpload.validation.tooSmallForSave')}
-              </p>
-            </div>
-          )}
 
           {/* Action buttons */}
           <div className="flex items-center gap-3">
@@ -680,7 +664,6 @@ export function LogoUploader({
             <button
               type="button"
               onClick={handleApplyCrop}
-              disabled={isImageTooSmall}
               className="
                 flex items-center gap-2 rounded-lg bg-primary px-6 py-2
                 text-sm font-semibold text-on-primary transition-all duration-150

@@ -5,8 +5,13 @@
  * 3. Build from scratch
  * 4. Fill Step 1 (card type) and Step 2 (store info)
  * 5. Trigger save and capture the API response/error
+ *
+ * Part 2: Step 3 logo upload flow
+ * 1. Login as tenant
+ * 2. Open existing card editor (Step 3)
+ * 3. Trigger logo upload and capture errors
  */
-import { test, expect, type ConsoleMessage, type Response } from '@playwright/test';
+import { test, expect, type ConsoleMessage } from '@playwright/test';
 
 const TENANT_EMAIL = 'eason1989213@gmail.com';
 const TENANT_PASSWORD = 'www123123';
@@ -132,6 +137,184 @@ test.describe('CardBuilder: Full Flow + Error Capture', () => {
     if (toastText.length) {
       console.log('\nToast elements:');
       for (const t of toastText) console.log(`  "${t}"`);
+    }
+  });
+});
+
+test.describe('CardBuilder Step 3: Logo Upload Error Capture', () => {
+  test('navigate to Step 3 and trigger logo upload error', async ({ page }) => {
+    test.setTimeout(90_000);
+
+    const consoleLogs: Array<{ type: string; text: string }> = [];
+    page.on('console', (msg: ConsoleMessage) => {
+      consoleLogs.push({ type: msg.type(), text: msg.text() });
+    });
+    page.on('pageerror', (err) => {
+      consoleLogs.push({ type: 'pageerror', text: err.message });
+    });
+
+    const apiRequests: Array<{ method: string; url: string; status?: number; error?: string }> = [];
+    page.on('request', (req) => {
+      if (req.url().includes('/api/')) {
+        apiRequests.push({ method: req.method(), url: req.url() });
+      }
+    });
+    page.on('response', async (resp) => {
+      if (resp.url().includes('/api/') || resp.url().includes('r2.cloudflarestorage')) {
+        const req = apiRequests.find(r => r.url === resp.url() && r.status === undefined);
+        if (req) {
+          req.status = resp.status();
+          if (resp.status() >= 400) {
+            try {
+              req.error = JSON.stringify(await resp.json());
+            } catch {
+              req.error = await resp.text();
+            }
+          }
+        }
+      }
+    });
+
+    // ── 1. Login ────────────────────────────────────────────────
+    await page.goto('/login');
+    await page.waitForSelector('input[type=email]', { timeout: 15_000 });
+    await page.fill('input[type=email]', TENANT_EMAIL);
+    await page.fill('input[type=password]', TENANT_PASSWORD);
+    await page.click('button[type="submit"]');
+    // Wait for either URL change or network idle (whichever comes first)
+    await Promise.race([
+      page.waitForURL('**/app/dashboard', { timeout: 15_000 }),
+      page.waitForLoadState('networkidle', { timeout: 15_000 }),
+    ]);
+    await page.waitForTimeout(1_000);
+    console.log('[STEP] Logged in, url:', page.url());
+
+    // ── 2. Navigate directly to an existing template in DB ──────────
+    // Template: "吃早餐" (id: b9fc0dce-aa82-4c98-9983-55b3d014ead5)
+    // It has card_type=membership_card set (Step 1 complete), likely on Step 2 or 3
+    const templateId = 'b9fc0dce-aa82-4c98-9983-55b3d014ead5';
+    console.log('[STEP] Navigating to existing template:', templateId);
+    await page.goto(`/app/dashboard/card-builder?id=${templateId}`);
+    await page.waitForLoadState('networkidle', { timeout: 15_000 });
+    await page.waitForTimeout(3_000);
+    console.log('[URL]', page.url());
+
+    // ── 3. Complete Step 1 and Step 2 to reach Step 3 ──────────────
+    // Step 1: select card type
+    const cardTypeBtn = page.getByRole('button', { name: /Membership Card/i }).first();
+    if (await cardTypeBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
+      await cardTypeBtn.click();
+      console.log('[STEP] Selected Membership Card');
+      await page.waitForTimeout(500);
+    }
+
+    // Step 1 -> Step 2: click Next
+    const nextBtn1 = page.getByRole('button', { name: /Next|下一步/i }).first();
+    if (await nextBtn1.isVisible({ timeout: 3_000 }).catch(() => false) && !(await nextBtn1.isDisabled().catch(() => true))) {
+      await nextBtn1.click();
+      console.log('[STEP] Next -> Step 2');
+      await page.waitForTimeout(2_000);
+    }
+
+    // Step 2: fill/fiddle a field to trigger DOM value sync, then Next
+    // (isStep2Valid reads from DOM querySelector — need to touch inputs first)
+    const storeNameInput = page.locator('#storeName').first();
+    if (await storeNameInput.isVisible({ timeout: 3_000 }).catch(() => false)) {
+      await storeNameInput.click();
+      await storeNameInput.fill('狐狸早餐店');
+      await page.waitForTimeout(500);
+      console.log('[STEP] Touched storeName field');
+    }
+
+    const nextBtn2 = page.getByRole('button', { name: /Next|下一步/i }).first();
+    if (await nextBtn2.isVisible({ timeout: 3_000 }).catch(() => false) && !(await nextBtn2.isDisabled().catch(() => true))) {
+      await nextBtn2.click();
+      console.log('[STEP] Next -> Step 3 (Issuer Design)');
+      await page.waitForTimeout(2_000);
+    } else {
+      console.log('[WARN] Next button still disabled after touch');
+    }
+
+    console.log('[URL after steps]', page.url());
+
+    // ── 4. Find and trigger logo upload ───────────────────────────
+    const bodyText2 = await page.locator('body').textContent();
+    const hasLogo2 = /標誌|Issuer.*Design|上傳標誌|issuer.*logo/i.test(bodyText2 ?? '');
+    console.log('[INFO] Step 3 has logo text:', hasLogo2);
+
+    // Look for file input
+    const fileInput = page.locator('input[type="file"]').first();
+    const uploadBtn = page.getByRole('button', { name: /上傳|選擇|Select|Upload/i }).first();
+
+    if (await fileInput.isVisible({ timeout: 3_000 }).catch(() => false)) {
+      console.log('[STEP] Found file input, setting image...');
+      await fileInput.setInputFiles('C:\\Users\\user\\Desktop\\SAOME-REBUILD\\images.jpg');
+      await page.waitForTimeout(3_000);
+
+      const applyBtn = page.getByRole('button', { name: /套用|Apply|確認|Confirm/i }).first();
+      if (await applyBtn.isVisible({ timeout: 5_000 }).catch(() => false)) {
+        await applyBtn.click();
+        console.log('[STEP] Clicked apply crop');
+        await page.waitForTimeout(5_000);
+      }
+    } else if (await uploadBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
+      console.log('[STEP] Clicking upload button...');
+      await uploadBtn.click();
+      await page.waitForTimeout(1_000);
+      // After clicking, the hidden file input should be triggered
+      const hiddenFileInput = page.locator('input[type="file"]').first();
+      if (await hiddenFileInput.count() > 0) {
+        await hiddenFileInput.setInputFiles('C:\\Users\\user\\Desktop\\SAOME-REBUILD\\images.jpg');
+        console.log('[STEP] Set file via hidden input');
+        await page.waitForTimeout(3_000);
+        const applyBtn = page.getByRole('button', { name: /套用|Apply|確認|Confirm/i }).first();
+        if (await applyBtn.isVisible({ timeout: 5_000 }).catch(() => false)) {
+          await applyBtn.click();
+          console.log('[STEP] Clicked apply crop');
+          await page.waitForTimeout(5_000);
+        }
+      }
+    } else {
+      // Last resort: find any hidden file input
+      const hiddenInputs = await page.locator('input[type="file"]').all();
+      console.log(`[INFO] Hidden file inputs found: ${hiddenInputs.length}`);
+      for (let i = 0; i < hiddenInputs.length; i++) {
+        const isHidden = await hiddenInputs[i].isHidden();
+        if (!isHidden) {
+          await hiddenInputs[i].setInputFiles('C:\\Users\\user\\Desktop\\SAOME-REBUILD\\images.jpg');
+          console.log(`[STEP] Set file via visible file input ${i}`);
+          await page.waitForTimeout(3_000);
+          break;
+        }
+      }
+    }
+
+    // ── 4. Report ───────────────────────────────────────────────
+    console.log('\n=== STEP 3 LOGO UPLOAD REPORT ===');
+    console.log(`Final URL: ${page.url()}`);
+
+    console.log('\nAPI Requests:');
+    for (const r of apiRequests) {
+      console.log(`  ${r.method} ${r.url} -> ${r.status ?? 'pending'}`);
+      if (r.error) console.log(`    Error: ${r.error}`);
+    }
+
+    console.log('\nConsole errors:');
+    for (const l of consoleLogs) {
+      if (l.type === 'error' || l.type === 'pageerror') {
+        console.log(`  [${l.type}] ${l.text}`);
+      }
+    }
+
+    // Check for error UI on page
+    const errorEl = page.locator('[class*="error"], [class*="Error"], [class*="destructive"]');
+    const errorCount = await errorEl.count();
+    if (errorCount > 0) {
+      console.log(`\nPage error elements (${errorCount}):`);
+      for (const el of await errorEl.all()) {
+        const text = await el.textContent();
+        if (text?.trim()) console.log(`  "${text.trim()}"`);
+      }
     }
   });
 });

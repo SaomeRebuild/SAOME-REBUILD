@@ -57,6 +57,7 @@ export interface TemplateSettings {
   cardSide?: 'front' | 'back';
   // Membership card extension
   isPaid?: boolean;
+  [key: string]: unknown;
 }
 
 /** Input for creating a new template */
@@ -87,7 +88,9 @@ export async function insertTemplate(
   sql: Sql,
   input: CreateTemplateInput,
 ): Promise<TemplatesRow> {
-  const rows = await sql<TemplatesRow[]>`
+  const settingsToInsert = (input.settings ?? {}) as any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rows = await (sql<TemplatesRow[]>`
     INSERT INTO templates (
       id,
       tenant_id,
@@ -99,10 +102,10 @@ export async function insertTemplate(
       ${input.tenantId},
       ${input.name ?? '未命名卡片'},
       ${input.cardType ?? null},
-      ${JSON.stringify(input.settings ?? {})}::jsonb
+      ${sql.json(settingsToInsert)}
     )
     RETURNING id, tenant_id, status, name, card_type, settings, created_at, updated_at, expires_at
-  `;
+  ` as any);
   if (!rows[0]) {
     throw new Error('insertTemplate returned no rows');
   }
@@ -159,7 +162,8 @@ export async function updateTemplate(
 ): Promise<TemplatesRow> {
   // Build dynamic SET clauses using tagged template injection to avoid $N collisions.
   // The id is always passed as ${id} — not as a $N positional placeholder.
-  // settings uses JSONB ||| operator to merge with existing fields.
+  // settings is REPLACED entirely (not merged) so partial updates always reflect
+  // the full current state of the form — no stale data from previous edits.
 
   // Early return if nothing to update
   if (
@@ -179,7 +183,7 @@ export async function updateTemplate(
   const setName = input.name !== undefined ? sql`name = ${input.name}` : null;
   const setCardType = input.cardType !== undefined ? sql`card_type = ${input.cardType}` : null;
   const setSettings = input.settings !== undefined
-    ? sql`settings = settings ||| ${JSON.stringify(input.settings)}::jsonb`
+    ? sql`settings = ${JSON.stringify(input.settings)}::jsonb`
     : null;
   const setStatus = input.status !== undefined ? sql`status = ${input.status}` : null;
 

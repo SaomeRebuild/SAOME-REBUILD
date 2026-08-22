@@ -2,16 +2,10 @@
   "rules": [
     {
       "allowed": {
-        "origins": [
-          "https://saome-frontend.pages.dev",
-          "http://localhost:5173",
-          "http://localhost:8788"
-        ],
+        "origins": ["http://localhost:5173"],
         "methods": ["PUT"],
-        "headers": ["Content-Type"]
-      },
-      "exposeHeaders": ["etag"],
-      "maxAgeSeconds": 3600
+        "headers": ["content-type"]
+      }
     }
   ]
 }

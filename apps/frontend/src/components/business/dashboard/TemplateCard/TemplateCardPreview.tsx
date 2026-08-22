@@ -5,10 +5,13 @@
  */
 import { Barcode, Building2, CreditCard } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { api } from '@/config/api';
+import { getAccessToken } from '@/services/authStore';
 
 const DEMO_BARCODE_VALUE = '4938591027384';
 
 interface TemplateCardPreviewProps {
+  templateId?: string;
   name?: string;
   cardType?: string | null;
   issuerName?: string;
@@ -22,6 +25,7 @@ interface TemplateCardPreviewProps {
  * Layout 與 PassCardPreview 一致，pt-[42px] 對齊 notch 高度（約 1.5 行字）
  */
 export function TemplateCardPreview({
+  templateId,
   name,
   cardType,
   issuerName,
@@ -31,6 +35,12 @@ export function TemplateCardPreview({
 }: TemplateCardPreviewProps) {
   const { t } = useTranslation('passCard');
 
+  // Build proxy URL: avoids relying on Windows DNS resolving saome-assets.pages.dev
+  const token = getAccessToken();
+  const logoUrl = issuerLogo && templateId
+    ? `${api.baseUrl}${api.paths.cardImage(templateId, 'logo')}${token ? `?token=${encodeURIComponent(token)}` : ''}`
+    : undefined;
+
   return (
     <div className="relative flex w-full overflow-hidden rounded-[12px] border border-neutral-200 bg-white shadow-[0_4px_16px_rgba(0,0,0,0.15)]" style={{ aspectRatio: '375 / 503' }}>
       {/* 卡片內容 */}
@@ -38,9 +48,9 @@ export function TemplateCardPreview({
         {/* Header — 頂部留白一小段 */}
         <div className="flex items-center justify-between px-2 pt-0.5">
           <div className="flex items-center gap-1">
-            {issuerLogo ? (
+            {logoUrl ? (
               <img
-                src={issuerLogo}
+                src={logoUrl}
                 alt={issuerName ?? t('defaultIssuerName')}
                 className="h-4 w-4"
                 style={{ borderRadius: 'inherit', objectFit: 'contain' }}

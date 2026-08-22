@@ -7,12 +7,8 @@
 export interface LogoUploaderProps {
   /** Template ID for the card being edited. */
   templateId: string;
-  /** Current logo URL (if any). */
-  currentLogoUrl?: string;
   /** Callback when logo is successfully uploaded. */
   onLogoUploaded: (logoUrl: string) => void;
-  /** Callback when logo is removed. */
-  onLogoRemoved?: () => void;
   /** CSS class for the root element. */
   className?: string;
 }

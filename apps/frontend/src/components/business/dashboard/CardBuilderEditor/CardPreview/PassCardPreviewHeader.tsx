@@ -4,6 +4,9 @@
  */
 import { useTranslation } from 'react-i18next';
 import { Building2 } from 'lucide-react';
+import { api } from '@/config/api';
+import { getAccessToken } from '@/services/authStore';
+import { useCardBuilderStore } from '../CardBuilderEditor.store';
 
 interface PassCardPreviewHeaderProps {
   cardType?: string | null;
@@ -15,14 +18,21 @@ interface PassCardPreviewHeaderProps {
 export function PassCardPreviewHeader({ cardType, issuerLogo, name, compact }: PassCardPreviewHeaderProps) {
   const { t } = useTranslation('passCard');
 
+  // Build proxy URL: avoids relying on Windows DNS resolving saome-assets.pages.dev
+  const templateId = useCardBuilderStore.getState().cardId;
+  const token = getAccessToken();
+  const logoUrl = issuerLogo && templateId
+    ? `${api.baseUrl}${api.paths.cardImage(templateId, 'logo')}${token ? `?token=${encodeURIComponent(token)}` : ''}`
+    : undefined;
+
   return (
     <div className={compact ? 'flex items-center justify-between px-2 pt-2' : 'flex items-center justify-between px-4 pt-4'}>
       {/* Logo 區 */}
       <div className="flex flex-col gap-1">
         <div className={compact ? 'flex items-center gap-1' : 'flex items-center gap-2'}>
-          {issuerLogo ? (
+          {logoUrl ? (
             <img
-              src={issuerLogo}
+              src={logoUrl}
               alt={t('defaultIssuerName')}
               className={compact ? 'h-5 w-5' : 'h-8 w-8'}
               style={{ borderRadius: 'inherit', objectFit: 'contain' }}
