@@ -1,0 +1,119 @@
+# Playwright-first Debugging（MANDATORY）
+
+> 觸發：debug UI / auth / integration bug，改了 5+ 個檔案仍未定位根因。
+
+## 背景
+
+2026-08-22 CardBuilder session 觀察：
+
+- 改 3-4 個檔案才看到有效訊息
+- Playwright smoke test 一次 probe 直接看到 runtime 行為（`tenant: undefined` console log）
+- Static code review 看不到 `useAuth()` 內部 state 形狀、auth refresh 完成時機、API response 實際內容
+
+詳見 `runs/improvements/feedback/20260822-playwright-first-debugging.md`。
+
+## 鐵律
+
+### 觸發條件
+
+同一個 bug，連續改了 **5 個以上** 檔案仍未定位根因 → 立即停手，寫 Playwright probe。
+
+### 為什麼是 5+
+
+| 次數 | 意義 |
+|------|------|
+| 1-2 次 | 正常探索，方向可能對 |
+| 3-4 次 | 方向可能錯，但還不能確定 |
+| **5+ 次** | 方向完全錯，繼續改只會浪費時間 |
+
+5 次是 heuristic 分界線，代表「不是運氣問題，是方法問題」。
+
+### 立即執行
+
+觸發後**立即**：
+
+1. **停手**：不要再改 code
+2. **寫 probe**：在 `tests/probe/` 下建立 `<feature>-debug.spec.ts`
+3. **跑 probe**：用 `page.evaluate()` 截取 React component state、console log、network request/response
+4. **根據 probe 結果改 code**：這次才是一次到位
+
+## Probe 結構
+
+```
+tests/probe/
+├── card-builder-issuer-debug.spec.ts   ← 這次的 probe
+├── auth-state-debug.spec.ts
+└── <feature>-debug.spec.ts
+```
+
+### Probe 範本
+
+```typescript
+// tests/probe/card-builder-issuer-debug.spec.ts
+import { test, expect } from '@playwright/test';
+
+test('IssuerNameField tenant prefill debug', async ({ page }) => {
+  // 1. 登入並進到 Step 2
+  await page.goto('/login');
+  await page.fill('[name="email"]', process.env.TEST_EMAIL!);
+  await page.fill('[name="password"]', process.env.TEST_PASSWORD!);
+  await page.click('[type="submit"]');
+  await page.waitForURL('/app/dashboard');
+
+  // 2. 進 CardBuilder Step 2
+  await page.goto('/app/dashboard/card-builder/step/2?cardId=...');
+
+  // 3. 截取 console logs
+  const consoleLogs: string[] = [];
+  page.on('console', msg => {
+    if (msg.type() === 'log') consoleLogs.push(msg.text());
+  });
+
+  // 4. 截取 React component state
+  const issuerNameState = await page.evaluate(() => {
+    const input = document.querySelector('#issuerName') as HTMLInputElement;
+    const authState = (window as any).__REACT_DEVTOOLS_GLOBAL_HOOK__;
+    return {
+      value: input?.value,
+      disabled: input?.disabled,
+      sessionStorage: {
+        accessToken: !!sessionStorage.getItem('saome.accessToken'),
+        tenant: sessionStorage.getItem('saome.tenant'),
+      }
+    };
+  });
+
+  console.log('=== DEBUG STATE ===');
+  console.log('issuerName:', issuerNameState);
+  console.log('consoleLogs:', consoleLogs);
+
+  // 5. 斷言
+  expect(issuerNameState.value).not.toBe('');
+});
+```
+
+## 為什麼比改 code 更有效
+
+| 維度 | 改 code | Playwright probe |
+|------|---------|-----------------|
+| **速度** | 慢（改完要重 build）| 快（直接截 runtime）|
+| **資訊量** | 有限（只能看改的那個點）| 高（整個 call stack + DOM state）|
+| **準確度** | 低（猜的）| 高（真實行為）|
+| **可複用** | 否（console.log 留在 code 裡）| 是（smoke test 保留，下次 regression 直接用）|
+
+## 禁止
+
+- ❌ 連續 5 次以上改 code 而不先跑 smoke probe
+- ❌ 在 production 上用 `console.log` 試探（要用 smoke test）
+- ❌ probe 跑完不保留（smoke test 每次 commit 前要綠）
+
+## 觸發關鍵字
+
+「debug」「找不到根因」「改了好幾個檔」「一直失敗」「看不出來」**必須**引用此 rule。
+
+## 參照
+
+- `runs/improvements/feedback/20260822-playwright-first-debugging.md` — 背景案例
+- `runs/improvements/feedback/20260822-playwright-first-debugging.md` — probe 範本
+- `.cursor/skills/run-smoke-tests` — smoke test 執行方式
+- `superpowers:systematic-debugging` — Phase 4.5「3+ fixes failed → question architecture」與本 rule 的互補（systematic-debugging 強調根因分析，本 rule 強調及時切換工具）

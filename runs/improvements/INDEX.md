@@ -7,7 +7,9 @@
 
 | 日期 | 主題 | 路徑 | 影響 / 後續 |
 |------|------|------|------|
-| 2026-08-22 | `expires_at` 欄位未 apply → 所有 card API 500；Migration 006 未 apply production → 移除 `expires_at` 所有 SQL 依賴作為繞過 | runs/improvements/feedback/20260822-draft-abandon-500-bug.md | 待 apply Migration 006 後 revert 繞過；新增 migration 應立即 apply 或加 pipeline check |
+| 2026-08-22 | Playwright-first Debugging：CardBuilder debug 時改 3-4 個檔案才看到有效訊息；建議同一個 bug 改了 5+ 個檔案仍未定位根因時，立即停手寫 Playwright probe | runs/improvements/feedback/20260822-playwright-first-debugging.md | 新增 rule `026` (Playwright-first Debugging)；probe 範本見 `tests/probe/card-builder-issuer-debug.spec.ts` |
+| 2026-08-22 | Migration Apply Pipeline：`expires_at` migration 放在 `supabase/migrations/` 但從未 apply 到 production；建議每個 migration 需 pipeline check 或 CI 驗證 | runs/improvements/feedback/20260822-migration-apply-pipeline.md | Migration apply pipeline 待建立；`apps/backend/src/modules/cards/db/templates.test.ts` 待建 |
+| 2026-08-22 | CardBuilder 草稿完整實錄（Aug 21-22）：TTL + pg_cron + Abandon DELETE + schema drift 完整 trace | DEV/08-2026/0822-card-builder-draft-abandon-full-trace.md | 待 revert `expires_at` 繞過；待建 `templates.test.ts` |
 | 2026-08-22 | CardBuilder Step 2 issuerName 預填失敗 + Membership Extension `isPaid` checkbox：`useAuth()` 回傳 `{ state }` 不是 `{ tenant }` 直接解構；後端 `templates.ts` 和 `request.ts` 的 `TemplateSettings` 漏 `isPaid` | DEV/08-2026/0822-card-builder-step2-issuer-fix-and-membership-extension.md | 下次新增 settings 欄位時，同步檢查 shared schema → backend request.ts → backend db interface 三層 |
 | 2026-08-21 | Session/Cookie 跨域問題 + JWT_SECRET 未設定 | runs/improvements/feedback/20260821-session-cookie-cross-origin.md | `saome-github-deploy` skill 需補充 backend secrets checklist |
 | 2026-08-21 | CardBuilder Step 2 PUT 500：`updateTemplate` 用 `$N` + tagged template 混合，postgres.js 把 `$1` 視為 dollar-quoted delimiter；四次嘗試後改用所有值 `${}` tagged injection | runs/improvements/feedback/20260821-card-builder-update-template-500.md | `000-modular-design.mdc` Part B 禁止清單應加 postgres.js antipattern |
@@ -46,7 +48,10 @@
 | 2026-08-21 | `saome-github-deploy` skill 補充：部署後端前，確認 `wrangler secret list` 所有 secrets 已正確設定 | ⏳ pending |
 | 2026-08-21 | `000-modular-design.mdc` Part B 禁止清單加：動態 UPDATE 不得用 `$N` + tagged template 混合（postgres.js antipattern）；加 `apps/backend/src/modules/cards/db/templates.test.ts` 覆蓋 `updateTemplate` | ⏳ pending |
 | 2026-08-22 | `useAuth` hook JSDoc 加 explicit return type 說明，避免 `{ tenant }` vs `{ state: { tenant } }` 解構錯誤 | ⏳ pending |
-| 2026-08-22 | `019-schema-contract-drift.mdc` 檢查清單加第四層：backend request schema (`request.ts`) 也需同步 `isPaid` | ⏳ pending |
+| 2026-08-22 | `019-schema-contract-drift.mdc` 檢查清單加第四層：backend request schema (`request.ts`) 也需同步 | ⏳ pending |
+| 2026-08-22 | 新增 `026-playwright-first-debugging.mdc` rule（5+ 次改檔無效 → Playwright probe） | ⏳ pending |
+| 2026-08-22 | Migration apply pipeline：CI check 確保 migration 狀態與 code 一致 | ⏳ pending |
+| 2026-08-22 | Migration apply 後 revert `expires_at` 繞過（templates.ts / cardService.ts / response.ts / shared schema） | ⏳ pending |
 
 ## 使用方式
 
