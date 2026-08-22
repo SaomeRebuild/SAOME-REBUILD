@@ -12,7 +12,7 @@
  * - PUT    /:id       — Update a template
  * - POST   /:id/publish — Publish a template
  * - PATCH  /:id/touch  — Reset draft TTL (auto-save keep-alive)
- * - DELETE /:id       — Delete a template
+ * - DELETE /:id       — Delete a template (draft or published; draft-only enforced in service)
  */
 
 import { Hono } from 'hono';
@@ -25,17 +25,15 @@ import { publishCardRoute } from './routes/publish';
 import { touchCardRoute } from './routes/touch';
 import { deleteCardRoute } from './routes/delete';
 import { getLatestDraftRoute } from './routes/getLatestDraft';
-import { abandonCardRoute } from './routes/abandon';
 
 /**
  * Mounted at /api/cards in src/index.ts.
- * 
+ *
  * IMPORTANT: Route order matters! More specific routes must come BEFORE
  * parameterized routes (/:id) to avoid matching issues.
  * - /drafts must come before /:id
  * - /:id/publish must come before /:id
  * - /:id/touch must come before /:id
- * - /:id/abandon must come before /:id
  */
 export const cardsModule = new Hono<HonoEnv>()
   // Routes (specific paths before parameterized paths)
@@ -44,7 +42,6 @@ export const cardsModule = new Hono<HonoEnv>()
   .route('/', listCardsRoute)        // GET /
   .route('/', publishCardRoute)       // POST /:id/publish — MUST be before /:id
   .route('/', touchCardRoute)        // PATCH /:id/touch — MUST be before /:id
-  .route('/', abandonCardRoute)      // PATCH /:id/abandon — MUST be before /:id
   .route('/', getCardRoute)          // GET /:id — AFTER all /:id/* routes
   .route('/', updateCardRoute)       // PUT /:id
   .route('/', deleteCardRoute);      // DELETE /:id

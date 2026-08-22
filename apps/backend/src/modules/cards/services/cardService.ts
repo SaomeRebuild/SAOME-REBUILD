@@ -161,6 +161,9 @@ export async function publishTemplateService(
 /**
  * Delete a template.
  *
+ * - draft → can be deleted (used by abandon flow + library grid)
+ * - published → cannot be deleted via this route (use dedicated publish un-publish flow if needed)
+ *
  * @param sql - Database client
  * @param templateId - Template UUID
  * @param tenantId - Tenant ID from JWT (for ownership check)
@@ -170,10 +173,13 @@ export async function deleteTemplateService(
   templateId: string,
   tenantId: string,
 ): Promise<DeleteTemplateResponse> {
-  // Ownership check
   const existing = await findTemplateById(sql, templateId);
   if (!existing || existing.tenant_id !== tenantId) {
     throw new NotFoundError('common.error.notFound', 'Template not found');
+  }
+
+  if (existing.status === 'published') {
+    throw new Error('Published templates cannot be deleted via this route');
   }
 
   await deleteTemplate(sql, templateId);

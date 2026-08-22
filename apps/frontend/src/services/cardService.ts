@@ -10,8 +10,8 @@
  * - GET    /api/cards/:id      — Get a single template by ID
  * - PUT    /api/cards/:id      — Update a template
  * - POST   /api/cards/:id/publish — Publish a template
- * - PATCH  /api/cards/:id/abandon — Mark a draft as abandoned
- * - DELETE /api/cards/:id      — Delete a template
+ * - PATCH  /api/cards/:id/touch — Reset draft TTL (auto-save keep-alive)
+ * - DELETE /api/cards/:id      — Delete a template (used for both library delete & abandon)
  */
 
 import { httpClient } from './httpClient';
@@ -39,10 +39,6 @@ interface UpdateTemplateResponse {
 }
 
 interface DeleteTemplateResponse {
-  success: boolean;
-}
-
-interface AbandonTemplateResponse {
   success: boolean;
 }
 
@@ -130,10 +126,10 @@ export const cardService = {
   },
 
   /**
-   * Mark a draft template as abandoned.
-   * The draft remains in the DB for pg_cron TTL cleanup, but is excluded from resume queries.
+   * Mark a draft template as abandoned — permanently deletes it.
+   * Used by CardBuilderPage when user clicks "從頭建置" and chooses to discard the existing draft.
    */
   async abandon(id: string): Promise<void> {
-    await httpClient.patch<AbandonTemplateResponse>(api.paths.cardAbandon(id));
+    await httpClient.delete<DeleteTemplateResponse>(api.paths.cardById(id));
   },
 };

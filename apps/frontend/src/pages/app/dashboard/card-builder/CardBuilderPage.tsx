@@ -99,34 +99,15 @@ export default function CardBuilderPage() {
   }
 
   /**
-   * Discard: abandon the draft, then create a new one.
-   * Stores draft ID in sessionStorage for undo window.
+   * Discard: delete the draft, then create a new one.
    */
   async function handleDiscardDraft(draft: TemplateDto) {
     setShowConfirmDialog(false);
     setPendingDraft(null);
     setIsBuilding(true);
     try {
-      // Store for undo window
-      sessionStorage.setItem('abandoned_draft', JSON.stringify(draft));
       await cardService.abandon(draft.id);
-      toast(t('toast.draftAbandoned'), {
-        action: {
-          label: t('toast.undo'),
-          onClick: async () => {
-            const raw = sessionStorage.getItem('abandoned_draft');
-            if (!raw) return;
-            try {
-              const abandoned: TemplateDto = JSON.parse(raw);
-              await cardService.update(abandoned.id, { status: 'draft' });
-              sessionStorage.removeItem('abandoned_draft');
-              toast(t('toast.draftRestored'));
-            } catch {
-              toast.error('復原失敗');
-            }
-          },
-        },
-      });
+      toast(t('toast.draftAbandoned'));
       await createNewDraft();
     } catch (err) {
       console.error('Failed to abandon draft:', err);
