@@ -69,14 +69,33 @@ alwaysApply: true
 |------|------|
 | Playwright probe | 驗證 production bundle 無 localhost URL |
 
+### 5. DB Migration Checklist（L2 Backend）
+
+> 觸發：新增 `supabase/migrations/` 的 migration 檔案。
+
+新增 migration 檔後，**必須**逐項確認才能 close session：
+
+| # | 動作 | 說明 |
+|---|------|------|
+| 1 | 建 migration 檔 | `supabase/migrations/YYYYMMDD_XXX_<name>.sql` |
+| 2 | 立即 apply | 透過 `saome_supabase` MCP `apply_migration` |
+| 3 | 確認成功 | 回傳 `[]` 而非錯誤；若 "column already exists" 表示 migration 已 apply，可安全繼續 |
+| 4 | 填 commit footer | `Migration: XXX applied via saome_supabase MCP` |
+| 5 | 若 MCP fail | **不要** commit workaround；等 MCP reconnected 再 apply |
+
+詳見 `runs/improvements/feedback/20260822-migration-apply-pipeline.md`。
+
 ---
 
 ## 觸發關鍵字
 
-「做卡片預覽」「新增元件」「拉一個 component」「實作元件」「建立 L2」**必須**引用此 rule。
+「做卡片預覽」「新增元件」「拉一個 component」「實作元件」「建立 L2」
+「migration 檔」「apply_migration」「新增欄位」**必須**引用此 rule。
 
 ## 參照
 
 - `.cursor/rules/frontend/023-shared-package.mdc` — i18n namespace 規範（含元件化原則）
+- `.cursor/rules/019-schema-contract-drift.mdc` — DB ↔ schema drift 鐵律
 - `runs/improvements/feedback/20260816-vibe-coding-workflow-optimization.md` — 背景事故記錄
+- `runs/improvements/feedback/20260822-migration-apply-pipeline.md` — Migration 未 apply 導致 production 500 事故
 - `apps/frontend/scripts/verify-i18n-keys.mjs` — i18n smoke test script

@@ -1,6 +1,6 @@
 # Playwright-first Debugging（MANDATORY）
 
-> 觸發：debug UI / auth / integration bug，改了 5+ 個檔案仍未定位根因。
+> 觸發：debug UI / auth / integration bug，1 次 smoke test fail 後停手寫 Playwright probe。
 
 ## 背景
 
@@ -16,17 +16,18 @@
 
 ### 觸發條件
 
-同一個 bug，連續改了 **5 個以上** 檔案仍未定位根因 → 立即停手，寫 Playwright probe。
+同一個 bug，**連續改了 1 次 code，smoke test 仍 fail** → 立即停手，寫 Playwright probe。
 
-### 為什麼是 5+
+### 為什麼是 1+
 
 | 次數 | 意義 |
 |------|------|
-| 1-2 次 | 正常探索，方向可能對 |
-| 3-4 次 | 方向可能錯，但還不能確定 |
-| **5+ 次** | 方向完全錯，繼續改只會浪費時間 |
+| 0 次 | 正常的第一次 code change |
+| **1 次 smoke fail** | 方向可能錯，立即 probe 比繼續猜有效 |
+| 2-4 次 | 方向可能錯，但還不能確定 |
+| 5+ 次 | 已經浪費太多時間 |
 
-5 次是 heuristic 分界線，代表「不是運氣問題，是方法問題」。
+1 次是 heuristic 分界線，代表「不要浪費任何一次」。
 
 ### 立即執行
 
@@ -72,7 +73,6 @@ test('IssuerNameField tenant prefill debug', async ({ page }) => {
   // 4. 截取 React component state
   const issuerNameState = await page.evaluate(() => {
     const input = document.querySelector('#issuerName') as HTMLInputElement;
-    const authState = (window as any).__REACT_DEVTOOLS_GLOBAL_HOOK__;
     return {
       value: input?.value,
       disabled: input?.disabled,
@@ -103,7 +103,7 @@ test('IssuerNameField tenant prefill debug', async ({ page }) => {
 
 ## 禁止
 
-- ❌ 連續 5 次以上改 code 而不先跑 smoke probe
+- ❌ 1 次 smoke test fail 後繼續改 code 而不先跑 smoke probe
 - ❌ 在 production 上用 `console.log` 試探（要用 smoke test）
 - ❌ probe 跑完不保留（smoke test 每次 commit 前要綠）
 
@@ -114,6 +114,5 @@ test('IssuerNameField tenant prefill debug', async ({ page }) => {
 ## 參照
 
 - `runs/improvements/feedback/20260822-playwright-first-debugging.md` — 背景案例
-- `runs/improvements/feedback/20260822-playwright-first-debugging.md` — probe 範本
 - `.cursor/skills/run-smoke-tests` — smoke test 執行方式
-- `superpowers:systematic-debugging` — Phase 4.5「3+ fixes failed → question architecture」與本 rule 的互補（systematic-debugging 強調根因分析，本 rule 強調及時切換工具）
+- `superpowers:systematic-debugging` — Phase 4.5「3+ fixes failed → question architecture」與本 rule 的互補

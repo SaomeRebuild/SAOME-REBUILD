@@ -76,13 +76,53 @@ flowchart TD
 | L3 Heavy | 新功能涉及多模組 / 架構改動 | Brainstorming → Decision Log → TDD → Review → Smoke |
 | L3 Escape Hatch | L3 + 需求含糊 / 跨系統整合 | L3 Heavy + Spec-Kit 完整流程 |
 
-## 使用的 Skills
+## Decision Log 觸發範圍（自 2026-08-22 強化）
+
+> 「Abandon 從 UPDATE 改 DELETE row」是架構層級改變，但 scope 不到 L3 Heavy，結果漏進 Decision Log。從此建立明確觸發範圍。
+
+### 強制進 Decision Log 的情境
+
+以下情境**無論 L1/L2/L3**，討論後**必須**寫進 `runs/decisions/YYYY-MM-DD-<topic>.md`：
+
+| 情境 | 為什麼 |
+|------|--------|
+| 刪除 vs 保留資料的抉擇 | 資料是永久資產，刪除不可逆 |
+| 改既有 API 的 HTTP verb（GET→DELETE、POST→PATCH）| 影響所有客戶端 |
+| 新增 DB column migration | 改 DB schema 是高風險動作 |
+| 新增 DB table | 同上 |
+| 任何會影響 production 資料的 SQL | Production 資料不可測試失誤 |
+| 新增第三方 service 包裝 | API contract 永久綁定 |
+| 廢除既有功能 | 破壞性變更 |
+
+### 三段式格式
+
+```markdown
+# Decision：<主題>
+
+## 背景
+為什麼要做這個決定
+
+## 選項與決定
+- 選項 A：...
+- 選項 B：...
+- **決定**：選項 B（理由）
+
+## 影響
+這個決定影響哪些現有系統
+```
+
+詳見 `runs/decisions/` 既有範例。
+
+### 禁止
+
+- ❌ 架構改動只寫在 DEV LOG 或 feedback，沒進 Decision Log
+- ❌ 「順便一提」跳過 Decision Log（三段式格式不可省略）
 
 | 環節 | Skill | 必須/可選 |
 |------|-------|-----------|
 | Task Router | `saome-task-router` | **必須** |
 | 創意發想 | `superpowers:brainstorming` | L3 必須 |
-| Decision Log | 手動寫 `runs/decisions/` | L3 必須 |
+| Decision Log | 手動寫 `runs/decisions/` | L3 必須 + 架構改動必進（見 Decision Log 觸發範圍）|
 | TDD 實作 | `superpowers:test-driven-development` | L2+ 必須 |
 | 冒煙測試 | `superpowers:run-smoke-tests` | L3 必須 |
 | Code Review | `superpowers:requesting-code-review` | L3 必須 |

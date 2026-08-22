@@ -226,6 +226,53 @@ Deploy 完成後，**必須**確認：
 - [ ] 舊分支已刪除
 - [ ] 沒有 `.env` 或 credentials 在 repo 中
 
+## Backend Deploy Migration Check（自 2026-08-22）
+
+> 觸發：deploy `apps/backend` 時**必須**執行。
+
+### 為什麼這條 rule 存在
+
+2026-08-22 CardBuilder `expires_at` migration 放在 `supabase/migrations/` 但從未 apply 到 production DB，導致所有 Card API 回 500。
+
+詳見 `runs/improvements/feedback/20260822-migration-apply-pipeline.md`。
+
+### 觸發時機
+
+Deploy backend 到**任何環境**（dev / staging / production）前，**必須**執行此 check。
+
+### Check 流程
+
+```powershell
+# 1. 列出 supabase/migrations/ 下的所有 migration 檔
+Get-ChildItem -Path supabase/migrations/ -Filter "*.sql" | Sort-Object Name
+
+# 2. 用 Supabase MCP list_migrations 或登入 Supabase Dashboard
+#    對比已 apply 的 migration 版本
+
+# 3. 如果有未 apply 的 migration
+if ($未apply的migration.Count -gt 0) {
+    Write-Error "BLOCKING: 以下 migration 未 apply: $未apply的migration"
+    Write-Error "請先在 Supabase Dashboard 或用 MCP apply_migration 執行後再 deploy"
+    exit 1
+}
+
+# 4. 如果全部已 apply，繼續 deploy
+```
+
+### Blocking 條件
+
+| 情境 | 動作 |
+|------|------|
+| 有未 apply 的 migration | **Block deploy**，提示 migration 檔名 |
+| migration 尚未 apply 到目標環境 | **Block deploy**，說明目標環境 |
+| 目標環境是 production | **Block deploy**，強制 double confirm |
+
+### 禁止
+
+- ❌ Deploy backend 前沒執行 migration check
+- ❌ 把 migration 檔 commit 到 repo 但從未 apply
+- ❌ 在 migration 未 apply 的情況下假裝「程式碼已包含」就能正常運作
+
 ## Cloudflare Pages 部署檢查表
 
 > 當需要將前端部署至 Cloudflare Workers 時，**必須**參照 `.cursor/rules/015-cloudflare-pages-deploy.mdc`。

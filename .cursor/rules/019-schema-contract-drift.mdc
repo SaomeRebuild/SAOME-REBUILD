@@ -81,7 +81,7 @@ describe('schema conformance (shared vs backend)', () => {
 **建議**（plan optional）：用 `scripts/check-shared-schema-sync.cjs`
 當作 build-time check，在 `npm run build` 之前跑，自動 fail。
 
-### 4. migration 紀律 — 新增 column 必 triple-binding
+### 4. migration 紀律 — 新增 column 必 quad-binding
 
 新增 `public.<table>` 欄位的 PR，**必須** 在同一個 commit 內帶齊：
 
@@ -90,13 +90,32 @@ describe('schema conformance (shared vs backend)', () => {
 [migration .sql - re-run via Supabase MCP apply_migration]
 [packages/shared/schemas/...]    # shared zod 加 optional field
 [apps/backend/.../db/<table>.ts] # insertX 參數列加欄位
+[apps/backend/.../schemas/request.ts]  # backend request schema 加 field（第四層）
+[apps/backend/.../services/<service>.ts] # backend service 參數型別
 [apps/backend/.../tests/schema-conformance.test.ts]  # 加 conformance 驗證
 [feedback]                       # 必要時 runs/improvements/feedback/
 ```
 
 任一缺一 → 後續 drift 又會出現。
 
-### 5. DB CHECK constraint — zod enum 必同步
+### 4.1 Backend Request Schema（第四層）— 自 2026-08-22 CardBuilder 補上
+
+8/21-22 CardBuilder 實作觀察：`cardType` optional drift 與 `isPaid` extension drift
+都在「shared schema ✅ → backend request.ts ❌」這層漏掉。
+
+**四層必須同步**（以 `templateSettingsSchema` 為例）：
+
+| 層 | 位置 | 檢查重點 |
+|---|------|---------|
+| 1 | `packages/shared/schemas/card.ts` | `templateSettingsSchema` 有這個 field |
+| 2 | `apps/backend/src/modules/cards/schemas/request.ts` | `templateSettingsSchema` 有這個 field |
+| 3 | `apps/backend/src/modules/cards/db/templates.ts` | `TemplateSettings` interface 有這個 field |
+| 4 | `apps/backend/src/modules/cards/services/cardService.ts` | service 參數型別含這個 field |
+
+詳見 `runs/improvements/feedback/20260822-card-builder-draft-abandon-full-trace.md`
+§ `isPaid` Extension Schema Drift。
+
+### 6. DB CHECK constraint — zod enum 必同步
 
 DB migration 裡的 `CHECK (column IN ('a', 'b', 'c'))` 是一個**隱性 schema**。
 zod enum 必須跟它對齊，否則 application 允許的值 DB 會 reject，反之亦然。
@@ -124,7 +143,7 @@ it('passTierSchema enum values match DB CHECK constraint', () => {
 
 **修法**：`packages/shared/schemas/pass.ts` 的 `passTierSchema` 註解已加 `// mirrors passes.plan CHECK constraint in DB`，未來任何修改 CHECK constraint 的 migration 必須同步更新此 enum。
 
-### 6. backward compatibility
+### 7. backward compatibility
 
 如果新增欄位要 default（例如 `invoice_address` 從 NOT NULL 變成
 NULL-able），**必須** 在 migration 裡明確寫 default value 或 `USING`
@@ -147,12 +166,36 @@ ALTER TABLE public.tenants ADD COLUMN email text;  -- NOT NULL 預設，但沒 d
 「backend schema stub」、「shared/schemas」、「from-shared」、
 「新增欄位」、「migration」時**必須**引用此 rule。
 
+### 強化觸發條件（自 2026-08-22）
+
+以下情境**必定觸發**四層同步 check（不得跳過）：
+
+| 情境 | 為什麼 |
+|------|--------|
+| shared schema 新增 `z.boolean().optional()` / `.optional()` | optional field 特別容易 drift（從不缺到缺） |
+| shared schema 的 `z.object` 多了任何 key | 每個 key 都要出現在後端 |
+| 新增 DB migration 加 column | migration 是 drift 起點 |
+| 任何 `request.ts` 有 `// TODO` 或 `// FIXME` 註解 | 表示落後於 shared，隨時會 drift |
+| feature 有 2 個以上 schema drift feedback | 系統性問題，觸發 3 層檢查清單 |
+
+**觸發後必跑**：
+
+```
+□ shared schema 有這個 field
+□ backend schemas/request.ts 有這個 field
+□ backend db/<table>.ts 的 interface 有這個 field
+□ backend services/<service>.ts 的參數型別含這個 field
+□ conformance test 通過
+```
+
 ## 參照
 
 - `.cursor/skills/saome-form-integrity/SKILL.md` — Step E schema drift check
 - `.cursor/rules/018-form-autofill-and-multi-step-state.mdc` — 同源 bug 的 sibling rule
 - `runs/improvements/feedback/20260731-register-autofill-schema-drift.md`
   — Register 表單 autofill + schema drift 三連環事故記錄
+- `runs/improvements/feedback/20260822-card-builder-draft-abandon-full-trace.md`
+  — CardBuilder `cardType` + `isPaid` drift 完整事件鏈（第四層漏掉的案例）
 - `DEV/08-2026/0815-pass-tier-schema-drift.md`
   — PassTier `basic/premium/enterprise` vs DB `green/gold/platinum` drift（`passTierSchema` 從未被 runtime 引用所以 typecheck 一直過）
 - `apps/backend/src/modules/auth/schemas/request.ts` — TODO 來源檔

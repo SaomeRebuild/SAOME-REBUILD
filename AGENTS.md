@@ -140,6 +140,8 @@ apps/frontend/ **只能放 Web 特定內容**。所有可共用的程式碼必�
 - ✅ 新增任何 `.stories.tsx` 前，對齊 `@storybook/react` 跟 `@storybook/react-vite` 版本
 - ✅ 所有 smoke test credential 從 `tests/smoke/template.ts` import，禁止 hard-code 在 spec 內
 - ✅ 每次跑 smoke test 用 `npm run test:smoke`（統一 playwright config 在 root）
+- ✅ 任何 migration 檔建立後，**必須**立即透過 `saome_supabase` MCP apply，commit footer 填 `Migration: <name> applied via saome_supabase MCP`
+- ✅ `templateSettingsSchema`（或任何 shared schema）新增 field 時，**必須**同步檢查四層：shared schema → backend request.ts → backend db interface → backend service（詳見 `.cursor/rules/019-schema-contract-drift.mdc` §4.1）
 
 ## Task Router 入口（MANDATORY）
 
@@ -180,8 +182,11 @@ L3 Heavy 任務**必須**寫 `runs/decisions/YYYY-MM-DD-<topic>.md`，含三段�
 2. **SPA 必走 client-side redirect**：任何 `setState({user,accessToken})` 之後必須**同步**呼叫 `navigate(ROLE_HOME_PATH[role], { replace: true })` 或 `useAuthRedirect()`。Login 跟 Register 行為必須對稱（同一個 hook 或同等 explicit navigate）。
 3. **AuthGuard 必有對稱 reverse-direction**：每一個 `<AuthGuard>`（未登入 → 推 login）必對應一個 `<AuthenticatedRedirect>`（已登入 → 推 home）。back button 是常見的回歸來源。
 4. **「It works but it looks wrong」仍是 P0**：每個 placeholder / L1 元件必須跑 `forbidden-class scan`（禁 `bg-white` / `text-neutral-{50..900}` / `bg-[#abc]` 等 hardcoded colour），參考 `apps/frontend/src/components/ui/feedback/ComingSoonCard.test.tsx` 的實作。
+5. **useAuth() 回傳形狀**：每次使用 `useAuth()` 前，確認其回傳值形狀。`useAuth()` 回傳 `{ state: AuthState, ... }`，`tenant` 在 `state.tenant` 底下，不是直接解構。
 
-> 這 4 條鐵律來自 7 個 bug 的教訓（見 `DEV/08-2026/0808-bug-7-trace.md` — Bug-4 umbrella / 4b / 4c / 4d / 5 / 6 / 7a / 7b / 7 follow-up）。任何 auth-related work 必先讀該檔。決策依據見 `DEV/08-2026/0808-dev.md`。
+> 這 5 條鐵律來自 7+ 個 bug 的教訓（見 `DEV/08-2026/0808-bug-7-trace.md` — Bug-4 umbrella / 4b / 4c / 4d / 5 / 6 / 7a / 7b / 7 follow-up）。
+> `useAuth()` 回傳形狀問題見 `DEV/08-2026/0822-card-builder-step2-issuer-fix-and-membership-extension.md`。
+> 任何 auth-related work 必先讀該檔。決策依據見 `DEV/08-2026/0808-dev.md`。
 >
 > 注意：auth / payment / session recovery / checkout 都是 **critical chain**。修這條 chain 上的 bug 即便 scope 看似 L2，也必須走 L3 流程 + production smoke test（詳見 `.cursor/rules/001-methodology.mdc` § Critical chain bridge 與 `.cursor/skills/saome-task-router/SKILL.md` Step 5）。
 
@@ -243,3 +248,29 @@ SAOME-REBUILD 采用 task-router 分流的兩層方法論，詳細說明見：
 - `.cursor/rules/019-schema-contract-drift.mdc` — DB ↔ zod schema ↔ backend contract 鐵律
 
 事故紀錄：`runs/improvements/feedback/20260731-register-autofill-schema-drift.md`。
+
+## Backend 開發紀律
+
+### postgres.js Dynamic Query
+
+動態 UPDATE / INSERT 必須使用 tagged template injection，禁止混合 `$N` positional placeholder。
+詳見 `.cursor/rules/027-postgres-dynamic-query-pattern.mdc`。
+
+```typescript
+// ✅ 正確：所有值都透過 ${} 注入
+await sql`UPDATE t SET ${input.name !== undefined ? sql`name = ${input.name}` : sql``} WHERE id = ${id}`;
+
+// ❌ 錯誤：$N + tagged template 混合 → unterminated dollar-quoted string
+```
+
+### Migration Apply Checklist
+
+新增 migration 檔後，**必須**逐項確認才能 close session：
+
+| # | 檢查項 | 失敗時的行動 |
+|---|--------|-------------|
+| 1 | 透過 `saome_supabase` MCP `apply_migration` | 若 MCP timeout，**不要** commit workaround；等 MCP reconnected 再 apply |
+| 2 | 確認 `execute_sql` 回傳 `[]`（DDL success）| 若 "column already exists"，表示 migration 已 apply，可安全繼續 |
+| 3 | Commit message footer 必填 MCP apply 結果 | `Migration: <name> applied via saome_supabase MCP` |
+
+詳見 `.cursor/rules/frontend/025-vibe-coding-l2-checklist.mdc` § DB Migration Checklist。

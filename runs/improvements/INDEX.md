@@ -47,11 +47,13 @@
 | 2026-08-17 | `025-vibe-coding-l2-checklist.mdc` 或新建 `026-ci-workflow-checklist.mdc`：加 CI workflow 修改 checklist（新增 dep 前確認 cache key） | ⏳ pending |
 | 2026-08-21 | `saome-github-deploy` skill 補充：部署後端前，確認 `wrangler secret list` 所有 secrets 已正確設定 | ⏳ pending |
 | 2026-08-21 | `000-modular-design.mdc` Part B 禁止清單加：動態 UPDATE 不得用 `$N` + tagged template 混合（postgres.js antipattern）；加 `apps/backend/src/modules/cards/db/templates.test.ts` 覆蓋 `updateTemplate` | ⏳ pending |
-| 2026-08-22 | `useAuth` hook JSDoc 加 explicit return type 說明，避免 `{ tenant }` vs `{ state: { tenant } }` 解構錯誤 | ⏳ pending |
-| 2026-08-22 | `019-schema-contract-drift.mdc` 檢查清單加第四層：backend request schema (`request.ts`) 也需同步 | ⏳ pending |
-| 2026-08-22 | 新增 `026-playwright-first-debugging.mdc` rule（5+ 次改檔無效 → Playwright probe） | ⏳ pending |
-| 2026-08-22 | Migration apply pipeline：CI check 確保 migration 狀態與 code 一致 | ⏳ pending |
-| 2026-08-22 | Migration apply 後 revert `expires_at` 繞過（templates.ts / cardService.ts / response.ts / shared schema） | ⏳ pending |
+| 2026-08-22 | 強化 `019` 觸發條件：5 種情境必跑四層同步 check | ✅ done |
+| 2026-08-22 | 強化 `026` 門檻：從「5+ 檔案」改為「1 次 smoke fail」| ✅ done |
+| 2026-08-22 | `saome-github-deploy` skill 加 migration apply blocking check | ✅ done |
+| 2026-08-22 | 強化 `001` Decision Log：7 種架構改動必進 Decision Log | ✅ done |
+| 2026-08-22 | `useAuth` hook JSDoc 加 explicit return type 說明 | ⏳ pending |
+| 2026-08-22 | Migration apply pipeline：CI check 確保 migration 與 code 同步 | ⏳ pending |
+| 2026-08-22 | Migration apply 後 revert `expires_at` 繞過 | ⏳ pending |
 
 ## 使用方式
 
