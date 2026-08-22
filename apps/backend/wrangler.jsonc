@@ -31,6 +31,12 @@
       "id": "7abd3a2056314db294ce3a54d2555d68"
     }
   ],
+  "r2_buckets": [
+    {
+      "binding": "ASSETS",
+      "bucket_name": "saome"
+    }
+  ],
   "vars": {
     "ACCESS_TOKEN_TTL": "28800",
     "REFRESH_TOKEN_TTL": "2592000",

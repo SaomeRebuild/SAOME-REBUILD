@@ -16,6 +16,7 @@ import { TemplateLibraryGrid } from '@/components/business/dashboard/TemplateLib
 import { CardBuilderEditor } from '@/components/business/dashboard/CardBuilderEditor';
 import { ConfirmAbandonDraftDialog } from '@/components/ui/dialog/ConfirmAbandonDraftDialog';
 import { cardService } from '@/services/cardService';
+import { SaomeApiError } from '@/services/httpClient';
 import { PlusCircle, LayoutGrid, Loader2, AlertCircle } from 'lucide-react';
 import { toast } from '@/components/ui/feedback/Toast';
 import type { TemplateDto } from '@saome/shared/schemas/card';
@@ -83,7 +84,15 @@ export default function CardBuilderPage() {
     } catch (err) {
       console.error('[createNewDraft] FAILED to create draft:', err);
       setIsBuilding(false);
-      setBuildError(t('toolbar.buildErrorDetail', { detail: String(err) }));
+      let detail = String(err);
+      if (err instanceof SaomeApiError) {
+        // Extract structured info so we can see the actual backend error
+        detail = `(${err.status} ${err.code}) ${err.message}`;
+        if (err.details) {
+          console.error('[createNewDraft] API error details:', JSON.stringify(err.details, null, 2));
+        }
+      }
+      setBuildError(t('toolbar.buildErrorDetail', { detail }));
     }
   }
 
@@ -112,7 +121,14 @@ export default function CardBuilderPage() {
     } catch (err) {
       console.error('Failed to abandon draft:', err);
       setIsBuilding(false);
-      setBuildError(t('toolbar.buildErrorDetail', { detail: String(err) }));
+      let detail = String(err);
+      if (err instanceof SaomeApiError) {
+        detail = `(${err.status} ${err.code}) ${err.message}`;
+        if (err.details) {
+          console.error('[handleDiscardDraft] API error details:', JSON.stringify(err.details, null, 2));
+        }
+      }
+      setBuildError(t('toolbar.buildErrorDetail', { detail }));
     }
   }
 

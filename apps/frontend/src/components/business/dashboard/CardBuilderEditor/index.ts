@@ -1,5 +1,6 @@
 export { CardBuilderEditor } from './CardBuilderEditor';
 export { Step2CardSettings } from './Step2CardSettings';
+export { LogoUploader } from './LogoUploader';
 export type {
   CardBuilderEditorProps,
   CardBuilderEditorData,
