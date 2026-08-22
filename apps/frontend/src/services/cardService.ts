@@ -132,4 +132,27 @@ export const cardService = {
   async abandon(id: string): Promise<void> {
     await httpClient.delete<DeleteTemplateResponse>(api.paths.cardById(id));
   },
+
+  /**
+   * Generate a pre-signed URL for direct R2 upload.
+   *
+   * Flow:
+   * 1. Call this to get a pre-signed PUT URL
+   * 2. Upload the cropped image directly to R2 using the pre-signed URL
+   * 3. Call update() with the R2 key as issuerLogo
+   *
+   * @param templateId - Template UUID
+   * @param imageType - Type of image to upload ('logo', 'background', 'icon')
+   * @returns Pre-signed upload URL and R2 key
+   */
+  async generateLogoUploadUrl(
+    templateId: string,
+    imageType: 'logo' | 'background' | 'icon',
+  ): Promise<{ uploadUrl: string; key: string }> {
+    const res = await httpClient.post<{ uploadUrl: string; key: string }>(
+      api.paths.cardGenerateUploadUrl(templateId),
+      { imageType },
+    );
+    return res;
+  },
 };

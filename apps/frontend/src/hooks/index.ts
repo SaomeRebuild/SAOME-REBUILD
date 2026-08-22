@@ -7,3 +7,5 @@ export { useFormSchema } from './useFormSchema';
 export { useStorage } from './useStorage';
 export { useTheme } from './useTheme';
 export type { ThemePreference, ResolvedTheme } from './useTheme';
+export { useImageCrop } from './useImageCrop';
+export type { CropState, UseImageCropOptions, UseImageCropReturn } from './useImageCrop';

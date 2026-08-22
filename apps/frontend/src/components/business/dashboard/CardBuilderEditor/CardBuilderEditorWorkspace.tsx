@@ -9,6 +9,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { CardType, EditorStep } from './CardBuilderEditor.types';
 import { CardTypeSelector } from './CardTypeSelector';
 import { Step2CardSettings } from './Step2CardSettings';
+import { LogoUploader } from './LogoUploader';
 import { useCardBuilderStore } from './CardBuilderEditor.store';
 
 interface CardBuilderEditorWorkspaceProps extends HTMLAttributes<HTMLDivElement> {
@@ -167,17 +168,24 @@ export function CardBuilderEditorWorkspace({
         </section>
       )}
 
-      {/* Step 3: 卡片設計（預留） */}
+      {/* Step 3: 卡片設計（Logo 上傳） */}
       {step === 3 && (
-        <section className="flex flex-col items-center justify-center gap-4 py-12">
-          <p className="text-muted-foreground">
+        <section className="flex flex-col gap-6">
+          <h2 className="text-lg font-semibold text-foreground">
             {t('step3.title')}
-          </p>
-          <p className="text-sm text-muted-foreground/60">
-            {t('comingSoon')}
-          </p>
+          </h2>
+          <LogoUploader
+            templateId={cardId ?? ''}
+            currentLogoUrl={undefined}
+            onLogoUploaded={(logoUrl) => {
+              console.log('[Step3] Logo uploaded:', logoUrl);
+            }}
+            onLogoRemoved={() => {
+              console.log('[Step3] Logo removed');
+            }}
+          />
           {/* 上一步 / 下一步按鈕 */}
-          <div className="flex items-center gap-4 pt-4">
+          <div className="flex items-center justify-between pt-2">
             <button
               type="button"
               onClick={handlePrev}
