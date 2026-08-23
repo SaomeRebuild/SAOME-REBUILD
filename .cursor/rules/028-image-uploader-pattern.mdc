@@ -1,0 +1,156 @@
+# Image Uploader Pattern（MANDATORY）
+
+> 觸發：建立任何圖片上傳相關元件（LogoUploader、BackgroundUploader、IconUploader 等）。
+
+## 背景
+
+2026-08-23 LogoUploader 實作觀察：
+
+- R2 presigned URL 流程踩了 CORS 三階段坑（origin / R2 endpoint / headers wildcard）
+- settings JSON 直接覆蓋踩了 merge 坑
+- focal point 拖曳方向踩了負號坑
+- Zustand store 時機問題踩了 `lastUploadedLogoKey` 坑
+- i18n 放錯 namespace（放進 `cardBuilder` 而非獨立 `logoUpload`）
+
+詳見 `runs/improvements/feedback/20260823-logo-uploader-full-trace.md`。
+
+## 鐵律
+
+### 1. Presigned URL pattern（強制）
+
+所有圖片上傳走這條 chain，Worker 只做簽署：
+
+```
+前端 → POST /api/cards/:id/upload-url/:type
+     ← { presignedUrl, key }
+前端 → PUT presignedUrl（R2 direct）
+     ← 200 OK
+前端 → PATCH /api/cards/:id（回填 key 到 settings）
+```
+
+**禁止**：不走 presigned URL，直接 POST 到 Worker 再 streaming 到 R2（Worker 50ms CPU time budget 撐不住 streaming）。
+
+### 2. Settings merge（強制）
+
+PATCH template 時，settings 必須 fetch → merge → write，**禁止**直接覆蓋：
+
+```typescript
+// ✅ 正確
+const updateData = {
+  ...existingData,
+  settings: { ...existingData.settings, ...input.settings },
+};
+
+// ❌ 錯誤：直接覆蓋會洗掉其他欄位
+const updateData = { ...existingData, settings: input.settings };
+```
+
+詳見 Rule 027（postgres dynamic query）。
+
+### 3. Focal point coordinate（強制）
+
+拖曳時坐標計算必須取負號：
+
+```typescript
+// ✅ 正確
+const dx = e.clientX - dragStart.current.x;
+const newFocalX = dragStart.current.focalX - dx / displayWidth;
+
+// ❌ 錯誤：沒取負號 → 拖曳方向與視覺相反
+const newFocalX = dragStart.current.focalX + dx / displayWidth;
+```
+
+### 4. Preview reliability（強制）
+
+上傳成功後，用 `lastUploadedXxxKey` state 追蹤 key，**優先於** Zustand store：
+
+```typescript
+const [lastUploadedLogoKey, setLastUploadedLogoKey] = useState<string | null>(null);
+
+// 上傳成功後
+setLastUploadedLogoKey(key);
+
+// render 時：state > store
+const displayKey = lastUploadedLogoKey ?? issuerLogoKey;
+```
+
+理由：Zustand store 更新時機落後於 API response，可能造成上傳完卻不顯示的問題。
+
+### 5. R2 CORS 四件套（強制）
+
+每次新增 R2 bucket 或調整 CORS 時，必須湊齊四件：
+
+| 項目 | 設定值 | 說明 |
+|---|---|---|
+| `allowed_origins` | 包含 R2 endpoint | `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com` |
+| `allowed_origins` | 包含所有 frontend origins | `https://saome-frontend.pages.dev` + `https://saome-frontend-*.pages.dev` |
+| `allowed_headers` | `["*"]` | aws4fetch 簽署請求帶 `x-amz-*` headers，wildcard 必要 |
+| `allowed_methods` | `["PUT", "HEAD"]` | R2 presigned URL 用 PUT 上傳 |
+
+設定檔：`apps/backend/r2-cors.json`。
+
+### 6. Wrangler secrets 順序（強制）
+
+```bash
+# ✅ 正確順序
+wrangler deploy
+wrangler secret put R2_ACCOUNT_ID
+wrangler secret put R2_ACCESS_KEY_ID
+wrangler secret put R2_SECRET_ACCESS_KEY
+
+# ❌ 錯誤：先設定 secret 再 deploy → 412 Precondition Failed
+wrangler secret put R2_ACCOUNT_ID
+wrangler deploy  # 失敗
+```
+
+### 7. Dev vars 同步（強制）
+
+`.dev.vars` 必須包含與 production secrets 一樣的 key，否則本地 `wrangler dev` 噴 `ReferenceError: R2_ACCOUNT_ID is not defined`：
+
+```bash
+# apps/backend/.dev.vars 必填
+R2_ACCOUNT_ID=xxx
+R2_ACCESS_KEY_ID=xxx
+R2_SECRET_ACCESS_KEY=xxx
+R2_PUBLIC_URL=https://saome-backend.josh1989213.workers.dev
+```
+
+### 8. 裁切 logic 可抽離 Canvas（RN 化必備）
+
+裁切運算（normalize focal point、crop rect）必須寫在 `packages/shared/logic/` 為**純函式**，**不能**依賴 `HTMLCanvasElement`：
+
+```
+packages/shared/logic/image-crop/
+├── normalizeFocalPoint.ts   ← 純函式，RN 可用
+├── buildCropRect.ts         ← 純函式，RN 可用
+└── index.ts                 ← barrel
+```
+
+RN 版替換為 `react-native-image-crop-picker` 時，`shared/logic/` 零改動。
+
+## L2 Checklist 對齊
+
+| 動作 | 標準 |
+|---|---|
+| i18n namespace | **先建立** 獨立的 component-bound namespace（如 `logoUpload`），**禁止**放在 feature namespace（如 `cardBuilder`） |
+| 元件結構 | `components/business/dashboard/CardBuilderEditor/LogoUploader/` 一個資料夾 |
+| Test | `LogoUploader.test.tsx` + RTL |
+| Storybook | `LogoUploader.stories.tsx` |
+
+詳見 Rule 023 § 元件化原則。
+
+## 觸發關鍵字
+
+「上傳圖片」「R2」「presigned URL」「CORS 403」「LogoUploader」「BackgroundUploader」「裁切」**必須**引用此 rule。
+
+## 參照
+
+- `runs/improvements/feedback/20260823-logo-uploader-full-trace.md`
+ — LogoUploader 完整 bug trace + Decision Log
+- `apps/backend/src/modules/cards/routes/generate-upload-url.ts`
+ — presigned URL 實作範例
+- `apps/backend/r2-cors.json`
+ — CORS 設定檔
+- Rule 027（postgres dynamic query）— Settings merge pattern
+- Rule 023（shared package / i18n namespace）— component-bound namespace 原則
+- Rule 024（mobile future-proof）— RN 化裁切 logic 抽離要求

@@ -26,6 +26,8 @@ import passCardZhTW from '../i18n/locales/passCard.zh-TW';
 import passCardEn from '../i18n/locales/passCard.en';
 import confirmDraftZhTW from '../i18n/locales/confirmDraft.zh-TW';
 import confirmDraftEn from '../i18n/locales/confirmDraft.en';
+import logoUploadZhTW from '../i18n/locales/logoUpload.zh-TW';
+import logoUploadEn from '../i18n/locales/logoUpload.en';
 
 if (!i18n.isInitialized) {
   i18n.use(initReactI18next).init({
@@ -44,6 +46,7 @@ if (!i18n.isInitialized) {
         cardEditor: cardEditorZhTW,
         passCard: passCardZhTW,
         confirmDraft: confirmDraftZhTW,
+        logoUpload: logoUploadZhTW,
       },
       en: {
         auth: authEn,
@@ -59,6 +62,7 @@ if (!i18n.isInitialized) {
         cardEditor: cardEditorEn,
         passCard: passCardEn,
         confirmDraft: confirmDraftEn,
+        logoUpload: logoUploadEn,
       },
     },
     lng: 'zh-TW',

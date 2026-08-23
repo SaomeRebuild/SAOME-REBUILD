@@ -84,7 +84,7 @@ export function LogoUploader({
   onLogoUploaded,
   className = '',
 }: LogoUploaderProps) {
-  const { t } = useTranslation('cardBuilder');
+  const { t } = useTranslation('logoUpload');
   const setIssuerLogo = useCardBuilderStore((s) => s.setIssuerLogo);
 
   // Component state
