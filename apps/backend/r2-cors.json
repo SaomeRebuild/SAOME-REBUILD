@@ -1,0 +1,21 @@
+{
+  "rules": [
+    {
+      "allowed": {
+        "origins": [
+          "http://localhost:5173",
+          "http://localhost:8788",
+          "https://saome-frontend.pages.dev",
+          "https://saome-admin.pages.dev",
+          "https://saome-backend.josh1989213.workers.dev",
+          "https://josh1989213.workers.dev",
+          "https://app.saome.org",
+          "https://admin.saome.org",
+          "https://saome.org"
+        ],
+        "methods": ["PUT", "HEAD"],
+        "headers": ["content-type", "x-amz-acl", "x-amz-meta-*"]
+      }
+    }
+  ]
+}

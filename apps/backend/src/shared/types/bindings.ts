@@ -8,6 +8,7 @@
  */
 
 import type { Hyperdrive } from '@cloudflare/workers-types';
+import type { R2Bucket } from '@cloudflare/workers-types';
 
 /**
  * Worker env shape, passed as `c.env` in Hono handlers.
@@ -19,6 +20,15 @@ import type { Hyperdrive } from '@cloudflare/workers-types';
 export interface Env {
   /** Hyperdrive binding (Postgres connection pool). */
   HYPERDRIVE: Hyperdrive;
+
+  /** R2 bucket for card template assets (logo, background, icon). */
+  ASSETS: R2Bucket;
+
+  /** R2 API credentials for generating presigned URLs. */
+  R2_ACCESS_KEY_ID: string;
+  R2_SECRET_ACCESS_KEY: string;
+  /** Cloudflare account ID for R2 endpoint. */
+  R2_ACCOUNT_ID: string;
 
   /** Allowed CORS origins (comma-separated). Default: localhost:5173. */
   ALLOWED_ORIGINS?: string;
@@ -42,6 +52,11 @@ export interface Env {
 
   /** API base URL (for redirect URLs in tokens). Default: api.saome.org. */
   API_BASE_URL?: string;
+
+  /** Base URL for the public image proxy endpoint (GET /api/cards/:id/image/:type).
+   *  Used by generate-upload-url.ts to construct the publicUrl returned to the frontend.
+   *  Set via wrangler.jsonc vars.R2_PUBLIC_URL. */
+  R2_PUBLIC_URL?: string;
 }
 
 /**

@@ -23,6 +23,7 @@ import { CardBuilderEditorWorkspace } from './CardBuilderEditorWorkspace';
 import { CardBuilderEditorPreview } from './CardBuilderEditorPreview';
 import { MobilePreviewPanel } from './MobilePreviewPanel';
 import { useCardBuilderStore } from './CardBuilderEditor.store';
+import { useAuth } from '@/hooks/useAuth';
 import { cardService } from '@/services/cardService';
 
 export function CardBuilderEditor({
@@ -46,9 +47,13 @@ export function CardBuilderEditor({
     setCardSide,
     setCardId,
     setCardType,
+    setIssuerName,
     loadSettings,
     reset,
   } = useCardBuilderStore();
+
+  // Auth state — used to pre-fill issuerName from tenant.name
+  const { state: authState } = useAuth();
 
   // 從 URL 讀取 templateId（自己監聽 URL，而非靠父層 prop）
   // 這樣 pushState / navigate 更新 URL 時能即時觸發 fetch
@@ -58,8 +63,6 @@ export function CardBuilderEditor({
   useEffect(() => {
     if (templateId) {
       // 編輯模式：reset 舊的 stale 資料，再 fetch 既有的 template settings
-      // 否則上一個 draft 的 storeName/barcodeType 等值會殘留，
-      // 而 loadSettings 的 ?? fallback 不會覆蓋這些舊值（因為新值也是空字串）。
       reset();
       setCardId(templateId);
       setIsLoading(true);
@@ -73,18 +76,24 @@ export function CardBuilderEditor({
           if (template.name) {
             setName(template.name);
           }
+          // issuerName：若 template 沒有值，用 tenant.name 預填
+          if (!template.settings.issuerName && authState.tenant?.name) {
+            setIssuerName(authState.tenant.name);
+          }
         })
         .catch((err) => {
           console.error('Failed to load template:', err);
-          // TODO: Show error toast
         })
         .finally(() => {
           setIsLoading(false);
         });
     } else {
-      // 新建模式：reset store 並設定 cardId 為 null
+      // 新建模式：reset store 並直接用 tenant.name 預填 issuerName
       reset();
       setCardId(null);
+      if (authState.tenant?.name) {
+        setIssuerName(authState.tenant.name);
+      }
       setIsLoading(false);
     }
   }, [templateId]); // eslint-disable-line react-hooks/exhaustive-deps

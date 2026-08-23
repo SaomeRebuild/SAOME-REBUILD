@@ -17,5 +17,8 @@ export const api = {
     cardPublish: (id: string) => `/api/cards/${id}/publish`,
     cardTouch: (id: string) => `/api/cards/${id}/touch`,
     cardDrafts: '/api/cards/drafts',
+    cardGenerateUploadUrl: (id: string) => `/api/cards/${id}/generate-upload-url`,
+    cardImage: (id: string, type: 'logo' | 'background' | 'icon') =>
+      `/api/cards/${id}/image/${type}`,
   },
 } as const;

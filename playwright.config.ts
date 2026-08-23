@@ -8,7 +8,7 @@ export default defineConfig({
   workers: 1,
   reporter: [['list']],
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:5174',
     trace: 'off',
     headless: true,
   },
@@ -27,5 +27,5 @@ export default defineConfig({
     stderr: 'pipe',
   },
   // Point to the cursor-sandbox-cache where browsers are installed
-  browsersDir: 'C:\\Users\\user\\AppData\\Local\\Temp\\cursor-sandbox-cache\\10604e2124b203b912e54123131434ef\\playwright',
+  browsersDir: 'C:\\Users\\user\\AppData\\Local\\Temp\\cursor-sandbox-cache\\4e778bad1e3ef412649b20e2d835a0dc\\playwright',
 });

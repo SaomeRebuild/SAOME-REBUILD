@@ -116,21 +116,33 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
   setCurrency: (currency) => set({ currency }),
   setIsPaid: (isPaid) => set({ isPaid }),
 
-  loadSettings: (settings) => set((state) => ({
-    name: settings.name ?? state.name,
-    cardType: settings.cardType ?? state.cardType,
-    issuerName: settings.issuerName ?? state.issuerName,
-    issuerLogo: settings.issuerLogo ?? state.issuerLogo,
-    backgroundColor: settings.backgroundColor ?? state.backgroundColor,
-    textColor: settings.textColor ?? state.textColor,
-    holderName: settings.holderName ?? state.holderName,
-    barcodeType: settings.barcodeType ?? state.barcodeType,
-    storeName: settings.storeName ?? state.storeName,
-    passValidDays: settings.passValidDays !== undefined ? settings.passValidDays : state.passValidDays,
-    expiryDate: settings.expiryDate ?? state.expiryDate,
-    currency: settings.currency ?? state.currency,
-    isPaid: settings.isPaid ?? state.isPaid,
-  })),
+  loadSettings: (settings) => {
+    // Guard: settings can be a single object or an array of partial merges.
+    // Deep-merge all array elements to recover the most complete field set.
+    // Defensive: settings can be a JSON string (malformed DB row) or object.
+    const resolved: Record<string, unknown> = Array.isArray(settings)
+      ? settings.reduce<Record<string, unknown>>((acc, s) => ({ ...acc, ...s }), {})
+      : typeof settings === 'string'
+        ? JSON.parse(settings)
+        : (settings ?? {});
+
+    console.log('[CardBuilderEditor] loadSettings resolved:', JSON.stringify(resolved));
+    set((state) => ({
+      name: (resolved?.name ?? state.name) as string,
+      cardType: (resolved?.cardType ?? state.cardType) as CardType | null,
+      issuerName: (resolved?.issuerName ?? state.issuerName) as string,
+      issuerLogo: (resolved?.issuerLogo ?? state.issuerLogo) as string,
+      backgroundColor: (resolved?.backgroundColor ?? state.backgroundColor) as string,
+      textColor: (resolved?.textColor ?? state.textColor) as string,
+      holderName: (resolved?.holderName ?? state.holderName) as string,
+      barcodeType: (resolved?.barcodeType ?? state.barcodeType) as BarcodeType,
+      storeName: (resolved?.storeName ?? state.storeName) as string,
+      passValidDays: resolved?.passValidDays !== undefined ? resolved.passValidDays as number | null : state.passValidDays,
+      expiryDate: (resolved?.expiryDate ?? state.expiryDate) as string,
+      currency: (resolved?.currency ?? state.currency) as 'TWD' | 'ZAR',
+      isPaid: (resolved?.isPaid ?? state.isPaid) as boolean,
+    }));
+  },
 
   reset: () => set({ ...initialState, isPaid: initialState.isPaid }),
 }));

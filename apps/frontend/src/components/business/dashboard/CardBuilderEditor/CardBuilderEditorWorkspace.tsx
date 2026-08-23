@@ -3,13 +3,15 @@
  * 根據 step 顯示不同的操作面板內容
  */
 
-import type { HTMLAttributes } from 'react';
+import { useEffect, type HTMLAttributes } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { CardType, EditorStep } from './CardBuilderEditor.types';
 import { CardTypeSelector } from './CardTypeSelector';
 import { Step2CardSettings } from './Step2CardSettings';
+import { LogoUploader } from './LogoUploader';
 import { useCardBuilderStore } from './CardBuilderEditor.store';
+import { cardService } from '@/services/cardService';
 
 interface CardBuilderEditorWorkspaceProps extends HTMLAttributes<HTMLDivElement> {
   step: EditorStep;
@@ -34,15 +36,36 @@ export function CardBuilderEditorWorkspace({
 }: CardBuilderEditorWorkspaceProps) {
   const { t } = useTranslation('cardEditor');
 
-  /** Step 2: Read values from DOM (source of truth for user input) */
+  /** Step 2: Read values from Zustand store (source of truth) */
   function getStep2Values() {
-    const storeNameEl = document.querySelector<HTMLInputElement>('#storeName');
-    const issuerNameEl = document.querySelector<HTMLInputElement>('#issuerName');
+    const store = useCardBuilderStore.getState();
     return {
-      storeName: storeNameEl?.value ?? '',
-      issuerName: issuerNameEl?.value ?? '',
+      storeName: store.storeName,
+      issuerName: store.issuerName,
     };
   }
+
+  /** Load existing template settings when cardId is provided (edit mode) */
+  useEffect(() => {
+    if (!cardId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const template = await cardService.getById(cardId);
+        if (cancelled) return;
+        console.log('[CardBuilderEditorWorkspace] loaded template:', template);
+        useCardBuilderStore.getState().loadSettings(template.settings);
+        if (template.cardType && template.cardType !== cardType) {
+          onCardTypeChange(template.cardType);
+        }
+      } catch (err) {
+        console.error('[CardBuilderEditorWorkspace] failed to load template:', err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [cardId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function isStep2Valid() {
     const { storeName, issuerName } = getStep2Values();
@@ -55,12 +78,13 @@ export function CardBuilderEditorWorkspace({
       if (step === 2 && !isStep2Valid()) return;
       if (step === 2 && cardId && onSave) {
         try {
-          const { storeName, issuerName } = getStep2Values();
+          const { storeName, issuerName, issuerLogo } = useCardBuilderStore.getState();
           const { barcodeType, passValidDays, expiryDate, currency, isPaid } = useCardBuilderStore.getState();
           await onSave(cardId, {
             barcodeType,
             storeName,
             issuerName,
+            issuerLogo: issuerLogo || undefined,
             passValidDays,
             expiryDate,
             currency,
@@ -167,17 +191,20 @@ export function CardBuilderEditorWorkspace({
         </section>
       )}
 
-      {/* Step 3: 卡片設計（預留） */}
+      {/* Step 3: 卡片設計（Logo 上傳） */}
       {step === 3 && (
-        <section className="flex flex-col items-center justify-center gap-4 py-12">
-          <p className="text-muted-foreground">
+        <section className="flex flex-col gap-6">
+          <h2 className="text-lg font-semibold text-foreground">
             {t('step3.title')}
-          </p>
-          <p className="text-sm text-muted-foreground/60">
-            {t('comingSoon')}
-          </p>
+          </h2>
+          <LogoUploader
+            templateId={cardId ?? ''}
+            onLogoUploaded={(logoUrl) => {
+              console.log('[Step3] Logo uploaded:', logoUrl);
+            }}
+          />
           {/* 上一步 / 下一步按鈕 */}
-          <div className="flex items-center gap-4 pt-4">
+          <div className="flex items-center justify-between pt-2">
             <button
               type="button"
               onClick={handlePrev}

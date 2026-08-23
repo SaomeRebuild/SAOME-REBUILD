@@ -31,6 +31,7 @@ export function TemplateCard({
         {showPhoneFrame ? (
           <PhoneFrame className="w-full max-w-[220px] shadow-sm">
             <TemplateCardPreview
+              templateId={id}
               name={name}
               cardType={cardType}
               issuerName={issuerName}
@@ -41,6 +42,7 @@ export function TemplateCard({
           </PhoneFrame>
         ) : (
           <TemplateCardPreview
+            templateId={id}
             name={name}
             cardType={cardType}
             issuerName={issuerName}

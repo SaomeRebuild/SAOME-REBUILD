@@ -57,6 +57,7 @@ export interface TemplateSettings {
   cardSide?: 'front' | 'back';
   // Membership card extension
   isPaid?: boolean;
+  [key: string]: unknown;
 }
 
 /** Input for creating a new template */
@@ -87,7 +88,9 @@ export async function insertTemplate(
   sql: Sql,
   input: CreateTemplateInput,
 ): Promise<TemplatesRow> {
-  const rows = await sql<TemplatesRow[]>`
+  const settingsToInsert = (input.settings ?? {}) as any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rows = await (sql<TemplatesRow[]>`
     INSERT INTO templates (
       id,
       tenant_id,
@@ -99,10 +102,10 @@ export async function insertTemplate(
       ${input.tenantId},
       ${input.name ?? '未命名卡片'},
       ${input.cardType ?? null},
-      ${JSON.stringify(input.settings ?? {})}::jsonb
+      ${sql.json(settingsToInsert)}
     )
     RETURNING id, tenant_id, status, name, card_type, settings, created_at, updated_at, expires_at
-  `;
+  ` as any);
   if (!rows[0]) {
     throw new Error('insertTemplate returned no rows');
   }
@@ -147,25 +150,54 @@ export async function findTemplatesByTenantId(
  * Update a template by ID.
  * Only updates fields that are explicitly provided.
  * When status is set to 'published', expires_at is automatically cleared.
+ *
+ * IMPORTANT: settings fields are MERGED with existing settings using JSONB's ||| operator.
+ * This preserves existing fields that are not being updated (e.g., Step 2 only updates
+ * storeName/issuerName without wiping Step 1's name).
  */
 export async function updateTemplate(
   sql: Sql,
   id: string,
   input: UpdateTemplateInput,
 ): Promise<TemplatesRow> {
-  // Collect name, cardType, settings, status in tagged template to avoid $N collisions
-  // with postgres.js dollar-quoting. The id is always passed as ${id} — not as a $N
-  // positional placeholder — so it never collides with the column-value $1/$2/$3.
+  // Build dynamic SET clauses using tagged template injection to avoid $N collisions.
+  // The id is always passed as ${id} — not as a $N positional placeholder.
+  // settings is REPLACED entirely (not merged) so partial updates always reflect
+  // the full current state of the form — no stale data from previous edits.
+
+  // Early return if nothing to update
+  if (
+    input.name === undefined &&
+    input.cardType === undefined &&
+    input.settings === undefined &&
+    input.status === undefined
+  ) {
+    const existing = await findTemplateById(sql, id);
+    if (!existing) {
+      throw new Error('updateTemplate: template not found');
+    }
+    return existing;
+  }
+
+  // Build individual SET clauses via tagged template injection
+  const setName = input.name !== undefined ? sql`name = ${input.name}` : null;
+  const setCardType = input.cardType !== undefined ? sql`card_type = ${input.cardType}` : null;
+  const setSettings = input.settings !== undefined
+    ? sql`settings = ${JSON.stringify(input.settings)}::jsonb`
+    : null;
+  const setStatus = input.status !== undefined ? sql`status = ${input.status}` : null;
+
+  // Filter out nulls and join with commas
+  const clauses = [setName, setCardType, setSettings, setStatus].filter(
+    (c): c is NonNullable<typeof c> => c !== null,
+  );
+
   const rows = await sql<TemplatesRow[]>`
     UPDATE templates
-       SET
-         ${input.name !== undefined ? sql`name = ${input.name}` : sql``}
-         ${input.name !== undefined && (input.cardType !== undefined || input.settings !== undefined || input.status !== undefined) ? sql`,` : sql``}
-         ${input.cardType !== undefined ? sql`card_type = ${input.cardType}` : sql``}
-         ${input.cardType !== undefined && (input.settings !== undefined || input.status !== undefined) ? sql`,` : sql``}
-         ${input.settings !== undefined ? sql`settings = ${JSON.stringify(input.settings)}` : sql``}
-         ${input.settings !== undefined && input.status !== undefined ? sql`,` : sql``}
-         ${input.status !== undefined ? sql`status = ${input.status}` : sql``}
+       SET ${clauses[0]}
+       ${clauses.length > 1 ? sql`, ${clauses[1]}` : sql``}
+       ${clauses.length > 2 ? sql`, ${clauses[2]}` : sql``}
+       ${clauses.length > 3 ? sql`, ${clauses[3]}` : sql``}
      WHERE id = ${id}
     RETURNING id, tenant_id, status, name, card_type, settings, created_at, updated_at, expires_at
   `;

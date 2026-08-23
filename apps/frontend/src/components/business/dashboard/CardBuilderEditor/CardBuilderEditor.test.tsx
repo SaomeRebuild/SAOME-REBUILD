@@ -12,6 +12,34 @@ import { MemoryRouter } from 'react-router-dom';
 import { CardBuilderEditor } from './CardBuilderEditor';
 import { useCardBuilderStore } from './CardBuilderEditor.store';
 
+// Mock authService so useAuth() finds AuthProvider without needing a real provider
+// Must match the shape expected by useAuth.tsx (named export 'authService')
+vi.mock('@/services/authService', () => ({
+  authService: {
+    refresh: vi.fn().mockResolvedValue(null),
+    login: vi.fn(),
+    logout: vi.fn(),
+    me: vi.fn().mockResolvedValue(null),
+  },
+}));
+
+// Mock useAuth to return a dummy unauthenticated context so CardBuilderEditor renders
+// without needing an AuthProvider wrapper
+vi.mock('@/hooks/useAuth', () => ({
+  useAuth: vi.fn(() => ({
+    state: {
+      isLoading: false,
+      isAuthenticated: false,
+      user: null,
+      tenant: null,
+      accessToken: null,
+    },
+    login: vi.fn(),
+    logout: vi.fn(),
+    refresh: vi.fn(),
+  })),
+}));
+
 // Mock: vi.fn(key => key) makes t() return the key as text
 vi.mock('react-i18next', () => {
   return { useTranslation: vi.fn(() => ({ t: vi.fn((key: string) => key) })) };

@@ -34,14 +34,24 @@ import type {
  * Convert a DB row to a TemplateDto.
  */
 function toDto(row: TemplatesRow): TemplateDto {
+  // Defensive: if settings is stored as a JSON string (bug from insertTemplate
+  // storing JSON.stringify(obj) instead of obj), parse it first.
+  const settings: Record<string, unknown> =
+    typeof row.settings === 'string' ? JSON.parse(row.settings) : row.settings;
   return {
     id: row.id,
     status: row.status,
     name: row.name,
     cardType: row.card_type,
-    settings: (typeof row.settings === 'string' ? JSON.parse(row.settings) : row.settings) as TemplateSettings,
-    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
-    updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : String(row.updated_at),
+    settings: settings as TemplateSettings,
+    createdAt:
+      row.created_at instanceof Date
+        ? row.created_at.toISOString()
+        : String(row.created_at),
+    updatedAt:
+      row.updated_at instanceof Date
+        ? row.updated_at.toISOString()
+        : String(row.updated_at),
   };
 }
 

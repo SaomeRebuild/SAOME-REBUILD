@@ -1,0 +1,98 @@
+---
+description: postgres.js 動態 SQL 查詢語法鐵律 — 動態 UPDATE / INSERT 必須使用 tagged template injection，禁止混合 $N positional placeholder
+alwaysApply: true
+---
+
+# postgres.js Dynamic Query Pattern（MANDATORY）
+
+> 觸發：寫動態 UPDATE、動態 INSERT、任何用 string interpolation 建 SQL 的場景。
+
+## 背景
+
+2026-08-21 CardBuilder Step 2 PUT 500 事故：
+
+`updateTemplate` 把 `SET name = $1, settings = $2, ...` 當作 SQL 字串插入
+tagged template，postgres.js 把 `$1` 視為 dollar-quoted string delimiter，
+導致 `RETURNING` 被錯誤解析：
+
+```
+PostgresError: unterminated dollar-quoted string at or near "$$1 RETURNING ..."
+```
+
+四次失敗修復嘗試：
+
+| # | 策略 | 錯誤 |
+|---|------|------|
+| 1 | `sql.unsafe(sets.join(', '))` + `WHERE id = $${idx}` | `unterminated dollar-quoted string` |
+| 2 | `sql(sqlQuery, values)` untagged call | `NOT_TAGGED_CALL` |
+| 3 | `sets.map(clause => sql.unsafe(clause))` + template | `syntax error at or near "$1"` |
+| 4（成功） | 所有值都用 `${}` tagged template | **200 OK** |
+
+詳見 `runs/improvements/feedback/20260821-card-builder-update-template-500.md`。
+
+## 鐵律
+
+### 動態 UPDATE — 只能用 `${}` tagged template injection
+
+```typescript
+// ✅ 正確：所有值都透過 ${} 注入
+await sql`
+  UPDATE templates
+     SET ${input.name !== undefined ? sql`name = ${input.name}` : sql``}
+   WHERE id = ${id}
+`;
+
+// ❌ 錯誤：$N + tagged template 混合 → unterminated dollar-quoted string
+const sets = [`name = $1`];
+await sql`UPDATE t SET ${sql.unsafe(sets.join(','))} WHERE id = $2`;
+
+// ❌ 錯誤：sql() untagged call → NOT_TAGGED_CALL
+await sql(sqlQuery, values);
+```
+
+### 動態欄位太多的替代方案
+
+如果動態欄位太多（> 5 個），考慮：
+
+1. **拆成多個獨立 UPDATE**：每個用固定欄位，減少 dynamic SQL 複雜度
+2. **寫 helper function**：在 `shared/lib/` 封裝 `buildUpdateQuery()` helper
+
+```typescript
+// shared/lib/db/build-update-query.ts
+import { sql, Sql } from 'postgres';
+
+export function buildUpdateSet<T extends Record<string, unknown>>(
+  sql: Sql,
+  input: Partial<T>,
+  prefix = '',
+): ReturnType<typeof sql>[] {
+  const entries = Object.entries(input).filter(([, v]) => v !== undefined);
+  return entries.map(([k, v], i) =>
+    sql`${sql.literal(prefix + k)} = ${v}`
+  );
+}
+
+// 使用範例
+const sets = buildUpdateSet(sql, { name: input.name, status: input.status });
+await sql`UPDATE t SET ${sql.join(sets, sql`, `)} WHERE id = ${id}`;
+```
+
+## 觸發關鍵字
+
+「updateTemplate」、「動態 UPDATE」、「SET 之後動態加欄位」、
+「dollar-quoted」、「unterminated dollar-quoted string」、
+「NOT_TAGGED_CALL」**必須**引用此 rule。
+
+## 禁止
+
+- ❌ 在 tagged template 內用 `$N` positional placeholder 動態拼接
+- ❌ 用 `sql()` untagged call 繞過 tagged template 限制
+- ❌ 用 `sql.unsafe()` 把 `$N` 當作普通字串插入
+
+## 參照
+
+- `runs/improvements/feedback/20260821-card-builder-update-template-500.md`
+  — 完整根因分析 + 四次失敗修復記錄
+- `apps/backend/src/modules/cards/db/templates.ts`
+  — `updateTemplate` 最終修復範例
+- `000-modular-design.mdc` — Part B § DB queries（DB 查詢必須放在 `db/` 資料夾）
