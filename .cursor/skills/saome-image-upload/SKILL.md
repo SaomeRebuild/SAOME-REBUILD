@@ -18,7 +18,8 @@ flowchart TD
 
  subgraph Step2[Step 2：Backend]
  B1[POST generate-upload-url] --> B2[aws4fetch 簽署 presigned URL]
- B2 --> B3[GET 圖片 proxy]
+ B2 --> B3[Key: {tenantId}/{cardId}/{imageType}.png]
+ B3 --> B4[GET 圖片 proxy]
  end
 
  subgraph Step3[Step 3：Frontend 元件]
@@ -54,6 +55,19 @@ export const IMAGE_TYPE = {
 } as const;
 export type ImageType = typeof IMAGE_TYPE[keyof typeof IMAGE_TYPE];
 ```
+
+**R2 多租戶資料夾結構**（Rule 028 § 9）：
+
+```
+saome/
+└── {tenantId}/
+    └── {cardId}/
+        ├── issuerLogo.png      ← 固定檔名，每次上傳覆蓋
+        ├── backgroundImage.png
+        └── icon.png
+```
+
+**禁止** UUID versioning（`issuerLogo-{uuid}.png`）— 理由見 Rule 028 § 10。
 
 ### Step 2：建立 i18n namespace（先做！）
 
@@ -97,22 +111,7 @@ export default {
 
 實作：`apps/backend/src/modules/cards/routes/generate-upload-url.ts`
 
-```typescript
-import { Hono } from 'hono';
-import { z } from 'zod';
-import { generateUploadUrl } from '../services/generateUploadUrlService';
-
-export const generateUploadUrlRoute = new Hono();
-
-generateUploadUrlRoute.post('/:id/upload-url/:type', async (c) => {
-  const id = c.req.param('id');
-  const imageType = c.req.param('type') as string;
-  const result = await generateUploadUrlService(id, imageType, c.env);
-  return c.json(result);
-});
-```
-
-`generateUploadUrlService` 使用 `aws4fetch` 對 R2 endpoint 簽署 PUT URL：
+#### Key 命名：多租戶資料夾 + 同檔名覆蓋
 
 ```typescript
 import { S3SignedURL } from 'aws4fetch';
@@ -120,9 +119,13 @@ import { S3SignedURL } from 'aws4fetch';
 export async function generateUploadUrlService(
   cardId: string,
   imageType: string,
+  tenantId: string,  // 從 JWT middleware 或 request body 取得
   env: Env,
 ) {
-  const key = `${cardId}/${imageType}/${Date.now()}.png`;
+  // ✅ 多租戶資料夾：每個 tenant 獨立目錄
+  // ✅ 同檔名覆蓋：imageType 固定 key，每次上傳覆蓋舊檔
+  const key = `${env.R2_BUCKET}/${tenantId}/${cardId}/${imageType}.png`;
+
   const presignedUrl = await new S3SignedURL({
     accessKeyId: env.R2_ACCESS_KEY_ID,
     secretAccessKey: env.R2_SECRET_ACCESS_KEY,
@@ -136,6 +139,21 @@ export async function generateUploadUrlService(
   return { presignedUrl, key };
 }
 ```
+
+**多租戶結構**（Rule 028 § 9）：
+```
+saome/
+└── {tenantId}/
+    └── {cardId}/
+        ├── issuerLogo.png      ← 固定檔名，覆蓋舊檔
+        ├── backgroundImage.png
+        └── icon.png
+```
+
+**為什麼固定檔名**（Rule 028 § 10）：
+- R2 按儲存用量收費，UUID 版本化累積舊檔浪費
+- 每個 imageType 在 DB 只有一個 key，覆蓋就是更新同一個 key
+- 不需要版本歷史（編輯器可以 undo，不需要 restore 舊圖）
 
 ### ~~Step 4：R2 CORS 設定~~
 
@@ -202,7 +220,7 @@ Presigned URL 把頻寬成本 offload 到 R2，Worker 只做簽署，CPU time �
 
 | 階段 | 誰做什麼 |
 |---|---|
-| 1. 生成 | Worker 用 `aws4fetch` 對 R2 bucket 簽署 PUT URL（有效期 1 小時） |
+| 1. 生成 | Worker 用 `aws4fetch` 對 R2 bucket 簽署 PUT URL（有效期 1 小時），key = `{tenantId}/{cardId}/{imageType}.png` |
 | 2. 上傳 | 前端拿 presigned URL 直接 PUT 到 R2（繞過 Worker） |
 | 3. 回填 | 前端拿 R2 key，PATCH `/api/cards/:id` 寫入 `settings.issuerLogo` |
 | 4. 讀取 | 前端 GET `/api/cards/:id/image/issuerLogo`，Worker 透過 Hyperdrive 代理讀取 |

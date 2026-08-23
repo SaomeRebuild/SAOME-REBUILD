@@ -128,6 +128,57 @@ packages/shared/logic/image-crop/
 
 RN 版替換為 `react-native-image-crop-picker` 時，`shared/logic/` 零改動。
 
+### 9. 多租戶資料夾結構（強制）
+
+R2 bucket 的 key 命名**必須**包含 `tenantId`，確保不同租戶的資料隔離：
+
+```
+saome/
+└── {tenantId}/
+    └── {cardId}/
+        ├── issuerLogo.png
+        ├── backgroundImage.png
+        └── icon.png
+```
+
+```typescript
+// ✅ 正確：包含 tenantId
+const key = `${env.R2_BUCKET}/${tenantId}/${cardId}/${imageType}.png`;
+
+// ❌ 錯誤：缺少 tenantId，所有租戶混在同一層
+const key = `${env.R2_BUCKET}/${cardId}/${imageType}.png`;
+```
+
+若 `tenantId` 來自 JWT middleware（`c.get('tenantId')`），route handler 從 `c` 注入；若是 public endpoint（不需登入），前端 POST 時帶上 `tenantId`，後端 validate 後寫入 key。
+
+### 10. 同檔名覆蓋舊檔（強制）
+
+每個 imageType 的檔案名稱**固定**，不做 UUID versioning，每次上傳覆蓋同一個 key：
+
+```
+# ✅ 正確：固定檔名，每次上傳覆蓋舊檔
+saome/{tenantId}/{cardId}/issuerLogo.png      ← 上傳 → 覆蓋
+saome/{tenantId}/{cardId}/backgroundImage.png  ← 上傳 → 覆蓋
+
+# ❌ 錯誤：UUID 版本化 → 舊檔殘留，R2 空間浪費，且 DB key 容易 drift
+saome/{tenantId}/{cardId}/issuerLogo-{uuid-v4}.png
+```
+
+```typescript
+// ✅ 正確：固定的檔名（不含 UUID）
+const key = `${env.R2_BUCKET}/${tenantId}/${cardId}/${imageType}.png`;
+
+// ❌ 錯誤：用 Date.now() 或 UUID 版本化
+const key = `${env.R2_BUCKET}/${tenantId}/${cardId}/${imageType}-${Date.now()}.png`;
+```
+
+**理由**：
+- R2 定價按儲存用量收費，UUID 版本化累積舊檔造成浪費
+- 每個 `imageType` 在 DB `settings` 內只有一個 key，覆蓋就是更新同一個 key
+- 不需要版本歷史（卡片編輯器可以 undo，不需要 restore 舊圖）
+
+**唯一的例外**：若業務需要版本歷史（如「還原到上一版」），才考慮 UUID 版本化，但那時應該存在另一個 `versions` subfolder，而非直接覆蓋當前 key。
+
 ## L2 Checklist 對齊
 
 | 動作 | 標準 |
