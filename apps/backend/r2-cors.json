@@ -6,15 +6,19 @@
           "http://localhost:5173",
           "http://localhost:8788",
           "https://saome-frontend.pages.dev",
+          "https://saome-frontend-*.pages.dev",
+          "https://saome-frontend.josh1989213.workers.dev",
           "https://saome-admin.pages.dev",
           "https://saome-backend.josh1989213.workers.dev",
           "https://josh1989213.workers.dev",
           "https://app.saome.org",
           "https://admin.saome.org",
-          "https://saome.org"
+          "https://saome.org",
+          "https://saome-frontend.josh1989213.workers.dev",
+          "https://b37054989122d58d65ad27681882b470.r2.cloudflarestorage.com"
         ],
         "methods": ["PUT", "HEAD"],
-        "headers": ["content-type", "x-amz-acl", "x-amz-meta-*"]
+        "headers": ["*"]
       }
     }
   ]
