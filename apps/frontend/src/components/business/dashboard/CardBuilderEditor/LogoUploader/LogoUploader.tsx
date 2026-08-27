@@ -19,7 +19,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Upload, X, ZoomIn, ZoomOut, Check, AlertCircle, RotateCcw, Image as ImageIcon } from 'lucide-react';
-import { useImageCrop } from '@/hooks/useImageCrop';
+import { useImageCrop, type CropState } from '@/hooks/useImageCrop';
 import { cardService } from '@/services/cardService';
 import { api } from '@/config/api';
 import { getAccessToken } from '@/services/authStore';
@@ -31,33 +31,10 @@ import type {
   ValidationError,
 } from './LogoUploader.types';
 
-const MAX_PREVIEW_W = 400; // Max preview container width in pixels (keeps UI sane)
-const CROP_WINDOW_SIZE = 200; // Fixed-size crop window (export preview)
 const MAX_SCALE = LOGO_CROP_CONFIG.MAX_SCALE;
 const MIN_SCALE = LOGO_CROP_CONFIG.MIN_SCALE;
-
-/**
- * Compute the minimum scale so the image ALWAYS fills (or exceeds) the crop window.
- * This prevents the "stuck in middle" bug where the user can't pan beyond
- * the fully-visible image bounds.
- *
- * The crop window is a fixed 200x200 square. The preview container is proportional
- * to the natural aspect ratio, capped at MAX_PREVIEW_W wide.
- * For non-square images, the image can't fully fit in the window without one axis
- * exceeding — so minScale must be >= 1 to prevent panning to empty space.
- */
-function computeMinScale(
-  naturalWidth: number,
-  naturalHeight: number,
-  containerWidth: number,
-  containerHeight: number,
-): number {
-  if (naturalWidth === 0 || naturalHeight === 0) return 0.5;
-  const shorter = Math.min(containerWidth, containerHeight);
-  const baseScale = shorter / Math.min(naturalWidth, naturalHeight);
-  const minScale = 1 / baseScale;
-  return Math.max(0.5, minScale);
-}
+const CROP_WINDOW_SIZE = LOGO_CROP_CONFIG.CROP_WINDOW_SIZE;
+const BASE_CANVAS_WIDTH = LOGO_CROP_CONFIG.BASE_CANVAS_WIDTH;
 
 /**
  * Validate uploaded file.
@@ -78,13 +55,57 @@ function validateFile(file: File): ValidationError | null {
   return null;
 }
 
+/**
+ * Re-derive focalX/focalY from the current offset.
+ * focal is the normalized (0-1) position in the src image of the mask
+ * window's center — it's the export source of truth (see
+ * useImageCrop.cropImage).
+ *
+ * Geometry:
+ *   - Image element rendered at baseContainerW × baseContainerH in the inner
+ *     canvas, with transform: translate(offsetX, offsetY), transform-origin
+ *     left top.
+ *   - Inner canvas wraps with transform: scale(scale) from its center.
+ *   - Mask is at outer box center (= baseContainerW/2, baseContainerH/2).
+ *   - Image element visual center in outer box =
+ *       (baseContainerW/2 + offsetX * scale, baseContainerH/2 + offsetY * scale)
+ *   - Mask center in image content normalized =
+ *       ((baseContainerW/2 - (baseContainerW/2 + offsetX*scale)) / (baseContainerW*scale),
+ *        same for Y)
+ *     = (-offsetX / baseContainerW, -offsetY / baseContainerH)
+ *     → focalX = 0.5 - offsetX / baseContainerW (no scale — the scale factor
+ *       appears symmetrically in numerator and denominator and cancels out).
+ *
+ * The earlier formula `(offsetX * scale)` was a Bug-A root cause: drag at
+ * scale=2 over-corrected the focal by 2×, causing the exported crop to slide
+ * off-center as soon as the user dragged.
+ *
+ * Pure function — exported for testability.
+ *
+ * @see https://github.com/SaomeRebuild/SAOME-REBUILD/blob/main/runs/improvements/feedback/20260826-0827-logo-crop-zoom-full-trace.md
+ */
+export function syncFocalFromOffset(
+  prev: CropState,
+  baseContainerW: number,
+  baseContainerH: number,
+): CropState {
+  const { offsetX = 0, offsetY = 0 } = prev;
+  const focalX = 0.5 - offsetX / baseContainerW;
+  const focalY = 0.5 - offsetY / baseContainerH;
+  return {
+    ...prev,
+    focalX: Math.max(0, Math.min(1, focalX)),
+    focalY: Math.max(0, Math.min(1, focalY)),
+  };
+}
+
 
 export function LogoUploader({
   templateId,
   onLogoUploaded,
   className = '',
 }: LogoUploaderProps) {
-  const { t } = useTranslation('cardBuilder');
+  const { t } = useTranslation('logoUpload');
   const setIssuerLogo = useCardBuilderStore((s) => s.setIssuerLogo);
 
   // Component state
@@ -99,33 +120,34 @@ export function LogoUploader({
   const containerRef = useRef<HTMLDivElement>(null);
   const isDraggingRef = useRef(false);
   const dragStartRef = useRef({ x: 0, y: 0 });
-  const focalStartRef = useRef({ x: 0.5, y: 0.5 });
+  const offsetStartRef = useRef({ x: 0, y: 0 });
 
   // Image ref (set by useImageCrop hook)
 
   // Image crop hook
   const {
     cropState,
+    setCropState,
     imageUrl,
     imageRef,
     onImageLoad,
     loadImage,
-    setFocalPoint,
-    setScale,
     cropImage,
     resetCrop,
     hasImage,
   } = useImageCrop({
     outputWidth: LOGO_CROP_CONFIG.OUTPUT_WIDTH,
     outputHeight: LOGO_CROP_CONFIG.OUTPUT_HEIGHT,
+    cropWindowSize: CROP_WINDOW_SIZE,
+    baseCanvasWidth: BASE_CANVAS_WIDTH,
     minScale: MIN_SCALE,
     maxScale: MAX_SCALE,
     initialScale: 1,
   });
 
-  // Sync image element ref
+  // Sync image element ref via callback ref
   useEffect(() => {
-    // The onImageLoad callback handles setting the ref and detecting dimensions
+    // The onImageLoad callback handles setting imageRef.current via the ref attribute
   }, []);
 
   // Cleanup object URL on unmount
@@ -137,10 +159,35 @@ export function LogoUploader({
     };
   }, [imageUrl]);
 
+  // ===== Compute derived values for rendering and drag =====
+
+  // Base container size — the unscaled fit-to-natural-aspect crop canvas.
+  // Container itself stays this size in layout (so zoom-in doesn't reflow
+  // the surrounding UI); image and mask are scaled visually via a transform
+  // applied to the inner stage so the user sees the image get bigger.
+  const baseContainerW = cropState.naturalWidth > 0
+    ? Math.min(cropState.naturalWidth, BASE_CANVAS_WIDTH)
+    : BASE_CANVAS_WIDTH;
+  const baseContainerH = cropState.naturalWidth > 0
+    ? Math.round(baseContainerW * (cropState.naturalHeight / cropState.naturalWidth))
+    : BASE_CANVAS_WIDTH;
+
+  // Sync resolvedBaseCanvasWidth into cropState so useImageCrop.cropImage()
+  // uses the same base canvas width as the UI for small src images (NW < BASE).
+  // Without this, cropImage falls back to BASE_CANVAS_WIDTH and computes a
+  // srcSquareSize that's smaller than the UI mask's actual src-side size.
+  useEffect(() => {
+    if (cropState.naturalWidth > 0 && cropState.resolvedBaseCanvasWidth !== baseContainerW) {
+      setCropState((prev) => ({ ...prev, resolvedBaseCanvasWidth: baseContainerW }));
+    }
+  }, [baseContainerW, cropState.naturalWidth, cropState.resolvedBaseCanvasWidth]);
+
+  // The fixed-size container and inner stage both stay at base size in layout.
+  const containerW = baseContainerW;
+  const containerH = baseContainerH;
+
   // Refs to hold latest values for the non-passive wheel listener (avoids re-attaching on every render)
-  const cropStateRef = useRef(cropState);
   const stateRef = useRef(state);
-  cropStateRef.current = cropState;
   stateRef.current = state;
 
   // Non-passive wheel listener: preventDefault() actually fires, stopping page scroll
@@ -152,15 +199,13 @@ export function LogoUploader({
       if (!hasImage || stateRef.current !== 'cropping') return;
       e.preventDefault();
 
-      const safeMin = MIN_SCALE;
       const delta = e.deltaY > 0 ? -0.1 : 0.1;
-      const newScale = Math.max(safeMin, Math.min(MAX_SCALE, cropStateRef.current.scale + delta));
-      setScale(newScale);
+      setCropState((prev) => applyScaleChange(prev, prev.scale + delta));
     };
 
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
-  }, [hasImage, setScale]);
+  }, [hasImage, applyScaleChange]);
 
   /**
    * Handle file selection.
@@ -185,7 +230,7 @@ export function LogoUploader({
         setUploadError(null);
         setState('cropping');
       } catch {
-        setUploadError(t('logoUpload.error'));
+        setUploadError(t('error'));
         setState('error');
       }
 
@@ -205,7 +250,7 @@ export function LogoUploader({
     // Even if hasImage is true, imageRef.current may lag by one render.
     const img = imageRef.current;
     if (!img) {
-      setUploadError(t('logoUpload.error'));
+      setUploadError(t('error'));
       setState('error');
       return;
     }
@@ -273,34 +318,6 @@ export function LogoUploader({
     setState('idle');
   }, [resetCrop]);
 
-  // ===== Compute derived values for rendering and drag =====
-
-  // Container matches natural aspect ratio, capped at MAX_PREVIEW_W wide
-  const containerW = cropState.naturalWidth > 0
-    ? Math.min(cropState.naturalWidth, MAX_PREVIEW_W)
-    : MAX_PREVIEW_W;
-  const containerH = cropState.naturalWidth > 0
-    ? Math.round(containerW * (cropState.naturalHeight / cropState.naturalWidth))
-    : MAX_PREVIEW_W;
-
-  // At scale=1: shorter edge of image fills the shorter edge of container.
-  // This is the "base" scale that shows the full image letterboxed.
-  const baseScale = cropState.naturalWidth > 0
-    ? Math.min(containerW, containerH) / Math.min(cropState.naturalWidth, cropState.naturalHeight)
-    : 1;
-
-  // Actual display dimensions after zoom
-  const displayWidth = cropState.naturalWidth * baseScale * cropState.scale;
-  const displayHeight = cropState.naturalHeight * baseScale * cropState.scale;
-
-  // Dynamic minimum scale for this image
-  const dynamicMinScale = computeMinScale(
-    cropState.naturalWidth,
-    cropState.naturalHeight,
-    containerW,
-    containerH,
-  );
-
   // ===== Drag to pan (update focal point) =====
 
   const handlePointerDown = useCallback(
@@ -309,10 +326,14 @@ export function LogoUploader({
       e.preventDefault();
       isDraggingRef.current = true;
       dragStartRef.current = { x: e.clientX, y: e.clientY };
-      focalStartRef.current = { x: cropState.focalX, y: cropState.focalY };
-      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      // Snapshot drag origin offsets so pointermove is delta-based.
+      offsetStartRef.current = {
+        x: cropState.offsetX ?? 0,
+        y: cropState.offsetY ?? 0,
+      };
+      containerRef.current?.setPointerCapture(e.pointerId);
     },
-    [hasImage, state, cropState.focalX, cropState.focalY],
+    [hasImage, state, cropState.offsetX, cropState.offsetY],
   );
 
   const handlePointerMove = useCallback(
@@ -322,71 +343,87 @@ export function LogoUploader({
       const dx = e.clientX - dragStartRef.current.x;
       const dy = e.clientY - dragStartRef.current.y;
 
-      // focalX in [0,1] maps to image pixel [0, naturalWidth]
-      // Drag RIGHT → want image to appear to move RIGHT
-      //   → want focal point to show more of the LEFT side of the image
-      //   → focalX should DECREASE (focal moves left in image space)
-      // So: focalDx = -dx / displayWidth
-      const focalDx = -dx / displayWidth;
-      const focalDy = -dy / displayHeight;
-
-      const newFocalX = Math.max(0, Math.min(1, focalStartRef.current.x + focalDx));
-      const newFocalY = Math.max(0, Math.min(1, focalStartRef.current.y + focalDy));
-      setFocalPoint(newFocalX, newFocalY);
+      // Apply pan offset in pre-scale canvas space so 1 mouse px = 1 visual px
+      // regardless of the current zoom scale.
+      setCropState((prev) => ({
+        ...prev,
+        offsetX: offsetStartRef.current.x + dx,
+        offsetY: offsetStartRef.current.y + dy,
+      }));
     },
-    [setFocalPoint, displayWidth, displayHeight],
+    [],
   );
 
   const handlePointerUp = useCallback(() => {
+    if (!isDraggingRef.current) return;
     isDraggingRef.current = false;
+
+    // Sync focal to the final offset so crop export reflects what the user
+    // sees in the mask window. Focal is the export's source of truth (see
+    // useImageCrop.cropImage); offset is only for display positioning.
+    setCropState((prev) => syncFocalFromOffset(prev, baseContainerW, baseContainerH));
   }, []);
 
   // ===== Scroll to zoom =====
+
+  // ===== Scale helper =====
+
+  /**
+   * Compute new state for a scale change while keeping the image's visual
+   * position fixed (offsetX/offsetY unchanged). The mask-window center then
+   * naturally shows a different — finer — slice of the src image, matching
+   * how every photo-editor zoom behaves.
+   *
+   * focalX/focalY are re-derived from the offset so cropImage() exports
+   * exactly the slice the user is currently looking at.
+   */
+  function applyScaleChange(prev: CropState, targetScale: number): CropState {
+    const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, targetScale));
+    if (newScale === prev.scale) return prev;
+
+    // Offset stays put — image keeps its visual position, mask window now
+    // shows a finer slice of the src image. Re-derive focal so export
+    // matches what's visible.
+    return syncFocalFromOffset({ ...prev, scale: newScale }, baseContainerW, baseContainerH);
+  }
 
   // ===== Scale slider =====
 
   const handleScaleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const raw = e.target.valueAsNumber;
-      // dynamicMinScale is the scale where the image just fills the crop window.
-      // We allow zoom-out below that (user might want the image smaller intentionally),
-      // but we never allow below 0.5 (too small to be useful).
-      const safeMin = Math.min(dynamicMinScale, 0.5);
-      const newScale = Math.max(safeMin, Math.min(MAX_SCALE, raw));
-      setScale(newScale);
+      const newScale = e.target.valueAsNumber;
+      setCropState((prev) => applyScaleChange(prev, newScale));
     },
-    [setScale, dynamicMinScale],
+    [containerW, containerH],
   );
 
   // ===== Calculate image CSS for the crop window =====
 
   /**
-   * Position the image so the focal point aligns with the container center.
-   *
-   * The container is a rectangle sized to the natural aspect ratio (capped at MAX_PREVIEW_W).
-   * The image is letterboxed inside this container.
+   * Image is rendered at the base container size (baseW × baseH) inside the
+   * inner canvas. A CSS transform applies: scale first (around the canvas center),
+   * then translate for the pan offset. This means 1 mouse px of drag = 1 visual px
+   * of motion at any scale, and zoom-in visually enlarges the image from the
+   * canvas center outward.
    */
   function calculateImageStyle(): React.CSSProperties {
-    const { focalX, focalY, naturalWidth, naturalHeight } = cropState;
+    const { naturalWidth, naturalHeight, offsetX = 0, offsetY = 0 } = cropState;
 
     if (naturalWidth === 0 || naturalHeight === 0) {
       return { display: 'none' };
     }
 
-    const dw = displayWidth;
-    const dh = displayHeight;
-
-    // Position so focal point is at the container center
-    const left = containerW / 2 - focalX * dw;
-    const top = containerH / 2 - focalY * dh;
-
     return {
       position: 'absolute',
-      left: `${left}px`,
-      top: `${top}px`,
-      width: `${dw}px`,
-      height: `${dh}px`,
+      left: 0,
+      top: 0,
+      width: `${baseContainerW}px`,
+      height: `${baseContainerH}px`,
       objectFit: 'contain',
+      userSelect: 'none',
+      pointerEvents: 'none',
+      transform: `translate(${offsetX}px, ${offsetY}px)`,
+      transformOrigin: 'left top',
     };
   }
 
@@ -436,7 +473,7 @@ export function LogoUploader({
               "
             >
               <ImageIcon size={14} aria-hidden="true" />
-              {t('logoUpload.replace')}
+              {t('replace')}
             </button>
           </div>
         ) : (
@@ -452,16 +489,16 @@ export function LogoUploader({
           >
             <Upload size={32} className="text-muted-foreground" aria-hidden="true" />
             <span className="text-sm font-medium text-muted-foreground">
-              {t('logoUpload.selectFile')}
+              {t('selectFile')}
             </span>
             <span className="text-xs text-muted-foreground/60">
-              {t('logoUpload.hint')}
+              {t('hint')}
             </span>
           </button>
         )}
 
         {state === 'success' && (
-          <p className="text-xs text-success/80">{t('logoUpload.success')}</p>
+          <p className="text-xs text-success/80">{t('success')}</p>
         )}
 
         <input
@@ -495,7 +532,7 @@ export function LogoUploader({
             hover:border-primary hover:text-primary
           "
         >
-          {t('logoUpload.cancel')}
+          {t('cancel')}
         </button>
         <input
           ref={fileInputRef}
@@ -516,7 +553,7 @@ export function LogoUploader({
       {state === 'uploading' && (
         <div className="flex flex-col items-center gap-3">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          <p className="text-sm text-muted-foreground">{t('logoUpload.uploading')}</p>
+          <p className="text-sm text-muted-foreground">{t('uploading')}</p>
         </div>
       )}
 
@@ -525,68 +562,75 @@ export function LogoUploader({
         <>
           {/* Hint */}
           <p className="text-sm text-muted-foreground">
-            {t('logoUpload.dragging')}
+            {t('dragging')}
           </p>
 
-          {/* Crop container — full image visible, 200x200 window with SVG mask overlay */}
+          {/* Crop stage — outer container is fixed in layout so zoom-in doesn't
+              reflow the page. The inner canvas applies a CSS scale transform
+              (around the canvas center) so the user sees the image visually
+              enlarge from the center outward. */}
           <div
             ref={containerRef}
-            className="relative overflow-hidden rounded-xl"
+            className="relative rounded-xl"
             style={{
-              width: containerW,
-              height: containerH,
+              width: baseContainerW,
+              height: baseContainerH,
               cursor: 'grab',
               touchAction: 'none',
               userSelect: 'none',
               backgroundColor: '#1a1a1a',
+              overflow: 'hidden',
             }}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerLeave={handlePointerUp}
           >
-            {/* Bright full image — visible through the SVG mask "hole" */}
-            {imageUrl && cropState.naturalWidth > 0 && (
-              <img
-                src={imageUrl}
-                alt=""
-                className="pointer-events-none"
-                style={calculateImageStyle()}
-              />
-            )}
+            {/* Inner canvas — fixed base size in layout but transform: scale lets
+                the image visually grow without changing layout. SVG mask and
+                mask border sit OUTSIDE this canvas so they stay 200x200 — only
+                the image scales, so the user sees the same crop window frame
+                while the image inside it shows more detail. */}
+            <div
+              className="absolute"
+              style={{
+                width: baseContainerW,
+                height: baseContainerH,
+                transform: `scale(${cropState.scale})`,
+                transformOrigin: `${baseContainerW / 2}px ${baseContainerH / 2}px`,
+              }}
+            >
+              {/* Bright full image — visible through the SVG mask "hole" */}
+              {imageUrl && (
+                <img
+                  src={imageUrl}
+                  alt=""
+                  ref={onImageLoad}
+                  className="pointer-events-none select-none"
+                  draggable={false}
+                  style={calculateImageStyle()}
+                  onLoad={(e) => onImageLoad(e.currentTarget)}
+                />
+              )}
+            </div>
 
-            {/* Hidden image for dimension detection — onLoad ensures dimensions
-                are captured even when element mounts before image finishes loading. */}
-            <img
-              ref={onImageLoad}
-              src={imageUrl ?? ''}
-              alt=""
-              className="absolute opacity-0"
-              style={{ width: 1, height: 1 }}
-              draggable={false}
-              onLoad={(e) => onImageLoad(e.currentTarget)}
-            />
-
-            {/* SVG mask layer: dim everything except the 200x200 center crop window.
-                Implementation:
-                  - <mask> defines a hole: white = visible, black = hidden
-                  - <rect> covers full container in dark color, masked so center is transparent
-            */}
+            {/* SVG mask layer — stays at base container size and is NOT scaled.
+                Dim everything except a fixed 200x200 center crop window. */}
             <svg
               className="pointer-events-none absolute inset-0"
-              width={containerW}
-              height={containerH}
+              width={baseContainerW}
+              height={baseContainerH}
               style={{ display: 'block' }}
             >
               <defs>
                 <mask id="logo-crop-mask">
                   {/* Outer rect: full container = white (mask shows the overlay) */}
-                  <rect width={containerW} height={containerH} fill="white" />
+                  <rect width={baseContainerW} height={baseContainerH} fill="white" />
                   {/* Inner rect: 200x200 center crop window = black (mask hides overlay there,
                     letting bright image show through) */}
                   <rect
-                    x={(containerW - CROP_WINDOW_SIZE) / 2}
-                    y={(containerH - CROP_WINDOW_SIZE) / 2}
+                    x={(baseContainerW - CROP_WINDOW_SIZE) / 2}
+                    y={(baseContainerH - CROP_WINDOW_SIZE) / 2}
                     width={CROP_WINDOW_SIZE}
                     height={CROP_WINDOW_SIZE}
                     rx="0.5rem"
@@ -596,14 +640,16 @@ export function LogoUploader({
               </defs>
               {/* Dark overlay: visible in white mask areas (outside crop), hidden in black (crop window) */}
               <rect
-                width={containerW}
-                height={containerH}
+                width={baseContainerW}
+                height={baseContainerH}
                 fill="rgba(0,0,0,0.5)"
                 mask="url(#logo-crop-mask)"
               />
             </svg>
 
-            {/* 200x200 crop window — white border overlay */}
+            {/* 200x200 crop window — fixed-size white border. Sits on top of the
+                scaled image at the container center. NOT scaled, so the crop
+                frame stays the same size while the image inside it gets bigger. */}
             <div
               className="pointer-events-none absolute rounded border-2 border-white/70"
               style={{
@@ -627,7 +673,7 @@ export function LogoUploader({
               value={cropState.scale}
               onChange={handleScaleChange}
               className="flex-1 cursor-pointer"
-              aria-label={t('logoUpload.scale')}
+              aria-label={t('scale')}
             />
             <ZoomIn size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
             <span className="min-w-12 text-center text-sm font-mono text-muted-foreground">
@@ -647,7 +693,7 @@ export function LogoUploader({
               "
             >
               <X size={14} aria-hidden="true" />
-              {t('logoUpload.cancel')}
+              {t('cancel')}
             </button>
             <button
               type="button"
@@ -659,7 +705,7 @@ export function LogoUploader({
               "
             >
               <RotateCcw size={14} aria-hidden="true" />
-              {t('logoUpload.reset')}
+              {t('reset')}
             </button>
             <button
               type="button"
@@ -673,7 +719,7 @@ export function LogoUploader({
               "
             >
               <Check size={14} aria-hidden="true" />
-              {t('logoUpload.apply')}
+              {t('apply')}
             </button>
           </div>
         </>

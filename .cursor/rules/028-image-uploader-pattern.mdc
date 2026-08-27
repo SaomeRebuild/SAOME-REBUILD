@@ -1,0 +1,298 @@
+# Image Uploader Pattern（MANDATORY）
+
+> 觸發：建立任何圖片上傳相關元件（LogoUploader、BackgroundUploader、IconUploader 等）。
+
+## 背景
+
+2026-08-23 LogoUploader 實作觀察：
+
+- R2 presigned URL 流程踩了 CORS 三階段坑（origin / R2 endpoint / headers wildcard）
+- settings JSON 直接覆蓋踩了 merge 坑
+- focal point 拖曳方向踩了負號坑
+- Zustand store 時機問題踩了 `lastUploadedLogoKey` 坑
+- i18n 放錯 namespace（放進 `cardBuilder` 而非獨立 `logoUpload`）
+
+詳見 `runs/improvements/feedback/20260823-logo-uploader-full-trace.md`。
+
+## 鐵律
+
+### 1. Presigned URL pattern（強制）
+
+所有圖片上傳走這條 chain，Worker 只做簽署：
+
+```
+前端 → POST /api/cards/:id/upload-url/:type
+     ← { presignedUrl, key }
+前端 → PUT presignedUrl（R2 direct）
+     ← 200 OK
+前端 → PATCH /api/cards/:id（回填 key 到 settings）
+```
+
+**禁止**：不走 presigned URL，直接 POST 到 Worker 再 streaming 到 R2（Worker 50ms CPU time budget 撐不住 streaming）。
+
+### 2. Settings merge（強制）
+
+PATCH template 時，settings 必須 fetch → merge → write，**禁止**直接覆蓋：
+
+```typescript
+// ✅ 正確
+const updateData = {
+  ...existingData,
+  settings: { ...existingData.settings, ...input.settings },
+};
+
+// ❌ 錯誤：直接覆蓋會洗掉其他欄位
+const updateData = { ...existingData, settings: input.settings };
+```
+
+詳見 Rule 027（postgres dynamic query）。
+
+### 3. Focal point coordinate（強制）
+
+拖曳時坐標計算必須取負號：
+
+```typescript
+// ✅ 正確
+const dx = e.clientX - dragStart.current.x;
+const newFocalX = dragStart.current.focalX - dx / displayWidth;
+
+// ❌ 錯誤：沒取負號 → 拖曳方向與視覺相反
+const newFocalX = dragStart.current.focalX + dx / displayWidth;
+```
+
+### 4. Preview reliability（強制）
+
+上傳成功後，用 `lastUploadedXxxKey` state 追蹤 key，**優先於** Zustand store：
+
+```typescript
+const [lastUploadedLogoKey, setLastUploadedLogoKey] = useState<string | null>(null);
+
+// 上傳成功後
+setLastUploadedLogoKey(key);
+
+// render 時：state > store
+const displayKey = lastUploadedLogoKey ?? issuerLogoKey;
+```
+
+理由：Zustand store 更新時機落後於 API response，可能造成上傳完卻不顯示的問題。
+
+### 5. R2 CORS 四件套（強制）
+
+每次新增 R2 bucket 或調整 CORS 時，必須湊齊四件：
+
+| 項目 | 設定值 | 說明 |
+|---|---|---|
+| `allowed_origins` | 包含 R2 endpoint | `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com` |
+| `allowed_origins` | 包含所有 frontend origins | `https://saome-frontend.pages.dev` + `https://saome-frontend-*.pages.dev` |
+| `allowed_headers` | `["*"]` | aws4fetch 簽署請求帶 `x-amz-*` headers，wildcard 必要 |
+| `allowed_methods` | `["PUT", "HEAD"]` | R2 presigned URL 用 PUT 上傳 |
+
+設定檔：`apps/backend/r2-cors.json`。
+
+### 6. Wrangler secrets 順序（強制）
+
+```bash
+# ✅ 正確順序
+wrangler deploy
+wrangler secret put R2_ACCOUNT_ID
+wrangler secret put R2_ACCESS_KEY_ID
+wrangler secret put R2_SECRET_ACCESS_KEY
+
+# ❌ 錯誤：先設定 secret 再 deploy → 412 Precondition Failed
+wrangler secret put R2_ACCOUNT_ID
+wrangler deploy  # 失敗
+```
+
+### 7. Dev vars 同步（強制）
+
+`.dev.vars` 必須包含與 production secrets 一樣的 key，否則本地 `wrangler dev` 噴 `ReferenceError: R2_ACCOUNT_ID is not defined`：
+
+```bash
+# apps/backend/.dev.vars 必填
+R2_ACCOUNT_ID=xxx
+R2_ACCESS_KEY_ID=xxx
+R2_SECRET_ACCESS_KEY=xxx
+R2_PUBLIC_URL=https://saome-backend.josh1989213.workers.dev
+```
+
+### 8. 裁切 logic 可抽離 Canvas（RN 化必備）
+
+裁切運算（normalize focal point、crop rect）必須寫在 `packages/shared/logic/` 為**純函式**，**不能**依賴 `HTMLCanvasElement`：
+
+```
+packages/shared/logic/image-crop/
+├── normalizeFocalPoint.ts   ← 純函式，RN 可用
+├── buildCropRect.ts         ← 純函式，RN 可用
+└── index.ts                 ← barrel
+```
+
+RN 版替換為 `react-native-image-crop-picker` 時，`shared/logic/` 零改動。
+
+### 9. 多租戶資料夾結構（強制）
+
+R2 bucket 的 key 命名**必須**包含 `tenantId`，確保不同租戶的資料隔離：
+
+```
+saome/
+└── {tenantId}/
+    └── {cardId}/
+        ├── issuerLogo.png
+        ├── backgroundImage.png
+        └── icon.png
+```
+
+```typescript
+// ✅ 正確：包含 tenantId
+const key = `${env.R2_BUCKET}/${tenantId}/${cardId}/${imageType}.png`;
+
+// ❌ 錯誤：缺少 tenantId，所有租戶混在同一層
+const key = `${env.R2_BUCKET}/${cardId}/${imageType}.png`;
+```
+
+若 `tenantId` 來自 JWT middleware（`c.get('tenantId')`），route handler 從 `c` 注入；若是 public endpoint（不需登入），前端 POST 時帶上 `tenantId`，後端 validate 後寫入 key。
+
+### 10. 同檔名覆蓋舊檔（強制）
+
+每個 imageType 的檔案名稱**固定**，不做 UUID versioning，每次上傳覆蓋同一個 key：
+
+```
+# ✅ 正確：固定檔名，每次上傳覆蓋舊檔
+saome/{tenantId}/{cardId}/issuerLogo.png      ← 上傳 → 覆蓋
+saome/{tenantId}/{cardId}/backgroundImage.png  ← 上傳 → 覆蓋
+
+# ❌ 錯誤：UUID 版本化 → 舊檔殘留，R2 空間浪費，且 DB key 容易 drift
+saome/{tenantId}/{cardId}/issuerLogo-{uuid-v4}.png
+```
+
+```typescript
+// ✅ 正確：固定的檔名（不含 UUID）
+const key = `${env.R2_BUCKET}/${tenantId}/${cardId}/${imageType}.png`;
+
+// ❌ 錯誤：用 Date.now() 或 UUID 版本化
+const key = `${env.R2_BUCKET}/${tenantId}/${cardId}/${imageType}-${Date.now()}.png`;
+```
+
+**理由**：
+- R2 定價按儲存用量收費，UUID 版本化累積舊檔造成浪費
+- 每個 `imageType` 在 DB `settings` 內只有一個 key，覆蓋就是更新同一個 key
+- 不需要版本歷史（卡片編輯器可以 undo，不需要 restore 舊圖）
+
+**唯一的例外**：若業務需要版本歷史（如「還原到上一版」），才考慮 UUID 版本化，但那時應該存在另一個 `versions` subfolder，而非直接覆蓋當前 key。
+
+### 11. Crop Window Invariant — Mask Size 必須對齊 Export Crop Size（強制）
+
+> **觸發**：任何有 zoom (scale) 的圖片裁切 UI。LogoUploader / BackgroundUploader / IconUploader 都適用。
+
+#### 設計意圖
+
+Crop window（UI 上白色邊框 + 暗色遮罩挖洞）是**使用者選定的範圍指示器**，不該隨 zoom 變化。zoom 的語意是「在選定範圍內看到更多 src 細節」，不是「選更大範圍」。
+
+#### 三層結構（強制）
+
+```
+outer container (fixed layout, pointer events)
+├── inner canvas (transform: scale(scale), 只含 image)
+├── SVG mask (NOT scaled, fixed cropWindowSize × cropWindowSize hole at center)
+└── border (NOT scaled, fixed cropWindowSize × cropWindowSize frame at center)
+```
+
+| 層 | 是否套 scale | 角色 |
+|----|--------------|------|
+| outer container | ❌ | Layout 邊界，避免下方 slider 跳動 |
+| inner canvas + image | ✅ | Zoom in 看到 src 細節 |
+| SVG mask + border | ❌ | Crop 框永遠固定 |
+
+#### 禁止（硬規則）
+
+- ❌ 將 image + mask + border 全部包在同一個 `transform: scale(scale)` 內
+- ❌ `cropImage()` 用 `min(NW, NH) / scale` 算 srcSquareSize（會跟 UI mask size 不一致）
+- ❌ 把 `cropWindowSize` 跟 `baseCanvasWidth` 硬編碼在 hook 內（必須從 component 傳入）
+
+#### srcSquareSize 公式（cropImage 必須遵守）
+
+UI mask 在 src 中的對應 square size：
+
+```
+srcSquareSize = (cropWindowSize / (baseCanvasWidth * scale)) * naturalWidth
+```
+
+對齊 src 中央的條件（必須滿足）：
+
+```
+baseCanvasWidth / naturalWidth = baseCanvasHeight / naturalHeight
+```
+
+實作上 `baseContainerH = baseContainerW * NH / NW` 已保證 canvas aspect = src aspect（image fit 100% 無 letterbox）。
+
+#### 範例（src 1024×768, base 400×300, mask 200×200）
+
+| scale | image visual size | mask 200×200 占 image 比例 | srcSquareSize |
+|-------|-------------------|-----------------------------|---------------|
+| 1.0   | 400×300           | 50% × 67%                   | 512×512       |
+| 2.0   | 800×600           | 25% × 33% (4x 細節)         | 256×256       |
+| 3.0   | 1200×900          | 17% × 22% (9x 細節)         | ~171×171      |
+
+#### Hook 簽名（強制）
+
+```typescript
+useImageCrop({
+  outputWidth, outputHeight,
+  cropWindowSize,    // 必填：UI mask size in CSS px (e.g. 200)
+  baseCanvasWidth,   // 必填：UI canvas width in CSS px (e.g. 400)
+  minScale, maxScale, initialScale,
+});
+```
+
+#### 每個 imageType 對應的 crop window 設定
+
+| imageType        | cropWindowSize | baseCanvasWidth | 用途 |
+|------------------|----------------|------------------|------|
+| `issuerLogo`     | 200            | 400              | LogoUploader |
+| `backgroundImage`| 800            | 800              | BackgroundUploader |
+| `icon`           | 256            | 256              | IconUploader |
+
+詳見 `.cursor/skills/saome-image-upload/SKILL.md` § Crop Window Invariant 與 `apps/frontend/src/hooks/useImageCrop.ts` 實作。
+
+#### 為什麼這是鐵律
+
+1. **語意正確**：scale 改變 = zoom in 看細節，不是「選更大範圍」
+2. **Layout 不變**：outer container 不被 scale 撐大，下方 slider 不會跳動
+3. **Export 對齊 UI**：`srcSquareSize` 公式嚴格保證 export region = UI mask 在 src 中的對應 region
+4. **RN migration 友善**：公式只跟數字相關，無 DOM 依賴
+
+事故紀錄：`runs/improvements/feedback/20260826-0827-logo-crop-zoom-full-trace.md`。
+決策：`runs/decisions/2026-08-27-logo-crop-zoom-invariant-mask.md`。
+
+## L2 Checklist 對齊
+
+| 動作 | 標準 |
+|---|---|
+| i18n namespace | **先建立** 獨立的 component-bound namespace（如 `logoUpload`），**禁止**放在 feature namespace（如 `cardBuilder`） |
+| 元件結構 | `components/business/dashboard/CardBuilderEditor/LogoUploader/` 一個資料夾 |
+| Test | `LogoUploader.test.tsx` + RTL |
+| Storybook | `LogoUploader.stories.tsx` |
+
+詳見 Rule 023 § 元件化原則。
+
+## 觸發關鍵字
+
+「上傳圖片」「R2」「presigned URL」「CORS 403」「LogoUploader」「BackgroundUploader」「裁切」「crop」「zoom」「scale」「mask」**必須**引用此 rule。
+
+## 參照
+
+- `runs/improvements/feedback/20260823-logo-uploader-full-trace.md`
+ — LogoUploader 完整 bug trace + Decision Log
+- `runs/improvements/feedback/20260826-0827-logo-crop-zoom-full-trace.md`
+ — Logo crop zoom 完整 trace（mask invariant + srcSquareSize 公式）
+- `runs/decisions/2026-08-27-logo-crop-zoom-invariant-mask.md`
+ — Crop Window Invariant 決策
+- `.cursor/skills/saome-image-upload/SKILL.md` § Crop Window Invariant
+- `apps/backend/src/modules/cards/routes/generate-upload-url.ts`
+ — presigned URL 實作範例
+- `apps/backend/r2-cors.json`
+ — CORS 設定檔
+- `apps/frontend/src/hooks/useImageCrop.ts`
+ — `cropImage()` 實作 + `srcSquareSize` 公式
+- Rule 027（postgres dynamic query）— Settings merge pattern
+- Rule 023（shared package / i18n namespace）— component-bound namespace 原則
+- Rule 024（mobile future-proof）— RN 化裁切 logic 抽離要求

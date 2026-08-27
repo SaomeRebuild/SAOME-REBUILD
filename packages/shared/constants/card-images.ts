@@ -69,6 +69,18 @@ export const LOGO_CROP_CONFIG = {
   MAX_SCALE: 3.0,
   /** Default zoom scale: 100% (image at natural size) */
   DEFAULT_SCALE: 1.0,
+  /**
+   * UI crop window size in CSS px. The 200×200 mask stays visually fixed at
+   * this size regardless of zoom scale (see Crop Window Invariant in
+   * `.cursor/skills/saome-image-upload/SKILL.md`).
+   */
+  CROP_WINDOW_SIZE: 200,
+  /**
+   * UI base canvas width in CSS px. Image is rendered at this size in the
+   * canvas before the scale transform applies, so the canvas aspect ratio
+   * matches the source image (height auto-computed as `baseCanvasWidth * NH/NW`).
+   */
+  BASE_CANVAS_WIDTH: 400,
 } as const;
 
 /**
