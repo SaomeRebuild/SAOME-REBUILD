@@ -25,6 +25,16 @@ export interface CropState {
   naturalWidth: number;
   /** Natural height of the original image. */
   naturalHeight: number;
+  /** Pan offset X in CSS pixels (drag-to-move on top of centered layout). */
+  offsetX?: number;
+  /** Pan offset Y in CSS pixels. */
+  offsetY?: number;
+  /** Resolved base canvas width in CSS px for the loaded image. For images
+      smaller than the requested `baseCanvasWidth`, this stores
+      `min(naturalWidth, baseCanvasWidth)` so the srcSquareSize formula uses
+      the same base canvas the UI renders. Set by the component (e.g.
+      LogoUploader) after image load; defaults to 0 before then. */
+  resolvedBaseCanvasWidth?: number;
 }
 
 export interface UseImageCropOptions {
@@ -32,6 +42,13 @@ export interface UseImageCropOptions {
   outputWidth: number;
   /** Output height in pixels. Pass null for flexible height (preserves aspect ratio). */
   outputHeight: number | null;
+  /** UI crop window size in CSS px (default: 200). Must match the visible
+      crop window in the editor so the exported crop region corresponds to
+      what the user sees. */
+  cropWindowSize?: number;
+  /** UI base canvas width in CSS px (default: 400). Must match the canvas
+      the image is rendered into before the scale transform. */
+  baseCanvasWidth?: number;
   /** Minimum zoom scale (default: 0.5). */
   minScale?: number;
   /** Maximum zoom scale (default: 3.0). */
@@ -43,6 +60,8 @@ export interface UseImageCropOptions {
 export interface UseImageCropReturn {
   /** Current crop state. */
   cropState: CropState;
+  /** Raw state setter (use for functional updates that need current state). */
+  setCropState: React.Dispatch<React.SetStateAction<CropState>>;
   /** Image element reference (set by onImageLoad callback). */
   imageRef: React.RefObject<HTMLImageElement | null>;
   /** Callback to set image element and detect dimensions on load. */
@@ -70,6 +89,8 @@ export interface UseImageCropReturn {
 const DEFAULT_MIN_SCALE = 0.5;
 const DEFAULT_MAX_SCALE = 3.0;
 const DEFAULT_INITIAL_SCALE = 1.0;
+const DEFAULT_CROP_WINDOW_SIZE = 200;
+const DEFAULT_BASE_CANVAS_WIDTH = 400;
 
 /**
  * Hook for client-side image cropping with focal point and zoom.
@@ -93,6 +114,8 @@ export function useImageCrop(options: UseImageCropOptions): UseImageCropReturn {
     // (width capped at 960, height flexible). These are kept for interface compat.
     outputWidth: _outputWidth,
     outputHeight: _outputHeight,
+    cropWindowSize = DEFAULT_CROP_WINDOW_SIZE,
+    baseCanvasWidth = DEFAULT_BASE_CANVAS_WIDTH,
     minScale = DEFAULT_MIN_SCALE,
     maxScale = DEFAULT_MAX_SCALE,
     initialScale = DEFAULT_INITIAL_SCALE,
@@ -104,6 +127,8 @@ export function useImageCrop(options: UseImageCropOptions): UseImageCropReturn {
     scale: initialScale,
     naturalWidth: 0,
     naturalHeight: 0,
+    offsetX: 0,
+    offsetY: 0,
   });
 
   const imageRef = useRef<HTMLImageElement | null>(null);
@@ -157,6 +182,8 @@ export function useImageCrop(options: UseImageCropOptions): UseImageCropReturn {
         scale: initialScale,
         naturalWidth: 0,
         naturalHeight: 0,
+        offsetX: 0,
+        offsetY: 0,
       });
 
       // The actual dimension detection happens via onLoad callback on the img element
@@ -192,11 +219,16 @@ export function useImageCrop(options: UseImageCropOptions): UseImageCropReturn {
       throw new Error('No image loaded');
     }
 
-    const { focalX, focalY, scale, naturalWidth, naturalHeight } = cropState;
+    const { focalX, focalY, scale, naturalWidth, naturalHeight, resolvedBaseCanvasWidth } = cropState;
 
     if (naturalWidth === 0 || naturalHeight === 0) {
       throw new Error('Image dimensions not yet available');
     }
+
+    // Prefer the component-supplied resolvedBaseCanvasWidth so small src images
+    // (naturalWidth < baseCanvasWidth) compute the same srcSquareSize as the
+    // UI's baseContainerW. Falls back to baseCanvasWidth option for back-compat.
+    const effectiveBaseCanvasWidth = resolvedBaseCanvasWidth ?? baseCanvasWidth;
 
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
@@ -204,22 +236,27 @@ export function useImageCrop(options: UseImageCropOptions): UseImageCropReturn {
       throw new Error('Failed to get canvas context');
     }
 
-    // Output: square (OUTPUT_WIDTH × OUTPUT_WIDTH), matching the UI 200×200 crop window.
+    // Output canvas: square matching OUTPUT_WIDTH.
     const MAX_LOGO_SIZE = LOGO_CROP_CONFIG.OUTPUT_WIDTH;
 
-    // Square source region size: use the tighter image dimension after zoom.
-    // This keeps the crop square regardless of source aspect ratio.
-    const sourceSizeW = naturalWidth / scale;
-    const sourceSizeH = naturalHeight / scale;
-    const squareSize = Math.min(sourceSizeW, sourceSizeH);
+    // The UI shows a fixed cropWindowSize×cropWindowSize square crop window in
+    // a canvas of size (baseCanvasWidth × baseCanvasHeight) where the canvas
+    // matches the src aspect so image fills 100% (no letterbox).
+    //
+    // At zoom `scale`, the image is visually scaled by `scale` from the canvas
+    // center. The crop window stays at cropWindowSize CSS px in the canvas, so
+    // the src-side square covered by the crop window = (cropWindowSize / (baseCanvasWidth * scale))
+    // of the src width. Since baseCanvasWidth/NW = baseCanvasHeight/NH (aspect match),
+    // the same fraction applies to height, giving a src-square.
+    const srcSquareSize = (cropWindowSize / (effectiveBaseCanvasWidth * scale)) * naturalWidth;
 
-    // Center the square region on the focal point, clamped to image bounds.
-    const rawX = focalX * naturalWidth - squareSize / 2;
-    const rawY = focalY * naturalHeight - squareSize / 2;
+    // Center the src-square on the focal point, clamped to image bounds.
+    const rawX = focalX * naturalWidth - srcSquareSize / 2;
+    const rawY = focalY * naturalHeight - srcSquareSize / 2;
     const srcX = Math.max(0, rawX);
     const srcY = Math.max(0, rawY);
-    const srcW = Math.min(squareSize, naturalWidth - srcX);
-    const srcH = Math.min(squareSize, naturalHeight - srcY);
+    const srcW = Math.min(srcSquareSize, naturalWidth - srcX);
+    const srcH = Math.min(srcSquareSize, naturalHeight - srcY);
 
     canvas.width = MAX_LOGO_SIZE;
     canvas.height = MAX_LOGO_SIZE;
@@ -248,6 +285,8 @@ export function useImageCrop(options: UseImageCropOptions): UseImageCropReturn {
       scale: initialScale,
       naturalWidth: cropState.naturalWidth,
       naturalHeight: cropState.naturalHeight,
+      offsetX: 0,
+      offsetY: 0,
     });
   }, [initialScale, cropState.naturalWidth, cropState.naturalHeight]);
 
@@ -264,6 +303,7 @@ export function useImageCrop(options: UseImageCropOptions): UseImageCropReturn {
 
   return {
     cropState,
+    setCropState,
     imageRef,
     onImageLoad,
     loadImage,
