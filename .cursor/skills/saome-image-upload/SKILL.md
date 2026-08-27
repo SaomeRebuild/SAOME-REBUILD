@@ -8,6 +8,82 @@
 
 ---
 
+## Crop Window Invariant（MANDATORY）
+
+> **觸發**：寫任何有 zoom (scale) 的圖片裁切 UI。
+
+### 設計意圖
+
+Crop window（UI 上白色邊框 + 暗色遮罩挖洞）是**使用者選定的範圍指示器**，不該隨 zoom 變化。zoom 的語意是「在選定範圍內看到更多 src 細節」，不是「選更大範圍」。
+
+### 三層結構
+
+```
+outer container (fixed layout, pointer events)
+├── inner canvas (transform: scale(scale))
+│   └── <img>  ← 只有 image 套 scale
+├── SVG mask (NOT scaled, fixed 200×200 hole at center)
+└── border (NOT scaled, fixed 200×200 frame at center)
+```
+
+| 層 | 是否套 scale | 角色 |
+|----|--------------|------|
+| outer container | ❌ | Layout 邊界，避免下方 slider 跳動 |
+| inner canvas + image | ✅ | Zoom in 看到 src 細節 |
+| SVG mask + border | ❌ | Crop 框永遠固定 |
+
+### srcSquareSize 公式（cropImage 必須遵守）
+
+UI mask 在 src 中的對應 square size：
+
+```
+srcSquareSize = (cropWindowSize / (baseCanvasWidth * scale)) * naturalWidth
+```
+
+對齊 src 中央的條件（必須滿足）：
+
+```
+baseCanvasWidth / naturalWidth = baseCanvasHeight / naturalHeight
+```
+
+實作上 `baseContainerH = baseContainerW * NH / NW` 已保證 canvas aspect = src aspect（image fit 100% 無 letterbox）。
+
+### 範例（src 1024×768, base 400×300, mask 200×200）
+
+| scale | image visual size | mask 200×200 占 image 比例 | srcSquareSize |
+|-------|-------------------|-----------------------------|---------------|
+| 1.0   | 400×300           | 50% × 67%                   | 512×512       |
+| 2.0   | 800×600           | 25% × 33% (4x 細節)         | 256×256       |
+| 3.0   | 1200×900          | 17% × 22% (9x 細節)         | ~171×171      |
+
+### 為什麼這是鐵律
+
+1. **語意正確**：scale 改變 = zoom in 看細節，不是「選更大範圍」
+2. **Layout 不變**：outer container 不被 scale 撐大，下方 slider 不會跳動
+3. **Export 對齊 UI**：`srcSquareSize` 公式嚴格保證 export region = UI mask 在 src 中的對應 region
+4. **RN migration 友善**：公式只跟 naturalWidth / scale / cropWindowSize / baseCanvasWidth 相關，全部都是數字，無 DOM 依賴
+
+### 禁止
+
+- ❌ 將 image + mask + border 全部包在同一個 `transform: scale(scale)` 內
+- ❌ `cropImage()` 用 `min(NW, NH) / scale` 算 srcSquareSize（會跟 UI mask size 不一致）
+- ❌ 把 `cropWindowSize` 跟 `baseCanvasWidth` 硬編碼在 hook 內（必須從 component 傳入）
+
+### Hook 簽名
+
+```typescript
+useImageCrop({
+  outputWidth, outputHeight,
+  cropWindowSize,    // 必填：UI mask size in CSS px (e.g. 200)
+  baseCanvasWidth,   // 必填：UI canvas width in CSS px (e.g. 400)
+  minScale, maxScale, initialScale,
+});
+```
+
+詳見 `apps/frontend/src/hooks/useImageCrop.ts` 與 `.cursor/rules/frontend/028-image-crop-invariant.mdc`。
+
+---
+
 ## 完整流程圖
 
 ```mermaid
@@ -176,6 +252,15 @@ saome/
 - 裁切運算寫在 `packages/shared/logic/` 為純函式（RN 化時零改動）
 - **嚴禁**在 component 內直接寫業務邏輯，拆到 hook 或 service
 - 所有翻譯走 `useTranslation('logoUpload')`
+- **必跑 Crop Window Invariant**（見上方 § Crop Window Invariant）：三層結構 + srcSquareSize 公式
+
+#### 每個 imageType 對應的 crop window 設定
+
+| imageType        | cropWindowSize | baseCanvasWidth | baseCanvasHeight | 備註 |
+|------------------|----------------|------------------|------------------|------|
+| `issuerLogo`     | 200            | 400              | auto (NH/NW × W) | LogoUploader |
+| `backgroundImage`| 800            | 800              | auto             | BackgroundUploader |
+| `icon`           | 256            | 256              | auto             | IconUploader |
 
 詳見 `apps/frontend/src/components/business/dashboard/CardBuilderEditor/LogoUploader/LogoUploader.tsx`。
 

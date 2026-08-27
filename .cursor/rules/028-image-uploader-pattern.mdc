@@ -179,6 +179,90 @@ const key = `${env.R2_BUCKET}/${tenantId}/${cardId}/${imageType}-${Date.now()}.p
 
 **唯一的例外**：若業務需要版本歷史（如「還原到上一版」），才考慮 UUID 版本化，但那時應該存在另一個 `versions` subfolder，而非直接覆蓋當前 key。
 
+### 11. Crop Window Invariant — Mask Size 必須對齊 Export Crop Size（強制）
+
+> **觸發**：任何有 zoom (scale) 的圖片裁切 UI。LogoUploader / BackgroundUploader / IconUploader 都適用。
+
+#### 設計意圖
+
+Crop window（UI 上白色邊框 + 暗色遮罩挖洞）是**使用者選定的範圍指示器**，不該隨 zoom 變化。zoom 的語意是「在選定範圍內看到更多 src 細節」，不是「選更大範圍」。
+
+#### 三層結構（強制）
+
+```
+outer container (fixed layout, pointer events)
+├── inner canvas (transform: scale(scale), 只含 image)
+├── SVG mask (NOT scaled, fixed cropWindowSize × cropWindowSize hole at center)
+└── border (NOT scaled, fixed cropWindowSize × cropWindowSize frame at center)
+```
+
+| 層 | 是否套 scale | 角色 |
+|----|--------------|------|
+| outer container | ❌ | Layout 邊界，避免下方 slider 跳動 |
+| inner canvas + image | ✅ | Zoom in 看到 src 細節 |
+| SVG mask + border | ❌ | Crop 框永遠固定 |
+
+#### 禁止（硬規則）
+
+- ❌ 將 image + mask + border 全部包在同一個 `transform: scale(scale)` 內
+- ❌ `cropImage()` 用 `min(NW, NH) / scale` 算 srcSquareSize（會跟 UI mask size 不一致）
+- ❌ 把 `cropWindowSize` 跟 `baseCanvasWidth` 硬編碼在 hook 內（必須從 component 傳入）
+
+#### srcSquareSize 公式（cropImage 必須遵守）
+
+UI mask 在 src 中的對應 square size：
+
+```
+srcSquareSize = (cropWindowSize / (baseCanvasWidth * scale)) * naturalWidth
+```
+
+對齊 src 中央的條件（必須滿足）：
+
+```
+baseCanvasWidth / naturalWidth = baseCanvasHeight / naturalHeight
+```
+
+實作上 `baseContainerH = baseContainerW * NH / NW` 已保證 canvas aspect = src aspect（image fit 100% 無 letterbox）。
+
+#### 範例（src 1024×768, base 400×300, mask 200×200）
+
+| scale | image visual size | mask 200×200 占 image 比例 | srcSquareSize |
+|-------|-------------------|-----------------------------|---------------|
+| 1.0   | 400×300           | 50% × 67%                   | 512×512       |
+| 2.0   | 800×600           | 25% × 33% (4x 細節)         | 256×256       |
+| 3.0   | 1200×900          | 17% × 22% (9x 細節)         | ~171×171      |
+
+#### Hook 簽名（強制）
+
+```typescript
+useImageCrop({
+  outputWidth, outputHeight,
+  cropWindowSize,    // 必填：UI mask size in CSS px (e.g. 200)
+  baseCanvasWidth,   // 必填：UI canvas width in CSS px (e.g. 400)
+  minScale, maxScale, initialScale,
+});
+```
+
+#### 每個 imageType 對應的 crop window 設定
+
+| imageType        | cropWindowSize | baseCanvasWidth | 用途 |
+|------------------|----------------|------------------|------|
+| `issuerLogo`     | 200            | 400              | LogoUploader |
+| `backgroundImage`| 800            | 800              | BackgroundUploader |
+| `icon`           | 256            | 256              | IconUploader |
+
+詳見 `.cursor/skills/saome-image-upload/SKILL.md` § Crop Window Invariant 與 `apps/frontend/src/hooks/useImageCrop.ts` 實作。
+
+#### 為什麼這是鐵律
+
+1. **語意正確**：scale 改變 = zoom in 看細節，不是「選更大範圍」
+2. **Layout 不變**：outer container 不被 scale 撐大，下方 slider 不會跳動
+3. **Export 對齊 UI**：`srcSquareSize` 公式嚴格保證 export region = UI mask 在 src 中的對應 region
+4. **RN migration 友善**：公式只跟數字相關，無 DOM 依賴
+
+事故紀錄：`runs/improvements/feedback/20260826-0827-logo-crop-zoom-full-trace.md`。
+決策：`runs/decisions/2026-08-27-logo-crop-zoom-invariant-mask.md`。
+
 ## L2 Checklist 對齊
 
 | 動作 | 標準 |
@@ -192,16 +276,23 @@ const key = `${env.R2_BUCKET}/${tenantId}/${cardId}/${imageType}-${Date.now()}.p
 
 ## 觸發關鍵字
 
-「上傳圖片」「R2」「presigned URL」「CORS 403」「LogoUploader」「BackgroundUploader」「裁切」**必須**引用此 rule。
+「上傳圖片」「R2」「presigned URL」「CORS 403」「LogoUploader」「BackgroundUploader」「裁切」「crop」「zoom」「scale」「mask」**必須**引用此 rule。
 
 ## 參照
 
 - `runs/improvements/feedback/20260823-logo-uploader-full-trace.md`
  — LogoUploader 完整 bug trace + Decision Log
+- `runs/improvements/feedback/20260826-0827-logo-crop-zoom-full-trace.md`
+ — Logo crop zoom 完整 trace（mask invariant + srcSquareSize 公式）
+- `runs/decisions/2026-08-27-logo-crop-zoom-invariant-mask.md`
+ — Crop Window Invariant 決策
+- `.cursor/skills/saome-image-upload/SKILL.md` § Crop Window Invariant
 - `apps/backend/src/modules/cards/routes/generate-upload-url.ts`
  — presigned URL 實作範例
 - `apps/backend/r2-cors.json`
  — CORS 設定檔
+- `apps/frontend/src/hooks/useImageCrop.ts`
+ — `cropImage()` 實作 + `srcSquareSize` 公式
 - Rule 027（postgres dynamic query）— Settings merge pattern
 - Rule 023（shared package / i18n namespace）— component-bound namespace 原則
 - Rule 024（mobile future-proof）— RN 化裁切 logic 抽離要求

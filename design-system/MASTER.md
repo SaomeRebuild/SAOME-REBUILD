@@ -332,3 +332,54 @@ Theme preference is stored in `localStorage` under key `saome.theme`. RN migrati
 ### Icon Compatibility
 
 Lucide icons (`lucide-react`) are used on web. RN migration swaps to `lucide-react-native` with identical icon names.
+
+---
+
+## 13. Crop Window Pattern（圖片裁切互動）
+
+> **適用元件**：LogoUploader、BackgroundUploader、IconUploader 等所有提供 zoom + crop 的圖片上傳元件。
+
+### 設計意圖
+
+Crop window 是**使用者選定的範圍指示器**，不是「選更大範圍」的工具。zoom 的語意是「在選定範圍內看到更多 src 細節」。
+
+### Crop Window Tokens
+
+| Token | Value | 用途 |
+|-------|-------|------|
+| `--crop-window-size` | 200px（LogoUploader default） | 固定視覺大小，不隨 scale 變化 |
+| `--crop-window-border` | 2px white / 70% | 視覺邊框 |
+| `--crop-mask-overlay` | `rgba(0,0,0,0.5)` | 非選取區域的暗色遮罩 |
+| `--crop-window-radius` | `--radius-md` | 圓角（與卡片一致） |
+
+### 三層結構 Pattern
+
+```
+outer container (fixed layout, pointer events)
+├── inner canvas (transform: scale(scale), 只含 image)
+├── SVG mask (NOT scaled, fixed size hole at center)
+└── border (NOT scaled, fixed size frame at center)
+```
+
+只有 image 套 scale → mask 永遠固定 → 「選定範圍內 zoom in 看細節」。
+
+### Zoom 對應 srcSquareSize
+
+| scale | image 視覺大小（相對 base canvas） | mask 看到的細節倍數 |
+|-------|------------------------------------|---------------------|
+| 0.5   | 50%                                | 0.25x               |
+| 1.0   | 100%                               | 1x（基準）          |
+| 2.0   | 200%                               | 4x 細節             |
+| 3.0   | 300%                               | 9x 細節             |
+
+### Export Crop 對齊 UI Mask（鐵律）
+
+`cropImage()` 算 srcSquareSize **必須**用：
+
+```
+srcSquareSize = (cropWindowSize / (baseCanvasWidth * scale)) * naturalWidth
+```
+
+**禁止**用 `min(NW, NH) / scale`（會跟 UI mask 在 src 中的 size 不一致，導致 UI 跟 export 視覺位置不同）。
+
+詳見 `.cursor/rules/028-image-uploader-pattern.mdc` § 11 與 `.cursor/skills/saome-image-upload/SKILL.md` § Crop Window Invariant。
