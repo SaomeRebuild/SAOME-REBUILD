@@ -7,7 +7,7 @@
 
 | 日期 | 主題 | 路徑 | 影響 / 後續 |
 |------|------|------|------|
-| 2026-08-22 | Playwright-first Debugging：CardBuilder debug 時改 3-4 個檔案才看到有效訊息；建議同一個 bug 改了 5+ 個檔案仍未定位根因時，立即停手寫 Playwright probe | runs/improvements/feedback/20260822-playwright-first-debugging.md | 新增 rule `026` (Playwright-first Debugging)；probe 範本見 `tests/probe/card-builder-issuer-debug.spec.ts` |
+| 2026-08-27 | LogoUploader Crop Zoom — Mask Invariant + Bug-C Fix：三層結構 + srcSquareSize 公式 + syncFocalFromOffset 修正 + 17 個 conformance tests + 小圖 corner case 修 | DEV/08-2026/27-logo-crop-zoom-invariant.md + runs/improvements/feedback/20260826-0827-logo-crop-zoom-full-trace.md + runs/decisions/2026-08-27-logo-crop-zoom-invariant-mask.md | 新增 rule `028` § 11；SKILL § Crop Window Invariant；design-system § 13 |
 | 2026-08-22 | Migration Apply Pipeline：`expires_at` migration 放在 `supabase/migrations/` 但從未 apply 到 production；建議每個 migration 需 pipeline check 或 CI 驗證 | runs/improvements/feedback/20260822-migration-apply-pipeline.md | Migration apply pipeline 待建立；`apps/backend/src/modules/cards/db/templates.test.ts` 待建 |
 | 2026-08-22 | CardBuilder 草稿完整實錄（Aug 21-22）：TTL + pg_cron + Abandon DELETE + schema drift 完整 trace | DEV/08-2026/0822-card-builder-draft-abandon-full-trace.md | 待 revert `expires_at` 繞過；待建 `templates.test.ts` |
 | 2026-08-22 | CardBuilder Step 2 issuerName 預填失敗 + Membership Extension `isPaid` checkbox：`useAuth()` 回傳 `{ state }` 不是 `{ tenant }` 直接解構；後端 `templates.ts` 和 `request.ts` 的 `TemplateSettings` 漏 `isPaid` | DEV/08-2026/0822-card-builder-step2-issuer-fix-and-membership-extension.md | 下次新增 settings 欄位時，同步檢查 shared schema → backend request.ts → backend db interface 三層 |
@@ -51,7 +51,9 @@
 | 2026-08-22 | 強化 `026` 門檻：從「5+ 檔案」改為「1 次 smoke fail」| ✅ done |
 | 2026-08-22 | `saome-github-deploy` skill 加 migration apply blocking check | ✅ done |
 | 2026-08-22 | 強化 `001` Decision Log：7 種架構改動必進 Decision Log | ✅ done |
-| 2026-08-22 | `useAuth` hook JSDoc 加 explicit return type 說明 | ⏳ pending |
+| 2026-08-27 | `syncFocalFromOffset` + `srcSquareSize` 公式抽出到 `packages/shared/logic/cropGeometry.ts`（RN-friendly）| ⏳ pending |
+| 2026-08-27 | BackgroundUploader（800×800 crop）/ IconUploader（256×256 crop）沿用 Crop Window Invariant pattern | ⏳ pending |
+| 2026-08-27 | LogoUploader Crop Zoom — Mask Invariant + Bug-C Fix | ✅ done |
 | 2026-08-22 | Migration apply pipeline：CI check 確保 migration 與 code 同步 | ⏳ pending |
 | 2026-08-22 | Migration apply 後 revert `expires_at` 繞過 | ⏳ pending |
 
