@@ -53,7 +53,6 @@ export default defineConfig({
         // don't use this proxy and hit the backend directly.
         target: 'http://127.0.0.1:8787',
         changeOrigin: true,
-        secure: true,
       },
     },
   },
