@@ -64,3 +64,48 @@ if (typeof URL.createObjectURL !== 'function') {
 if (typeof URL.revokeObjectURL !== 'function') {
   URL.revokeObjectURL = vi.fn();
 }
+
+// ── ResizeObserver polyfill (jsdom doesn't ship it) ──
+// LogoUploader measures its wrapper's offsetWidth via ResizeObserver to derive
+// the crop stage's responsive width. In jsdom ResizeObserver doesn't exist
+// and offsetWidth is always 0, so without this polyfill the wrapper would
+// always report 0 width and the crop stage would jump to BASE_CANVAS_WIDTH.
+//
+// This polyfill captures every observed element so tests can manually trigger
+// a resize via `triggerResize(el, width, height)` and let the component
+// re-measure.
+type ResizeObserverCallback = (entries: ResizeObserverEntry[], observer: ResizeObserver) => void;
+const resizeRegistry = new WeakMap<Element, ResizeObserverCallback>();
+
+class MockResizeObserver {
+  private cb: ResizeObserverCallback;
+  constructor(cb: ResizeObserverCallback) {
+    this.cb = cb;
+  }
+  observe(el: Element) {
+    resizeRegistry.set(el, this.cb);
+    // Fire once on observe so the component picks up the initial size.
+    queueMicrotask(() => this.cb([{ target: el, contentRect: { width: 0, height: 0, top: 0, left: 0, bottom: 0, right: 0, x: 0, y: 0 } } as ResizeObserverEntry], this as unknown as ResizeObserver));
+  }
+  unobserve(el: Element) {
+    resizeRegistry.delete(el);
+  }
+  disconnect() {
+    // no-op; tests rarely need this
+  }
+}
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  globalThis.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
+}
+
+// Test helper: trigger a ResizeObserver callback on the given element with the
+// desired dimensions. Use this in tests that need the component to re-measure
+// (e.g. for responsive cap behavior).
+export function triggerResize(el: Element, width: number, height: number) {
+  const cb = resizeRegistry.get(el);
+  if (!cb) throw new Error('triggerResize: element not observed by ResizeObserver');
+  cb(
+    [{ target: el, contentRect: { width, height, top: 0, left: 0, bottom: 0, right: 0, x: 0, y: 0 } } as ResizeObserverEntry],
+    {} as ResizeObserver,
+  );
+}

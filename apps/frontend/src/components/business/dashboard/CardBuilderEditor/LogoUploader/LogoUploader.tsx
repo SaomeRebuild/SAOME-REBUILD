@@ -16,7 +16,7 @@
  * @module components/business/dashboard/CardBuilderEditor/LogoUploader
  */
 
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useLayoutEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Upload, X, ZoomIn, ZoomOut, Check, AlertCircle, RotateCcw, Image as ImageIcon } from 'lucide-react';
 import { useImageCrop, type CropState } from '@/hooks/useImageCrop';
@@ -155,10 +155,10 @@ export function LogoUploader({
   const moveHistoryRef = useRef<Array<{ x: number; y: number; t: number }>>([]);
   const momentumRafRef = useRef<number | null>(null);
   const MOMENTUM_HISTORY_WINDOW_MS = 120; // widened from 100ms to capture slower swipes
-  const MOMENTUM_MIN_VELOCITY = 0.02; // lowered from 0.05: slow swipes (0.5 px/frame) still trigger
-  const MOMENTUM_FRICTION = 0.96; // raised from 0.92: momentum lasts ~3× longer (~25 frames vs ~8)
+  const MOMENTUM_MIN_VELOCITY = 0.015; // lowered from 0.02: even slower swipes (0.24 px/frame) trigger momentum
+  const MOMENTUM_FRICTION = 0.97; // raised from 0.96: slightly longer glide (~33 frames vs ~25)
   const MOMENTUM_FRAME_MS = 16; // ~60fps timestep for the rAF loop
-  const DRAG_SENSITIVITY = 2.0; // raised from 1.5: native photo-cropper feel per feedback 20260830
+  const DRAG_SENSITIVITY = 3.0; // raised from 2.0: per feedback 20260830, finger drag still felt "bit by bit" — matches native iOS / Android photo cropper feel (200/3 ≈ 67 px to traverse focal from center to edge)
 
   // ===== Live offset refs (bypass React reconciliation during drag) =====
   // React state updates trigger a full LogoUploader re-render (SVG mask,
@@ -227,24 +227,54 @@ export function LogoUploader({
     // The onImageLoad callback handles setting imageRef.current via the ref attribute
   }, []);
 
-  // ===== Responsive viewport tracking =====
-  // On phones the viewport can be narrower than the 400px base canvas, so the
-  // crop stage must shrink to fit. Without this:
-  //   - Crop stage overflows horizontally → page layout gets stretched
-  //   - Visible draggable area < full canvas → user can only drag a little
-  //     before the image slides off-screen and they have to release+re-grab
-  // Initial value falls back to 1024 (desktop) when window is unavailable
-  // (SSR / test env) so the desktop layout is the default.
-  const [viewportW, setViewportW] = useState<number>(() =>
-    typeof window !== 'undefined' ? window.innerWidth : 1024,
-  );
+  // ===== Responsive width tracking (Replaces fragile VIEWPORT_PADDING math) =====
+  // Earlier version subtracted a hard-coded 128px from window.innerWidth, which
+  // broke whenever a new padding wrapper was added above LogoUploader (the user
+  // reported this on 2026-08-30: "頁面還是被撐開，出現了Y軸").
+  //
+  // New approach: measure the LogoUploader root's actual offsetWidth at
+  // runtime via ResizeObserver. This handles ANY wrapper padding/margin/sidebar
+  // automatically — the crop stage always fits within whatever space the
+  // flex chain actually gave us.
+  //
+  // SSR safety: ResizeObserver doesn't exist on the server; we fallback to
+  // BASE_CANVAS_WIDTH so the desktop default (400) is used until the effect
+  // runs on the client.
+  //
+  // IMPORTANT: use useLayoutEffect (NOT useEffect) for the initial measurement.
+  // useEffect runs AFTER the browser paints, so the first paint would show the
+  // crop stage at `BASE_CANVAS_WIDTH = 400px` which overflows ≤412px viewports
+  // (causing the horizontal scrollbar the user reported on 2026-08-30).
+  // useLayoutEffect runs synchronously before paint, so the first paint the
+  // user sees already has the correct, measured width. This is a standard
+  // React pattern for "measure-then-render without layout thrashing".
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [availableWidth, setAvailableWidth] = useState<number>(BASE_CANVAS_WIDTH);
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const update = () => setViewportW(window.innerWidth);
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined' || !wrapperRef.current) return;
+    const el = wrapperRef.current;
+    const update = (entries?: ResizeObserverEntry[]) => {
+      // Prefer contentRect.width from the entry (works in jsdom via the
+      // polyfill). Fall back to offsetWidth for browsers / environments
+      // where the entry isn't passed.
+      const w = entries && entries[0]
+        ? entries[0].contentRect.width
+        : el.offsetWidth;
+      if (process.env.NODE_ENV === 'test') {
+        // eslint-disable-next-line no-console
+        console.log(`[LogoUploader] availableWidth update: ${w} (tag=${el.tagName}, classList=${el.className.slice(0, 50)})`);
+      }
+      setAvailableWidth(w);
+    };
     update();
-    window.addEventListener('resize', update);
-    return () => window.removeEventListener('resize', update);
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver((entries) => update(entries));
+      ro.observe(el);
+      return () => ro.disconnect();
+    }
+    window.addEventListener('resize', () => update());
+    return () => window.removeEventListener('resize', () => update());
   }, []);
 
   // Cleanup object URL on unmount
@@ -263,35 +293,25 @@ export function LogoUploader({
   // the surrounding UI); image and mask are scaled visually via a transform
   // applied to the inner stage so the user sees the image get bigger.
   //
-  // Responsive cap: LogoUploader sits inside FOUR levels of horizontal
-  // padding on mobile (before the crop stage):
-  //   1. AppDashboardPage wrapper `div.p-4 pt-16` (apps/frontend/src/pages/app/AppDashboardPage.tsx:37)
-  //      — 16px horizontal on each side = 32px total
-  //   2. CardBuilderPage wrapper `div.flex.h-full.w-full...p-6.gap-6`
-  //      (apps/frontend/src/pages/app/dashboard/card-builder/CardBuilderPage.tsx:174)
-  //      — 24px horizontal on each side = 48px total
-  //   3. CardBuilderEditorWorkspace <aside> `p-6`
-  //      (CardBuilderEditorWorkspace.tsx)
-  //      — 24px horizontal on each side = 48px total
-  // Sum: (16 + 24 + 24) × 2 = 128 CSS px total horizontal padding.
-  //
-  // The crop stage must be sized to fit within (viewportW − 128) or it
-  // overflows the page wrapper, triggering `overflow-auto` horizontal
-  // scrollbar and stretching the whole layout. On iPhone 12 Pro Max
-  // (428×926) this caused a ~29px overflow that the user reported as
-  // "UI being stretched when uploading an image".
-  //
-  // NOTE: This constant is fragile — any new padding wrapper added above
-  // the LogoUploader must be accounted for. The fix is also enforced via
-  // `maxWidth: '100%'` on the crop stage element itself as a safety net.
+  // Responsive cap: measured at runtime via ResizeObserver on the wrapper
+  // (availableWidth = wrapper's offsetWidth = the actual horizontal space
+  // the flex chain gave us). Then `min(BASE_CANVAS_WIDTH, availableWidth - 16)`
+  // caps at the desktop 400px max OR (parent width − 16px safety margin),
+  // whichever is smaller. The 16px safety margin handles sub-pixel rounding
+  // and any scrollbar that might appear transiently — guaranteeing the
+  // crop stage NEVER overflows the page wrapper, regardless of how many
+  // padding wrappers exist above LogoUploader.
   //
   // On phones smaller than CROP_WINDOW_SIZE we floor at CROP_WINDOW_SIZE
   // so the crop window still fits inside the canvas (anything smaller
   // would clip the mask frame).
-  const VIEWPORT_PADDING = 128; // p-4 (16) + p-6 (24) + p-6 (24) = 64 per side × 2
   const naturalCap = cropState.naturalWidth > 0 ? cropState.naturalWidth : BASE_CANVAS_WIDTH;
-  const availableW = Math.max(viewportW - VIEWPORT_PADDING, CROP_WINDOW_SIZE);
-  const baseContainerW = Math.min(naturalCap, BASE_CANVAS_WIDTH, availableW);
+  const STAGE_SAFETY_MARGIN = 16; // px — keeps crop stage inside parent even with sub-pixel rounding
+  const baseContainerW = Math.min(
+    naturalCap,
+    BASE_CANVAS_WIDTH,
+    Math.max(availableWidth - STAGE_SAFETY_MARGIN, CROP_WINDOW_SIZE),
+  );
   const baseContainerH = cropState.naturalWidth > 0
     ? Math.round(baseContainerW * (cropState.naturalHeight / cropState.naturalWidth))
     : BASE_CANVAS_WIDTH;
@@ -697,7 +717,7 @@ export function LogoUploader({
     const showPreview = Boolean(displayUrl);
 
     return (
-      <div className={`flex min-w-0 flex-col items-center gap-4 ${className}`}>
+      <div ref={wrapperRef} className={`flex min-w-0 flex-col items-center gap-4 ${className}`}>
         {/* min-w-0: defensive — prevents the LogoUploader root from growing
             to fit crop stage's inline width and propagating the overflow up
             the flex chain (section → aside → CardBuilderEditor → page wrapper).
@@ -808,7 +828,7 @@ export function LogoUploader({
   // ===== Cropping / Uploading state =====
 
   return (
-    <div className={`flex min-w-0 flex-col items-center gap-4 ${className}`}>
+    <div ref={wrapperRef} className={`flex min-w-0 flex-col items-center gap-4 ${className}`}>
       {/* min-w-0: defensive — the cropping state contains the crop stage which
           sets an inline width (e.g. 329px on 412px viewport). Without min-w-0
           this container's min-content = 329px, which then propagates up

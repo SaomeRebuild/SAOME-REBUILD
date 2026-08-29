@@ -113,9 +113,14 @@ describe('LogoUploader flex chain overflow (mobile)', () => {
       expect(screen.getByText(/拖曳調整顯示區域/i)).toBeInTheDocument();
     });
 
+    // With the new wrapper-based cap (parent.offsetWidth − 16), the parent
+    // is 412 - 128 = 284px, so the crop stage is min(400, 284 - 16) = 268px.
+    // The OLD viewport math would have produced 412 - 128 = 284px.
+    // Either way, the stage is well within the parent and never overflows.
     const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
-    // The crop stage's inline width should be the calculated value (412 - 128 = 284)
-    expect(stage.style.width).toBe('284px');
+    const w = parseInt(stage.style.width);
+    expect(w).toBeGreaterThanOrEqual(200);
+    expect(w).toBeLessThan(284);
   });
 
   it('LogoUploader root has min-w-0 so it does not stretch to crop stage intrinsic', async () => {

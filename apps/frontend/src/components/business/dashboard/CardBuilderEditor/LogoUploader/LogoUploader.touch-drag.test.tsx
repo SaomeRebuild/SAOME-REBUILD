@@ -141,14 +141,14 @@ describe('LogoUploader drag actually moves the image', () => {
     const transformStr = img.style.transform;
     console.log('[TEST-1] Final img.style.transform:', JSON.stringify(transformStr));
 
-    // The transform should reflect the drag distance (DRAG_SENSITIVITY = 2.0).
-    // 50 px drag * 2.0 sensitivity = 100 px translate.
+    // The transform should reflect the drag distance (DRAG_SENSITIVITY = 3.0).
+    // 50 px drag * 3.0 sensitivity = 150 px translate.
     expect(transformStr).toContain('translate');
     const match = transformStr.match(/translate\(([-\d.]+)px/);
     expect(match).not.toBeNull();
     const dx = parseFloat(match![1]);
-    console.log(`[TEST-1] Parsed dx = ${dx} (expected ~100 with sensitivity 2.0)`);
-    expect(Math.abs(dx)).toBeGreaterThan(50);
+    console.log(`[TEST-1] Parsed dx = ${dx} (expected ~150 with sensitivity 3.0)`);
+    expect(Math.abs(dx)).toBeGreaterThan(100);
     expect(Math.abs(dx)).toBeLessThan(300);
 
     const upEvent = createEvent.pointerUp(stage);
@@ -213,14 +213,14 @@ describe('LogoUploader drag actually moves the image', () => {
       fireEvent(stage, moveEvent);
     }
 
-    // After 20 px of drag with sensitivity 2.0 = 40 px translate
+    // After 20 px of drag with sensitivity 3.0 = 60 px translate
     const finalTransform = img.style.transform;
     console.log('[TEST-3] After 20 moves, img.style.transform =', finalTransform);
     expect(finalTransform).toContain('translate');
     const match = finalTransform.match(/translate\(([-\d.]+)px/);
     expect(match).not.toBeNull();
     const dx = parseFloat(match![1]);
-    expect(dx).toBeGreaterThan(20); // definitely moved
+    expect(dx).toBeGreaterThan(40); // definitely moved (60 expected)
 
     const upEvent = createEvent.pointerUp(stage);
     Object.defineProperty(upEvent, 'clientX', { value: 220, configurable: true });

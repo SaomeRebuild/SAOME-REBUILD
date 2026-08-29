@@ -232,12 +232,13 @@ describe('LogoUploader drag momentum (mobile UX)', () => {
     await enterCroppingState();
     const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
 
-    // Slow drag: 1px every 100ms → velocity ≈ 0.01 px/ms, below the
-    // MOMENTUM_MIN_VELOCITY 0.05 px/ms threshold.
+    // Very slow drag: 1px every 200ms → velocity ≈ 0.005 px/ms. Multiplied
+    // by DRAG_SENSITIVITY 3.0 → 0.015, still BELOW the strict `>`
+    // MOMENTUM_MIN_VELOCITY 0.015 threshold, so no rAF should fire.
     await simulateDrag(stage, [
       { type: 'down', x: 200, y: 200 },
-      { type: 'move', x: 201, y: 200, delayMs: 100 },
-      { type: 'move', x: 202, y: 200, delayMs: 100 },
+      { type: 'move', x: 201, y: 200, delayMs: 200 },
+      { type: 'move', x: 202, y: 200, delayMs: 200 },
       { type: 'up', x: 202, y: 200 },
     ]);
 

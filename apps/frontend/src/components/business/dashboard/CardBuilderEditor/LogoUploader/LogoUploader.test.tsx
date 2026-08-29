@@ -85,79 +85,93 @@ describe('LogoUploader', () => {
   });
 
   describe('responsive crop container (mobile)', () => {
-    function setViewport(width: number) {
-      Object.defineProperty(window, 'innerWidth', { value: width, configurable: true });
-      window.dispatchEvent(new Event('resize'));
-    }
-
     /**
-     * Trigger the cropping UI by firing a file change. The mocked
-     * `loadImage` resolves immediately so LogoUploader flips its local
-     * `state` to `'cropping'` and renders the crop stage.
+     * Render LogoUploader inside a parent with a known content-box width and
+     * trigger ResizeObserver to fire with that width. With the new
+     * wrapper-based responsive cap (replaces the old viewport − 128 math),
+     * the crop stage width is `min(400, parentWidth − 16)` so the stage
+     * NEVER overflows the parent regardless of how many padding wrappers
+     * exist above LogoUploader.
      */
-    async function enterCroppingState() {
-      render(<LogoUploader templateId="t1" onLogoUploaded={vi.fn()} />);
-      const input = document.querySelector(
+    async function renderInParent(parentWidth: number) {
+      // Re-mock useImageCrop so each render is fresh
+      vi.mocked(useImageCrop).mockReturnValue(mockImageCropReturn());
+      const { container } = render(
+        <div style={{ width: `${parentWidth}px` }} data-testid="constrained-parent">
+          <LogoUploader templateId="t1" onLogoUploaded={vi.fn()} />
+        </div>,
+      );
+      // Trigger cropping UI
+      const input = container.querySelector(
         'input[type="file"]',
       ) as HTMLInputElement;
       const file = new File(['x'], 'logo.png', { type: 'image/png' });
       Object.defineProperty(input, 'files', { value: [file], configurable: true });
       fireEvent.change(input);
-      // The cropping UI shows the "拖曳調整顯示區域" hint.
       await waitFor(() => {
         expect(screen.getByText(/拖曳調整顯示區域/i)).toBeInTheDocument();
       });
+      // Fire ResizeObserver on the LogoUploader root with the parent's content-box width.
+      // jsdom offsetWidth is always 0, so we have to drive the measurement via the polyfill.
+      // The cropping state's outer div carries the wrapperRef, identifiable by
+      // `data-cursor-element-id` (RTL injects this when cursor-el-* attrs exist),
+      // or by its position as the unique `.flex.min-w-0.flex-col.items-center.gap-4`
+      // AFTER cropping activates (idle wrapper is unmounted).
+      const { triggerResize } = await import('@/test/setup');
+      const cropStage = container.querySelector('[data-testid="logo-crop-stage"]');
+      const root = cropStage?.parentElement;
+      // eslint-disable-next-line no-console
+      console.log(`[TEST] crop-stage=${!!cropStage}, root=${!!root}, rootTag=${root?.tagName}, rootClassList=${root?.className.slice(0, 60)}`);
+      if (!root) throw new Error('cropping wrapper not found');
+      triggerResize(root, parentWidth, 800);
+      // eslint-disable-next-line no-console
+      console.log(`[TEST] triggered resize on root with width=${parentWidth}`);
+      // The polyfill schedules the callback via queueMicrotask, then React
+      // re-renders. Wait for the new width to land in the DOM.
+      const expectedW = Math.min(400, Math.max(parentWidth - 16, 200));
+      await waitFor(() => {
+        const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
+        expect(stage.style.width).toBe(`${expectedW}px`);
+      });
     }
 
-    it('caps crop container at viewport − 128px (p-4 + p-6 + p-6 chain) on iPhone (375px)', async () => {
-      setViewport(375);
-      await enterCroppingState();
+    it('caps crop container at parentWidth − 16px on iPhone (375px parent)', async () => {
+      await renderInParent(375);
       const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
-      // 375 − 128 (p-4 AppDashboardPage wrapper: 32 + CardBuilderPage p-6: 48 +
-      // aside p-6: 48) = 247px. All three padding layers must be subtracted;
-      // previously only the two p-6 layers were counted, causing a 32px
-      // horizontal overflow on every mobile viewport that stretched the
-      // CardBuilderPage wrapper's overflow-auto scrollbar.
-      expect(stage.style.width).toBe('247px');
+      // 375 − 16 (STAGE_SAFETY_MARGIN) = 359px (still < BASE 400)
+      expect(stage.style.width).toBe('359px');
     });
 
-    it('respects narrow phone viewport (320px → 192px container)', async () => {
-      setViewport(320);
-      await enterCroppingState();
+    it('respects narrow phone viewport (parentWidth 320 → 304px container)', async () => {
+      await renderInParent(320);
       const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
-      // 320 − 128 = 192px (still < CROP_WINDOW_SIZE 200, so the crop stage
-      // is floored at 200px — see baseContainerW Math.max in component).
-      expect(stage.style.width).toBe('200px');
+      // 320 − 16 = 304px (still > CROP_WINDOW_SIZE 200)
+      expect(stage.style.width).toBe('304px');
     });
 
     /**
-     * Bug regression: iPhone 12 Pro Max (1284×2778 native, 428×926 CSS).
-     * Before the fix, VIEWPORT_PADDING was 96 (only the two p-6 layers),
-     * but the actual horizontal padding chain was 128 (p-4 + p-6 + p-6).
-     * The crop stage was sized at 332px but the section content area was
-     * only 300px, causing a 32px horizontal overflow that stretched the
-     * page and triggered the CardBuilderPage wrapper's `overflow-auto`
-     * scrollbar.
+     * Bug regression: iPhone 12 Pro Max (428×926 native, ~412px CSS after browser chrome).
+     * The old viewport-padding math (viewport − 128) missed some wrappers and
+     * overflowed by 32px. The new wrapper-based cap uses actual offsetWidth,
+     * so the stage always fits the parent content-box minus a 16px safety.
+     * Parent cap 412 > BASE 400, so the BASE cap wins (min(400, 412) = 400).
      */
-    it('caps crop container at viewport − 128px on iPhone 12 Pro Max (428px)', async () => {
-      setViewport(428);
-      await enterCroppingState();
+    it('caps crop container at 400px (BASE_CANVAS_WIDTH) on iPhone 12 Pro Max (428px parent)', async () => {
+      await renderInParent(428);
       const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
-      // 428 − 128 = 300px
-      expect(stage.style.width).toBe('300px');
+      // 428 − 16 = 412, but min(400, 412) = 400 (BASE wins)
+      expect(stage.style.width).toBe('400px');
     });
 
-    it('uses BASE_CANVAS_WIDTH (400px) on desktop (>= 528px viewport)', async () => {
-      setViewport(1024);
-      await enterCroppingState();
+    it('uses BASE_CANVAS_WIDTH (400px) on desktop (parentWidth 1024)', async () => {
+      await renderInParent(1024);
       const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
-      // Desktop: viewport cap is 896px, but BASE_CANVAS_WIDTH=400 wins
+      // Desktop: parent cap is 1008px, but BASE_CANVAS_WIDTH=400 wins (min(400, 1008))
       expect(stage.style.width).toBe('400px');
     });
 
     it('has maxWidth safety net so container never overflows its parent', async () => {
-      setViewport(375);
-      await enterCroppingState();
+      await renderInParent(375);
       const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
       expect(stage.style.maxWidth).toBe('100%');
     });
@@ -165,14 +179,27 @@ describe('LogoUploader', () => {
     /**
      * Regression: iPhone 12/13/14 standard (390×844 CSS).
      * Confirms the crop stage never overflows on the most common mobile
-     * viewport — 390 − 128 = 262px should fit comfortably.
+     * viewport — 390 − 16 = 374px should fit comfortably inside any parent.
      */
-    it('caps crop container at 262px on iPhone 12/13/14 (390px)', async () => {
-      setViewport(390);
-      await enterCroppingState();
+    it('caps crop container at 374px on iPhone 12/13/14 (390px parent)', async () => {
+      await renderInParent(390);
       const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
-      // 390 − 128 = 262px
-      expect(stage.style.width).toBe('262px');
+      // 390 − 16 = 374px
+      expect(stage.style.width).toBe('374px');
+    });
+
+    /**
+     * New behavior (regression-proof): the stage is ALWAYS capped at
+     * `parentWidth − 16`, regardless of how many wrappers exist. This
+     * guarantees no horizontal overflow regardless of how the page layout
+     * changes around LogoUploader.
+     */
+    it('never overflows parent even with multiple padding wrappers (parentWidth 280)', async () => {
+      await renderInParent(280);
+      const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
+      // 280 − 16 = 264px. Floor at CROP_WINDOW_SIZE 200 (so 264 wins).
+      expect(stage.style.width).toBe('264px');
+      expect(parseInt(stage.style.width)).toBeLessThan(280);
     });
   });
 });
