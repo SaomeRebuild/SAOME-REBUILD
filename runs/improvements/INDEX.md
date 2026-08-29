@@ -7,6 +7,8 @@
 
 | 日期 | 主題 | 路徑 | 影響 / 後續 |
 |------|------|------|------|
+| 2026-08-30 | LogoUploader iPhone 12 Pro Max Horizontal Overflow：`VIEWPORT_PADDING=48` 只算一層 `p-6` 但實際有兩層（CardBuilderPage wrapper + Workspace aside），mobile viewport 觸發 48px 水平 overflow | runs/improvements/feedback/20260830-logo-uploader-iphone12promax-double-padding.md | `VIEWPORT_PADDING` 48 → 96；新增 iPhone 12 Pro Max (428px) regression guard；既有 320/375 期望值改對；建議在 `006-verification.mdc` 或 `013-rwd.mdc` 加「layout chain 透明度」紀律 |
+| 2026-08-30 | LogoUploader Portrait Crop Stale Closure：`handlePointerUp` useCallback 空 deps 導致 portrait / landscape 圖垂直拖曳後 crop 位置偏移 ~250 source px | runs/improvements/feedback/20260830-logo-uploader-portrait-stale-closure.md | 加 3 個 conformance test 守住 portrait / landscape / square；handlePointerUp deps 加 baseContainerW/H；建議 `028` § 12 或 general rule 加 useCallback deps 紀律 |
 | 2026-08-27 | LogoUploader Crop Zoom — Mask Invariant + Bug-C Fix：三層結構 + srcSquareSize 公式 + syncFocalFromOffset 修正 + 17 個 conformance tests + 小圖 corner case 修 | DEV/08-2026/27-logo-crop-zoom-invariant.md + runs/improvements/feedback/20260826-0827-logo-crop-zoom-full-trace.md + runs/decisions/2026-08-27-logo-crop-zoom-invariant-mask.md | 新增 rule `028` § 11；SKILL § Crop Window Invariant；design-system § 13 |
 | 2026-08-22 | Migration Apply Pipeline：`expires_at` migration 放在 `supabase/migrations/` 但從未 apply 到 production；建議每個 migration 需 pipeline check 或 CI 驗證 | runs/improvements/feedback/20260822-migration-apply-pipeline.md | Migration apply pipeline 待建立；`apps/backend/src/modules/cards/db/templates.test.ts` 待建 |
 | 2026-08-22 | CardBuilder 草稿完整實錄（Aug 21-22）：TTL + pg_cron + Abandon DELETE + schema drift 完整 trace | DEV/08-2026/0822-card-builder-draft-abandon-full-trace.md | 待 revert `expires_at` 繞過；待建 `templates.test.ts` |
@@ -54,6 +56,11 @@
 | 2026-08-27 | `syncFocalFromOffset` + `srcSquareSize` 公式抽出到 `packages/shared/logic/cropGeometry.ts`（RN-friendly）| ⏳ pending |
 | 2026-08-27 | BackgroundUploader（800×800 crop）/ IconUploader（256×256 crop）沿用 Crop Window Invariant pattern | ⏳ pending |
 | 2026-08-27 | LogoUploader Crop Zoom — Mask Invariant + Bug-C Fix | ✅ done |
+| 2026-08-30 | `028` § 12 或 general `000-modular-design.mdc` 加 useCallback deps 紀律：「closure 變數全列舉後逐一進 deps」 | ⏳ pending |
+| 2026-08-30 | LogoUploader Portrait Crop Stale Closure Fix | ✅ done |
+| 2026-08-30 | LogoUploader iPhone 12 Pro Max Horizontal Overflow Fix | ✅ done |
+| 2026-08-30 | 在 `.cursor/rules/006-verification.mdc` 或 `.cursor/rules/uiux/013-rwd.mdc` 加「layout chain 透明度」紀律：component 用 `viewportW - X` 算寬度時，X 必須明列所有 wrapper 的 padding 來源；測試期望值必須對應真實 layout 事實，不是程式碼公式 | ⏳ pending |
+| 2026-08-30 | Audit 其他用 `window.innerWidth` 計算 layout 的元件（CardBuilderEditorPreview `max-w-sm` 等）對 layout chain 的認知是否正確 | ⏳ pending |
 | 2026-08-22 | Migration apply pipeline：CI check 確保 migration 與 code 同步 | ⏳ pending |
 | 2026-08-22 | Migration apply 後 revert `expires_at` 繞過 | ⏳ pending |
 

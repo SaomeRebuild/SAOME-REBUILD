@@ -36,7 +36,11 @@ export default function AppDashboardPage() {
       {/* Main layout — toolbar + content, fills remaining height */}
       <div className={`flex min-h-0 flex-1 items-stretch ${hasBanner ? 'pt-4' : ''}`}>
         <TenantToolbar />
-        <div className="flex min-h-0 flex-1 flex-col">
+        {/* min-w-0: 防禦性，避免被 CardBuilderEditorHeader 等子內容的
+            min-content 撐開（曾導致 360px viewport 下 Outlet inner 變 357、
+            撐破 AppDashboardPage p-4 + CardBuilderPage p-6 + Workspace p-6
+            的總和 128px padding）。詳見 feedback 20260830。 */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <Outlet />
         </div>
       </div>

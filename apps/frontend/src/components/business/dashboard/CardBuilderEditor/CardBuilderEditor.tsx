@@ -197,7 +197,10 @@ export function CardBuilderEditor({
   }
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden">
+    <div className="flex min-w-0 h-full w-full flex-col overflow-hidden">
+      {/* min-w-0: see comment in the flex-row div below. Without it, the
+          crop stage's inline width propagates through this outer wrapper
+          to the page wrapper. */}
       {/* Loading state while fetching template */}
       {isLoading && (
         <div className="flex flex-1 items-center justify-center">
@@ -217,8 +220,14 @@ export function CardBuilderEditor({
           isStep1Blocked={!name.trim() || !cardType}
         />
 
-        {/* 下容器：左右欄位 */}
-        <div className="flex flex-1 flex-col overflow-hidden lg:flex-row">
+        {/* 下容器：左右欄位
+            min-w-0 on both the outer wrapper and the inner lg:flex-row is
+            defensive — without it, the LogoUploader crop stage's inline
+            width (e.g. 329px on a 412px viewport) sets this flex item's
+            min-content, which propagates up to the page wrapper. With
+            min-w-0 + overflow-hidden, the flex item stays at the parent
+            width and the overflow is clipped. See feedback 20260830. */}
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden lg:flex-row">
           {/* 左欄位：操作區 — 2/3 寬度 */}
           <CardBuilderEditorWorkspace
             step={step}
@@ -230,7 +239,7 @@ export function CardBuilderEditor({
               await cardService.update(id, { settings });
             }}
             onBack={_onBack}
-            className="flex-2 lg:w-2/3"
+            className="min-w-0 flex-2 lg:w-2/3"
           />
 
           {/* 右欄位：即時預覽區 — 1/3 寬度，Desktop only */}
