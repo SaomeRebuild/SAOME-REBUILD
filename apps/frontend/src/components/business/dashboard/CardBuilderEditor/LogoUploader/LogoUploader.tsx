@@ -144,15 +144,16 @@ export function LogoUploader({
 
   // Constants — touch momentum: moderate friction for natural glide
   const MOMENTUM_HISTORY_WINDOW_MS = 120; // captures slower swipes
-  const MOMENTUM_MIN_VELOCITY = 0.012;   // px/ms threshold to trigger glide
+  const MOMENTUM_MIN_VELOCITY = 0.005;   // px/ms threshold to trigger glide — lowered from 0.012 so slower swipes (even 2px/500ms × 5.0 = 0.02 px/ms) also get momentum
   const MOMENTUM_FRICTION = 0.96;         // decay per ~16ms frame
   const MOMENTUM_FRAME_MS = 16;           // ~60fps timestep
 
   // Mouse sensitivity: 1:1 pixel mapping for precise control
   const MOUSE_SENSITIVITY = 1.0;
-  // Touch sensitivity: 3x — matches native iOS/Android photo cropper feel.
-  // A 200px screen drag → 600px focal shift, traversing full focal range
-  // in ~67px drag. See 20260830 feedback.
+  // Touch sensitivity: 3.0 — user said 5.0 still feels "too fast" on real phone.
+  // Native iOS/Android photo croppers use 1:1 or slightly amplified (1.5–2x) sensitivity.
+  // 3.0 means a 40px finger drag → 120px focal shift, traversing full focal range in
+  // ~56px — more controlled than the previous 5.0 (full range in ~34px).
   const TOUCH_SENSITIVITY = 3.0;
 
   /**
@@ -305,6 +306,21 @@ export function LogoUploader({
   const baseContainerH = cropState.naturalWidth > 0
     ? Math.round(baseContainerW * (cropState.naturalHeight / cropState.naturalWidth))
     : BASE_CANVAS_WIDTH;
+
+  // Responsive crop window: proportional to stage width on mobile, capped at 200px.
+  // On desktop (400px stage) → 200px (= CROP_WINDOW_SIZE, max = 200).
+  // On mobile (329px stage) → 197px (329 * 0.6 ≈ 197).
+  // This makes the mask's transparent region fill a consistent ~60% of the stage width,
+  // so the flanking dark overlay lines are visible and the user can gauge the crop.
+  //
+  // IMPORTANT: the final canvas export ALWAYS outputs 200x200px
+  // (via useImageCrop). The visual mask is purely for UX feedback — it scales,
+  // but the export does not.
+  const CROP_WINDOW_SHARE = 0.6;
+  const responsiveCropWindow = Math.min(
+    baseContainerW * CROP_WINDOW_SHARE,
+    CROP_WINDOW_SIZE, // never larger than 200px
+  );
 
   // Sync resolvedBaseCanvasWidth into cropState so useImageCrop.cropImage()
   // uses the same base canvas width as the UI for small src images (NW < BASE).
@@ -970,7 +986,7 @@ export function LogoUploader({
             </div>
 
             {/* SVG mask layer — stays at base container size and is NOT scaled.
-                Dim everything except a fixed 200x200 center crop window. */}
+                Dim everything except a responsive-size center crop window. */}
             <svg
               className="pointer-events-none absolute inset-0"
               width={baseContainerW}
@@ -981,13 +997,14 @@ export function LogoUploader({
                 <mask id="logo-crop-mask">
                   {/* Outer rect: full container = white (mask shows the overlay) */}
                   <rect width={baseContainerW} height={baseContainerH} fill="white" />
-                  {/* Inner rect: 200x200 center crop window = black (mask hides overlay there,
-                    letting bright image show through) */}
+                  {/* Inner rect: responsive center crop window = black (mask hides overlay there,
+                    letting bright image show through). Scales with stage on mobile but
+                    capped at CROP_WINDOW_SIZE (200px) on desktop. */}
                   <rect
-                    x={(baseContainerW - CROP_WINDOW_SIZE) / 2}
-                    y={(baseContainerH - CROP_WINDOW_SIZE) / 2}
-                    width={CROP_WINDOW_SIZE}
-                    height={CROP_WINDOW_SIZE}
+                    x={(baseContainerW - responsiveCropWindow) / 2}
+                    y={(baseContainerH - responsiveCropWindow) / 2}
+                    width={responsiveCropWindow}
+                    height={responsiveCropWindow}
                     rx="0.5rem"
                     fill="black"
                   />
@@ -1002,14 +1019,13 @@ export function LogoUploader({
               />
             </svg>
 
-            {/* 200x200 crop window — fixed-size white border. Sits on top of the
-                scaled image at the container center. NOT scaled, so the crop
-                frame stays the same size while the image inside it gets bigger. */}
+            {/* Responsive crop window frame — scales with stage on mobile.
+                The frame is purely a visual guide; the actual export is always 200x200px. */}
             <div
               className="pointer-events-none absolute rounded border-2 border-white/70"
               style={{
-                width: CROP_WINDOW_SIZE,
-                height: CROP_WINDOW_SIZE,
+                width: responsiveCropWindow,
+                height: responsiveCropWindow,
                 left: '50%',
                 top: '50%',
                 transform: 'translate(-50%, -50%)',
