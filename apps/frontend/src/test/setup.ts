@@ -54,3 +54,13 @@ vi.mock('@/services/authService', () => ({
     refresh: vi.fn().mockRejectedValue(new Error('no session')),
   },
 }));
+
+// ── URL.createObjectURL / revokeObjectURL polyfill (jsdom doesn't ship these) ──
+// Without this, LogoUploader's unmount cleanup throws "URL.revokeObjectURL is not a
+// function" and fails tests that have a `cropping` state at teardown.
+if (typeof URL.createObjectURL !== 'function') {
+  URL.createObjectURL = vi.fn(() => 'blob:mock');
+}
+if (typeof URL.revokeObjectURL !== 'function') {
+  URL.revokeObjectURL = vi.fn();
+}
