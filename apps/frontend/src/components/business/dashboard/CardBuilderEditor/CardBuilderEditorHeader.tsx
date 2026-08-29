@@ -30,8 +30,12 @@ export function CardBuilderEditorHeader({
 
   return (
     <header className="border-b border-border bg-card p-4">
-      {/* 第一行：水平排列（標題靠左、步驟靠右） */}
-      <div className="mb-4 flex items-center justify-between gap-6">
+      {/* 第一行：水平排列（標題靠左、步驟靠右）
+          - flex-wrap: 窄螢幕（≤ 412px）時允許換行，避免 h1 + 步驟 + gap-6
+            的合計 min-content 超過 header 寬度，導致 flex 父層被撐開 14-29px。
+            標題與步驟在夠寬時仍並排（justify-between），手機上會自動換成上下兩列。
+          - min-w-0: 防禦性，確保子元素不被自身的 min-content 撐大父層。 */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
         {/* 左側：標題 */}
         <h1
           className="flex items-center gap-2 text-xl font-bold text-foreground shrink-0"

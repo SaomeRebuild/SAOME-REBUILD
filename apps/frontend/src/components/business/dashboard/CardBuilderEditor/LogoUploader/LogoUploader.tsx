@@ -67,16 +67,15 @@ function validateFile(file: File): ValidationError | null {
  *     left top.
  *   - Inner canvas wraps with transform: scale(scale) from its center.
  *   - Mask is at outer box center (= baseContainerW/2, baseContainerH/2).
- *   - Image element visual center in outer box =
- *       (baseContainerW/2 + offsetX * scale, baseContainerH/2 + offsetY * scale)
- *   - Mask center in image content normalized =
- *       ((baseContainerW/2 - (baseContainerW/2 + offsetX*scale)) / (baseContainerW*scale),
- *        same for Y)
- *     = (-offsetX / baseContainerW, -offsetY / baseContainerH)
- *     → focalX = 0.5 - offsetX / baseContainerW (no scale — the scale factor
- *       appears symmetrically in numerator and denominator and cancels out).
+ *   - Mask center in inner-canvas coords (before scale) = baseContainerW/2,
+ *     baseContainerH/2 — because scale around the same center is a fixed point.
+ *   - Image element local at mask center = (baseContainerW/2 - offsetX,
+ *     baseContainerH/2 - offsetY).
+ *   - Source X at image local X = (baseContainerW/2 - offsetX) * (NW / baseW).
+ *   - focalX = (baseContainerW/2 - offsetX) * NW / baseW / NW
+ *             = 0.5 - offsetX / baseContainerW.
  *
- * The earlier formula `(offsetX * scale)` was a Bug-A root cause: drag at
+ * The earlier formula `(offsetX * scale)` was a Bug-C root cause: drag at
  * scale=2 over-corrected the focal by 2×, causing the exported crop to slide
  * off-center as soon as the user dragged.
  *
@@ -150,6 +149,26 @@ export function LogoUploader({
     // The onImageLoad callback handles setting imageRef.current via the ref attribute
   }, []);
 
+  // ===== Responsive viewport tracking =====
+  // On phones the viewport can be narrower than the 400px base canvas, so the
+  // crop stage must shrink to fit. Without this:
+  //   - Crop stage overflows horizontally → page layout gets stretched
+  //   - Visible draggable area < full canvas → user can only drag a little
+  //     before the image slides off-screen and they have to release+re-grab
+  // Initial value falls back to 1024 (desktop) when window is unavailable
+  // (SSR / test env) so the desktop layout is the default.
+  const [viewportW, setViewportW] = useState<number>(() =>
+    typeof window !== 'undefined' ? window.innerWidth : 1024,
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const update = () => setViewportW(window.innerWidth);
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
+
   // Cleanup object URL on unmount
   useEffect(() => {
     return () => {
@@ -165,9 +184,36 @@ export function LogoUploader({
   // Container itself stays this size in layout (so zoom-in doesn't reflow
   // the surrounding UI); image and mask are scaled visually via a transform
   // applied to the inner stage so the user sees the image get bigger.
-  const baseContainerW = cropState.naturalWidth > 0
-    ? Math.min(cropState.naturalWidth, BASE_CANVAS_WIDTH)
-    : BASE_CANVAS_WIDTH;
+  //
+  // Responsive cap: LogoUploader sits inside FOUR levels of horizontal
+  // padding on mobile (before the crop stage):
+  //   1. AppDashboardPage wrapper `div.p-4 pt-16` (apps/frontend/src/pages/app/AppDashboardPage.tsx:37)
+  //      — 16px horizontal on each side = 32px total
+  //   2. CardBuilderPage wrapper `div.flex.h-full.w-full...p-6.gap-6`
+  //      (apps/frontend/src/pages/app/dashboard/card-builder/CardBuilderPage.tsx:174)
+  //      — 24px horizontal on each side = 48px total
+  //   3. CardBuilderEditorWorkspace <aside> `p-6`
+  //      (CardBuilderEditorWorkspace.tsx)
+  //      — 24px horizontal on each side = 48px total
+  // Sum: (16 + 24 + 24) × 2 = 128 CSS px total horizontal padding.
+  //
+  // The crop stage must be sized to fit within (viewportW − 128) or it
+  // overflows the page wrapper, triggering `overflow-auto` horizontal
+  // scrollbar and stretching the whole layout. On iPhone 12 Pro Max
+  // (428×926) this caused a ~29px overflow that the user reported as
+  // "UI being stretched when uploading an image".
+  //
+  // NOTE: This constant is fragile — any new padding wrapper added above
+  // the LogoUploader must be accounted for. The fix is also enforced via
+  // `maxWidth: '100%'` on the crop stage element itself as a safety net.
+  //
+  // On phones smaller than CROP_WINDOW_SIZE we floor at CROP_WINDOW_SIZE
+  // so the crop window still fits inside the canvas (anything smaller
+  // would clip the mask frame).
+  const VIEWPORT_PADDING = 128; // p-4 (16) + p-6 (24) + p-6 (24) = 64 per side × 2
+  const naturalCap = cropState.naturalWidth > 0 ? cropState.naturalWidth : BASE_CANVAS_WIDTH;
+  const availableW = Math.max(viewportW - VIEWPORT_PADDING, CROP_WINDOW_SIZE);
+  const baseContainerW = Math.min(naturalCap, BASE_CANVAS_WIDTH, availableW);
   const baseContainerH = cropState.naturalWidth > 0
     ? Math.round(baseContainerW * (cropState.naturalHeight / cropState.naturalWidth))
     : BASE_CANVAS_WIDTH;
@@ -361,8 +407,19 @@ export function LogoUploader({
     // Sync focal to the final offset so crop export reflects what the user
     // sees in the mask window. Focal is the export's source of truth (see
     // useImageCrop.cropImage); offset is only for display positioning.
+    //
+    // IMPORTANT: deps must include baseContainerW and baseContainerH. These
+    // are computed from cropState.naturalWidth/Height which are 0 at first
+    // render (BASE_CANVAS_WIDTH × BASE_CANVAS_WIDTH = 400×400 placeholder).
+    // After the image loads, they recompute to match the image's aspect
+    // (e.g. portrait 400×600, landscape 400×267). With empty deps this
+    // callback would be created on first render with the 400×400 placeholder
+    // and never recreated — every drag would use 400 as the denominator for
+    // focalY even when baseContainerH is actually 600, shifting the export
+    // crop by ~250 source px for a 100 px drag on portrait images.
+    // Bug-φ root cause (2026-08-30 portrait crop position regression).
     setCropState((prev) => syncFocalFromOffset(prev, baseContainerW, baseContainerH));
-  }, []);
+  }, [baseContainerW, baseContainerH]);
 
   // ===== Scroll to zoom =====
 
@@ -442,9 +499,14 @@ export function LogoUploader({
     const showPreview = Boolean(displayUrl);
 
     return (
-      <div className={`flex flex-col items-center gap-4 ${className}`}>
+      <div className={`flex min-w-0 flex-col items-center gap-4 ${className}`}>
+        {/* min-w-0: defensive — prevents the LogoUploader root from growing
+            to fit crop stage's inline width and propagating the overflow up
+            the flex chain (section → aside → CardBuilderEditor → page wrapper).
+            Without it the crop stage can still horizontally overflow the page
+            wrapper on mobile viewports. See feedback 20260830. */}
         {showPreview && displayUrl ? (
-          <div className="flex flex-col items-center gap-3">
+          <div className="flex min-w-0 flex-col items-center gap-3">
             {/* Cropped logo preview — maintain square ratio */}
             <div className="relative h-32 w-32 overflow-hidden rounded-xl bg-muted">
               <img
@@ -516,8 +578,8 @@ export function LogoUploader({
 
   if (state === 'error') {
     return (
-      <div className={`flex flex-col items-center gap-4 ${className}`}>
-          <div className="flex flex-col items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/5 p-6">
+      <div className={`flex min-w-0 flex-col items-center gap-4 ${className}`}>
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/5 p-6">
           <AlertCircle size={32} className="text-destructive" aria-hidden="true" />
           <p className="text-sm text-destructive">
             {validationError ? t(`logoUpload.${validationError.message}`) : uploadError}
@@ -548,7 +610,14 @@ export function LogoUploader({
   // ===== Cropping / Uploading state =====
 
   return (
-    <div className={`flex flex-col items-center gap-4 ${className}`}>
+    <div className={`flex min-w-0 flex-col items-center gap-4 ${className}`}>
+      {/* min-w-0: defensive — the cropping state contains the crop stage which
+          sets an inline width (e.g. 329px on 412px viewport). Without min-w-0
+          this container's min-content = 329px, which then propagates up
+          through every flex ancestor without min-w-0 (section → aside →
+          CardBuilderEditor flex-row → page wrapper), overflowing the viewport
+          and forcing CardBuilderPage's overflow-auto to show a horizontal
+          scrollbar. See feedback 20260830. */}
       {/* Upload progress */}
       {state === 'uploading' && (
         <div className="flex flex-col items-center gap-3">
@@ -568,13 +637,19 @@ export function LogoUploader({
           {/* Crop stage — outer container is fixed in layout so zoom-in doesn't
               reflow the page. The inner canvas applies a CSS scale transform
               (around the canvas center) so the user sees the image visually
-              enlarge from the center outward. */}
+              enlarge from the center outward.
+              maxWidth: '100%' is a belt-and-suspenders safety net: on the
+              unlikely case that viewportW tracking lags (e.g. orientation
+              change between paint and effect) the container still won't
+              overflow its parent. */}
           <div
             ref={containerRef}
-            className="relative rounded-xl"
+            data-testid="logo-crop-stage"
+            className="relative mx-auto rounded-xl"
             style={{
               width: baseContainerW,
               height: baseContainerH,
+              maxWidth: '100%',
               cursor: 'grab',
               touchAction: 'none',
               userSelect: 'none',
@@ -681,8 +756,10 @@ export function LogoUploader({
             </span>
           </div>
 
-          {/* Action buttons */}
-          <div className="flex items-center gap-3">
+          {/* Action buttons — flex-wrap so they wrap to a second row on
+              narrow viewports instead of overflowing. justify-center keeps
+              the layout balanced whether on one row or two. */}
+          <div className="flex flex-wrap items-center justify-center gap-3">
             <button
               type="button"
               onClick={handleCancel}

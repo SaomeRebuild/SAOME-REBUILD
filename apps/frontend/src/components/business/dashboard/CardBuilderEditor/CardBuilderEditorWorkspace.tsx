@@ -105,10 +105,13 @@ export function CardBuilderEditorWorkspace({
   }
 
   return (
-    <aside className={`flex w-full flex-col gap-6 bg-muted p-6 ${className || ''}`} {...rest}>
+    <aside className={`flex min-w-0 w-full flex-col gap-6 bg-muted p-6 ${className || ''}`} {...rest}>
+      {/* min-w-0: defensive — prevents the aside from being stretched by its
+          children's min-content (notably the LogoUploader crop stage's inline
+          width on mobile). See feedback 20260830. */}
       {/* Step 1: 卡片類型選擇器 */}
       {step === 1 && (
-        <section className="flex flex-col gap-6">
+        <section className="flex min-w-0 flex-col gap-6">
           <h2 className="text-lg font-semibold text-foreground">
             {t('step1.title')}
           </h2>
@@ -150,7 +153,7 @@ export function CardBuilderEditorWorkspace({
 
       {/* Step 2: 卡片設定 */}
       {step === 2 && (
-        <section className="flex flex-col gap-6">
+        <section className="flex min-w-0 flex-col gap-6">
           <h2 className="text-lg font-semibold text-foreground">
             {t('step2.title')}
           </h2>
@@ -193,7 +196,7 @@ export function CardBuilderEditorWorkspace({
 
       {/* Step 3: 卡片設計（Logo 上傳） */}
       {step === 3 && (
-        <section className="flex flex-col gap-6">
+        <section className="flex min-w-0 flex-col gap-6">
           <h2 className="text-lg font-semibold text-foreground">
             {t('step3.title')}
           </h2>

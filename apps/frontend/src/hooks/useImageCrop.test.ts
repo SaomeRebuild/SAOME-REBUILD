@@ -280,5 +280,86 @@ describe('useImageCrop — conformance tests (Crop Window Invariant)', () => {
       expect(narrow.focalX).toBeCloseTo(0.0, 5);
       expect(wide.focalX).toBeCloseTo(0.25, 5);
     });
+
+    it('portrait image drag down uses baseContainerH (NOT BASE_CANVAS_WIDTH placeholder) — Bug-φ regression guard', () => {
+      // Bug-φ (2026-08-30): LogoUploader's handlePointerUp used a useCallback
+      // with empty deps, capturing the placeholder baseContainerW=400 and
+      // baseContainerH=400 (initial render, naturalWidth=0). After the image
+      // loads, baseContainerH recomputes to the aspect-matched value
+      // (portrait 2000×3000 → baseH=600), but the callback was never recreated.
+      // Every drag ended up computing focalY with the wrong denominator (400
+      // instead of 600), shifting the export crop by ~250 source px on
+      // portrait images for a 100 px drag.
+
+      // Portrait 2000×3000 → baseContainerW=400, baseContainerH=600
+      const portraitCorrect = syncFocalFromOffset(
+        makeState({ naturalWidth: 2000, naturalHeight: 3000, offsetY: 100 }),
+        400,
+        600,
+      );
+      // 0.5 - 100/600 = 0.333
+      expect(portraitCorrect.focalY).toBeCloseTo(0.333, 3);
+
+      // The buggy version (using BASE_CANVAS_WIDTH=400 placeholder for both)
+      // gives a different result:
+      const portraitBuggy = syncFocalFromOffset(
+        makeState({ naturalWidth: 2000, naturalHeight: 3000, offsetY: 100 }),
+        400,
+        400,
+      );
+      // 0.5 - 100/400 = 0.25
+      expect(portraitBuggy.focalY).toBeCloseTo(0.25, 3);
+
+      // They must differ — otherwise the bug is undetectable
+      expect(portraitCorrect.focalY).not.toBeCloseTo(portraitBuggy.focalY, 2);
+
+      // Export src-side impact: with buggy focalY=0.25 vs correct 0.333,
+      // srcY differs by 250 source px for NH=3000
+      const correctSrcY = portraitCorrect.focalY * 3000 - 500;
+      const buggySrcY = portraitBuggy.focalY * 3000 - 500;
+      expect(correctSrcY - buggySrcY).toBeCloseTo(250, 0);
+    });
+
+    it('landscape image drag down uses baseContainerH=267 (NOT 400 placeholder) — Bug-φ regression guard', () => {
+      // Landscape 3000×2000 → baseContainerW=400, baseContainerH=round(400 * 2000/3000) = 267
+      const landscapeCorrect = syncFocalFromOffset(
+        makeState({ naturalWidth: 3000, naturalHeight: 2000, offsetY: 100 }),
+        400,
+        267,
+      );
+      // 0.5 - 100/267 ≈ 0.125
+      expect(landscapeCorrect.focalY).toBeCloseTo(0.125, 3);
+
+      // Buggy version with placeholder baseContainerH=400 gives wrong result
+      const landscapeBuggy = syncFocalFromOffset(
+        makeState({ naturalWidth: 3000, naturalHeight: 2000, offsetY: 100 }),
+        400,
+        400,
+      );
+      // 0.5 - 100/400 = 0.25
+      expect(landscapeBuggy.focalY).toBeCloseTo(0.25, 3);
+
+      // They must differ
+      expect(landscapeCorrect.focalY).not.toBeCloseTo(landscapeBuggy.focalY, 2);
+
+      // Export src-side impact: with buggy focalY=0.25 vs correct 0.125,
+      // srcY differs by ~250 source px for NH=2000
+      const correctSrcY = landscapeCorrect.focalY * 2000 - 750;
+      const buggySrcY = landscapeBuggy.focalY * 2000 - 750;
+      expect(Math.abs(correctSrcY - buggySrcY)).toBeGreaterThan(200);
+    });
+
+    it('square image drag down is identical regardless of Bug-φ (no aspect change)', () => {
+      // Square images keep baseContainerH = BASE_CANVAS_WIDTH = 400 forever,
+      // so the Bug-φ placeholder-vs-actual distinction doesn't apply.
+      // This guards against us "fixing" the bug in a way that breaks square.
+      const square = syncFocalFromOffset(
+        makeState({ naturalWidth: 1000, naturalHeight: 1000, offsetY: 100 }),
+        400,
+        400,
+      );
+      // 0.5 - 100/400 = 0.25
+      expect(square.focalY).toBeCloseTo(0.25, 3);
+    });
   });
 });
