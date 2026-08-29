@@ -121,6 +121,59 @@ export function LogoUploader({
   const dragStartRef = useRef({ x: 0, y: 0 });
   const offsetStartRef = useRef({ x: 0, y: 0 });
 
+  // ===== Momentum / inertia (mobile UX) =====
+  // On phones, releasing the finger after a quick drag should "flick" the
+  // image onward (iOS / Android photo crop standard). Without this:
+  //   - User drags 50px, releases → image stops immediately
+  //   - To reach the desired position, user must re-grab and drag again
+  //     (often many times for a large image) → "一次只能移動一點，要滑好幾次"
+  //     feedback 20260830.
+  //
+  // Mechanism:
+  //   - handlePointerMove pushes {x, y, t} into moveHistoryRef (sliding window
+  //     of recent events, kept under MOMENTUM_HISTORY_WINDOW_MS old).
+  //   - handlePointerUp samples the oldest and newest entries, computes
+  //     velocity (px/ms), and if above MOMENTUM_MIN_VELOCITY starts an rAF
+  //     loop that decays velocity by MOMENTUM_FRICTION each frame and adds
+  //     to offsetX/offsetY until both axes drop below threshold.
+  //   - handlePointerDown cancels any running momentum so the new drag has
+  //     full control (no surprise continuation from a previous flick).
+  //   - useEffect cleanup cancels rAF on unmount to avoid setState after
+  //     unmount warnings.
+  //
+  // DRAG_SENSITIVITY: multiplier on the raw pointer delta. At 1x zoom the
+  // focal center-to-edge range = baseContainerW/2 = 200 CSS px. With 1:1
+  // sensitivity, a user needs to drag 200 px to shift the focal from center
+  // to edge — a long swipe on mobile. 1.5x means 200/1.5 ≈ 133 px per
+  // swipe to edge, which is more comfortable. The focal itself moves faster
+  // (focal shift = dx * sensitivity / baseContainerW), but the focal shift
+  // is clamped so it can never exceed the image bounds, so overshoot is
+  // impossible.
+  const moveHistoryRef = useRef<Array<{ x: number; y: number; t: number }>>([]);
+  const momentumRafRef = useRef<number | null>(null);
+  const MOMENTUM_HISTORY_WINDOW_MS = 120; // widened from 100ms to capture slower swipes
+  const MOMENTUM_MIN_VELOCITY = 0.02; // lowered from 0.05: slow swipes (0.5 px/frame) still trigger
+  const MOMENTUM_FRICTION = 0.96; // raised from 0.92: momentum lasts ~3× longer (~25 frames vs ~8)
+  const MOMENTUM_FRAME_MS = 16; // ~60fps timestep for the rAF loop
+  const DRAG_SENSITIVITY = 1.5; // multiplier: 1 CSS px of finger travel → 1.5 px of offset change
+
+  const stopMomentum = useCallback(() => {
+    if (momentumRafRef.current !== null) {
+      cancelAnimationFrame(momentumRafRef.current);
+      momentumRafRef.current = null;
+    }
+  }, []);
+
+  // Cancel in-flight momentum on unmount to avoid setState-after-unmount.
+  useEffect(() => {
+    return () => {
+      if (momentumRafRef.current !== null) {
+        cancelAnimationFrame(momentumRafRef.current);
+        momentumRafRef.current = null;
+      }
+    };
+  }, []);
+
   // Image ref (set by useImageCrop hook)
 
   // Image crop hook
@@ -370,6 +423,14 @@ export function LogoUploader({
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (!hasImage || state !== 'cropping') return;
       e.preventDefault();
+
+      // Cancel any in-flight momentum so the new drag has full control.
+      // Without this, releasing a flick and immediately starting a new drag
+      // would still have the momentum loop racing to set offsetX/Y in the
+      // background, causing the image to "jump" or fight the user's input.
+      stopMomentum();
+      moveHistoryRef.current = [];
+
       isDraggingRef.current = true;
       dragStartRef.current = { x: e.clientX, y: e.clientY };
       // Snapshot drag origin offsets so pointermove is delta-based.
@@ -379,15 +440,24 @@ export function LogoUploader({
       };
       containerRef.current?.setPointerCapture(e.pointerId);
     },
-    [hasImage, state, cropState.offsetX, cropState.offsetY],
+    [hasImage, state, cropState.offsetX, cropState.offsetY, stopMomentum],
   );
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (!isDraggingRef.current || !containerRef.current) return;
 
-      const dx = e.clientX - dragStartRef.current.x;
-      const dy = e.clientY - dragStartRef.current.y;
+      const now = performance.now();
+      // Slide window: append current sample, drop any older than the window.
+      const hist = moveHistoryRef.current;
+      hist.push({ x: e.clientX, y: e.clientY, t: now });
+      const cutoff = now - MOMENTUM_HISTORY_WINDOW_MS;
+      while (hist.length > 0 && hist[0].t < cutoff) {
+        hist.shift();
+      }
+
+      const dx = (e.clientX - dragStartRef.current.x) * DRAG_SENSITIVITY;
+      const dy = (e.clientY - dragStartRef.current.y) * DRAG_SENSITIVITY;
 
       // Apply pan offset in pre-scale canvas space so 1 mouse px = 1 visual px
       // regardless of the current zoom scale.
@@ -404,21 +474,76 @@ export function LogoUploader({
     if (!isDraggingRef.current) return;
     isDraggingRef.current = false;
 
-    // Sync focal to the final offset so crop export reflects what the user
-    // sees in the mask window. Focal is the export's source of truth (see
-    // useImageCrop.cropImage); offset is only for display positioning.
-    //
-    // IMPORTANT: deps must include baseContainerW and baseContainerH. These
-    // are computed from cropState.naturalWidth/Height which are 0 at first
-    // render (BASE_CANVAS_WIDTH × BASE_CANVAS_WIDTH = 400×400 placeholder).
-    // After the image loads, they recompute to match the image's aspect
-    // (e.g. portrait 400×600, landscape 400×267). With empty deps this
-    // callback would be created on first render with the 400×400 placeholder
-    // and never recreated — every drag would use 400 as the denominator for
-    // focalY even when baseContainerH is actually 600, shifting the export
-    // crop by ~250 source px for a 100 px drag on portrait images.
-    // Bug-φ root cause (2026-08-30 portrait crop position regression).
-    setCropState((prev) => syncFocalFromOffset(prev, baseContainerW, baseContainerH));
+    // Try to start momentum from the velocity captured during the drag.
+    // The move history contains samples within the last
+    // MOMENTUM_HISTORY_WINDOW_MS — if the user was actively flicking, the
+    // oldest and newest samples span a useful time interval for velocity.
+    const hist = moveHistoryRef.current;
+    let startedMomentum = false;
+    if (hist.length >= 2) {
+      const first = hist[0];
+      const last = hist[hist.length - 1];
+      const dt = last.t - first.t;
+      if (dt > 0) {
+        const vx = ((last.x - first.x) / dt) * DRAG_SENSITIVITY; // scaled: momentum matches drag sensitivity
+        const vy = ((last.y - first.y) / dt) * DRAG_SENSITIVITY;
+        if (
+          Math.abs(vx) > MOMENTUM_MIN_VELOCITY ||
+          Math.abs(vy) > MOMENTUM_MIN_VELOCITY
+        ) {
+          // Mutating closure-captured locals: each tick sees the decaying
+          // values. The rAF id is stored on a ref so handlePointerDown can
+          // cancel mid-flick if the user immediately grabs again.
+          let cvx = vx;
+          let cvy = vy;
+          const tick = () => {
+            if (
+              Math.abs(cvx) < MOMENTUM_MIN_VELOCITY &&
+              Math.abs(cvy) < MOMENTUM_MIN_VELOCITY
+            ) {
+              momentumRafRef.current = null;
+              // Final focal sync after momentum ends so cropImage() exports
+              // the slice the user ended on (matches syncFocalFromOffset
+              // behavior on direct drag release).
+              setCropState((prev) =>
+                syncFocalFromOffset(prev, baseContainerW, baseContainerH),
+              );
+              return;
+            }
+            setCropState((prev) => ({
+              ...prev,
+              offsetX: (prev.offsetX ?? 0) + cvx * MOMENTUM_FRAME_MS,
+              offsetY: (prev.offsetY ?? 0) + cvy * MOMENTUM_FRAME_MS,
+            }));
+            cvx *= MOMENTUM_FRICTION;
+            cvy *= MOMENTUM_FRICTION;
+            momentumRafRef.current = requestAnimationFrame(tick);
+          };
+          momentumRafRef.current = requestAnimationFrame(tick);
+          moveHistoryRef.current = [];
+          startedMomentum = true;
+        }
+      }
+    }
+
+    if (!startedMomentum) {
+      // No significant momentum — sync focal to the final offset so crop
+      // export reflects what the user sees in the mask window. Focal is the
+      // export's source of truth (see useImageCrop.cropImage); offset is only
+      // for display positioning.
+      //
+      // IMPORTANT: deps must include baseContainerW and baseContainerH. These
+      // are computed from cropState.naturalWidth/Height which are 0 at first
+      // render (BASE_CANVAS_WIDTH × BASE_CANVAS_WIDTH = 400×400 placeholder).
+      // After the image loads, they recompute to match the image's aspect
+      // (e.g. portrait 400×600, landscape 400×267). With empty deps this
+      // callback would be created on first render with the 400×400 placeholder
+      // and never recreated — every drag would use 400 as the denominator for
+      // focalY even when baseContainerH is actually 600, shifting the export
+      // crop by ~250 source px for a 100 px drag on portrait images.
+      // Bug-φ root cause (2026-08-30 portrait crop position regression).
+      setCropState((prev) => syncFocalFromOffset(prev, baseContainerW, baseContainerH));
+    }
   }, [baseContainerW, baseContainerH]);
 
   // ===== Scroll to zoom =====
