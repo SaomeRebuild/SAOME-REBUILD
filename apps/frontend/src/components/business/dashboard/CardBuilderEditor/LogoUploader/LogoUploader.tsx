@@ -16,7 +16,7 @@
  * @module components/business/dashboard/CardBuilderEditor/LogoUploader
  */
 
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useLayoutEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Upload, X, ZoomIn, ZoomOut, Check, AlertCircle, RotateCcw, Image as ImageIcon } from 'lucide-react';
 import { useImageCrop, type CropState } from '@/hooks/useImageCrop';
@@ -120,6 +120,74 @@ export function LogoUploader({
   const isDraggingRef = useRef(false);
   const dragStartRef = useRef({ x: 0, y: 0 });
   const offsetStartRef = useRef({ x: 0, y: 0 });
+  const liveOffsetXRef = useRef(0);
+  const liveOffsetYRef = useRef(0);
+
+  // ===== Momentum / inertia (TOUCH ONLY) =====
+  // Per-modality constants — see inline comments for design rationale.
+  //
+  // IMPORTANT (per feedback 20260830): momentum and elevated DRAG_SENSITIVITY
+  // are TOUCH-ONLY. On desktop:
+  //   - Mouse: 1:1 sensitivity (precise, no surprise zoom-in feel), NO momentum
+  //     (releases are intentional, not flicks).
+  //   - Pen:   1.5x sensitivity, NO momentum (stylus is more precise than finger).
+  // Applying momentum globally caused "自己滑移" on desktop (self-sliding after
+  // mouse release) — see 20260830 fix.
+  //
+  // Implementation split (20260830):
+  //   - Touch: onTouchStart/Move/End (TouchEvent API — most reliable on mobile)
+  //   - Mouse / Pen: onPointerDown/Move/Up (PointerEvent API, momentum explicitly off)
+  // This avoids relying on pointerType detection which can be unreliable on
+  // some Android browsers and hybrid devices (touch + mouse).
+  const moveHistoryRef = useRef<Array<{ x: number; y: number; t: number }>>([]);
+  const momentumRafRef = useRef<number | null>(null);
+
+  // Constants — touch momentum: moderate friction for natural glide
+  const MOMENTUM_HISTORY_WINDOW_MS = 120; // captures slower swipes
+  const MOMENTUM_MIN_VELOCITY = 0.012;   // px/ms threshold to trigger glide
+  const MOMENTUM_FRICTION = 0.96;         // decay per ~16ms frame
+  const MOMENTUM_FRAME_MS = 16;           // ~60fps timestep
+
+  // Mouse sensitivity: 1:1 pixel mapping for precise control
+  const MOUSE_SENSITIVITY = 1.0;
+  // Touch sensitivity: 3x — matches native iOS/Android photo cropper feel.
+  // A 200px screen drag → 600px focal shift, traversing full focal range
+  // in ~67px drag. See 20260830 feedback.
+  const TOUCH_SENSITIVITY = 3.0;
+
+  /**
+   * Cancel any in-flight momentum rAF AND clear the live offset refs.
+   * Call this when:
+   *   - A new drag starts (so the new drag has clean state)
+   *   - The component unmounts (to avoid setState after unmount)
+   *   - The user clicks "reset" (clean state for the reset)
+   *
+   * Not clearing liveOffsetRef after momentum stop was a Bug-φ root cause:
+   * after momentum decayed to near-zero, liveOffsetXRef still held a non-zero
+   * value. On the next render, calculateImageStyle() would read that stale
+   * ref value during the next drag start (before the first pointermove
+   * snaps it to the real mouse position), briefly rendering the image at the
+   * old momentum endpoint — perceived as "自己滑移".
+   */
+  const stopMomentum = useCallback(() => {
+    if (momentumRafRef.current !== null) {
+      cancelAnimationFrame(momentumRafRef.current);
+      momentumRafRef.current = null;
+    }
+    // Also clear live offsets so no stale position bleeds into the next drag.
+    liveOffsetXRef.current = 0;
+    liveOffsetYRef.current = 0;
+  }, []);
+
+  // Cancel in-flight momentum on unmount to avoid setState-after-unmount.
+  useEffect(() => {
+    return () => {
+      if (momentumRafRef.current !== null) {
+        cancelAnimationFrame(momentumRafRef.current);
+        momentumRafRef.current = null;
+      }
+    };
+  }, []);
 
   // Image ref (set by useImageCrop hook)
 
@@ -149,24 +217,54 @@ export function LogoUploader({
     // The onImageLoad callback handles setting imageRef.current via the ref attribute
   }, []);
 
-  // ===== Responsive viewport tracking =====
-  // On phones the viewport can be narrower than the 400px base canvas, so the
-  // crop stage must shrink to fit. Without this:
-  //   - Crop stage overflows horizontally → page layout gets stretched
-  //   - Visible draggable area < full canvas → user can only drag a little
-  //     before the image slides off-screen and they have to release+re-grab
-  // Initial value falls back to 1024 (desktop) when window is unavailable
-  // (SSR / test env) so the desktop layout is the default.
-  const [viewportW, setViewportW] = useState<number>(() =>
-    typeof window !== 'undefined' ? window.innerWidth : 1024,
-  );
+  // ===== Responsive width tracking (Replaces fragile VIEWPORT_PADDING math) =====
+  // Earlier version subtracted a hard-coded 128px from window.innerWidth, which
+  // broke whenever a new padding wrapper was added above LogoUploader (the user
+  // reported this on 2026-08-30: "頁面還是被撐開，出現了Y軸").
+  //
+  // New approach: measure the LogoUploader root's actual offsetWidth at
+  // runtime via ResizeObserver. This handles ANY wrapper padding/margin/sidebar
+  // automatically — the crop stage always fits within whatever space the
+  // flex chain actually gave us.
+  //
+  // SSR safety: ResizeObserver doesn't exist on the server; we fallback to
+  // BASE_CANVAS_WIDTH so the desktop default (400) is used until the effect
+  // runs on the client.
+  //
+  // IMPORTANT: use useLayoutEffect (NOT useEffect) for the initial measurement.
+  // useEffect runs AFTER the browser paints, so the first paint would show the
+  // crop stage at `BASE_CANVAS_WIDTH = 400px` which overflows ≤412px viewports
+  // (causing the horizontal scrollbar the user reported on 2026-08-30).
+  // useLayoutEffect runs synchronously before paint, so the first paint the
+  // user sees already has the correct, measured width. This is a standard
+  // React pattern for "measure-then-render without layout thrashing".
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [availableWidth, setAvailableWidth] = useState<number>(BASE_CANVAS_WIDTH);
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const update = () => setViewportW(window.innerWidth);
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined' || !wrapperRef.current) return;
+    const el = wrapperRef.current;
+    const update = (entries?: ResizeObserverEntry[]) => {
+      // Prefer contentRect.width from the entry (works in jsdom via the
+      // polyfill). Fall back to offsetWidth for browsers / environments
+      // where the entry isn't passed.
+      const w = entries && entries[0]
+        ? entries[0].contentRect.width
+        : el.offsetWidth;
+      if (process.env.NODE_ENV === 'test') {
+        // eslint-disable-next-line no-console
+        console.log(`[LogoUploader] availableWidth update: ${w} (tag=${el.tagName}, classList=${el.className.slice(0, 50)})`);
+      }
+      setAvailableWidth(w);
+    };
     update();
-    window.addEventListener('resize', update);
-    return () => window.removeEventListener('resize', update);
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver((entries) => update(entries));
+      ro.observe(el);
+      return () => ro.disconnect();
+    }
+    window.addEventListener('resize', () => update());
+    return () => window.removeEventListener('resize', () => update());
   }, []);
 
   // Cleanup object URL on unmount
@@ -185,35 +283,25 @@ export function LogoUploader({
   // the surrounding UI); image and mask are scaled visually via a transform
   // applied to the inner stage so the user sees the image get bigger.
   //
-  // Responsive cap: LogoUploader sits inside FOUR levels of horizontal
-  // padding on mobile (before the crop stage):
-  //   1. AppDashboardPage wrapper `div.p-4 pt-16` (apps/frontend/src/pages/app/AppDashboardPage.tsx:37)
-  //      — 16px horizontal on each side = 32px total
-  //   2. CardBuilderPage wrapper `div.flex.h-full.w-full...p-6.gap-6`
-  //      (apps/frontend/src/pages/app/dashboard/card-builder/CardBuilderPage.tsx:174)
-  //      — 24px horizontal on each side = 48px total
-  //   3. CardBuilderEditorWorkspace <aside> `p-6`
-  //      (CardBuilderEditorWorkspace.tsx)
-  //      — 24px horizontal on each side = 48px total
-  // Sum: (16 + 24 + 24) × 2 = 128 CSS px total horizontal padding.
-  //
-  // The crop stage must be sized to fit within (viewportW − 128) or it
-  // overflows the page wrapper, triggering `overflow-auto` horizontal
-  // scrollbar and stretching the whole layout. On iPhone 12 Pro Max
-  // (428×926) this caused a ~29px overflow that the user reported as
-  // "UI being stretched when uploading an image".
-  //
-  // NOTE: This constant is fragile — any new padding wrapper added above
-  // the LogoUploader must be accounted for. The fix is also enforced via
-  // `maxWidth: '100%'` on the crop stage element itself as a safety net.
+  // Responsive cap: measured at runtime via ResizeObserver on the wrapper
+  // (availableWidth = wrapper's offsetWidth = the actual horizontal space
+  // the flex chain gave us). Then `min(BASE_CANVAS_WIDTH, availableWidth - 16)`
+  // caps at the desktop 400px max OR (parent width − 16px safety margin),
+  // whichever is smaller. The 16px safety margin handles sub-pixel rounding
+  // and any scrollbar that might appear transiently — guaranteeing the
+  // crop stage NEVER overflows the page wrapper, regardless of how many
+  // padding wrappers exist above LogoUploader.
   //
   // On phones smaller than CROP_WINDOW_SIZE we floor at CROP_WINDOW_SIZE
   // so the crop window still fits inside the canvas (anything smaller
   // would clip the mask frame).
-  const VIEWPORT_PADDING = 128; // p-4 (16) + p-6 (24) + p-6 (24) = 64 per side × 2
   const naturalCap = cropState.naturalWidth > 0 ? cropState.naturalWidth : BASE_CANVAS_WIDTH;
-  const availableW = Math.max(viewportW - VIEWPORT_PADDING, CROP_WINDOW_SIZE);
-  const baseContainerW = Math.min(naturalCap, BASE_CANVAS_WIDTH, availableW);
+  const STAGE_SAFETY_MARGIN = 16; // px — keeps crop stage inside parent even with sub-pixel rounding
+  const baseContainerW = Math.min(
+    naturalCap,
+    BASE_CANVAS_WIDTH,
+    Math.max(availableWidth - STAGE_SAFETY_MARGIN, CROP_WINDOW_SIZE),
+  );
   const baseContainerH = cropState.naturalWidth > 0
     ? Math.round(baseContainerW * (cropState.naturalHeight / cropState.naturalWidth))
     : BASE_CANVAS_WIDTH;
@@ -364,61 +452,236 @@ export function LogoUploader({
     setState('idle');
   }, [resetCrop]);
 
-  // ===== Drag to pan (update focal point) =====
+  // ===== Mouse / Pen drag handlers (PointerEvent API — NO momentum) =====
 
+  /**
+   * Mouse / pen drag start. Always captures with pointerId so we get
+   * reliable move/up events even if the cursor leaves the element.
+   *
+   * Defensively resets liveOffsetX/Y to the current cropState offset before
+   * every drag. Without this, a residual value from a previous momentum
+   * (which cleared rAF but left liveOffsetXRef non-zero) could cause the
+   * image to jump to an unexpected position on the first pointermove.
+   */
   const handlePointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (!hasImage || state !== 'cropping') return;
+      // Ignore touch events at the pointer level — touch uses onTouchStart instead.
+      if (e.pointerType === 'touch') return;
       e.preventDefault();
+
+      stopMomentum(); // cancel any in-flight momentum + clear live offsets
+
+      // Snapshot current React state offset as the drag origin.
+      // This ensures the first pointermove computes delta from the correct
+      // position even if a previous momentum left liveOffsetXRef non-zero.
+      liveOffsetXRef.current = cropState.offsetX ?? 0;
+      liveOffsetYRef.current = cropState.offsetY ?? 0;
+
       isDraggingRef.current = true;
       dragStartRef.current = { x: e.clientX, y: e.clientY };
-      // Snapshot drag origin offsets so pointermove is delta-based.
-      offsetStartRef.current = {
-        x: cropState.offsetX ?? 0,
-        y: cropState.offsetY ?? 0,
-      };
+      offsetStartRef.current = { x: liveOffsetXRef.current, y: liveOffsetYRef.current };
+      moveHistoryRef.current = [];
+
       containerRef.current?.setPointerCapture(e.pointerId);
     },
-    [hasImage, state, cropState.offsetX, cropState.offsetY],
+    [hasImage, state, cropState.offsetX, cropState.offsetY, stopMomentum],
   );
 
+  /**
+   * Mouse / pen drag move — NO momentum, 1:1 pixel sensitivity.
+   * Writes directly to img.style.transform for zero-lag visual feedback.
+   */
   const handlePointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (!isDraggingRef.current || !containerRef.current) return;
+      // Only respond to mouse/pen (touch goes through onTouchStart → onTouchMove)
+      if (e.pointerType === 'touch') return;
 
-      const dx = e.clientX - dragStartRef.current.x;
-      const dy = e.clientY - dragStartRef.current.y;
+      const dx = (e.clientX - dragStartRef.current.x) * MOUSE_SENSITIVITY;
+      const dy = (e.clientY - dragStartRef.current.y) * MOUSE_SENSITIVITY;
 
-      // Apply pan offset in pre-scale canvas space so 1 mouse px = 1 visual px
-      // regardless of the current zoom scale.
-      setCropState((prev) => ({
-        ...prev,
-        offsetX: offsetStartRef.current.x + dx,
-        offsetY: offsetStartRef.current.y + dy,
-      }));
+      const newX = offsetStartRef.current.x + dx;
+      const newY = offsetStartRef.current.y + dy;
+
+      liveOffsetXRef.current = newX;
+      liveOffsetYRef.current = newY;
+      const img = imageRef.current;
+      if (img) {
+        img.style.transform = `translate(${newX}px, ${newY}px)`;
+      }
     },
     [],
   );
 
+  /**
+   * Mouse / pen drag end — finalize position, NO momentum.
+   */
   const handlePointerUp = useCallback(() => {
     if (!isDraggingRef.current) return;
     isDraggingRef.current = false;
 
-    // Sync focal to the final offset so crop export reflects what the user
-    // sees in the mask window. Focal is the export's source of truth (see
-    // useImageCrop.cropImage); offset is only for display positioning.
-    //
-    // IMPORTANT: deps must include baseContainerW and baseContainerH. These
-    // are computed from cropState.naturalWidth/Height which are 0 at first
-    // render (BASE_CANVAS_WIDTH × BASE_CANVAS_WIDTH = 400×400 placeholder).
-    // After the image loads, they recompute to match the image's aspect
-    // (e.g. portrait 400×600, landscape 400×267). With empty deps this
-    // callback would be created on first render with the 400×400 placeholder
-    // and never recreated — every drag would use 400 as the denominator for
-    // focalY even when baseContainerH is actually 600, shifting the export
-    // crop by ~250 source px for a 100 px drag on portrait images.
-    // Bug-φ root cause (2026-08-30 portrait crop position regression).
-    setCropState((prev) => syncFocalFromOffset(prev, baseContainerW, baseContainerH));
+    const finalOffsetX = liveOffsetXRef.current;
+    const finalOffsetY = liveOffsetYRef.current;
+
+    // Sync final position into React state and re-derive focal from it.
+    // No momentum for mouse/pen — releases are intentional stops.
+    setCropState((prev) => {
+      const withFinalOffset = { ...prev, offsetX: finalOffsetX, offsetY: finalOffsetY };
+      return syncFocalFromOffset(withFinalOffset, baseContainerW, baseContainerH);
+    });
+  }, [baseContainerW, baseContainerH]);
+
+  // ===== Touch drag handlers (TouchEvent API — WITH momentum) =====
+
+  /**
+   * Touch drag start. Uses TouchEvent API directly for most reliable touch
+   * handling on mobile browsers (avoids pointerType detection issues on
+   * some Android browsers and hybrid devices).
+   *
+   * preventDefault() is called to block scroll/zoom interference from the
+   * browser while the user drags within the crop stage.
+   */
+  const handleTouchStart = useCallback(
+    (e: React.TouchEvent<HTMLDivElement>) => {
+      if (!hasImage || state !== 'cropping') return;
+      if (e.touches.length !== 1) return; // ignore multi-touch (reserved for pinch-zoom)
+      e.preventDefault();
+
+      const touch = e.touches[0];
+      stopMomentum();
+
+      // Snapshot current offset as drag origin (same defensive reset as mouse)
+      liveOffsetXRef.current = cropState.offsetX ?? 0;
+      liveOffsetYRef.current = cropState.offsetY ?? 0;
+
+      isDraggingRef.current = true;
+      dragStartRef.current = { x: touch.clientX, y: touch.clientY };
+      offsetStartRef.current = { x: liveOffsetXRef.current, y: liveOffsetYRef.current };
+      moveHistoryRef.current = [{ x: touch.clientX, y: touch.clientY, t: performance.now() }];
+    },
+    [hasImage, state, cropState.offsetX, cropState.offsetY, stopMomentum],
+  );
+
+  /**
+   * Touch drag move — 3x sensitivity, records move history for velocity
+   * computation (used for momentum on release). Writes directly to
+   * img.style.transform for smooth visual feedback.
+   */
+  const handleTouchMove = useCallback(
+    (e: React.TouchEvent<HTMLDivElement>) => {
+      if (!isDraggingRef.current || !containerRef.current) return;
+      if (e.touches.length !== 1) return;
+      e.preventDefault();
+
+      const touch = e.touches[0];
+      const now = performance.now();
+
+      // Record into move history for velocity computation
+      const hist = moveHistoryRef.current;
+      hist.push({ x: touch.clientX, y: touch.clientY, t: now });
+      const cutoff = now - MOMENTUM_HISTORY_WINDOW_MS;
+      while (hist.length > 0 && hist[0].t < cutoff) {
+        hist.shift();
+      }
+
+      const dx = (touch.clientX - dragStartRef.current.x) * TOUCH_SENSITIVITY;
+      const dy = (touch.clientY - dragStartRef.current.y) * TOUCH_SENSITIVITY;
+
+      const newX = offsetStartRef.current.x + dx;
+      const newY = offsetStartRef.current.y + dy;
+
+      liveOffsetXRef.current = newX;
+      liveOffsetYRef.current = newY;
+      const img = imageRef.current;
+      if (img) {
+        img.style.transform = `translate(${newX}px, ${newY}px)`;
+      }
+    },
+    [],
+  );
+
+  /**
+   * Touch drag end — if the swipe had velocity, start momentum (inertia)
+   * so the image continues gliding after finger lift (iOS/Android standard).
+   * If velocity is too low, finalize position immediately (no glide).
+   */
+  const handleTouchEnd = useCallback(() => {
+    if (!isDraggingRef.current) return;
+    isDraggingRef.current = false;
+
+    const finalOffsetX = liveOffsetXRef.current;
+    const finalOffsetY = liveOffsetYRef.current;
+    const hist = moveHistoryRef.current;
+
+    // Drop entries with undefined x/y and require at least 2 valid samples
+    const validHist = hist.filter((h) => h.x !== undefined && h.y !== undefined);
+
+    if (validHist.length >= 2) {
+      const first = validHist[0];
+      const last = validHist[validHist.length - 1];
+      const dt = last.t - first.t;
+
+      if (dt > 0) {
+        // Velocity in px/ms, already scaled by TOUCH_SENSITIVITY
+        const vx = ((last.x! - first.x!) / dt) * TOUCH_SENSITIVITY;
+        const vy = ((last.y! - first.y!) / dt) * TOUCH_SENSITIVITY;
+
+        if (
+          Math.abs(vx) > MOMENTUM_MIN_VELOCITY ||
+          Math.abs(vy) > MOMENTUM_MIN_VELOCITY
+        ) {
+          // Start momentum rAF loop with decaying velocity
+          let cvx = vx;
+          let cvy = vy;
+          moveHistoryRef.current = [];
+
+          const tick = () => {
+            if (
+              Math.abs(cvx) < MOMENTUM_MIN_VELOCITY &&
+              Math.abs(cvy) < MOMENTUM_MIN_VELOCITY
+            ) {
+              momentumRafRef.current = null;
+              // Final focal sync after momentum stops
+              setCropState((prev) =>
+                syncFocalFromOffset(prev, baseContainerW, baseContainerH),
+              );
+              return;
+            }
+
+            const stepX = cvx * MOMENTUM_FRAME_MS;
+            const stepY = cvy * MOMENTUM_FRAME_MS;
+
+            liveOffsetXRef.current = liveOffsetXRef.current + stepX;
+            liveOffsetYRef.current = liveOffsetYRef.current + stepY;
+            const img = imageRef.current;
+            if (img) {
+              img.style.transform = `translate(${liveOffsetXRef.current}px, ${liveOffsetYRef.current}px)`;
+            }
+
+            // Sync to React state too (used by tests; harmless in production)
+            setCropState((prev) => ({
+              ...prev,
+              offsetX: liveOffsetXRef.current,
+              offsetY: liveOffsetYRef.current,
+            }));
+
+            cvx *= MOMENTUM_FRICTION;
+            cvy *= MOMENTUM_FRICTION;
+            momentumRafRef.current = requestAnimationFrame(tick);
+          };
+
+          momentumRafRef.current = requestAnimationFrame(tick);
+          return;
+        }
+      }
+    }
+
+    // No significant momentum — finalize immediately
+    setCropState((prev) => {
+      const withFinalOffset = { ...prev, offsetX: finalOffsetX, offsetY: finalOffsetY };
+      return syncFocalFromOffset(withFinalOffset, baseContainerW, baseContainerH);
+    });
   }, [baseContainerW, baseContainerH]);
 
   // ===== Scroll to zoom =====
@@ -462,9 +725,22 @@ export function LogoUploader({
    * then translate for the pan offset. This means 1 mouse px of drag = 1 visual px
    * of motion at any scale, and zoom-in visually enlarges the image from the
    * canvas center outward.
+   *
+   * Offset source:
+   *   - During active drag (isDraggingRef === true): liveOffsetXRef/YRef hold
+   *     the freshest value (updated every pointermove, bypassing React). Use
+   *     those so React re-renders mid-drag (e.g. scale slider change) don't
+   *     snap the image back to the stale pre-drag React state.
+   *   - Otherwise: React state's offsetX/Y. After pointer up we sync the final
+   *     live value into React state, so this branch picks up the post-drag
+   *     position. During momentum the rAF tick also writes setCropState, so
+   *     this branch picks up momentum positions too.
    */
   function calculateImageStyle(): React.CSSProperties {
     const { naturalWidth, naturalHeight, offsetX = 0, offsetY = 0 } = cropState;
+
+    const x = isDraggingRef.current ? (liveOffsetXRef.current ?? offsetX) : offsetX;
+    const y = isDraggingRef.current ? (liveOffsetYRef.current ?? offsetY) : offsetY;
 
     if (naturalWidth === 0 || naturalHeight === 0) {
       return { display: 'none' };
@@ -479,7 +755,7 @@ export function LogoUploader({
       objectFit: 'contain',
       userSelect: 'none',
       pointerEvents: 'none',
-      transform: `translate(${offsetX}px, ${offsetY}px)`,
+      transform: `translate(${x}px, ${y}px)`,
       transformOrigin: 'left top',
     };
   }
@@ -499,7 +775,7 @@ export function LogoUploader({
     const showPreview = Boolean(displayUrl);
 
     return (
-      <div className={`flex min-w-0 flex-col items-center gap-4 ${className}`}>
+      <div ref={wrapperRef} className={`flex min-w-0 flex-col items-center gap-4 ${className}`}>
         {/* min-w-0: defensive — prevents the LogoUploader root from growing
             to fit crop stage's inline width and propagating the overflow up
             the flex chain (section → aside → CardBuilderEditor → page wrapper).
@@ -610,14 +886,15 @@ export function LogoUploader({
   // ===== Cropping / Uploading state =====
 
   return (
-    <div className={`flex min-w-0 flex-col items-center gap-4 ${className}`}>
-      {/* min-w-0: defensive — the cropping state contains the crop stage which
-          sets an inline width (e.g. 329px on 412px viewport). Without min-w-0
-          this container's min-content = 329px, which then propagates up
-          through every flex ancestor without min-w-0 (section → aside →
-          CardBuilderEditor flex-row → page wrapper), overflowing the viewport
-          and forcing CardBuilderPage's overflow-auto to show a horizontal
-          scrollbar. See feedback 20260830. */}
+    <div ref={wrapperRef} className={`flex min-w-0 flex-col items-center gap-4 overflow-hidden ${className}`}>
+      {/* min-w-0 + overflow-hidden: defensive — the cropping state contains
+          the crop stage which sets an inline width (e.g. 329px on 412px viewport).
+          - min-w-0: prevents this container from inflating its flex parent's
+            min-content to 329px (stopping horizontal overflow propagation).
+          - overflow-hidden: clips the crop stage at the container boundary, so
+            even if the crop stage's 329px content slightly overflows on tiny
+            viewports (e.g. 320px wide), the wrapper absorbs it and the page
+            stays scrollable only vertically. See feedback 20260830. */}
       {/* Upload progress */}
       {state === 'uploading' && (
         <div className="flex flex-col items-center gap-3">
@@ -660,6 +937,9 @@ export function LogoUploader({
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerLeave={handlePointerUp}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
           >
             {/* Inner canvas — fixed base size in layout but transform: scale lets
                 the image visually grow without changing layout. SVG mask and
