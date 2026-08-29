@@ -120,73 +120,63 @@ export function LogoUploader({
   const isDraggingRef = useRef(false);
   const dragStartRef = useRef({ x: 0, y: 0 });
   const offsetStartRef = useRef({ x: 0, y: 0 });
-
-  // ===== Momentum / inertia (mobile UX) =====
-  // On phones, releasing the finger after a quick drag should "flick" the
-  // image onward (iOS / Android photo crop standard). Without this:
-  //   - User drags 50px, releases → image stops immediately
-  //   - To reach the desired position, user must re-grab and drag again
-  //     (often many times for a large image) → "一次只能移動一點，要滑好幾次"
-  //     feedback 20260830.
-  //
-  // Mechanism:
-  //   - handlePointerMove pushes {x, y, t} into moveHistoryRef (sliding window
-  //     of recent events, kept under MOMENTUM_HISTORY_WINDOW_MS old).
-  //   - handlePointerUp samples the oldest and newest entries, computes
-  //     velocity (px/ms), and if above MOMENTUM_MIN_VELOCITY starts an rAF
-  //     loop that decays velocity by MOMENTUM_FRICTION each frame and adds
-  //     to offsetX/offsetY until both axes drop below threshold.
-  //   - handlePointerDown cancels any running momentum so the new drag has
-  //     full control (no surprise continuation from a previous flick).
-  //   - useEffect cleanup cancels rAF on unmount to avoid setState after
-  //     unmount warnings.
-  //
-  // DRAG_SENSITIVITY: multiplier on the raw pointer delta. At 1x zoom the
-  // focal center-to-edge range = baseContainerW/2 = 200 CSS px. With 1:1
-  // sensitivity, a user needs to drag 200 px to shift the focal from center
-  // to edge — a long swipe on mobile. 2.0x means 200/2.0 ≈ 100 px per
-  // swipe to edge, which matches native iOS / Android photo cropper feel.
-  // The focal itself moves faster (focal shift = dx * sensitivity /
-  // baseContainerW), but the focal shift is clamped so it can never exceed
-  // the image bounds, so overshoot is impossible.
-  //
-  // History: 1.5x (2026-08-30 first pass) still felt "bit by bit" to mobile
-  // users per feedback 20260830. 2.0x matches the native cropper feel.
-  const moveHistoryRef = useRef<Array<{ x: number; y: number; t: number }>>([]);
-  const momentumRafRef = useRef<number | null>(null);
-  const MOMENTUM_HISTORY_WINDOW_MS = 120; // widened from 100ms to capture slower swipes
-  const MOMENTUM_MIN_VELOCITY = 0.015; // lowered from 0.02: even slower swipes (0.24 px/frame) trigger momentum
-  const MOMENTUM_FRICTION = 0.97; // raised from 0.96: slightly longer glide (~33 frames vs ~25)
-  const MOMENTUM_FRAME_MS = 16; // ~60fps timestep for the rAF loop
-  const DRAG_SENSITIVITY = 3.0; // raised from 2.0: per feedback 20260830, finger drag still felt "bit by bit" — matches native iOS / Android photo cropper feel (200/3 ≈ 67 px to traverse focal from center to edge)
-
-  // ===== Live offset refs (bypass React reconciliation during drag) =====
-  // React state updates trigger a full LogoUploader re-render (SVG mask,
-  // crop window, scale slider, action buttons all reconcile). On mobile
-  // pointer events fire at 60-120 Hz and React's batched reconciliation
-  // creates visible stutter — image appears to jump in steps rather than
-  // glide with the finger (feedback 20260830, second iteration).
-  //
-  // Fix: during active drag, write to a ref + the img.style.transform
-  // directly. NO setCropState. React state only catches up on pointer up
-  // (or during momentum, which already runs in rAF and is cheap).
-  //
-  // Why this is safe:
-  //   - Refs don't trigger re-renders → no reconciliation lag
-  //   - Direct DOM style writes are the fastest possible visual update
-  //   - calculateImageStyle() falls back to liveOffset*Ref when
-  //     isDraggingRef is true, so even if React *does* re-render (e.g.
-  //     scale slider change mid-drag), the image stays at the live position
-  //   - handlePointerUp syncs the final live values into React state before
-  //     syncFocalFromOffset runs, so focal stays correct
   const liveOffsetXRef = useRef(0);
   const liveOffsetYRef = useRef(0);
 
+  // ===== Momentum / inertia (TOUCH ONLY) =====
+  // Per-modality constants — see inline comments for design rationale.
+  //
+  // IMPORTANT (per feedback 20260830): momentum and elevated DRAG_SENSITIVITY
+  // are TOUCH-ONLY. On desktop:
+  //   - Mouse: 1:1 sensitivity (precise, no surprise zoom-in feel), NO momentum
+  //     (releases are intentional, not flicks).
+  //   - Pen:   1.5x sensitivity, NO momentum (stylus is more precise than finger).
+  // Applying momentum globally caused "自己滑移" on desktop (self-sliding after
+  // mouse release) — see 20260830 fix.
+  //
+  // Implementation split (20260830):
+  //   - Touch: onTouchStart/Move/End (TouchEvent API — most reliable on mobile)
+  //   - Mouse / Pen: onPointerDown/Move/Up (PointerEvent API, momentum explicitly off)
+  // This avoids relying on pointerType detection which can be unreliable on
+  // some Android browsers and hybrid devices (touch + mouse).
+  const moveHistoryRef = useRef<Array<{ x: number; y: number; t: number }>>([]);
+  const momentumRafRef = useRef<number | null>(null);
+
+  // Constants — touch momentum: moderate friction for natural glide
+  const MOMENTUM_HISTORY_WINDOW_MS = 120; // captures slower swipes
+  const MOMENTUM_MIN_VELOCITY = 0.012;   // px/ms threshold to trigger glide
+  const MOMENTUM_FRICTION = 0.96;         // decay per ~16ms frame
+  const MOMENTUM_FRAME_MS = 16;           // ~60fps timestep
+
+  // Mouse sensitivity: 1:1 pixel mapping for precise control
+  const MOUSE_SENSITIVITY = 1.0;
+  // Touch sensitivity: 3x — matches native iOS/Android photo cropper feel.
+  // A 200px screen drag → 600px focal shift, traversing full focal range
+  // in ~67px drag. See 20260830 feedback.
+  const TOUCH_SENSITIVITY = 3.0;
+
+  /**
+   * Cancel any in-flight momentum rAF AND clear the live offset refs.
+   * Call this when:
+   *   - A new drag starts (so the new drag has clean state)
+   *   - The component unmounts (to avoid setState after unmount)
+   *   - The user clicks "reset" (clean state for the reset)
+   *
+   * Not clearing liveOffsetRef after momentum stop was a Bug-φ root cause:
+   * after momentum decayed to near-zero, liveOffsetXRef still held a non-zero
+   * value. On the next render, calculateImageStyle() would read that stale
+   * ref value during the next drag start (before the first pointermove
+   * snaps it to the real mouse position), briefly rendering the image at the
+   * old momentum endpoint — perceived as "自己滑移".
+   */
   const stopMomentum = useCallback(() => {
     if (momentumRafRef.current !== null) {
       cancelAnimationFrame(momentumRafRef.current);
       momentumRafRef.current = null;
     }
+    // Also clear live offsets so no stale position bleeds into the next drag.
+    liveOffsetXRef.current = 0;
+    liveOffsetYRef.current = 0;
   }, []);
 
   // Cancel in-flight momentum on unmount to avoid setState-after-unmount.
@@ -462,168 +452,236 @@ export function LogoUploader({
     setState('idle');
   }, [resetCrop]);
 
-  // ===== Drag to pan (update focal point) =====
+  // ===== Mouse / Pen drag handlers (PointerEvent API — NO momentum) =====
 
+  /**
+   * Mouse / pen drag start. Always captures with pointerId so we get
+   * reliable move/up events even if the cursor leaves the element.
+   *
+   * Defensively resets liveOffsetX/Y to the current cropState offset before
+   * every drag. Without this, a residual value from a previous momentum
+   * (which cleared rAF but left liveOffsetXRef non-zero) could cause the
+   * image to jump to an unexpected position on the first pointermove.
+   */
   const handlePointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (!hasImage || state !== 'cropping') return;
+      // Ignore touch events at the pointer level — touch uses onTouchStart instead.
+      if (e.pointerType === 'touch') return;
       e.preventDefault();
 
-      // Cancel any in-flight momentum so the new drag has full control.
-      // Without this, releasing a flick and immediately starting a new drag
-      // would still have the momentum loop racing to set offsetX/Y in the
-      // background, causing the image to "jump" or fight the user's input.
-      stopMomentum();
-      moveHistoryRef.current = [];
+      stopMomentum(); // cancel any in-flight momentum + clear live offsets
+
+      // Snapshot current React state offset as the drag origin.
+      // This ensures the first pointermove computes delta from the correct
+      // position even if a previous momentum left liveOffsetXRef non-zero.
+      liveOffsetXRef.current = cropState.offsetX ?? 0;
+      liveOffsetYRef.current = cropState.offsetY ?? 0;
 
       isDraggingRef.current = true;
       dragStartRef.current = { x: e.clientX, y: e.clientY };
-      // Snapshot drag origin offsets so pointermove is delta-based.
-      offsetStartRef.current = {
-        x: cropState.offsetX ?? 0,
-        y: cropState.offsetY ?? 0,
-      };
+      offsetStartRef.current = { x: liveOffsetXRef.current, y: liveOffsetYRef.current };
+      moveHistoryRef.current = [];
+
       containerRef.current?.setPointerCapture(e.pointerId);
     },
     [hasImage, state, cropState.offsetX, cropState.offsetY, stopMomentum],
   );
 
+  /**
+   * Mouse / pen drag move — NO momentum, 1:1 pixel sensitivity.
+   * Writes directly to img.style.transform for zero-lag visual feedback.
+   */
   const handlePointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (!isDraggingRef.current || !containerRef.current) return;
+      // Only respond to mouse/pen (touch goes through onTouchStart → onTouchMove)
+      if (e.pointerType === 'touch') return;
 
-      const now = performance.now();
-      // Slide window: append current sample, drop any older than the window.
-      const hist = moveHistoryRef.current;
-      hist.push({ x: e.clientX, y: e.clientY, t: now });
-      const cutoff = now - MOMENTUM_HISTORY_WINDOW_MS;
-      while (hist.length > 0 && hist[0].t < cutoff) {
-        hist.shift();
-      }
+      const dx = (e.clientX - dragStartRef.current.x) * MOUSE_SENSITIVITY;
+      const dy = (e.clientY - dragStartRef.current.y) * MOUSE_SENSITIVITY;
 
-      const dx = (e.clientX - dragStartRef.current.x) * DRAG_SENSITIVITY;
-      const dy = (e.clientY - dragStartRef.current.y) * DRAG_SENSITIVITY;
-
-      // Apply pan offset in pre-scale canvas space so 1 mouse px = 1 visual px
-      // regardless of the current zoom scale.
       const newX = offsetStartRef.current.x + dx;
       const newY = offsetStartRef.current.y + dy;
 
-      // === Direct DOM path (bypass React reconciliation for smooth drag) ===
-      // Write to live refs first (no re-render), then push the transform
-      // directly to the img element. This is the standard high-performance
-      // drag pattern: visual feedback in <1ms via style mutation, React
-      // reconciles asynchronously if/when other state changes.
       liveOffsetXRef.current = newX;
       liveOffsetYRef.current = newY;
       const img = imageRef.current;
       if (img) {
         img.style.transform = `translate(${newX}px, ${newY}px)`;
       }
-      // NOTE: deliberately NOT calling setCropState here. handlePointerUp
-      // syncs the final live values into React state before focal sync runs.
     },
     [],
   );
 
+  /**
+   * Mouse / pen drag end — finalize position, NO momentum.
+   */
   const handlePointerUp = useCallback(() => {
     if (!isDraggingRef.current) return;
     isDraggingRef.current = false;
 
-    // Snapshot final drag position from live refs. During drag we bypassed
-    // setCropState, so React state still holds the pre-drag offset. We need
-    // to write the final offset into React state BEFORE running focal sync,
-    // otherwise syncFocalFromOffset would compute focal from the stale
-    // pre-drag offset and the exported crop would be off by the drag distance.
     const finalOffsetX = liveOffsetXRef.current;
     const finalOffsetY = liveOffsetYRef.current;
 
-    // Try to start momentum from the velocity captured during the drag.
-    // The move history contains samples within the last
-    // MOMENTUM_HISTORY_WINDOW_MS — if the user was actively flicking, the
-    // oldest and newest samples span a useful time interval for velocity.
+    // Sync final position into React state and re-derive focal from it.
+    // No momentum for mouse/pen — releases are intentional stops.
+    setCropState((prev) => {
+      const withFinalOffset = { ...prev, offsetX: finalOffsetX, offsetY: finalOffsetY };
+      return syncFocalFromOffset(withFinalOffset, baseContainerW, baseContainerH);
+    });
+  }, [baseContainerW, baseContainerH]);
+
+  // ===== Touch drag handlers (TouchEvent API — WITH momentum) =====
+
+  /**
+   * Touch drag start. Uses TouchEvent API directly for most reliable touch
+   * handling on mobile browsers (avoids pointerType detection issues on
+   * some Android browsers and hybrid devices).
+   *
+   * preventDefault() is called to block scroll/zoom interference from the
+   * browser while the user drags within the crop stage.
+   */
+  const handleTouchStart = useCallback(
+    (e: React.TouchEvent<HTMLDivElement>) => {
+      if (!hasImage || state !== 'cropping') return;
+      if (e.touches.length !== 1) return; // ignore multi-touch (reserved for pinch-zoom)
+      e.preventDefault();
+
+      const touch = e.touches[0];
+      stopMomentum();
+
+      // Snapshot current offset as drag origin (same defensive reset as mouse)
+      liveOffsetXRef.current = cropState.offsetX ?? 0;
+      liveOffsetYRef.current = cropState.offsetY ?? 0;
+
+      isDraggingRef.current = true;
+      dragStartRef.current = { x: touch.clientX, y: touch.clientY };
+      offsetStartRef.current = { x: liveOffsetXRef.current, y: liveOffsetYRef.current };
+      moveHistoryRef.current = [{ x: touch.clientX, y: touch.clientY, t: performance.now() }];
+    },
+    [hasImage, state, cropState.offsetX, cropState.offsetY, stopMomentum],
+  );
+
+  /**
+   * Touch drag move — 3x sensitivity, records move history for velocity
+   * computation (used for momentum on release). Writes directly to
+   * img.style.transform for smooth visual feedback.
+   */
+  const handleTouchMove = useCallback(
+    (e: React.TouchEvent<HTMLDivElement>) => {
+      if (!isDraggingRef.current || !containerRef.current) return;
+      if (e.touches.length !== 1) return;
+      e.preventDefault();
+
+      const touch = e.touches[0];
+      const now = performance.now();
+
+      // Record into move history for velocity computation
+      const hist = moveHistoryRef.current;
+      hist.push({ x: touch.clientX, y: touch.clientY, t: now });
+      const cutoff = now - MOMENTUM_HISTORY_WINDOW_MS;
+      while (hist.length > 0 && hist[0].t < cutoff) {
+        hist.shift();
+      }
+
+      const dx = (touch.clientX - dragStartRef.current.x) * TOUCH_SENSITIVITY;
+      const dy = (touch.clientY - dragStartRef.current.y) * TOUCH_SENSITIVITY;
+
+      const newX = offsetStartRef.current.x + dx;
+      const newY = offsetStartRef.current.y + dy;
+
+      liveOffsetXRef.current = newX;
+      liveOffsetYRef.current = newY;
+      const img = imageRef.current;
+      if (img) {
+        img.style.transform = `translate(${newX}px, ${newY}px)`;
+      }
+    },
+    [],
+  );
+
+  /**
+   * Touch drag end — if the swipe had velocity, start momentum (inertia)
+   * so the image continues gliding after finger lift (iOS/Android standard).
+   * If velocity is too low, finalize position immediately (no glide).
+   */
+  const handleTouchEnd = useCallback(() => {
+    if (!isDraggingRef.current) return;
+    isDraggingRef.current = false;
+
+    const finalOffsetX = liveOffsetXRef.current;
+    const finalOffsetY = liveOffsetYRef.current;
     const hist = moveHistoryRef.current;
-    let startedMomentum = false;
-    if (hist.length >= 2) {
-      const first = hist[0];
-      const last = hist[hist.length - 1];
+
+    // Drop entries with undefined x/y and require at least 2 valid samples
+    const validHist = hist.filter((h) => h.x !== undefined && h.y !== undefined);
+
+    if (validHist.length >= 2) {
+      const first = validHist[0];
+      const last = validHist[validHist.length - 1];
       const dt = last.t - first.t;
+
       if (dt > 0) {
-        const vx = ((last.x - first.x) / dt) * DRAG_SENSITIVITY; // scaled: momentum matches drag sensitivity
-        const vy = ((last.y - first.y) / dt) * DRAG_SENSITIVITY;
+        // Velocity in px/ms, already scaled by TOUCH_SENSITIVITY
+        const vx = ((last.x! - first.x!) / dt) * TOUCH_SENSITIVITY;
+        const vy = ((last.y! - first.y!) / dt) * TOUCH_SENSITIVITY;
+
         if (
           Math.abs(vx) > MOMENTUM_MIN_VELOCITY ||
           Math.abs(vy) > MOMENTUM_MIN_VELOCITY
         ) {
-          // Mutating closure-captured locals: each tick sees the decaying
-          // values. The rAF id is stored on a ref so handlePointerDown can
-          // cancel mid-flick if the user immediately grabs again.
+          // Start momentum rAF loop with decaying velocity
           let cvx = vx;
           let cvy = vy;
+          moveHistoryRef.current = [];
+
           const tick = () => {
             if (
               Math.abs(cvx) < MOMENTUM_MIN_VELOCITY &&
               Math.abs(cvy) < MOMENTUM_MIN_VELOCITY
             ) {
               momentumRafRef.current = null;
-              // Final focal sync after momentum ends so cropImage() exports
-              // the slice the user ended on (matches syncFocalFromOffset
-              // behavior on direct drag release).
+              // Final focal sync after momentum stops
               setCropState((prev) =>
                 syncFocalFromOffset(prev, baseContainerW, baseContainerH),
               );
               return;
             }
+
             const stepX = cvx * MOMENTUM_FRAME_MS;
             const stepY = cvy * MOMENTUM_FRAME_MS;
-            // Live refs + direct DOM (same pattern as handlePointerMove) so
-            // each momentum frame stays smooth even if React batches
-            // setCropState updates.
+
             liveOffsetXRef.current = liveOffsetXRef.current + stepX;
             liveOffsetYRef.current = liveOffsetYRef.current + stepY;
             const img = imageRef.current;
             if (img) {
               img.style.transform = `translate(${liveOffsetXRef.current}px, ${liveOffsetYRef.current}px)`;
             }
-            // Sync to React state too (used by tests; harmless in production
-            // since direct DOM is already correct).
+
+            // Sync to React state too (used by tests; harmless in production)
             setCropState((prev) => ({
               ...prev,
               offsetX: liveOffsetXRef.current,
               offsetY: liveOffsetYRef.current,
             }));
+
             cvx *= MOMENTUM_FRICTION;
             cvy *= MOMENTUM_FRICTION;
             momentumRafRef.current = requestAnimationFrame(tick);
           };
+
           momentumRafRef.current = requestAnimationFrame(tick);
-          moveHistoryRef.current = [];
-          startedMomentum = true;
+          return;
         }
       }
     }
 
-    if (!startedMomentum) {
-      // No significant momentum — sync final drag position into React state
-      // and then compute focal from that final position. Focal is the
-      // export's source of truth (see useImageCrop.cropImage); offset is only
-      // for display positioning.
-      //
-      // IMPORTANT: deps must include baseContainerW and baseContainerH. These
-      // are computed from cropState.naturalWidth/Height which are 0 at first
-      // render (BASE_CANVAS_WIDTH × BASE_CANVAS_WIDTH = 400×400 placeholder).
-      // After the image loads, they recompute to match the image's aspect
-      // (e.g. portrait 400×600, landscape 400×267). With empty deps this
-      // callback would be created on first render with the 400×400 placeholder
-      // and never recreated — every drag would use 400 as the denominator for
-      // focalY even when baseContainerH is actually 600, shifting the export
-      // crop by ~250 source px for a 100 px drag on portrait images.
-      // Bug-φ root cause (2026-08-30 portrait crop position regression).
-      setCropState((prev) => {
-        const withFinalOffset = { ...prev, offsetX: finalOffsetX, offsetY: finalOffsetY };
-        return syncFocalFromOffset(withFinalOffset, baseContainerW, baseContainerH);
-      });
-    }
+    // No significant momentum — finalize immediately
+    setCropState((prev) => {
+      const withFinalOffset = { ...prev, offsetX: finalOffsetX, offsetY: finalOffsetY };
+      return syncFocalFromOffset(withFinalOffset, baseContainerW, baseContainerH);
+    });
   }, [baseContainerW, baseContainerH]);
 
   // ===== Scroll to zoom =====
@@ -828,14 +886,15 @@ export function LogoUploader({
   // ===== Cropping / Uploading state =====
 
   return (
-    <div ref={wrapperRef} className={`flex min-w-0 flex-col items-center gap-4 ${className}`}>
-      {/* min-w-0: defensive — the cropping state contains the crop stage which
-          sets an inline width (e.g. 329px on 412px viewport). Without min-w-0
-          this container's min-content = 329px, which then propagates up
-          through every flex ancestor without min-w-0 (section → aside →
-          CardBuilderEditor flex-row → page wrapper), overflowing the viewport
-          and forcing CardBuilderPage's overflow-auto to show a horizontal
-          scrollbar. See feedback 20260830. */}
+    <div ref={wrapperRef} className={`flex min-w-0 flex-col items-center gap-4 overflow-hidden ${className}`}>
+      {/* min-w-0 + overflow-hidden: defensive — the cropping state contains
+          the crop stage which sets an inline width (e.g. 329px on 412px viewport).
+          - min-w-0: prevents this container from inflating its flex parent's
+            min-content to 329px (stopping horizontal overflow propagation).
+          - overflow-hidden: clips the crop stage at the container boundary, so
+            even if the crop stage's 329px content slightly overflows on tiny
+            viewports (e.g. 320px wide), the wrapper absorbs it and the page
+            stays scrollable only vertically. See feedback 20260830. */}
       {/* Upload progress */}
       {state === 'uploading' && (
         <div className="flex flex-col items-center gap-3">
@@ -878,6 +937,9 @@ export function LogoUploader({
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerLeave={handlePointerUp}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
           >
             {/* Inner canvas — fixed base size in layout but transform: scale lets
                 the image visually grow without changing layout. SVG mask and

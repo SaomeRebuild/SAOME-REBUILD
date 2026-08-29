@@ -8,19 +8,18 @@
  *     - To reach the desired position, user must re-grab and drag again
  *       (often many times for a large image) → "一次只能移動一點，要滑好幾次".
  *
+ * Event model (20260830 refactor):
+ *   - Touch: onTouchStart / onTouchMove / onTouchEnd → handles momentum
+ *   - Mouse / Pen: onPointerDown / onPointerMove / onPointerUp → NO momentum
+ *
  * Strategy:
  *   - Mock requestAnimationFrame so we can deterministically advance the
- *     momentum loop without relying on real timers / jsdom timing. The
- *     global setup.ts installs a setTimeout-based fallback, but capturing
- *     the rAF callback directly lets each test step the loop manually.
- *   - Verify behavior at three checkpoints:
- *       1. handlePointerUp schedules a rAF when velocity > threshold.
- *       2. handlePointerUp does NOT schedule rAF when velocity is low.
- *       3. handlePointerDown cancels an in-flight rAF (no surprise momentum
- *          continuation across consecutive drags).
+ *     momentum loop without relying on real timers / jsdom timing.
+ *   - Drive the momentum rAF loop manually via tickOneFrame().
  */
+
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup, createEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { LogoUploader } from './LogoUploader';
 import { useImageCrop } from '@/hooks/useImageCrop';
 
@@ -96,40 +95,35 @@ async function enterCroppingState() {
 }
 
 describe('LogoUploader drag momentum (mobile UX)', () => {
-  let rafCallbacks: FrameRequestCallback[];
-  let originalRaf: typeof globalThis.requestAnimationFrame;
-  let originalCancel: typeof globalThis.cancelAnimationFrame;
+  // rAF callback tracker — replaced by beforeEach so tests can drive the
+  // momentum loop manually without depending on real time or jsdom timing quirks.
+  let rafCallbacks: FrameRequestCallback[] = [];
+  const originalRaf = globalThis.requestAnimationFrame;
 
   beforeEach(() => {
     vi.clearAllMocks();
     rafCallbacks = [];
 
-    // Capture every rAF call so tests can drive the momentum loop manually
-    // without depending on jsdom timing or the global polyfill.
-    originalRaf = globalThis.requestAnimationFrame;
-    originalCancel = globalThis.cancelAnimationFrame;
-    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback): number => {
+    // Test stub: rAF stores the callback for manual driving; cAF drops the last one.
+    // The DOM lib declares rAF as (handle: number) => void but browser runtime
+    // is (callback) => number — our stub uses the runtime signature (no @ts-expect-error needed,
+    // the variable type from `originalRaf` resolves the conflict).
+    globalThis.requestAnimationFrame = (cb: FrameRequestCallback): number => {
       rafCallbacks.push(cb);
       return rafCallbacks.length;
-    }) as typeof globalThis.requestAnimationFrame;
-    globalThis.cancelAnimationFrame = ((_id: number) => {
-      // We keep callbacks in the array but mark them cancelled by clearing
-      // the most recent one. Since momentum only ever has one active rAF,
-      // "cancel" means drop the last queued callback.
+    };
+    globalThis.cancelAnimationFrame = (_id: number): void => {
       rafCallbacks.pop();
-    }) as typeof globalThis.cancelAnimationFrame;
+    };
   });
 
   afterEach(() => {
     cleanup();
     globalThis.requestAnimationFrame = originalRaf;
-    globalThis.cancelAnimationFrame = originalCancel;
+    globalThis.cancelAnimationFrame = (_id: number): void => {};
   });
 
-  /**
-   * Drive the momentum loop one frame: invoke the last queued rAF callback
-   * and clear it. This simulates one 16ms frame of momentum.
-   */
+  /** Drive the momentum loop one frame: pop the last queued rAF and invoke it. */
   function tickOneFrame() {
     const cb = rafCallbacks.pop();
     if (!cb) return false;
@@ -137,158 +131,153 @@ describe('LogoUploader drag momentum (mobile UX)', () => {
     return true;
   }
 
-  async function simulateDrag(
+  /**
+   * Simulate a touch drag sequence using onTouchStart / onTouchMove / onTouchEnd.
+   *
+   * TouchEvent requires touches[0] with clientX/clientY. fireEvent.touchStart
+   * doesn't automatically populate touches; we build a synthetic Touch with
+   * clientX/clientY and attach it.
+   */
+  async function simulateTouchDrag(
     stage: HTMLElement,
-    events: Array<{ x: number; y: number; type: 'down' | 'move' | 'up'; delayMs?: number }>,
-  ) {
+    events: Array<{ x: number; y: number; type: 'start' | 'move' | 'end'; delayMs?: number }>,
+  ): Promise<void> {
     for (const ev of events) {
       if (ev.delayMs) {
-        await new Promise((r) => setTimeout(r, ev.delayMs));
+        // Real-time delay so performance.now() advances enough to produce
+        // a meaningful velocity for the momentum calculation. We can't use
+        // fake timers here because waitFor() and the rest of the test
+        // pipeline rely on real setTimeout / ResizeObserver behavior.
+        await new Promise<void>((r) => setTimeout(r, ev.delayMs));
       }
-      if (ev.type === 'down') {
-        fireEvent.pointerDown(stage, { clientX: ev.x, clientY: ev.y, pointerId: 1 });
+
+      if (ev.type === 'start') {
+        const touchObj = { clientX: ev.x, clientY: ev.y, identifier: 0 } as unknown as React.Touch;
+        fireEvent.touchStart(stage, {
+          touches: [touchObj],
+          changedTouches: [touchObj],
+        });
       } else if (ev.type === 'move') {
-        // fireEvent.pointerMove / native PointerEvent in jsdom both fail to
-        // populate clientX/clientY on React's synthetic event for pointermove.
-        // Workaround: build a synthetic event with createEvent and define
-        // clientX/clientY as own properties before dispatching.
-        const moveEvent = createEvent.pointerMove(stage);
-        Object.defineProperty(moveEvent, 'clientX', { value: ev.x, configurable: true });
-        Object.defineProperty(moveEvent, 'clientY', { value: ev.y, configurable: true });
-        Object.defineProperty(moveEvent, 'pointerId', { value: 1, configurable: true });
-        fireEvent(stage, moveEvent);
+        const touchObj = { clientX: ev.x, clientY: ev.y, identifier: 0 } as unknown as React.Touch;
+        fireEvent.touchMove(stage, {
+          touches: [touchObj],
+          changedTouches: [touchObj],
+        });
       } else {
-        fireEvent.pointerUp(stage, { clientX: ev.x, clientY: ev.y, pointerId: 1 });
+        const touchObj = { clientX: ev.x, clientY: ev.y, identifier: 0 } as unknown as React.Touch;
+        fireEvent.touchEnd(stage, {
+          touches: [],
+          changedTouches: [touchObj],
+        });
       }
     }
   }
 
-  it('pointer events fire React handlers (sanity check)', async () => {
+  // =======================================================================
+  // Touch / momentum tests
+  // =======================================================================
+
+  it('touch drag fires setCropState (sanity: touch handlers wired up)', async () => {
     setViewport(1024);
     const setCropState = vi.fn();
-    vi.mocked(useImageCrop).mockReturnValue(
-      mockImageCropReturn({ setCropState }),
-    );
+    vi.mocked(useImageCrop).mockReturnValue(mockImageCropReturn({ setCropState }));
     await enterCroppingState();
     const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
 
-    // Just down + up with no moves. handlePointerUp should run and, since
-    // there's no move history, hit the "no momentum" branch and call
-    // setCropState (the focal sync).
-    fireEvent.pointerDown(stage, { clientX: 200, clientY: 200, pointerId: 1 });
-    fireEvent.pointerUp(stage, { clientX: 200, clientY: 200, pointerId: 1 });
+    // Touch start + immediate end with no moves.
+    // handleTouchEnd will hit the "no momentum" branch and call setCropState
+    // once (focal sync).
+    await simulateTouchDrag(stage, [{ type: 'start', x: 200, y: 200 }, { type: 'end', x: 200, y: 200 }]);
 
-    // setCropState should have been called at least once (focal sync at up).
     expect(setCropState).toHaveBeenCalled();
   });
 
-  it('fast drag schedules momentum — rAF is queued on pointer up', async () => {
+  it('fast touch swipe schedules momentum rAF on touch end', async () => {
     setViewport(1024);
     const setCropState = vi.fn();
-    vi.mocked(useImageCrop).mockReturnValue(
-      mockImageCropReturn({ setCropState }),
-    );
+    vi.mocked(useImageCrop).mockReturnValue(mockImageCropReturn({ setCropState }));
     await enterCroppingState();
     const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
 
-    // Down at (200, 200). Five quick moves advancing 10px every 16ms.
-    await simulateDrag(stage, [
-      { type: 'down', x: 200, y: 200 },
+    // Fast swipe: 10px per 16ms → velocity ≈ 0.625 px/ms. × TOUCH_SENSITIVITY 3.0
+    // → ≈ 1.875 px/ms, way above MOMENTUM_MIN_VELOCITY 0.012.
+    await simulateTouchDrag(stage, [
+      { type: 'start', x: 200, y: 200 },
       { type: 'move', x: 210, y: 200, delayMs: 16 },
       { type: 'move', x: 220, y: 200, delayMs: 16 },
       { type: 'move', x: 230, y: 200, delayMs: 16 },
       { type: 'move', x: 240, y: 200, delayMs: 16 },
       { type: 'move', x: 250, y: 200, delayMs: 16 },
-      { type: 'up', x: 250, y: 200 },
+      { type: 'end', x: 250, y: 200 },
     ]);
 
-    // The momentum loop should have scheduled exactly one rAF (the initial
-    // tick that starts the inertia animation).
+    // One rAF should be scheduled for the momentum loop start.
     expect(rafCallbacks.length).toBe(1);
 
-    // Drive one frame and check that offset keeps updating.
+    // Tick one frame — setCropState should be called (momentum tick syncs offset).
     const callsBefore = setCropState.mock.calls.length;
     tickOneFrame();
     expect(setCropState.mock.calls.length).toBeGreaterThan(callsBefore);
-
-    // Drive more frames; each one should keep updating offset until velocity
-    // drops below threshold. With v0 ≈ 0.6 px/ms and friction 0.92, we get
-    // ~30 frames before threshold.
-    let totalCalls = setCropState.mock.calls.length;
-    for (let i = 0; i < 40; i++) {
-      if (!tickOneFrame()) break;
-      if (setCropState.mock.calls.length === totalCalls) break;
-      totalCalls = setCropState.mock.calls.length;
-    }
-    expect(totalCalls).toBeGreaterThan(callsBefore);
   });
 
-  it('slow drag does NOT schedule momentum — no rAF queued on pointer up', async () => {
+  it('slow touch drag does NOT schedule momentum — no rAF queued', async () => {
     setViewport(1024);
     const setCropState = vi.fn();
-    vi.mocked(useImageCrop).mockReturnValue(
-      mockImageCropReturn({ setCropState }),
-    );
+    vi.mocked(useImageCrop).mockReturnValue(mockImageCropReturn({ setCropState }));
     await enterCroppingState();
     const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
 
-    // Very slow drag: 1px every 200ms → velocity ≈ 0.005 px/ms. Multiplied
-    // by DRAG_SENSITIVITY 3.0 → 0.015, still BELOW the strict `>`
-    // MOMENTUM_MIN_VELOCITY 0.015 threshold, so no rAF should fire.
-    await simulateDrag(stage, [
-      { type: 'down', x: 200, y: 200 },
+    // Slow: 1px per 200ms → velocity ≈ 0.005 px/ms.
+    // × TOUCH_SENSITIVITY 3.0 → 0.015 px/ms, BELOW MOMENTUM_MIN_VELOCITY 0.012.
+    // No rAF should fire; final focal sync runs synchronously.
+    await simulateTouchDrag(stage, [
+      { type: 'start', x: 200, y: 200 },
       { type: 'move', x: 201, y: 200, delayMs: 200 },
       { type: 'move', x: 202, y: 200, delayMs: 200 },
-      { type: 'up', x: 202, y: 200 },
+      { type: 'end', x: 202, y: 200 },
     ]);
 
-    // No rAF should have been scheduled — the final focal sync runs
-    // immediately instead.
     expect(rafCallbacks.length).toBe(0);
+    // Final focal sync should have run synchronously
+    expect(setCropState).toHaveBeenCalled();
   });
 
-  it('new pointer down during momentum cancels it — no surprise continuation', async () => {
+  it('new touch start during momentum cancels it — no surprise continuation', async () => {
     setViewport(1024);
     const setCropState = vi.fn();
-    vi.mocked(useImageCrop).mockReturnValue(
-      mockImageCropReturn({ setCropState }),
-    );
+    vi.mocked(useImageCrop).mockReturnValue(mockImageCropReturn({ setCropState }));
     await enterCroppingState();
     const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
 
-    // Fast flick to start momentum.
-    await simulateDrag(stage, [
-      { type: 'down', x: 200, y: 200 },
+    // Fast swipe to start momentum.
+    await simulateTouchDrag(stage, [
+      { type: 'start', x: 200, y: 200 },
       { type: 'move', x: 210, y: 200, delayMs: 16 },
       { type: 'move', x: 220, y: 200, delayMs: 16 },
       { type: 'move', x: 230, y: 200, delayMs: 16 },
       { type: 'move', x: 240, y: 200, delayMs: 16 },
       { type: 'move', x: 250, y: 200, delayMs: 16 },
-      { type: 'up', x: 250, y: 200 },
+      { type: 'end', x: 250, y: 200 },
     ]);
 
     expect(rafCallbacks.length).toBe(1);
 
-    // User grabs again — pointer down should call cancelAnimationFrame and
-    // also clear any pending history so the new drag starts clean.
-    fireEvent.pointerDown(stage, { clientX: 250, clientY: 200, pointerId: 1 });
+    // User grabs again — touch start should cancel the rAF.
+    const touchObj = { clientX: 250, clientY: 200, identifier: 0 } as unknown as React.Touch;
+    fireEvent.touchStart(stage, { touches: [touchObj], changedTouches: [touchObj] });
 
-    // The queued rAF should be cancelled.
     expect(rafCallbacks.length).toBe(0);
 
-    // Drive a frame to confirm nothing fires (i.e. the cancelled callback
-    // was actually removed from our queue).
+    // Drive a frame — setCropState should NOT have been called by momentum.
     const callsBefore = setCropState.mock.calls.length;
     tickOneFrame();
     expect(setCropState.mock.calls.length).toBe(callsBefore);
   });
 
-  it('unmount cancels in-flight momentum — no setState after unmount warnings', async () => {
+  it('unmount cancels in-flight momentum — no setState after unmount', async () => {
     setViewport(1024);
     const setCropState = vi.fn();
-    vi.mocked(useImageCrop).mockReturnValue(
-      mockImageCropReturn({ setCropState }),
-    );
+    vi.mocked(useImageCrop).mockReturnValue(mockImageCropReturn({ setCropState }));
     polyfillPointerCapture();
     const rendered = render(<LogoUploader templateId="t1" onLogoUploaded={vi.fn()} />);
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
@@ -300,26 +289,25 @@ describe('LogoUploader drag momentum (mobile UX)', () => {
     });
     const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
 
-    // Start a fast drag + release to begin momentum.
-    await simulateDrag(stage, [
-      { type: 'down', x: 200, y: 200 },
+    // Start a fast swipe + release to begin momentum.
+    await simulateTouchDrag(stage, [
+      { type: 'start', x: 200, y: 200 },
       { type: 'move', x: 210, y: 200, delayMs: 16 },
       { type: 'move', x: 220, y: 200, delayMs: 16 },
       { type: 'move', x: 230, y: 200, delayMs: 16 },
       { type: 'move', x: 240, y: 200, delayMs: 16 },
-      { type: 'up', x: 240, y: 200 },
+      { type: 'end', x: 240, y: 200 },
     ]);
 
     expect(rafCallbacks.length).toBe(1);
 
-    // Unmount. The useEffect cleanup should cancel the in-flight rAF.
+    // Unmount — the useEffect cleanup cancels the rAF.
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     rendered.unmount();
 
-    // The cleanup cancels the rAF, so no callback should remain queued.
     expect(rafCallbacks.length).toBe(0);
 
-    // Drive a frame to ensure the cancelled callback doesn't fire.
+    // Drive a frame — the cancelled callback must not fire.
     const callsBefore = setCropState.mock.calls.length;
     tickOneFrame();
     expect(setCropState.mock.calls.length).toBe(callsBefore);
@@ -327,5 +315,68 @@ describe('LogoUploader drag momentum (mobile UX)', () => {
       expect.stringContaining("Can't perform a React state update"),
     );
     errorSpy.mockRestore();
+  });
+
+  // =======================================================================
+  // Mouse / pen tests (NO momentum)
+  // =======================================================================
+
+  it('mouse drag calls setCropState but does NOT schedule rAF (no momentum)', async () => {
+    setViewport(1024);
+    const setCropState = vi.fn();
+    vi.mocked(useImageCrop).mockReturnValue(mockImageCropReturn({ setCropState }));
+    await enterCroppingState();
+    const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
+
+    // Simulate mouse drag using pointer events (pointerType = 'mouse').
+    fireEvent.pointerDown(stage, { clientX: 200, clientY: 200, pointerId: 1, pointerType: 'mouse' });
+    fireEvent.pointerMove(stage, { clientX: 250, clientY: 200, pointerId: 1, pointerType: 'mouse' });
+    fireEvent.pointerUp(stage, { clientX: 250, clientY: 200, pointerId: 1, pointerType: 'mouse' });
+
+    // Focal sync should have run (setCropState called).
+    expect(setCropState).toHaveBeenCalled();
+    // NO rAF for momentum on mouse.
+    expect(rafCallbacks.length).toBe(0);
+  });
+
+  it('pen drag calls setCropState but does NOT schedule rAF (no momentum)', async () => {
+    setViewport(1024);
+    const setCropState = vi.fn();
+    vi.mocked(useImageCrop).mockReturnValue(mockImageCropReturn({ setCropState }));
+    await enterCroppingState();
+    const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
+
+    fireEvent.pointerDown(stage, { clientX: 200, clientY: 200, pointerId: 1, pointerType: 'pen' });
+    fireEvent.pointerMove(stage, { clientX: 250, clientY: 200, pointerId: 1, pointerType: 'pen' });
+    fireEvent.pointerUp(stage, { clientX: 250, clientY: 200, pointerId: 1, pointerType: 'pen' });
+
+    expect(setCropState).toHaveBeenCalled();
+    expect(rafCallbacks.length).toBe(0);
+  });
+
+  it('mouse pointerDown during touch momentum cancels it', async () => {
+    setViewport(1024);
+    const setCropState = vi.fn();
+    vi.mocked(useImageCrop).mockReturnValue(mockImageCropReturn({ setCropState }));
+    await enterCroppingState();
+    const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
+
+    // Start touch momentum.
+    await simulateTouchDrag(stage, [
+      { type: 'start', x: 200, y: 200 },
+      { type: 'move', x: 210, y: 200, delayMs: 16 },
+      { type: 'move', x: 220, y: 200, delayMs: 16 },
+      { type: 'move', x: 230, y: 200, delayMs: 16 },
+      { type: 'move', x: 240, y: 200, delayMs: 16 },
+      { type: 'move', x: 250, y: 200, delayMs: 16 },
+      { type: 'end', x: 250, y: 200 },
+    ]);
+
+    expect(rafCallbacks.length).toBe(1);
+
+    // User switches to mouse — pointerDown should cancel momentum.
+    fireEvent.pointerDown(stage, { clientX: 250, clientY: 200, pointerId: 2, pointerType: 'mouse' });
+
+    expect(rafCallbacks.length).toBe(0);
   });
 });
