@@ -144,18 +144,43 @@ export function LogoUploader({
   // DRAG_SENSITIVITY: multiplier on the raw pointer delta. At 1x zoom the
   // focal center-to-edge range = baseContainerW/2 = 200 CSS px. With 1:1
   // sensitivity, a user needs to drag 200 px to shift the focal from center
-  // to edge — a long swipe on mobile. 1.5x means 200/1.5 ≈ 133 px per
-  // swipe to edge, which is more comfortable. The focal itself moves faster
-  // (focal shift = dx * sensitivity / baseContainerW), but the focal shift
-  // is clamped so it can never exceed the image bounds, so overshoot is
-  // impossible.
+  // to edge — a long swipe on mobile. 2.0x means 200/2.0 ≈ 100 px per
+  // swipe to edge, which matches native iOS / Android photo cropper feel.
+  // The focal itself moves faster (focal shift = dx * sensitivity /
+  // baseContainerW), but the focal shift is clamped so it can never exceed
+  // the image bounds, so overshoot is impossible.
+  //
+  // History: 1.5x (2026-08-30 first pass) still felt "bit by bit" to mobile
+  // users per feedback 20260830. 2.0x matches the native cropper feel.
   const moveHistoryRef = useRef<Array<{ x: number; y: number; t: number }>>([]);
   const momentumRafRef = useRef<number | null>(null);
   const MOMENTUM_HISTORY_WINDOW_MS = 120; // widened from 100ms to capture slower swipes
   const MOMENTUM_MIN_VELOCITY = 0.02; // lowered from 0.05: slow swipes (0.5 px/frame) still trigger
   const MOMENTUM_FRICTION = 0.96; // raised from 0.92: momentum lasts ~3× longer (~25 frames vs ~8)
   const MOMENTUM_FRAME_MS = 16; // ~60fps timestep for the rAF loop
-  const DRAG_SENSITIVITY = 1.5; // multiplier: 1 CSS px of finger travel → 1.5 px of offset change
+  const DRAG_SENSITIVITY = 2.0; // raised from 1.5: native photo-cropper feel per feedback 20260830
+
+  // ===== Live offset refs (bypass React reconciliation during drag) =====
+  // React state updates trigger a full LogoUploader re-render (SVG mask,
+  // crop window, scale slider, action buttons all reconcile). On mobile
+  // pointer events fire at 60-120 Hz and React's batched reconciliation
+  // creates visible stutter — image appears to jump in steps rather than
+  // glide with the finger (feedback 20260830, second iteration).
+  //
+  // Fix: during active drag, write to a ref + the img.style.transform
+  // directly. NO setCropState. React state only catches up on pointer up
+  // (or during momentum, which already runs in rAF and is cheap).
+  //
+  // Why this is safe:
+  //   - Refs don't trigger re-renders → no reconciliation lag
+  //   - Direct DOM style writes are the fastest possible visual update
+  //   - calculateImageStyle() falls back to liveOffset*Ref when
+  //     isDraggingRef is true, so even if React *does* re-render (e.g.
+  //     scale slider change mid-drag), the image stays at the live position
+  //   - handlePointerUp syncs the final live values into React state before
+  //     syncFocalFromOffset runs, so focal stays correct
+  const liveOffsetXRef = useRef(0);
+  const liveOffsetYRef = useRef(0);
 
   const stopMomentum = useCallback(() => {
     if (momentumRafRef.current !== null) {
@@ -461,11 +486,22 @@ export function LogoUploader({
 
       // Apply pan offset in pre-scale canvas space so 1 mouse px = 1 visual px
       // regardless of the current zoom scale.
-      setCropState((prev) => ({
-        ...prev,
-        offsetX: offsetStartRef.current.x + dx,
-        offsetY: offsetStartRef.current.y + dy,
-      }));
+      const newX = offsetStartRef.current.x + dx;
+      const newY = offsetStartRef.current.y + dy;
+
+      // === Direct DOM path (bypass React reconciliation for smooth drag) ===
+      // Write to live refs first (no re-render), then push the transform
+      // directly to the img element. This is the standard high-performance
+      // drag pattern: visual feedback in <1ms via style mutation, React
+      // reconciles asynchronously if/when other state changes.
+      liveOffsetXRef.current = newX;
+      liveOffsetYRef.current = newY;
+      const img = imageRef.current;
+      if (img) {
+        img.style.transform = `translate(${newX}px, ${newY}px)`;
+      }
+      // NOTE: deliberately NOT calling setCropState here. handlePointerUp
+      // syncs the final live values into React state before focal sync runs.
     },
     [],
   );
@@ -473,6 +509,14 @@ export function LogoUploader({
   const handlePointerUp = useCallback(() => {
     if (!isDraggingRef.current) return;
     isDraggingRef.current = false;
+
+    // Snapshot final drag position from live refs. During drag we bypassed
+    // setCropState, so React state still holds the pre-drag offset. We need
+    // to write the final offset into React state BEFORE running focal sync,
+    // otherwise syncFocalFromOffset would compute focal from the stale
+    // pre-drag offset and the exported crop would be off by the drag distance.
+    const finalOffsetX = liveOffsetXRef.current;
+    const finalOffsetY = liveOffsetYRef.current;
 
     // Try to start momentum from the velocity captured during the drag.
     // The move history contains samples within the last
@@ -510,10 +554,23 @@ export function LogoUploader({
               );
               return;
             }
+            const stepX = cvx * MOMENTUM_FRAME_MS;
+            const stepY = cvy * MOMENTUM_FRAME_MS;
+            // Live refs + direct DOM (same pattern as handlePointerMove) so
+            // each momentum frame stays smooth even if React batches
+            // setCropState updates.
+            liveOffsetXRef.current = liveOffsetXRef.current + stepX;
+            liveOffsetYRef.current = liveOffsetYRef.current + stepY;
+            const img = imageRef.current;
+            if (img) {
+              img.style.transform = `translate(${liveOffsetXRef.current}px, ${liveOffsetYRef.current}px)`;
+            }
+            // Sync to React state too (used by tests; harmless in production
+            // since direct DOM is already correct).
             setCropState((prev) => ({
               ...prev,
-              offsetX: (prev.offsetX ?? 0) + cvx * MOMENTUM_FRAME_MS,
-              offsetY: (prev.offsetY ?? 0) + cvy * MOMENTUM_FRAME_MS,
+              offsetX: liveOffsetXRef.current,
+              offsetY: liveOffsetYRef.current,
             }));
             cvx *= MOMENTUM_FRICTION;
             cvy *= MOMENTUM_FRICTION;
@@ -527,8 +584,8 @@ export function LogoUploader({
     }
 
     if (!startedMomentum) {
-      // No significant momentum — sync focal to the final offset so crop
-      // export reflects what the user sees in the mask window. Focal is the
+      // No significant momentum — sync final drag position into React state
+      // and then compute focal from that final position. Focal is the
       // export's source of truth (see useImageCrop.cropImage); offset is only
       // for display positioning.
       //
@@ -542,7 +599,10 @@ export function LogoUploader({
       // focalY even when baseContainerH is actually 600, shifting the export
       // crop by ~250 source px for a 100 px drag on portrait images.
       // Bug-φ root cause (2026-08-30 portrait crop position regression).
-      setCropState((prev) => syncFocalFromOffset(prev, baseContainerW, baseContainerH));
+      setCropState((prev) => {
+        const withFinalOffset = { ...prev, offsetX: finalOffsetX, offsetY: finalOffsetY };
+        return syncFocalFromOffset(withFinalOffset, baseContainerW, baseContainerH);
+      });
     }
   }, [baseContainerW, baseContainerH]);
 
@@ -587,9 +647,22 @@ export function LogoUploader({
    * then translate for the pan offset. This means 1 mouse px of drag = 1 visual px
    * of motion at any scale, and zoom-in visually enlarges the image from the
    * canvas center outward.
+   *
+   * Offset source:
+   *   - During active drag (isDraggingRef === true): liveOffsetXRef/YRef hold
+   *     the freshest value (updated every pointermove, bypassing React). Use
+   *     those so React re-renders mid-drag (e.g. scale slider change) don't
+   *     snap the image back to the stale pre-drag React state.
+   *   - Otherwise: React state's offsetX/Y. After pointer up we sync the final
+   *     live value into React state, so this branch picks up the post-drag
+   *     position. During momentum the rAF tick also writes setCropState, so
+   *     this branch picks up momentum positions too.
    */
   function calculateImageStyle(): React.CSSProperties {
     const { naturalWidth, naturalHeight, offsetX = 0, offsetY = 0 } = cropState;
+
+    const x = isDraggingRef.current ? (liveOffsetXRef.current ?? offsetX) : offsetX;
+    const y = isDraggingRef.current ? (liveOffsetYRef.current ?? offsetY) : offsetY;
 
     if (naturalWidth === 0 || naturalHeight === 0) {
       return { display: 'none' };
@@ -604,7 +677,7 @@ export function LogoUploader({
       objectFit: 'contain',
       userSelect: 'none',
       pointerEvents: 'none',
-      transform: `translate(${offsetX}px, ${offsetY}px)`,
+      transform: `translate(${x}px, ${y}px)`,
       transformOrigin: 'left top',
     };
   }
