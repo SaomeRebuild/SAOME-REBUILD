@@ -307,18 +307,34 @@ export function LogoUploader({
     ? Math.round(baseContainerW * (cropState.naturalHeight / cropState.naturalWidth))
     : BASE_CANVAS_WIDTH;
 
-  // Responsive crop window: proportional to stage width on mobile, capped at 200px.
-  // On desktop (400px stage) → 200px (= CROP_WINDOW_SIZE, max = 200).
-  // On mobile (329px stage) → 197px (329 * 0.6 ≈ 197).
-  // This makes the mask's transparent region fill a consistent ~60% of the stage width,
-  // so the flanking dark overlay lines are visible and the user can gauge the crop.
+  // Responsive crop window: proportional to stage SHORT side, capped at 200px.
+  // The crop window is always SQUARE (same width/height), but its size is
+  // constrained by the SHORTER stage dimension to prevent the white border
+  // from being clipped by the stage's `overflow: hidden`.
   //
-  // IMPORTANT: the final canvas export ALWAYS outputs 200x200px
-  // (via useImageCrop). The visual mask is purely for UX feedback — it scales,
-  // but the export does not.
+  // Why shorter side, not just width:
+  //   - Landscape image (e.g. 329×152 stage): if we cap by width only,
+  //     cropWindow = 329 × 0.6 = 197px, but stage is only 152px tall.
+  //     The 197px square overflows vertically → top/bottom border lines get
+  //     clipped by overflow:hidden, leaving only the left/right vertical
+  //     edges visible. User sees "two white lines" instead of a square.
+  //   - Solution: also clamp by baseContainerH × 0.6. For landscape, the
+  //     height clamp (152 × 0.6 = 91px) wins → 91×91 square that fits.
+  //   - Square/portrait images (e.g. 329×329 stage): width clamp wins,
+  //     cropWindow ≈ 197px (still fits since H = 329 ≥ 197).
+  //
+  // Examples:
+  //   - Desktop 400×400 stage → 200px (capped by CROP_WINDOW_SIZE).
+  //   - Mobile portrait 329×329 → 197px (capped by W×H share).
+  //   - Mobile landscape 329×152 → 91px (capped by H share).
+  //
+  // IMPORTANT: the final canvas export ALWAYS outputs 200x200px (via
+  // useImageCrop.cropImage). The visual mask is purely for UX feedback —
+  // it scales, but the export does not.
   const CROP_WINDOW_SHARE = 0.6;
   const responsiveCropWindow = Math.min(
     baseContainerW * CROP_WINDOW_SHARE,
+    baseContainerH * CROP_WINDOW_SHARE, // clamp by HEIGHT too — see comment above
     CROP_WINDOW_SIZE, // never larger than 200px
   );
 
