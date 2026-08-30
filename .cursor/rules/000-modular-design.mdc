@@ -53,6 +53,78 @@ components/business/<scope>/<Name>/
 - ❌ 把業務邏輯寫在 JSX / event handler 裡
 - ❌ 同名元件重複存在(`<Card>` 跟 `<MyCard>` 兩者)— 詳見 `frontend/022-component-reuse.mdc`
 
+### A.3 Hook Extraction Strategy（>500 行元件）
+
+> **觸發**：當主組件行數超過 500 行，且混了 JSX / state / 複雜 hook 邏輯。
+
+主組件 ≤ 100 行是**最終目標**，但實作**順序**必須對：
+
+| 元件行數 | 行動 | 順序 |
+|---|---|---|
+| ≤ 100 | OK | — |
+| 100–500 | 拆 sub-component + props 化 | sub-component only |
+| **500–1000** | **先抽 hook 到 `.hooks.ts`，再拆 sub-component** | hook → sub-component |
+| > 1000 | 拆 sub-component + 拆多個 `.hooks.ts`，考慮分多個 L2 元件 | hook × N → sub-component × M |
+
+#### 為什麼「先抽 hook」
+
+當元件有 500–1000 行時，裡面通常混了 3 種東西：
+
+1. **JSX**（渲染）
+2. **state 與 orchestration**（reducer 邏輯、event handler）
+3. **複雜 hook 邏輯**（如 `useDragHandlers`：pointermove / touchmove / momentum raf）
+
+直接拆 sub-component 會發現：
+
+- props 一大坨（refs 全部要從主組件傳到 sub-component）
+- 每個 sub-component 內還是有 inline 邏輯
+- 測試難寫（sub-component 依賴一坨 inline logic）
+
+**正確順序**：
+
+1. 先把複雜 hook（如 `useDragHandlers`）抽到 `<Component>.hooks.ts` 內的 `useXxx` hook
+2. 主組件用 `useXxx()` 取代 inline 邏輯（refs 改成 hook 內部持有）
+3. 主組件行數下降後，props 變少，再拆 sub-component
+
+#### 範例：LogoUploader 重構（2026-08-30 實作）
+
+| 階段 | LogoUploader.tsx 行數 | 主要動作 |
+|---|---|---|
+| 重構前 | **887** | 所有邏輯、JSX、drag handlers inline |
+| 抽 hook（計劃） | ~700 | 把 `useDragHandlers` 抽到 `CropStage.hooks.ts` |
+| 拆 sub-component | **394** | UploadPrompt / LogoPreview / CropStage / ScaleControl / CropActions / UploadError / UploadingIndicator |
+| Sub-component 各自獨立測試 | 394 | 行為不變，可分開 unit test |
+
+對應 plan 檔：[`合併P0+P1_LogoUploader重构_1ace8b42.plan.md`](file:///c:/Users/user/.cursor/plans/合併p0+p1_logouploader重構_1ace8b42.plan.md)
+
+#### `.hooks.ts` 命名與結構
+
+```
+components/business/<scope>/<Name>/
+├── <Name>.tsx                    ← 主組件（≤ 100 行，只做組裝）
+├── <Name>.hooks.ts               ← useXxx() 複雜邏輯（可選，當主組件 > 500 行時加）
+├── <Name>.types.ts
+└── ...
+```
+
+或放在 sub-component 內（如 `CropStage/CropStage.hooks.ts`）：
+
+```
+components/business/<scope>/<Name>/<SubName>/
+├── <SubName>.tsx
+├── <SubName>.hooks.ts            ← useDragHandlers, useMomentum, ...
+└── <SubName>.types.ts
+```
+
+#### 禁止
+
+- ❌ 元件 800+ 行直接拆 sub-component（props 爆炸、測試難寫）
+- ❌ Hook 邏輯留在 sub-component 內（違反 `frontend/024-mobile-future-proof.mdc` § 業務邏輯不能在 component 內）
+- ❌ `.hooks.ts` 用 named export 多個小 hook（難以測試單一行為；違反「單一職責」）
+- ❌ Hook 內引用 `useState` 持有跨 sub-component 的 state（該 state 該回到主組件）
+
+事故紀錄：`runs/improvements/feedback/20260830-logouploader-887-line-refactor.md`（待寫）
+
 ---
 
 ## Part B — Hono Backend
@@ -229,9 +301,12 @@ LINE Pay 的 request / response 形狀 → 必須在 `shared/schemas/external/li
 
 「寫新元件 / 新 module / 新 API 包裝 / 改舊元件 / 改舊 module / code review」、「Hono route」、「third-party API」、「fetch SDK」、「外部服務」、「LINE Pay / Twilio / SendGrid / Stripe」、「升版 SDK」、「import SDK」時**必須**引用此 rule。
 
+「主組件 800 行」「`*.tsx` 太大」「拆 sub-component」「`.hooks.ts`」「抽 hook」→ 必引 § A.3 Hook Extraction Strategy。
+
 ## 與其他 rule 關係
 
 - `frontend/022-component-reuse.mdc`:React 元件重用的對應規則,本 rule 是它的 backend 對應
 - `019-schema-contract-drift.mdc`:本 rule 的契約層是它的延伸
 - `017-production-bundle-guard.mdc`:前端 bundle 不准含 localhost URL,跟 backend service 包裝無關但都是 deploy 前必跑
+- `frontend/024-mobile-future-proof.mdc`:RN 化拆 sub-component / hook 時必讀（特別是 § Hook Split Pattern）
 - `apps/backend/AGENTS.md`:本 rule 是它的規範層摘要;AGENTS.md 是操作手冊,兩者不衝突

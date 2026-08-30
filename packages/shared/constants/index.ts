@@ -7,3 +7,4 @@
 
 export * from './role';
 export * from './card-images';
+export * from './crop-interaction';

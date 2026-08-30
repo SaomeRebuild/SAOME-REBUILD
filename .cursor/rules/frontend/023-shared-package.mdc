@@ -166,9 +166,78 @@ npm run verify:i18n  # 驗證 namespace 的 key 都可正確解析
 
 例外：若某英文術語有約定俗成的中文譯名（如 `API`、`URL`），可使用該譯名，但禁止直接寫原形。
 
+### Shared Validation 用 i18n Key（MANDATORY）
+
+> **觸發**：在 `packages/shared/logic/` 內寫任何 validation function（如 `validateEmail`、`validatePassword`、`validateCardNumber`、`validateLogoFile`）。
+
+任何 shared validation 的 error message 必須是 **i18n key** 而非 raw text，**確保 web 跟 RN 共用**。
+
+#### 為什麼
+
+| 方案 | web | RN |
+|---|---|---|
+| Raw text `'檔案過大'` | 寫死中文 | RN 要另外寫一套 |
+| **i18n key `'logoUpload.validation.tooLarge'`** | web 用 react-i18next 解析 | RN 用 react-i18next / i18n-js 解析 |
+
+i18n key pattern = 同一個 shared validation 同時給 web + RN 用，**零 platform 分支**。
+
+#### 實作範本（2026-08-30 `validateLogoFile` 範例）
+
+```ts
+// packages/shared/logic/imageCrop.ts
+export function validateLogoFile(file: FileLike): ValidationError | null {
+  if (file.size > LOGO_CROP_CONFIG.MAX_FILE_SIZE) {
+    return { type: 'tooLarge', message: 'logoUpload.validation.tooLarge' };
+    //                 ↑ i18n key，非 raw text
+  }
+  if (!LOGO_CROP_CONFIG.MIME_TYPES.includes(file.type as ...)) {
+    return { type: 'wrongFormat', message: 'logoUpload.validation.wrongFormat' };
+  }
+  return null;
+}
+```
+
+```ts
+// packages/shared/types/imageCrop.ts
+export interface ValidationError {
+  type: 'tooSmall' | 'tooLarge' | 'wrongFormat';
+  /** i18n key (e.g. 'logoUpload.validation.tooLarge'). */
+  message: string;
+}
+```
+
+#### Consumer 解析（web / RN 都一樣）
+
+```tsx
+// web (react-i18next) 或 RN (react-i18next / i18n-js)
+const errorMessage = t(`logoUpload.${validationError.message}`);
+// 'logoUpload.validation.tooLarge' → '檔案大小需小於 5MB'
+```
+
+#### 禁止
+
+- ❌ Shared logic 回傳 raw text error message（會綁死單一語言，RN 必須重寫）
+- ❌ Shared logic 內 import i18n lib（會綁死單一 framework；web 跟 RN i18n lib 不同）
+- ❌ Component 端收到 `ValidationError` 才查 i18n（會把 i18n 邏輯散落到每個 consumer，難維護）
+- ❌ Shared logic 把翻譯字串硬塞進 `details` 或 `meta` 欄位
+
+#### 翻譯檔位置
+
+i18n 翻譯檔**不放 shared/**，仍放在各自的 frontend / RN app 內：
+
+```
+apps/frontend/src/i18n/locales/logoUpload.zh-TW.ts   ← web 翻譯
+apps/mobile/src/i18n/locales/logoUpload.zh-TW.ts     ← RN 翻譯（同 key 結構）
+```
+
+Shared 提供 contract（`ValidationError` interface + key 字串），各 app 提供 translation。
+這跟上面的「namespace 規範」是一致的：web / RN 各有自己的 i18n namespace，但共用同一組 key 結構。
+
 ### 觸發關鍵字
 
 「新增 i18n」「翻譯 key」「namespace」「i18n 檔案」**必須**引用本節。
+
+「shared validation」「shared error message」「i18n key in shared」「FileLike」「validateEmail」「validatePassword」→ 必引 § Shared Validation 用 i18n Key。
 
 ## 結構範例
 
@@ -177,7 +246,7 @@ packages/shared/
 ├── types/         ← TypeScript 介面
 ├── schemas/       ← zod
 ├── constants/     ← 常數
-├── logic/         ← 純函式
+├── logic/         ← 純函式（含 validation，error message 用 i18n key）
 ├── api/           ← API contract
 ├── i18n/          ← 翻譯檔
 └── bdd/           ← Cucumber feature + step
@@ -194,3 +263,11 @@ apps/frontend/
 ## 觸發關鍵字
 
 「共用」「共用函式」「shared」「type」「interface」「i18n 翻譯」**必須**引用。
+
+## 與其他 rule 關係
+
+- `000-modular-design.mdc` § A.3 Hook Extraction Strategy — 拆 hook 到 `.hooks.ts` 時共用邏輯該搬 shared/
+- `frontend/024-mobile-future-proof.mdc` § Hook Split Pattern
+ — `.web.ts` / `.native.ts` 雙檔結構 + `FileLike` interface（與本 rule § Shared Validation 連動）
+- `028-image-uploader-pattern.mdc` § 10 / § 11 / § 12 — uploader 相關 pure function 都放 shared/logic
+- `019-schema-contract-drift.mdc` — shared schema 雙向同步（zod schema 對齊）

@@ -23,6 +23,8 @@ interface CardBuilderState {
   issuerName: string;
   /** 發卡機構標誌 */
   issuerLogo: string;
+  /** issuerLogo 的版本號（用於 cache busting） */
+  issuerLogoVersion: number;
   /** 卡片背景色 */
   backgroundColor: string;
   /** 卡片文字色 */
@@ -78,6 +80,7 @@ const initialState = {
   cardSide: 'front' as const,
   issuerName: '',
   issuerLogo: '',
+  issuerLogoVersion: 0,
   backgroundColor: '#1a1a1a',
   textColor: '#ffffff',
   holderName: '',
@@ -105,7 +108,7 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
   })),
   setCardSide: (cardSide) => set({ cardSide }),
   setIssuerName: (issuerName) => set({ issuerName }),
-  setIssuerLogo: (issuerLogo) => set({ issuerLogo }),
+  setIssuerLogo: (issuerLogo) => set({ issuerLogo, issuerLogoVersion: Date.now() }),
   setBackgroundColor: (backgroundColor) => set({ backgroundColor }),
   setTextColor: (textColor) => set({ textColor }),
   setHolderName: (holderName) => set({ holderName }),
@@ -144,5 +147,5 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
     }));
   },
 
-  reset: () => set({ ...initialState, isPaid: initialState.isPaid }),
+  reset: () => set({ ...initialState, isPaid: initialState.isPaid, issuerLogoVersion: 0 }),
 }));

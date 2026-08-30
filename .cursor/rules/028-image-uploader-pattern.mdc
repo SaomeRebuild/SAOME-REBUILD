@@ -263,6 +263,245 @@ useImageCrop({
 事故紀錄：`runs/improvements/feedback/20260826-0827-logo-crop-zoom-full-trace.md`。
 決策：`runs/decisions/2026-08-27-logo-crop-zoom-invariant-mask.md`。
 
+### 12. Stage Height Invariant — Stage 必須包含 Mask + Padding（強制）
+
+> **觸發**：任何 image crop 元件（LogoUploader / BackgroundUploader /
+> IconUploader 都適用）。**不是**只有 mobile UX 才有的 invariant——
+> 是 crop 元件的**結構性**鐵律，desktop / tablet / mobile 全部適用。
+
+#### 問題
+
+舊設計假設：
+
+```
+stage = aspect-matched image 高度
+outer = max(stage, maskH + 2 * PADDING)  ← outer 自己加 padding
+frame = outer 的 absolute sibling，居中於 outer
+```
+
+對 landscape 圖片（aspect-matched height < mask height）：
+- stage 是 360×120，outer 是 360×224
+- frame 200×200 居中於 outer，跨越 bright image 與 dark padding
+- 使用者看到「frame 超出 stage / 容器」
+
+事故紀錄：`runs/improvements/feedback/20260830-logo-uploader-landscape-frame-exceeds-container.md`。
+前四次 fix（stale closure / drag stutter / chain min-w-0 / iPhone 12 Pro Max double padding）都是症狀層
+修補，保留了「stage = aspect, outer padded」這個錯誤的結構假設，只在 padding 數字 try-and-error。
+第五次（round 4, 2026-08-30）才改變結構假設本身。
+
+#### 解法（強制）
+
+```typescript
+// FRAME_PADDING 走 design token（Tailwind md = 16px）
+const FRAME_PADDING = 16;
+const aspectMatchedH = baseContainerW * (naturalHeight / naturalWidth);
+const baseContainerH = Math.max(
+  aspectMatchedH,
+  responsiveCropWindow + 2 * FRAME_PADDING,
+);
+// outer = stage（outer 不再獨立 padding）
+const outerContainerH = baseContainerH;
+```
+
+#### 各 aspect 行為
+
+| Aspect | stage height | 視覺效果 |
+|---|---|---|
+| Portrait / Square | aspect-matched（自然就 ≥ mask+padding）| 沒變化 |
+| Landscape | max(aspect, mask+padding) | stage extends vertically，image 在 stage 內 letterbox（object-fit: contain），frame 完全在 stage 內 |
+
+對 landscape 來說，stage 高於 image，image 在 stage 內上下 letterbox；dark stage 背景填補
+letterbox 區域，與 outer / stage 同一 dark bg 視覺一致。
+
+#### 為什麼不直接縮小 frame 適應 stage（禁止替代方案）
+
+| Scheme | Landscape 視覺 frame | 問題 |
+|---|---|---|
+| Stage extends（✅ 採用）| 200×200 | frame = export size，使用者心智一致 |
+| Frame shrinks（❌ 禁止）| min(w*0.6, h*0.6, 200) | landscape 變成 72×72，與 200×200 export 不一致，使用者困惑 |
+
+#### 禁止
+
+- ❌ `outerContainerH = max(baseContainerH, maskH + 2 * PADDING)` 而 `baseContainerH` 只有 aspect-matched（frame 會超出 stage）
+- ❌ Frame 是 outer 的 absolute sibling 並居中於 outer（應居中於 stage，或 outer === stage）
+- ❌ 用「縮小 frame 適應 stage」替代（frame 200×200 是 export contract，不能縮）
+- ❌ FRAME_PADDING 用 hardcoded 數字（如 8, 12, 20）而不走 design token
+
+#### 為什麼這是鐵律
+
+1. **語意正確**：stage = 「我要 crop 的區域 + frame 視覺」，outer = stage 本身，不該有額外 padding
+2. **User mental model 對齊**：frame 永遠在 stage 內 = 在選定範圍內，不會「frame 跑出去」
+3. **Landscape 不再有 surprise**：所有 aspect ratio 行為統一，沒「landscape 特例」
+4. **SVG mask 正確顯示**：stageH ≥ maskH，SVG mask y = `(stageH - maskH) / 2` 永遠 ≥ 0，dark overlay 在 frame 周圍正確顯示
+5. **跟 native photo cropper 行為一致**：iOS / Android photo cropper 對 landscape 都是 frame 固定 + image letterbox
+
+#### 必跑 invariant test
+
+```typescript
+it('invariant: stageH >= maskH + 2 * FRAME_PADDING for ALL aspect ratios', () => {
+  const cases = [
+    { name: 'portrait 1:3',          w: 1000, h: 3000, parentW: 376 },
+    { name: 'square 1:1',            w: 1000, h: 1000, parentW: 376 },
+    { name: 'mild landscape 16:9',   w: 1920, h: 1080, parentW: 376 },
+    { name: 'landscape 3:1',         w: 3000, h: 1000, parentW: 376 },
+    { name: 'extreme landscape 15:1', w: 3000, h:  200, parentW: 376 },
+  ];
+  for (const c of cases) {
+    // render, assert: stageH >= maskH + 32 (2 * 16 FRAME_PADDING)
+  }
+});
+```
+
+詳見 `.cursor/skills/saome-image-upload/SKILL.md` § Stage Height Invariant 與
+`apps/frontend/src/components/business/dashboard/CardBuilderEditor/LogoUploader/LogoUploader.tsx`
+內的「Stage height invariant」JSDoc 區塊。
+
+#### 與 § 11 的分工
+
+| § | 不變量 | 對齊目標 |
+|---|---|---|
+| 11 | mask size === export srcSquareSize | UI ↔ export |
+| **12** | **stage height ≥ mask + padding** | **stage ↔ mask** |
+
+### 13. Image Cache Busting — Fixed Filename + Version Query Param（強制）
+
+> **觸發**：任何 R2 image upload（LogoUploader / BackgroundUploader / IconUploader）。
+> § 10 規定 R2 用固定檔名（每次上傳覆蓋同一 key），但這跟 HTTP cache 衝突。
+
+#### 問題
+
+§ 10 規定 R2 用固定檔名（`{tenantId}/{cardId}/issuerLogo.png`），每次上傳覆蓋同一 key。
+但這跟 HTTP cache（`Cache-Control`）衝突：
+
+- Backend `getImage` 端點設 `Cache-Control: public, max-age=31536000`（1 年）
+- 上傳後 URL 沒變（仍是 `/api/cards/{id}/image/logo`）
+- 瀏覽器 / Cloudflare edge / R2 三層 cache 全部 return 舊檔
+- 使用者看到「上傳成功但圖沒變」
+
+事故紀錄：`runs/improvements/feedback/20260830-logo-image-cache-busting.md`（待寫）
+
+#### 解法（強制）
+
+**三層必須同時存在**：
+
+| 層 | 設定 | 為什麼 |
+|---|---|---|
+| Backend `Cache-Control` | `public, max-age=31536000` | 讓 cache 確實生效，1 年內不重複打 R2 |
+| Backend 檔名 | 固定（§ 10）| R2 不浪費空間 |
+| Frontend URL | 加 `?v=${version}` query param | 前端能強制 bust cache |
+
+#### 實作 pattern
+
+**Store**（zustand 或 context）：每個 imageType 一個 `xxxVersion: number`，set 時 bump：
+
+```ts
+// apps/frontend/src/components/business/dashboard/CardBuilderEditor/CardBuilderEditor.store.ts
+issuerLogoVersion: 0,
+setIssuerLogo: (issuerLogo) => set({ issuerLogo, issuerLogoVersion: Date.now() }),
+```
+
+**Component**（圖片預覽元件）：URL 內加 `&v=${xxxVersion}`：
+
+```tsx
+// PassCardPreviewHeader.tsx
+const logoUrl = `${api.baseUrl}${api.paths.cardImage(templateId, 'logo')}?token=...&v=${issuerLogoVersion}`;
+```
+
+**Upload 完成 callback**：必須呼叫 `setIssuerLogo(key)`（或對應 setter）自動 bump version。
+
+#### 禁止
+
+- ❌ 改用 UUID 檔名（`{uuid}.png`）— 違反 § 10、浪費 R2 空間、DB key 易 drift
+- ❌ 改 `Cache-Control: no-store` — 等於放棄 cache，每次都打 R2
+- ❌ Upload 後忘記 bump version — 上傳後圖不變
+- ❌ 版本用全域 `Date.now()`（多個元件 race condition）— 用 store-bumped version
+
+#### 必跑 conformance test
+
+```ts
+it('image URL includes version query param', () => {
+  const store = useCardBuilderStore.getState();
+  const before = store.issuerLogoVersion;
+  store.setIssuerLogo('test-key');
+  expect(store.issuerLogoVersion).toBeGreaterThan(before);
+});
+```
+
+#### 與其他章節的分工
+
+| § | 不變量 |
+|---|--------|
+| § 10 | R2 用固定檔名 |
+| § 11 | mask size === export srcSquareSize |
+| § 12 | stage height ≥ mask + padding |
+| **§ 13** | **URL 含 version query param** |
+
+### 14. Image Auth Strategy — Query Token vs Cookie vs Signed URL（強制）
+
+> **觸發**：設計 `getImage` 端點（`/api/cards/:id/image/:type`）的 auth 策略。
+> 必須考慮 `<img src>` 跟 RN `<Image source>` 的限制。
+
+#### 三方案比較
+
+| Auth 方案 | `<img src>` (web) | `<Image source>` (RN) | Cache 友善 | 實作成本 |
+|---|---|---|---|---|
+| `Authorization: Bearer ...` header | ❌ 不送 header | ⚠️ 需手動設 header | N/A | 中 |
+| **`?token=JWT` query param（✅ 採用）** | ✅ 自動 | ✅ 自動 | ✅ | **低** |
+| Cookie (`HttpOnly + SameSite=Lax`) | ⚠️ CORS `credentials: 'include'` | ⚠️ RN 預設不送 | ✅ | 中 |
+| R2 Presigned GET URL (TTL) | ✅ | ✅ | ✅ | 高（後端加簽署 endpoint） |
+
+#### 決策：保留 query token
+
+```ts
+// apps/backend/src/shared/middleware/auth.ts
+export const requireAuth: MiddlewareHandler<HonoEnv> = async (c, next) => {
+  const authHeader = c.req.header('Authorization');
+  let token: string | undefined;
+  if (authHeader?.startsWith('Bearer ')) {
+    token = authHeader.slice(7);
+  } else {
+    // Try ?token= query param (for <img> requests without cookies)
+    token = c.req.query('token');
+  }
+  if (!token) throw new AuthError(...);
+  // verify + continue
+};
+```
+
+**理由**：
+
+- `<img src>` 跟 RN `<Image>` 都**不送 Authorization header**（瀏覽器/RN 自動 fetch 才送）
+- Query token 是唯一「兩邊都自動送」的方案
+- Token 有效期 1 年（登入體驗），query string 在 URL bar 暴露的風險可控（token 跟其他 R2 key 等級的敏感性）
+- 切 cookie 會犧牲 cacheability（cookie-based request 通常不走 edge cache）
+
+#### URL pattern（強制）
+
+```
+GET /api/cards/{templateId}/image/{logo|background|icon}?token={JWT}&v={version}
+                                            ↑ query token    ↑ § 13 cache bust
+```
+
+兩個 query param 順序固定：`token` 先、`v` 後。
+
+#### 切換時機（記錄在 rule）
+
+**以下任一情況才考慮切換**：
+
+1. RN 上線且需要 native image cache（`<Image>` 預設 cache 行為不同）
+2. Token 改成短 TTL（如 15 分鐘）→ query token 暴露風險變高
+3. Multi-tenant isolation 變成 per-IP 限制（cookie 較難 IP 限制）
+
+否則保持 query token。
+
+#### 禁止
+
+- ❌ 改用 cookie 但前端 `<img>` 沒設 `credentials: 'include'` → 圖片永遠 401
+- ❌ 改用 presigned GET URL 但忘記加 `?v=` cache bust → 上傳後圖不變
+- ❌ Token 放在 path（`/image/{token}/{type}`）→ 路徑會被 log 記錄，安全性較差
+
+決策紀錄：`runs/decisions/2026-08-30-image-auth-strategy-query-token.md`（待寫）
+
 ## L2 Checklist 對齊
 
 | 動作 | 標準 |
@@ -278,21 +517,55 @@ useImageCrop({
 
 「上傳圖片」「R2」「presigned URL」「CORS 403」「LogoUploader」「BackgroundUploader」「裁切」「crop」「zoom」「scale」「mask」**必須**引用此 rule。
 
+「cache」「Cache-Control」「上傳後圖沒變」「image preview stale」「URL versioning」「`?v=` query」→ 必引 § 13 Image Cache Busting。
+
+「image 401」「`<img>` auth」「RN `<Image>` auth」「query token」「presigned GET URL」→ 必引 § 14 Image Auth Strategy。
+
+「mobile」「viewport」「拖曳」「drag stutter」「chain overflow」「min-w-0」「pointermove」「momentum」「VIEWPORT_PADDING」「useCallback stale closure」「flex chain overflow」→ 必引 `frontend/029-image-crop-mobile-ux.mdc`（Rule 029：mobile drag UX 三軸 + layout chain + stale closure）。
+
 ## 參照
 
 - `runs/improvements/feedback/20260823-logo-uploader-full-trace.md`
  — LogoUploader 完整 bug trace + Decision Log
 - `runs/improvements/feedback/20260826-0827-logo-crop-zoom-full-trace.md`
  — Logo crop zoom 完整 trace（mask invariant + srcSquareSize 公式）
+- `runs/improvements/feedback/20260830-logo-uploader-portrait-stale-closure.md`
+ — 直立圖片裁切位置偏移（useCallback stale closure Bug-φ）
+- `runs/improvements/feedback/20260830-logo-uploader-mobile-drag-stutter.md`
+ — 手機拖曳跳格（React reconciliation 拖慢 drag）
+- `runs/improvements/feedback/20260830-logo-uploader-chain-min-w-zero.md`
+ — crop stage 把整頁撐開（flex chain min-width: auto）
+- `runs/improvements/feedback/20260830-logo-uploader-iphone12promax-double-padding.md`
+ — iPhone 12 Pro Max 雙層 padding 撐開
+- `runs/improvements/feedback/20260830-logo-uploader-landscape-frame-exceeds-container.md`
+ — landscape frame 超出 stage（結構性 fix，改變「stage=aspect, outer padded」假設）→ § 12
+- `runs/improvements/feedback/20260830-cardbuilder-header-overflow-phones.md`
+ — CardBuilderHeader h1+Steps overflow，Outlet inner min-w-0 修法
+- `runs/improvements/feedback/20260830-logo-image-cache-busting.md`
+ — Image Cache Busting 三層同時存在 pattern → § 13
+- `runs/decisions/2026-08-30-image-auth-strategy-query-token.md`
+ — Image auth strategy 保留 query token 決策 → § 14
 - `runs/decisions/2026-08-27-logo-crop-zoom-invariant-mask.md`
  — Crop Window Invariant 決策
-- `.cursor/skills/saome-image-upload/SKILL.md` § Crop Window Invariant
+- `.cursor/skills/saome-image-upload/SKILL.md` § Crop Window Invariant + § Stage Height Invariant + § Mobile Drag UX
+- `.cursor/rules/frontend/024-mobile-future-proof.mdc` § Hook Split Pattern
+ — `.web.ts` / `.native.ts` 雙檔結構（useImageCrop 範例）
+- `.cursor/rules/frontend/029-image-crop-mobile-ux.mdc`
+ — mobile drag UX 三軸 + layout chain + stale closure（Rule 029）
 - `apps/backend/src/modules/cards/routes/generate-upload-url.ts`
  — presigned URL 實作範例
+- `apps/backend/src/modules/cards/routes/getImage.ts`
+ — Image endpoint with `Cache-Control: 1 year` + query token auth (§ 13 / § 14 實作)
+- `apps/backend/src/shared/middleware/auth.ts`
+ — Dual-mode auth（Authorization header + ?token= query）
 - `apps/backend/r2-cors.json`
  — CORS 設定檔
 - `apps/frontend/src/hooks/useImageCrop.ts`
  — `cropImage()` 實作 + `srcSquareSize` 公式
+- `apps/frontend/src/hooks/useImageCrop.web.ts`
+ — Web Canvas-based cropImage（§ 14 平台分流範例）
+- `apps/frontend/src/hooks/useImageCrop.native.ts`
+ — Native stub（throw NotImplementedError）
 - Rule 027（postgres dynamic query）— Settings merge pattern
 - Rule 023（shared package / i18n namespace）— component-bound namespace 原則
-- Rule 024（mobile future-proof）— RN 化裁切 logic 抽離要求
+- Rule 024（mobile future-proof）— RN 化裁切 logic 抽離要求 + Hook Split Pattern

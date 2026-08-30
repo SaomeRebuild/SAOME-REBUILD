@@ -80,7 +80,134 @@ useImageCrop({
 });
 ```
 
-詳見 `apps/frontend/src/hooks/useImageCrop.ts` 與 `.cursor/rules/frontend/028-image-crop-invariant.mdc`。
+詳見 `apps/frontend/src/hooks/useImageCrop.ts` 與 `.cursor/rules/028-image-uploader-pattern.mdc` § 11（Crop Window Invariant）。
+
+詳見 `.cursor/rules/frontend/029-image-crop-mobile-ux.mdc`（mobile drag UX 三軸 + layout chain + stale closure）。
+
+---
+
+## Stage Height Invariant（MANDATORY）
+
+> **觸發**：任何 image crop 元件（LogoUploader / BackgroundUploader /
+> IconUploader）。**不是**只有 mobile 才有的 invariant——是 crop 元件
+> 的**結構性**鐵律。
+
+詳見 `.cursor/rules/028-image-uploader-pattern.mdc` § 12：
+
+| 項目 | 公式 / 值 | 說明 |
+|---|---|---|
+| Stage height | `baseContainerH = max(aspectMatchedH, maskH + 2 * FRAME_PADDING)` | stage 永遠包含 mask + padding |
+| Outer container height | `outerContainerH = baseContainerH` | outer 不再獨立 padding，等於 stage |
+| Frame padding | `FRAME_PADDING = 16` (Tailwind md) | 走 design token，禁止 hardcoded 8/12/20 |
+| Landscape 視覺 | image 在 stage 內 letterbox（object-fit: contain） | frame 200×200 永遠在 stage 內 |
+
+#### 結構示意
+
+```
+舊（錯）:                          新（對）:
+┌── outer ──────────┐             ┌── outer = stage ──┐
+│  ┌── stage ───┐  │             │  ┌──────────────┐  │
+│  │  image     │  │             │  │   image      │  │
+│  │  (aspect)  │  │             │  │  (letterbox) │  │
+│  └────────────┘  │             │  │              │  │
+│  dark padding    │             │  │   ┌──mask─┐  │  │
+│  ┌──frame──┐     │             │  │   │      │  │  │
+│  │ 200×200 │ ← 超出 │             │  │   └──────┘  │  │
+│  └─────────┘     │             │  └──────────────┘  │
+└──────────────────┘             └────────────────────┘
+frame 跨 stage / outer            frame 永遠在 stage 內
+```
+
+#### 各 aspect 行為
+
+| Aspect | stage height | image 視覺 | frame 位置 |
+|---|---|---|---|
+| Portrait / Square | aspect-matched | 填滿 stage | stage 中央 |
+| Landscape | max(aspect, mask+padding) | stage 內 letterbox | stage 中央，完全在 stage 內 |
+
+#### 適用對象
+
+- ✅ LogoUploader（已套用，commit `3c8c7b3`）
+- ⏳ BackgroundUploader（800×800 crop，尚未實作）
+- ⏳ IconUploader（256×256 crop，尚未實作）
+
+兩個未實作的 uploader 套用此 invariant 後，未來 landscape 圖片不會再出現「frame 超出 stage」視覺。
+
+#### 為什麼不直接縮小 frame 適應 stage
+
+Frame 200×200（BackgroundUploader 為 800×800、IconUploader 為 256×256）
+**是 export contract**，UI mask size 必須永遠 = export srcSquareSize。
+若 landscape 時縮小 frame，視覺是 72×72 但 export 是 200×200，使用者
+心智模型會裂掉。
+
+正確解法：stage extends 包含 frame + padding，image 在 stage 內 letterbox。
+這與 native iOS / Android photo cropper 行為一致。
+
+#### 必跑 invariant test
+
+```typescript
+it('invariant: stageH >= maskH + 2 * FRAME_PADDING for ALL aspect ratios', () => {
+  const cases = [
+    { name: 'portrait 1:3',           w: 1000, h: 3000, parentW: 376 },
+    { name: 'square 1:1',             w: 1000, h: 1000, parentW: 376 },
+    { name: 'mild landscape 16:9',    w: 1920, h: 1080, parentW: 376 },
+    { name: 'landscape 3:1',          w: 3000, h: 1000, parentW: 376 },
+    { name: 'extreme landscape 15:1', w: 3000, h:  200, parentW: 376 },
+  ];
+  for (const c of cases) {
+    // render, assert: stageH >= maskH + 32
+  }
+});
+```
+
+#### 與 § Crop Window Invariant 的分工
+
+| § | 不變量 | 對齊目標 |
+|---|---|---|
+| Crop Window Invariant | mask size === export srcSquareSize | UI ↔ export |
+| **Stage Height Invariant** | **stage height ≥ mask + padding** | **stage ↔ mask** |
+
+事故紀錄：`runs/improvements/feedback/20260830-logo-uploader-landscape-frame-exceeds-container.md`。
+詳見 `.cursor/rules/028-image-uploader-pattern.mdc` § 12。
+
+---
+
+## Mobile Drag UX（MANDATORY）
+
+> 觸發：image uploader 會在 < 768px viewport 出現 drag pan / 裁切 stage。
+
+### 三軸預設值（詳見 Rule 029 § 1）
+
+| 軸 | 衡量 | touch | mouse | pen |
+|----|------|-------|-------|-----|
+| 量 | sensitivity | 5.0 | 1.0 | 1.0 |
+| 順暢度 | pointermove 走 ref+DOM | yes | yes | yes |
+| 手感 | momentum | on | off | off |
+
+實作細節：見 `apps/frontend/src/components/business/dashboard/CardBuilderEditor/LogoUploader/LogoUploader.tsx` 的 `handleTouchStart/Move/End` 與 `handlePointerDown/Move/Up`。
+
+### Layout chain 必加 `min-w-0`（詳見 Rule 029 § 3）
+
+crop stage 用了 inline width 的元件（如 LogoUploader），整條 chain 的 flex item 都要加 `min-w-0`。新增 uploader 時對齊下面的 checklist：
+
+```
+□ 元件 root div 加 min-w-0
+□ 父層 section / aside 加 min-w-0
+□ 更上層的 layout wrapper 加 min-w-0
+□ Outlet inner 加 min-w-0（如尚未加）
+□ html, body { overflow-x: hidden }（如尚未加，進 index.css）
+□ 量測時 walk 整條 chain（不只是 body）
+```
+
+### useCallback deps 必查（詳見 Rule 029 § 2）
+
+寫 callback 時列舉 closure 變數清單，逐一進 deps。特別注意 first-render placeholder 變數（如 `baseContainerW/H` 會在 image load 後改變值）。
+
+### 為什麼這是 skill 級鐵律
+
+- 8/30 LogoUploader 一天踩三類雷（stale closure、drag stutter、chain overflow）
+- 共同根因：寫 uploader 時假設「父層是 desktop / 父層 padding 固定 / React 一定跟得上」
+- 每個都靠使用者手機實測才抓得到（jsdom 模擬不到 touch event、layout chain 簡化）
 
 ---
 

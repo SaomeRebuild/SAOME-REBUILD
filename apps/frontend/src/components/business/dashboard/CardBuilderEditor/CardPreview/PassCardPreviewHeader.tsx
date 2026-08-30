@@ -20,9 +20,10 @@ export function PassCardPreviewHeader({ cardType, issuerLogo, name, compact }: P
 
   // Build proxy URL: avoids relying on Windows DNS resolving saome-assets.pages.dev
   const templateId = useCardBuilderStore.getState().cardId;
+  const issuerLogoVersion = useCardBuilderStore.getState().issuerLogoVersion;
   const token = getAccessToken();
   const logoUrl = issuerLogo && templateId
-    ? `${api.baseUrl}${api.paths.cardImage(templateId, 'logo')}${token ? `?token=${encodeURIComponent(token)}` : ''}`
+    ? `${api.baseUrl}${api.paths.cardImage(templateId, 'logo')}${token ? `?token=${encodeURIComponent(token)}` : ''}&v=${issuerLogoVersion}`
     : undefined;
 
   return (

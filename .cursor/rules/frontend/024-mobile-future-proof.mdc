@@ -25,6 +25,122 @@ alwaysApply: true
 - 用 `.web.ts` / `.web.tsx` 副檔名
 - 或放在 `apps/frontend/src/web/` 子目錄
 
+### Hook Split Pattern — `.web.ts` / `.native.ts` 雙檔結構（MANDATORY）
+
+> **觸發**：任何 hook 同時包含 web-only API（如 `HTMLCanvasElement` / `document.createElement` / `localStorage`）與共用 state。
+
+當 hook 無法整個丟到 `.web.ts` 或 `.native.ts`（因為有共用 state 邏輯）時，
+必須拆成**主檔 + 平台 binding** 三檔結構：
+
+```
+hooks/
+├── useImageCrop.ts          ← 共用 state：useState, useCallback, loadImage, setFocalPoint, ...
+├── useImageCrop.web.ts      ← cropImage() 用 Canvas API（web-only）
+└── useImageCrop.native.ts   ← cropImage() stub（throw NotImplementedError，待 RN 實作）
+```
+
+**主檔簽名必須 export platform binding 的型別**：
+
+```ts
+// useImageCrop.ts
+/**
+ * Platform-specific cropImage signature shared by web and native impls.
+ * Both `useImageCrop.web.ts` and `useImageCrop.native.ts` conform to this.
+ */
+export type CropImageFn = (
+  image: HTMLImageElement,
+  cropState: CropState,
+  cropWindowSize: number,
+  baseCanvasWidth: number,
+) => Promise<Blob>;
+
+// 主檔根據 platform 決定 binding
+const cropImageImpl: CropImageFn = cropImageOnWeb; // .web.ts 提供
+                                              // RN 時換成 cropImageOnNative
+```
+
+#### Vite + tsconfig 必要設定
+
+`.web.ts` / `.native.ts` 不會被 Vite 自動 resolve，**必須**在 `apps/frontend/tsconfig.app.json` 加：
+
+```jsonc
+// apps/frontend/tsconfig.app.json
+{
+  "compilerOptions": {
+    "moduleSuffixes": [".web", ".native", ""]  // 從最 specific 到 generic
+  }
+}
+```
+
+順序鐵律：`.web` / `.native` 最先，generic `""` 最後（Vite / Rollup / Metro 都按 prefix-match）。
+
+沒設 `moduleSuffixes` → TS 編譯找不到 `useImageCrop.web.ts`（Vite dev 也會失敗）。
+
+#### `.native.ts` stub 必須 throw
+
+```ts
+// useImageCrop.native.ts
+export const cropImageOnNative: CropImageFn = (): Promise<Blob> => {
+  throw new Error(
+    '[useImageCrop.native] cropImage() not yet implemented on React Native. ' +
+    'See RN migration backlog (use react-native-image-crop-picker).'
+  );
+};
+```
+
+理由：silent stub（return null 或 Promise.resolve）→ RN runtime 看到神秘的 canvas error 而 stack 混亂；throw → 開發者立即看到清楚的「not yet implemented」訊息，並指向 backlog。
+
+#### `FileLike` 介面 pattern（跨平台檔案物件）
+
+跨平台共用 hook 若需要檔案物件，定義**最小介面**而非 import web-only `File`：
+
+```ts
+// packages/shared/types/imageCrop.ts
+export interface FileLike {
+  type: string;
+  size: number;
+}
+```
+
+Web `File` 與 RN native file picker（如 `react-native-image-crop-picker` 的 response）都 conform 這個介面。
+**禁止**在 shared/ 內 import `File` from DOM lib（會把 web-only 型別 leak 到 RN）。
+
+#### 禁止
+
+- ❌ 在 shared/ 內 import `File`、`HTMLCanvasElement`、`URL.createObjectURL`、`window`、`localStorage` 等 web-only API
+- ❌ `.web.ts` / `.native.ts` 內互相 import（會形成 cycle，且破壞 platform isolation）
+- ❌ `.native.ts` 用 silent stub（如 `return null` 或 `Promise.resolve(new Blob())`）— **必須** throw
+- ❌ 主檔用 `if (typeof window !== 'undefined')` 在主檔分流 — 違反單一職責，TS 推導會壞掉
+- ❌ 主檔直接寫 web-only 實作（會把 Canvas API leak 進 shared logic，無法 RN 化）
+
+#### 範例：`useImageCrop` （2026-08-30 實作）
+
+主檔：
+```ts
+const cropImageImpl: CropImageFn = cropImageOnWeb;
+// ↑ RN migration 時改成 cropImageOnNative
+const cropImage = useCallback(async () => cropImageImpl(...), [...]);
+```
+
+Web binding：
+```ts
+// useImageCrop.web.ts
+export const cropImageOnWeb = (image, cropState, ...) => {
+  const canvas = document.createElement('canvas');  // web-only
+  // ...
+};
+```
+
+Native binding：
+```ts
+// useImageCrop.native.ts
+export const cropImageOnNative = () => {
+  throw new Error('Not yet implemented on React Native');
+};
+```
+
+事故紀錄：`runs/improvements/feedback/20260830-use-image-crop-platform-split.md`（待寫）
+
 ### ❌ 禁止在 component 內寫業務邏輯
 
 ```tsx
@@ -57,7 +173,25 @@ export const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+$/.test(email);
 - [ ] 沒在 component 直接用 localStorage / window？
 - [ ] i18n key 都在 shared/ i18n/ 內？
 - [ ] 翻譯嚴格遵守全中文（zh-TW）或全英文（en），禁止中英夾雜？
+- [ ] Hook 內用到 web-only API？→ 已走 Hook Split Pattern（`.web.ts` / `.native.ts`）？
 
 ## 觸發關鍵字
 
 「React Native」「RN 化」「mobile」「未來手機版」「跨平台」**必須**引用。
+
+「`.web.ts`」「`.native.ts`」「moduleSuffixes」「`useImageCrop.web`」「Canvas + RN」「File API + RN」「localStorage + MMKV」→ 必引 § Hook Split Pattern（上方章節）。
+
+## 參照
+
+- `runs/improvements/feedback/20260830-use-image-crop-platform-split.md`（待寫）— Hook Split Pattern 起源（`useImageCrop` .web.ts / .native.ts）
+- `.cursor/rules/028-image-uploader-pattern.mdc` § 14 Image Auth Strategy
+ — RN `<Image>` auth 必須跟 web `<img>` 對齊（query token）
+- `.cursor/rules/frontend/023-shared-package.mdc` § Shared Validation 用 i18n Key
+ — `FileLike` interface 與 shared validation pattern
+- `.cursor/rules/000-modular-design.mdc` § A.3 Hook Extraction Strategy
+ — 拆分順序：先抽 hook 再拆 sub-component
+- `apps/frontend/src/hooks/useImageCrop.ts` + `useImageCrop.web.ts` + `useImageCrop.native.ts`
+ — Hook Split Pattern 完整實作範例
+- `packages/shared/types/imageCrop.ts`（`FileLike` / `ValidationError` / `CropState`）
+- `packages/shared/logic/imageCrop.ts`（`validateLogoFile` / `applyScaleChange` / `computeSrcSquareSize`）
+- `apps/frontend/tsconfig.app.json`（`moduleSuffixes: [".web", ".native", ""]`）

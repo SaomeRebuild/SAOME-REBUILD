@@ -15,7 +15,5 @@ export interface LogoUploaderProps {
 
 export type LogoUploaderState = 'idle' | 'uploading' | 'cropping' | 'success' | 'error';
 
-export interface ValidationError {
-  type: 'tooSmall' | 'tooLarge' | 'wrongFormat';
-  message: string;
-}
+// Re-export from shared for backwards-compatible `@/LogoUploader.types` consumers.
+export type { ValidationError } from '@saome/shared/types';

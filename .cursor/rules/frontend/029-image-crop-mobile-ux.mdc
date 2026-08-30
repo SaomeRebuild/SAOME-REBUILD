@@ -1,0 +1,205 @@
+# Image Crop Mobile UX（MANDATORY）
+
+> 觸發：寫任何 image crop 元件（LogoUploader / BackgroundUploader / IconUploader）
+> 並且該元件會在 mobile viewport（< 768px）出現 drag pan / 裁切 stage。
+
+## 背景
+
+2026-08-30 LogoUploader 在手機上出現四類獨立 bug，使用者迭代四輪才全部清乾淨：
+- 直立圖片裁切位置 ≠ 實際上傳（useCallback stale closure）
+- 手機一次只能拖一點（React reconciliation 在 pointermove 上太慢）
+- 上傳 UI 把整頁撐開（flex chain min-width: auto）
+- iPhone 12 Pro Max 雙層 padding 撐開（hardcoded padding 數字錯誤）
+
+詳見各 feedback 的觸發章節。
+
+## 1. Drag UX 三軸（強制）
+
+任何 mobile drag pan 元件必同時驗證三個獨立維度：
+
+| 軸 | 衡量 | 預設值 |
+|----|------|--------|
+| 量 | 一次手指滑動 = 多少 offset（sensitivity）| touch 5.0 / pen 1.0 / mouse 1.0 |
+| 順暢度 | 視覺是否連續跟手指（reconciliation lag）| pointermove 不進 React state，ref + 直接 DOM |
+| 手感 | 釋放後是否 glide（momentum）| touch on / pen off / mouse off |
+
+只調「量」沒調「順暢度」：使用者會覺得「跳格更大但還是跳格」。
+只調「量」沒調「手感」：使用者會覺得「每次都要抓很多次」。
+
+### 1.1 三軸預設值
+
+| 裝置 | 偵測方式 | sensitivity | momentum | 說明 |
+|------|----------|-------------|----------|------|
+| Touch | TouchEvent API（不用 pointerType）| 5.0 | on | mobile 標準手感 |
+| Mouse | PointerEvent（pointerType='mouse' 或空字串）| 1.0 | off | 精準 1:1 |
+| Pen | PointerEvent（pointerType='pen'）| 1.0 | off | stylus 已經精準 |
+
+禁止：只寫 PointerEvent 而用 `e.pointerType === 'touch'` 分流（Android / 混合裝置上不可靠）。
+禁止：在 mouse/pen 上加 momentum（會出現「自己滑移」）。
+
+### 1.2 順暢度的 reference 實作
+
+```typescript
+// pointermove 完全繞過 React：ref + 直接 DOM
+const liveOffsetXRef = useRef(0);
+
+const handleTouchMove = useCallback((e) => {
+  if (!isDraggingRef.current) return;
+  const dx = (touch.clientX - dragStartRef.current.x) * TOUCH_SENSITIVITY;
+  const newX = offsetStartRef.current.x + dx;
+  liveOffsetXRef.current = newX;
+  const img = imageRef.current;
+  if (img) img.style.transform = `translate(${newX}px, ${liveOffsetYRef.current}px)`;
+  // 不呼叫 setCropState
+}, []);
+
+const handlePointerUp = useCallback(() => {
+  if (!isDraggingRef.current) return;
+  isDraggingRef.current = false;
+  setCropState((prev) => ({
+    ...prev,
+    offsetX: liveOffsetXRef.current,
+    offsetY: liveOffsetYRef.current,
+  }));
+}, []);
+
+// render 時優先讀 live ref，否則讀 React state（防 React 其他原因重渲染時跳回）
+const x = isDraggingRef.current ? liveOffsetXRef.current : offsetX;
+```
+
+禁止：每個 pointermove 都 `setCropState`（會觸發 SVG / 多層 children diff）。
+禁止：用 `flushSync`（60-120 Hz 下會榨乾主線程）。
+
+## 2. useCallback Stale Closure（強制）
+
+任何 `useCallback` 的 deps 必含**所有** closure 內使用的變數，無一例外。
+
+特別針對「first-render placeholder」變數：`baseContainerW/H`、`naturalWidth` 為 0 時的 placeholder 值，等到 image load 後才被 recompute 為真實值。這類變數必須進 deps，否則 callback 永遠用 placeholder 計算（portrait/landscape 會錯，square 剛好對所以測試抓不到）。
+
+### 2.1 reference：deps 審查 checklist
+
+```typescript
+const handlePointerUp = useCallback(() => {
+  // 用到 baseContainerW、H 嗎？列出 closure 變數：
+  // - baseContainerW ✓
+  // - baseContainerH ✓
+  // - liveOffsetXRef（ref，免進 deps）
+  // - isDraggingRef（ref，免進 deps）
+  // - cropState（透過 setCropState(prev) 讀，免進 deps）
+  setCropState((prev) => syncFocalFromOffset(prev, baseContainerW, baseContainerH));
+}, [baseContainerW, baseContainerH]);  // ← 必填
+```
+
+## 3. Crop Stage Layout Chain（強制）
+
+任何 crop stage 用了 inline width（如 `style={{ width: baseContainerW }}`），整條 flex chain 都必須加 `min-w-0`，否則 min-content 會沿著 flex item 一路傳到 Outlet。
+
+### 3.1 chain 必加 `min-w-0` 的層
+
+| 層 | 必加原因 |
+|----|---------|
+| LogoUploader root（所有 state 的 root div）| crop stage 是它的 flex child |
+| section / aside（CardBuilderEditorWorkspace）| chain 中段 |
+| CardBuilderEditor outer / flex-row | chain 上層 |
+| Outlet inner | 終局保護（即使下方 chain 都漏，這層擋住）|
+
+### 3.2 終局安全網
+
+`html, body { overflow-x: hidden; }` 寫進 `index.css`。即使未來新增 wrapper 漏了 `min-w-0`，頁面層級不會出現水平捲軸。
+
+### 3.3 量測 SOP（必跑）
+
+寫 mobile overflow regression test 時**必走整條 chain**：
+
+```typescript
+// ❌ 錯：只看 body
+expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(viewportWidth);
+
+// ✅ 對：walk 整個 chain，每層都斷言
+const layers = [
+  cropStage, logoUploaderRoot, section, aside, flexRow,
+  cardBuilderOuter, cardBuilderPageWrapper, outletInner, outletContainer
+];
+for (const el of layers) {
+  expect(el.scrollWidth).toBeLessThanOrEqual(el.clientWidth + 1);
+}
+```
+
+## 4. Hardcoded Layout Padding（強制）
+
+任何 `viewportW - X` 形式的計算，X 必須來自**明列的 padding chain**，禁止憑印象寫。
+
+```typescript
+// ❌ 錯：VIEWPORT_PADDING 寫 48 但實際有兩層 p-6（96）
+const VIEWPORT_PADDING = 48;
+
+// ✅ 對：列舉所有 padding 來源
+// CardBuilderPage wrapper p-6 (24+24) + Workspace aside p-6 (24+24) = 96
+const VIEWPORT_PADDING = 96;
+```
+
+測試期望值必須對應 layout 事實，不是程式碼當前的公式：
+
+```typescript
+// ❌ 錯：測試反映公式（綠但錯）
+expect(stageWidth).toBe(viewport - 48);
+
+// ✅ 對：測試反映真實 layout
+expect(stageWidth).toBe(viewport - 96);
+```
+
+### 4.1 Robust 替代方案（待 refactor）
+
+目前用 `viewportW - X` 是 fragile 的，因為 X 來自 layout chain 而非 component 自己。
+
+**未來重構方向**：用 `ResizeObserver` 量自己的 `clientWidth`（不受 parent padding 變動影響）。但實作 + 測試成本較高，目前先以「明列 padding chain + regression guard」守住。
+
+## 5. TouchEvent vs PointerEvent 分流（強制）
+
+mobile drag 用 `onTouchStart/Move/End`（TouchEvent API），mouse/pen drag 用 `onPointerDown/Move/Up`（PointerEvent API）。**不要混用同一個 handler 用 pointerType 分流**：
+
+```typescript
+// ❌ 錯：pointerType 不可靠（Android / 混合裝置）
+const handlePointerDown = (e) => {
+  if (e.pointerType === 'touch') { /* touch logic */ }
+  else { /* mouse logic */ }
+};
+
+// ✅ 對：兩套 handler 並存，瀏覽器自動 dispatch
+<div
+  onTouchStart={handleTouchStart}
+  onTouchMove={handleTouchMove}
+  onTouchEnd={handleTouchEnd}
+  onPointerDown={handlePointerDown}  // 只處理 mouse + pen
+  onPointerMove={handlePointerMove}
+  onPointerUp={handlePointerUp}
+/>
+```
+
+PointerEvent handler 內第一行必須 `if (e.pointerType === 'touch') return;`，否則 touch 事件會被兩邊都接住。
+
+## 禁止總表
+
+- ❌ 每個 pointermove 呼叫 `setCropState` / `setState`（會拖慢 drag）
+- ❌ `useCallback` deps 漏列 closure 內使用的變數
+- ❌ crop stage 用 inline width 但 chain 上 flex item 漏 `min-w-0`
+- ❌ `viewportW - X` 寫死 X 但沒列舉 padding chain 來源
+- ❌ 用 `flushSync` 解決 drag lag（會榨乾主線程）
+- ❌ mouse/pen 加 momentum（會出現「自己滑移」）
+- ❌ 用 PointerEvent 統一處理 touch（pointerType 不可靠）
+- ❌ 量測 mobile overflow 只看 body / html（false-negative）
+
+## 觸發關鍵字
+
+「LogoUploader」「拖曳」「drag」「drag stutter」「mobile overflow」「chain overflow」「min-w-0」「pointermove」「momentum」「VIEWPORT_PADDING」**必須**引用此 rule。
+
+## 參照
+
+- `runs/improvements/feedback/20260830-logo-uploader-portrait-stale-closure.md` — Bug-φ stale closure
+- `runs/improvements/feedback/20260830-logo-uploader-mobile-drag-stutter.md` — drag 跳格
+- `runs/improvements/feedback/20260830-logo-uploader-chain-min-w-zero.md` — chain overflow
+- `runs/improvements/feedback/20260830-logo-uploader-iphone12promax-double-padding.md` — double padding
+- `runs/improvements/feedback/20260830-logo-uploader-landscape-frame-exceeds-container.md` — landscape frame 超出 stage（結構性 fix）→ Rule 028 § 12
+- `runs/improvements/feedback/20260830-cardbuilder-header-overflow-phones.md` — Header overflow 補充
+- `apps/frontend/src/components/business/dashboard/CardBuilderEditor/LogoUploader/LogoUploader.tsx` — 完整修正實作
+- `runs/decisions/2026-08-27-logo-crop-zoom-invariant-mask.md` — Crop Window Invariant 決策

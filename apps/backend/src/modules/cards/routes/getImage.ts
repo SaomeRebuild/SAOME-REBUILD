@@ -130,7 +130,7 @@ export const getImageRoute = new Hono<HonoEnv>()
     // R2 get() returns a ReadableStream — Hono c.body() handles ReadableStream natively
     c.header('Content-Type', contentType);
     c.header('Content-Length', String(object.size ?? ''));
-    c.header('Cache-Control', 'public, max-age=31536000, immutable');
+    c.header('Cache-Control', 'public, max-age=31536000');
 
     return c.body(object.body);
   });
