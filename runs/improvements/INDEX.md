@@ -7,6 +7,8 @@
 
 | 日期 | 主題 | 路徑 | 影響 / 後續 |
 |------|------|------|------|
+| 2026-08-30 | LogoUploader Landscape White Frame Exceeds Container：stage 是 aspect-matched 但 outer 額外 padding 給 frame，landscape 時 frame 居中於 outer 而超出 stage；前四次 fix（stale closure / drag stutter / chain min-w-0 / iPhone 12 Pro Max double padding）都是症狀層修補，這次（round 4）才改變結構假設本身 | runs/improvements/feedback/20260830-logo-uploader-landscape-frame-exceeds-container.md | 新增 rule `028` § 12 Stage Height Invariant：`baseContainerH = max(aspectMatchedH, maskH + 2 × FRAME_PADDING)`，outer = stage；SKILL `saome-image-upload` § Stage Height Invariant；FRAME_PADDING 16 走 Tailwind md token |
+| 2026-08-30 | LogoUploader Landscape Image Export Squash：`useImageCrop.cropImage()` 的 `srcSquareSize` 公式缺 `naturalHeight` cap，landscape 圖 export 會被縱向拉伸填滿 960×960；test 內 local duplicate 函式讓 conformance test 抓不到 bug | runs/improvements/feedback/20260830-logo-uploader-landscape-squash.md | `computeSrcSquareSize` 從 useImageCrop 抽出 export 為 pure function；新增 8 個 conformance case（portrait / square / mild landscape / wide landscape 10:3 / extreme 10:1 等） |
 | 2026-08-30 | LogoUploader iPhone 12 Pro Max Horizontal Overflow：`VIEWPORT_PADDING=48` 只算一層 `p-6` 但實際有兩層（CardBuilderPage wrapper + Workspace aside），mobile viewport 觸發 48px 水平 overflow | runs/improvements/feedback/20260830-logo-uploader-iphone12promax-double-padding.md | `VIEWPORT_PADDING` 48 → 96；新增 iPhone 12 Pro Max (428px) regression guard；既有 320/375 期望值改對；建議在 `006-verification.mdc` 或 `013-rwd.mdc` 加「layout chain 透明度」紀律 |
 | 2026-08-30 | LogoUploader Portrait Crop Stale Closure：`handlePointerUp` useCallback 空 deps 導致 portrait / landscape 圖垂直拖曳後 crop 位置偏移 ~250 source px | runs/improvements/feedback/20260830-logo-uploader-portrait-stale-closure.md | 加 3 個 conformance test 守住 portrait / landscape / square；handlePointerUp deps 加 baseContainerW/H；建議 `028` § 12 或 general rule 加 useCallback deps 紀律 |
 | 2026-08-27 | LogoUploader Crop Zoom — Mask Invariant + Bug-C Fix：三層結構 + srcSquareSize 公式 + syncFocalFromOffset 修正 + 17 個 conformance tests + 小圖 corner case 修 | DEV/08-2026/27-logo-crop-zoom-invariant.md + runs/improvements/feedback/20260826-0827-logo-crop-zoom-full-trace.md + runs/decisions/2026-08-27-logo-crop-zoom-invariant-mask.md | 新增 rule `028` § 11；SKILL § Crop Window Invariant；design-system § 13 |
@@ -59,6 +61,7 @@
 | 2026-08-30 | `028` § 12 或 general `000-modular-design.mdc` 加 useCallback deps 紀律：「closure 變數全列舉後逐一進 deps」 | ⏳ pending |
 | 2026-08-30 | LogoUploader Portrait Crop Stale Closure Fix | ✅ done |
 | 2026-08-30 | LogoUploader iPhone 12 Pro Max Horizontal Overflow Fix | ✅ done |
+| 2026-08-30 | `028` § 12 Stage Height Invariant（landscape frame 不超出 stage）：`baseContainerH = max(aspectMatchedH, maskH + 2 × FRAME_PADDING)`，outer = stage；FRAME_PADDING 16 走 Tailwind md token；前 4 輪 fix 都是症狀層，第 5 輪才改變結構假設本身；SKILL `saome-image-upload` § Stage Height Invariant 同步 | ✅ done |
 | 2026-08-30 | 在 `.cursor/rules/006-verification.mdc` 或 `.cursor/rules/uiux/013-rwd.mdc` 加「layout chain 透明度」紀律：component 用 `viewportW - X` 算寬度時，X 必須明列所有 wrapper 的 padding 來源；測試期望值必須對應真實 layout 事實，不是程式碼公式 | ⏳ pending |
 | 2026-08-30 | Audit 其他用 `window.innerWidth` 計算 layout 的元件（CardBuilderEditorPreview `max-w-sm` 等）對 layout chain 的認知是否正確 | ⏳ pending |
 | 2026-08-22 | Migration apply pipeline：CI check 確保 migration 與 code 同步 | ⏳ pending |
