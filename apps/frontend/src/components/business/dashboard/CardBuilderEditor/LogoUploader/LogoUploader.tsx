@@ -303,21 +303,18 @@ export function LogoUploader({
     BASE_CANVAS_WIDTH,
     Math.max(availableWidth - STAGE_SAFETY_MARGIN, CROP_WINDOW_SIZE),
   );
-  const baseContainerH = cropState.naturalWidth > 0
-    ? Math.round(baseContainerW * (cropState.naturalHeight / cropState.naturalWidth))
-    : BASE_CANVAS_WIDTH;
+  // Note: `baseContainerH` is computed below in the "Stage height invariant"
+  // block (must include mask height + padding so the frame is contained within
+  // the stage for landscape images).
 
   // Responsive crop window: proportional to stage width on mobile, capped at 200px.
   // On desktop (400px stage) → 200px (= CROP_WINDOW_SIZE, max = 200).
   // On mobile (329px stage) → 197px (329 * 0.6 ≈ 197).
   //
-  // NOTE: For LANDSCAPE images (stage shorter than 200px tall, e.g. 329×152),
-  // this value exceeds the stage height and the white border overflows the
-  // stage's `overflow: hidden`. That's handled separately by rendering the
-  // border in an outer wrapper (see <CropFrame>) so all 4 borders stay
-  // visible even when stage < mask size. Visual mask size intentionally stays
-  // close to the actual export size (200×200) so the user's mental model
-  // (mask ≈ crop region) remains accurate.
+  // For LANDSCAPE images the stage extends vertically to fit the mask
+  // (see baseContainerH invariant below), so the white frame always fits
+  // within the stage. The image inside is letterboxed (object-fit: contain)
+  // and the dark stage background provides the breathing room above/below.
   //
   // IMPORTANT: the final canvas export ALWAYS outputs 200×200px (via
   // useImageCrop). The visual mask is purely for UX feedback — its size
@@ -327,6 +324,54 @@ export function LogoUploader({
     baseContainerW * CROP_WINDOW_SHARE,
     CROP_WINDOW_SIZE, // never larger than 200px
   );
+
+  /**
+   * Stage height invariant (Bug-fix 2026-08-30):
+   *
+   *   stageH = max(aspectMatchedH, maskH + 2 * FRAME_PADDING)
+   *
+   * For LANDSCAPE images (aspect-matched height < mask height), the stage
+   * extends vertically to fit the mask so the white frame is always
+   * contained within the stage. The image inside is letterboxed via
+   * object-fit: contain, and the dark padding above/below the image comes
+   * from the stage's background (= the outer container's background).
+   *
+   * For PORTRAIT / SQUARE images, the aspect-matched height already exceeds
+   * the mask height + padding, so the stage stays at the image's natural
+   * aspect — no change.
+   *
+   * Why we don't have a separate outer-container padding anymore:
+   *   Previously (bug) the stage was aspect-matched and the outer container
+   *   padded itself to fit the mask. The white frame (sibling of stage,
+   *   absolute inset-0 of outer) was centered in the OUTER, so for
+   *   landscape it extended BEYOND the stage into the outer's padding.
+   *   Users saw this as "white frame exceeds the container / stage".
+   *
+   *   Now: stage = max(aspect, mask + padding). Outer = stage. Frame is
+   *   centered in (= contained within) the stage. Image letterboxes inside
+   *   the stage for landscape.
+   *
+   * FRAME_PADDING is the breathing room above and below the white frame
+   * inside the stage. 16px matches the Tailwind `md` spacing token.
+   */
+  const FRAME_PADDING = 16; // px breathing room around the crop frame (Tailwind md)
+
+  // Stage height = max of (aspect-matched image height) and (mask height + 2 * padding).
+  // For landscape images, the stage extends vertically to include the mask area so the
+  // white frame is always contained within the stage (no "frame exceeds container" visual).
+  const aspectMatchedH = cropState.naturalWidth > 0
+    ? Math.round(baseContainerW * (cropState.naturalHeight / cropState.naturalWidth))
+    : BASE_CANVAS_WIDTH;
+  const baseContainerH = Math.max(
+    aspectMatchedH,
+    responsiveCropWindow + 2 * FRAME_PADDING,
+  );
+
+  // Outer container height = stage height. The outer is now just a wrapper that
+  // provides the dark background for the letterbox area (above/below the image
+  // when stage extends to fit the frame on landscape). Frame is centered in
+  // (= contained within) this combined stage/outer element.
+  const outerContainerH = baseContainerH;
 
   // Sync resolvedBaseCanvasWidth into cropState so useImageCrop.cropImage()
   // uses the same base canvas width as the UI for small src images (NW < BASE).
@@ -942,41 +987,72 @@ export function LogoUploader({
             {t('dragging')}
           </p>
 
-          {/* Outer crop container — holds the stage (with overflow-hidden) AND
-              the frame layer (with overflow-visible) in the same coordinate
-              space. Without this, the white border sits inside the stage's
-              overflow-hidden and gets clipped on landscape images (stage
-              shorter than the 200px crop window).
+          {/* Outer crop container — provides the dark background and is the
+              coordinate space for both the stage and the frame layer.
 
-              Why we DON'T put overflow-hidden on this outer container:
-              - The frame layer needs to be able to extend vertically past
-                the stage bounds on landscape images (e.g. 197×197 frame on a
-                329×152 stage overflows top/bottom by 22.5px).
-              - Horizontal overflow is prevented by baseContainerW being
-                capped at `availableWidth − 16` and by `maxWidth: 100%` on
-                the stage inside, so the outer container never exceeds the
-                page width. */}
+              With the stage-height invariant (`baseContainerH =
+              max(aspectMatchedH, maskH + 2 * FRAME_PADDING)`), the outer
+              container is sized to fit the LARGER of (image aspect) and
+              (mask + padding). On portrait / square images this equals the
+              aspect-matched image height. On landscape images, the stage
+              extends vertically to fit the mask, so the outer (= stage)
+              is tall enough to contain the white frame with breathing
+              room above and below.
+
+              The stage fills the outer (`absolute inset-0` semantics via
+              `top:0, left:0, width:baseContainerW, height:baseContainerH`).
+              Image inside is letterboxed (object-fit: contain) when the
+              stage is taller than the aspect-matched image (landscape).
+
+              The frame layer is a sibling of the stage inside the outer.
+              The white frame is centered in the outer (= stage). Since
+              the outer now always fits the frame + padding, the white
+              frame is always contained within the outer / stage — the
+              "frame exceeds container" visual is impossible.
+
+              Horizontal overflow is prevented by baseContainerW being
+              capped at `availableWidth − 16` and by `maxWidth: 100%` on
+              the outer, so the outer container never exceeds the page
+              width on any viewport. */}
           <div
             data-testid="logo-crop-outer"
-            className="relative mx-auto"
+            className="relative mx-auto rounded-xl"
             style={{
               width: baseContainerW,
-              height: baseContainerH,
+              height: outerContainerH,
               maxWidth: '100%',
+              backgroundColor: '#1a1a1a',
             }}
           >
             {/* Crop stage — overflow-hidden clips the image + SVG mask to
-                the stage box. Pointer events handled here. */}
+                the stage box. Pointer events handled here.
+
+                Fills the outer container entirely (stage height = outer
+                height, top:0, left:0). The image inside is letterboxed
+                (object-fit: contain) — when the stage is taller than the
+                aspect-matched image (landscape), the dark stage background
+                shows through above and below the bright image, providing
+                visual breathing room for the white frame.
+
+                Why the dark background moved to the outer container (and
+                not the stage): so the "canvas" feel extends through the
+                letterbox area, giving the crop frame a consistent dark
+                backdrop regardless of image aspect ratio. The stage's
+                `overflow: hidden` then clips the image + SVG mask to the
+                stage box. */}
             <div
               ref={containerRef}
               data-testid="logo-crop-stage"
-              className="absolute inset-0 rounded-xl"
+              className="absolute rounded-xl"
               style={{
                 cursor: 'grab',
                 touchAction: 'none',
                 userSelect: 'none',
-                backgroundColor: '#1a1a1a',
                 overflow: 'hidden',
+                left: 0,
+                top: 0,
+                width: baseContainerW,
+                height: baseContainerH,
               }}
               onPointerDown={handlePointerDown}
               onPointerMove={handlePointerMove}
