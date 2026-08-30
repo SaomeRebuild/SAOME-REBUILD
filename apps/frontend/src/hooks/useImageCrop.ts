@@ -12,30 +12,35 @@
  */
 
 import { useState, useCallback, useRef } from 'react';
-import { LOGO_CROP_CONFIG } from '@saome/shared/constants/card-images';
+import type { CropState } from '@saome/shared/types';
+import { cropImageOnWeb } from './useImageCrop.web';
+// computeSrcSquareSize moved to @saome/shared/logic/imageCrop (Phase A).
+// Imported here directly to avoid circular references through the barrel.
+import { computeSrcSquareSize } from '@saome/shared/logic/imageCrop';
+// Re-export for backwards-compatible `@/hooks/useImageCrop` consumers (single source).
+export { computeSrcSquareSize };
 
-export interface CropState {
-  /** Focal point X (0-1, relative to original image width). */
-  focalX: number;
-  /** Focal point Y (0-1, relative to original image height). */
-  focalY: number;
-  /** Zoom scale (1 = 100%, 0.5 = 50%, 2 = 200%). */
-  scale: number;
-  /** Natural width of the original image. */
-  naturalWidth: number;
-  /** Natural height of the original image. */
-  naturalHeight: number;
-  /** Pan offset X in CSS pixels (drag-to-move on top of centered layout). */
-  offsetX?: number;
-  /** Pan offset Y in CSS pixels. */
-  offsetY?: number;
-  /** Resolved base canvas width in CSS px for the loaded image. For images
-      smaller than the requested `baseCanvasWidth`, this stores
-      `min(naturalWidth, baseCanvasWidth)` so the srcSquareSize formula uses
-      the same base canvas the UI renders. Set by the component (e.g.
-      LogoUploader) after image load; defaults to 0 before then. */
-  resolvedBaseCanvasWidth?: number;
-}
+/**
+ * Platform-specific cropImage signature shared by web and native impls.
+ * Both `useImageCrop.web.ts` and `useImageCrop.native.ts` conform to this.
+ */
+export type CropImageFn = (
+  image: HTMLImageElement,
+  cropState: CropState,
+  cropWindowSize: number,
+  baseCanvasWidth: number,
+) => Promise<Blob>;
+
+/**
+ * Currently active platform-specific cropImage function.
+ *
+ * Web build: imports `cropImageOnWeb` (Canvas-based drawImage + toBlob).
+ * Native build (future RN): swap to `cropImageOnNative` stub here.
+ *
+ * `@/hooks/useImageCrop` consumers (LogoUploader.handleApplyCrop) receive the
+ * resolved binding through the hook return value; they remain platform-agnostic.
+ */
+const cropImageImpl: CropImageFn = cropImageOnWeb;
 
 export interface UseImageCropOptions {
   /** Output width in pixels (used for canvas width). */
@@ -86,39 +91,6 @@ export interface UseImageCropReturn {
   outputDimensions: { width: number; height: number };
 }
 
-const DEFAULT_MIN_SCALE = 0.5;
-const DEFAULT_MAX_SCALE = 3.0;
-const DEFAULT_INITIAL_SCALE = 1.0;
-const DEFAULT_CROP_WINDOW_SIZE = 200;
-const DEFAULT_BASE_CANVAS_WIDTH = 400;
-
-/**
- * Compute the src-side square size for the exported crop region.
- *
- * Pure function — exported so conformance tests can assert the formula
- * without instantiating React state or invoking canvas APIs.
- *
- * The `naturalHeight` cap is the safety net for landscape images where
- * the conceptual crop window exceeds the stage height — without it, the
- * exported region would be non-square (srcW > srcH) and Canvas would
- * squash the output to fit the 960×960 target.
- *
- * @see apps/frontend/src/hooks/useImageCrop.test.ts (Landscape srcW===srcH invariant)
- * @see runs/improvements/feedback/20260830-logo-uploader-landscape-squash.md
- */
-export function computeSrcSquareSize(
-  cropWindowSize: number,
-  effectiveBaseCanvasWidth: number,
-  scale: number,
-  naturalWidth: number,
-  naturalHeight: number,
-): number {
-  return Math.min(
-    (cropWindowSize / (effectiveBaseCanvasWidth * scale)) * naturalWidth,
-    naturalHeight,
-  );
-}
-
 /**
  * Hook for client-side image cropping with focal point and zoom.
  *
@@ -135,6 +107,12 @@ export function computeSrcSquareSize(
  * };
  * ```
  */
+const DEFAULT_MIN_SCALE = 0.5;
+const DEFAULT_MAX_SCALE = 3.0;
+const DEFAULT_INITIAL_SCALE = 1.0;
+const DEFAULT_CROP_WINDOW_SIZE = 200;
+const DEFAULT_BASE_CANVAS_WIDTH = 400;
+
 export function useImageCrop(options: UseImageCropOptions): UseImageCropReturn {
   const {
     // Deprecated: output dimensions are now computed internally in cropImage()
@@ -245,75 +223,8 @@ export function useImageCrop(options: UseImageCropOptions): UseImageCropReturn {
     if (!img) {
       throw new Error('No image loaded');
     }
-
-    const { focalX, focalY, scale, naturalWidth, naturalHeight, resolvedBaseCanvasWidth } = cropState;
-
-    if (naturalWidth === 0 || naturalHeight === 0) {
-      throw new Error('Image dimensions not yet available');
-    }
-
-    // Prefer the component-supplied resolvedBaseCanvasWidth so small src images
-    // (naturalWidth < baseCanvasWidth) compute the same srcSquareSize as the
-    // UI's baseContainerW. Falls back to baseCanvasWidth option for back-compat.
-    const effectiveBaseCanvasWidth = resolvedBaseCanvasWidth ?? baseCanvasWidth;
-
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      throw new Error('Failed to get canvas context');
-    }
-
-    // Output canvas: square matching OUTPUT_WIDTH.
-    const MAX_LOGO_SIZE = LOGO_CROP_CONFIG.OUTPUT_WIDTH;
-
-    // The UI shows a fixed cropWindowSize×cropWindowSize square crop window in
-    // a canvas of size (baseCanvasWidth × baseCanvasHeight) where the canvas
-    // matches the src aspect so image fills 100% (no letterbox).
-    //
-    // At zoom `scale`, the image is visually scaled by `scale` from the canvas
-    // center. The crop window stays at cropWindowSize CSS px in the canvas, so
-    // the src-side square covered by the crop window = (cropWindowSize / (baseCanvasWidth * scale))
-    // of the src width. Since baseCanvasWidth/NW = baseCanvasHeight/NH (aspect match),
-    // the same fraction applies to height, giving a src-square.
-    //
-    // The naturalHeight cap (inside computeSrcSquareSize) prevents landscape
-    // srcW > srcH from being exported as a stretched 960×960 — see the
-    // Landscape srcW===srcH invariant conformance tests.
-    const srcSquareSize = computeSrcSquareSize(
-      cropWindowSize,
-      effectiveBaseCanvasWidth,
-      scale,
-      naturalWidth,
-      naturalHeight,
-    );
-
-    // Center the src-square on the focal point, clamped to image bounds.
-    const rawX = focalX * naturalWidth - srcSquareSize / 2;
-    const rawY = focalY * naturalHeight - srcSquareSize / 2;
-    const srcX = Math.max(0, rawX);
-    const srcY = Math.max(0, rawY);
-    const srcW = Math.min(srcSquareSize, naturalWidth - srcX);
-    const srcH = Math.min(srcSquareSize, naturalHeight - srcY);
-
-    canvas.width = MAX_LOGO_SIZE;
-    canvas.height = MAX_LOGO_SIZE;
-
-    ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, MAX_LOGO_SIZE, MAX_LOGO_SIZE);
-
-    return new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob(
-        (blob) => {
-          if (blob) {
-            resolve(blob);
-          } else {
-            reject(new Error('Failed to create blob from canvas'));
-          }
-        },
-        'image/png',
-        1.0,
-      );
-    });
-  }, [cropState]);
+    return cropImageImpl(img, cropState, cropWindowSize, baseCanvasWidth);
+  }, [cropState, cropWindowSize, baseCanvasWidth]);
 
   const resetCrop = useCallback(() => {
     setCropState({

@@ -227,14 +227,14 @@ describe('LogoUploader drag momentum (mobile UX)', () => {
     await enterCroppingState();
     const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
 
-    // Slow: 1px per 200ms → velocity ≈ 0.005 px/ms.
-    // × TOUCH_SENSITIVITY 3.0 → 0.015 px/ms, BELOW MOMENTUM_MIN_VELOCITY 0.012.
-    // No rAF should fire; final focal sync runs synchronously.
+    // Truly slow: 0.5px per 500ms → velocity ≈ 0.001 px/ms.
+    // × TOUCH_SENSITIVITY 5.0 → 0.005 px/ms, right at MOMENTUM_MIN_VELOCITY 0.005.
+    // Slightly below: 0.4px per 500ms → 0.0008 × 5.0 = 0.004 < 0.005. No rAF fires.
     await simulateTouchDrag(stage, [
       { type: 'start', x: 200, y: 200 },
-      { type: 'move', x: 201, y: 200, delayMs: 200 },
-      { type: 'move', x: 202, y: 200, delayMs: 200 },
-      { type: 'end', x: 202, y: 200 },
+      { type: 'move', x: 200.4, y: 200, delayMs: 500 },
+      { type: 'move', x: 200.8, y: 200, delayMs: 500 },
+      { type: 'end', x: 200.8, y: 200 },
     ]);
 
     expect(rafCallbacks.length).toBe(0);

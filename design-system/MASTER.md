@@ -383,3 +383,15 @@ srcSquareSize = (cropWindowSize / (baseCanvasWidth * scale)) * naturalWidth
 **禁止**用 `min(NW, NH) / scale`（會跟 UI mask 在 src 中的 size 不一致，導致 UI 跟 export 視覺位置不同）。
 
 詳見 `.cursor/rules/028-image-uploader-pattern.mdc` § 11 與 `.cursor/skills/saome-image-upload/SKILL.md` § Crop Window Invariant。
+
+### Mobile Drag UX 三軸（必遵守）
+
+詳見 `.cursor/rules/frontend/029-image-crop-mobile-ux.mdc`（Rule 029）。
+
+| 軸 | touch | mouse | pen |
+|----|-------|-------|-----|
+| sensitivity | 5.0 | 1.0 | 1.0 |
+| 順暢度 | ref+DOM | ref+DOM | ref+DOM |
+| momentum | on | off | off |
+
+chain overflow 防護：crop stage 用了 inline width 的元件，整條 flex chain 的 flex item 都要加 `min-w-0`；html/body 加 `overflow-x: hidden` 終局保護。

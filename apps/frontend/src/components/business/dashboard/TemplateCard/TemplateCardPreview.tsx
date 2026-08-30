@@ -7,6 +7,7 @@ import { Barcode, Building2, CreditCard } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { api } from '@/config/api';
 import { getAccessToken } from '@/services/authStore';
+import { useCardBuilderStore } from '../CardBuilderEditor/CardBuilderEditor.store';
 
 const DEMO_BARCODE_VALUE = '4938591027384';
 
@@ -37,8 +38,9 @@ export function TemplateCardPreview({
 
   // Build proxy URL: avoids relying on Windows DNS resolving saome-assets.pages.dev
   const token = getAccessToken();
+  const issuerLogoVersion = useCardBuilderStore.getState().issuerLogoVersion;
   const logoUrl = issuerLogo && templateId
-    ? `${api.baseUrl}${api.paths.cardImage(templateId, 'logo')}${token ? `?token=${encodeURIComponent(token)}` : ''}`
+    ? `${api.baseUrl}${api.paths.cardImage(templateId, 'logo')}${token ? `?token=${encodeURIComponent(token)}` : ''}&v=${issuerLogoVersion}`
     : undefined;
 
   return (
