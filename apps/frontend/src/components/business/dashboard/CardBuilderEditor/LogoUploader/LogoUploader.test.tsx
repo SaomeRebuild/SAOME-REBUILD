@@ -37,8 +37,13 @@ const baseCropState = {
 };
 
 function mockImageCropReturn(overrides: Record<string, unknown> = {}) {
+  // Support nested `cropState` overrides: the LogoUploader reads
+  // naturalWidth/naturalHeight/resolvedBaseCanvasWidth from
+  // useImageCrop.cropState, so they MUST go inside the cropState object.
+  // Top-level overrides apply to the hook's other return fields.
+  const { cropState: cropStateOverrides, ...restOverrides } = overrides;
   return {
-    cropState: baseCropState,
+    cropState: { ...baseCropState, ...(cropStateOverrides as Partial<typeof baseCropState> ?? {}) },
     imageUrl: null,
     imageRef: { current: null },
     setCropState: vi.fn(),
@@ -51,7 +56,7 @@ function mockImageCropReturn(overrides: Record<string, unknown> = {}) {
     hasImage: false,
     originalFile: null,
     outputDimensions: { width: 960, height: 540 },
-    ...overrides,
+    ...restOverrides,
   };
 }
 
@@ -113,15 +118,14 @@ describe('LogoUploader', () => {
       });
       // Fire ResizeObserver on the LogoUploader root with the parent's content-box width.
       // jsdom offsetWidth is always 0, so we have to drive the measurement via the polyfill.
-      // The cropping state's outer div carries the wrapperRef, identifiable by
-      // `data-cursor-element-id` (RTL injects this when cursor-el-* attrs exist),
-      // or by its position as the unique `.flex.min-w-0.flex-col.items-center.gap-4`
-      // AFTER cropping activates (idle wrapper is unmounted).
+      // The cropping state's outer wrapper is identified by `data-testid="logo-crop-wrapper"`
+      // — that's where the ResizeObserver is attached in LogoUploader. Note: the stage
+      // is now `absolute inset-0` inside an outer container, so we can no longer use
+      // `cropStage.parentElement` to find the wrapper.
       const { triggerResize } = await import('@/test/setup');
-      const cropStage = container.querySelector('[data-testid="logo-crop-stage"]');
-      const root = cropStage?.parentElement;
+      const root = container.querySelector('[data-testid="logo-crop-wrapper"]');
       // eslint-disable-next-line no-console
-      console.log(`[TEST] crop-stage=${!!cropStage}, root=${!!root}, rootTag=${root?.tagName}, rootClassList=${root?.className.slice(0, 60)}`);
+      console.log(`[TEST] root=${!!root}, rootTag=${root?.tagName}, rootClassList=${root?.className.slice(0, 60)}`);
       if (!root) throw new Error('cropping wrapper not found');
       triggerResize(root, parentWidth, 800);
       // eslint-disable-next-line no-console
@@ -130,21 +134,21 @@ describe('LogoUploader', () => {
       // re-renders. Wait for the new width to land in the DOM.
       const expectedW = Math.min(400, Math.max(parentWidth - 16, 200));
       await waitFor(() => {
-        const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
+        const stage = screen.getByTestId('logo-crop-outer') as HTMLElement;
         expect(stage.style.width).toBe(`${expectedW}px`);
       });
     }
 
     it('caps crop container at parentWidth − 16px on iPhone (375px parent)', async () => {
       await renderInParent(375);
-      const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
+      const stage = screen.getByTestId('logo-crop-outer') as HTMLElement;
       // 375 − 16 (STAGE_SAFETY_MARGIN) = 359px (still < BASE 400)
       expect(stage.style.width).toBe('359px');
     });
 
     it('respects narrow phone viewport (parentWidth 320 → 304px container)', async () => {
       await renderInParent(320);
-      const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
+      const stage = screen.getByTestId('logo-crop-outer') as HTMLElement;
       // 320 − 16 = 304px (still > CROP_WINDOW_SIZE 200)
       expect(stage.style.width).toBe('304px');
     });
@@ -158,21 +162,21 @@ describe('LogoUploader', () => {
      */
     it('caps crop container at 400px (BASE_CANVAS_WIDTH) on iPhone 12 Pro Max (428px parent)', async () => {
       await renderInParent(428);
-      const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
+      const stage = screen.getByTestId('logo-crop-outer') as HTMLElement;
       // 428 − 16 = 412, but min(400, 412) = 400 (BASE wins)
       expect(stage.style.width).toBe('400px');
     });
 
     it('uses BASE_CANVAS_WIDTH (400px) on desktop (parentWidth 1024)', async () => {
       await renderInParent(1024);
-      const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
+      const stage = screen.getByTestId('logo-crop-outer') as HTMLElement;
       // Desktop: parent cap is 1008px, but BASE_CANVAS_WIDTH=400 wins (min(400, 1008))
       expect(stage.style.width).toBe('400px');
     });
 
     it('has maxWidth safety net so container never overflows its parent', async () => {
       await renderInParent(375);
-      const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
+      const stage = screen.getByTestId('logo-crop-outer') as HTMLElement;
       expect(stage.style.maxWidth).toBe('100%');
     });
 
@@ -183,7 +187,7 @@ describe('LogoUploader', () => {
      */
     it('caps crop container at 374px on iPhone 12/13/14 (390px parent)', async () => {
       await renderInParent(390);
-      const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
+      const stage = screen.getByTestId('logo-crop-outer') as HTMLElement;
       // 390 − 16 = 374px
       expect(stage.style.width).toBe('374px');
     });
@@ -196,10 +200,210 @@ describe('LogoUploader', () => {
      */
     it('never overflows parent even with multiple padding wrappers (parentWidth 280)', async () => {
       await renderInParent(280);
-      const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
+      const stage = screen.getByTestId('logo-crop-outer') as HTMLElement;
       // 280 − 16 = 264px. Floor at CROP_WINDOW_SIZE 200 (so 264 wins).
       expect(stage.style.width).toBe('264px');
       expect(parseInt(stage.style.width)).toBeLessThan(280);
+    });
+  });
+
+  describe('stage height extends to contain mask (landscape frame overflow fix)', () => {
+    /**
+     * Bug regression: landscape source images (NW > NH) caused the
+     * crop stage's aspect-matched height to be much shorter than the
+     * ~200×200 crop mask. Previously the white frame border was centered
+     * in the OUTER container (sibling layer above the stage) and extended
+     * BEYOND the stage vertically into the outer's padding area —
+     * perceived as "white frame exceeds the container / stage".
+     *
+     * Fix (stage-height invariant):
+     *   baseContainerH = max(aspectMatchedH, maskH + 2 * FRAME_PADDING)
+     *
+     * For landscape, the stage extends vertically to include the mask
+     * area. The image inside is letterboxed via object-fit: contain, and
+     * the dark stage background (= outer container background) shows
+     * through above/below the bright image. The white frame is now always
+     * contained within the stage (= outer container) — no "frame exceeds
+     * container" visual.
+     *
+     * FRAME_PADDING = 16 (Tailwind md token). 16px breathing room above
+     * and below the white frame inside the stage.
+     */
+
+    async function renderLandscapeAndResize(
+      naturalWidth: number,
+      naturalHeight: number,
+      parentWidth: number,
+    ) {
+      vi.mocked(useImageCrop).mockReturnValue(
+        mockImageCropReturn({
+          cropState: {
+            naturalWidth,
+            naturalHeight,
+            resolvedBaseCanvasWidth: Math.min(parentWidth - 16, 400),
+          },
+        }),
+      );
+      const { container } = render(
+        <div style={{ width: `${parentWidth}px` }} data-testid="constrained-parent">
+          <LogoUploader templateId="t1" onLogoUploaded={vi.fn()} />
+        </div>,
+      );
+      const input = container.querySelector(
+        'input[type="file"]',
+      ) as HTMLInputElement;
+      const file = new File(['x'], 'logo.png', { type: 'image/png' });
+      Object.defineProperty(input, 'files', { value: [file], configurable: true });
+      fireEvent.change(input);
+      await waitFor(() => {
+        expect(screen.getByText(/拖曳調整顯示區域/i)).toBeInTheDocument();
+      });
+      const { triggerResize } = await import('@/test/setup');
+      const root = container.querySelector('[data-testid="logo-crop-wrapper"]');
+      if (!root) throw new Error('cropping wrapper not found');
+      triggerResize(root, parentWidth, 800);
+    }
+
+    it('stage extends to maskSize + 32 for landscape (3000×1000)', async () => {
+      await renderLandscapeAndResize(3000, 1000, 376);
+
+      await waitFor(() => {
+        const outer = screen.getByTestId('logo-crop-outer') as HTMLElement;
+        const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
+        // baseContainerW = min(3000, 400, 376-16) = 360
+        // aspectMatchedH = round(360 * 1000/3000) = 120
+        // maskSize = min(360*0.6, 200) = 200
+        // FRAME_PADDING = 16 → mask + 2*padding = 232
+        // baseContainerH = max(120, 232) = 232 ← stage extends to fit mask
+        // outerContainerH = baseContainerH = 232
+        expect(outer.style.height).toBe('232px');
+        // Stage fills outer (top:0, height=outerH)
+        expect(stage.style.height).toBe('232px');
+        expect(stage.style.top).toBe('0px');
+        // Stage still full width
+        expect(stage.style.width).toBe('360px');
+        expect(stage.style.left).toBe('0px');
+      });
+    });
+
+    it('stage extends to maskSize + 32 for extreme landscape (3000×500)', async () => {
+      await renderLandscapeAndResize(3000, 500, 376);
+
+      await waitFor(() => {
+        const outer = screen.getByTestId('logo-crop-outer') as HTMLElement;
+        const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
+        // baseContainerW = 360
+        // aspectMatchedH = round(360 * 500/3000) = 60 (extreme landscape)
+        // maskSize = 200, padding = 16 → mask + 2*padding = 232
+        // baseContainerH = max(60, 232) = 232 ← padding dominates
+        expect(outer.style.height).toBe('232px');
+        expect(stage.style.height).toBe('232px');
+        expect(stage.style.top).toBe('0px');
+      });
+    });
+
+    it('stage height equals aspectMatchedH for portrait (no padding needed)', async () => {
+      await renderLandscapeAndResize(1000, 3000, 376);
+
+      await waitFor(() => {
+        const outer = screen.getByTestId('logo-crop-outer') as HTMLElement;
+        const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
+        // baseContainerW = min(1000, 400, 360) = 360
+        // aspectMatchedH = round(360 * 3000/1000) = 1080 (portrait 1:3)
+        // maskSize + 2*padding = 232
+        // baseContainerH = max(1080, 232) = 1080 ← portrait dominates
+        expect(outer.style.height).toBe('1080px');
+        expect(stage.style.height).toBe('1080px');
+        // Stage fills outer (top:0)
+        expect(stage.style.top).toBe('0px');
+      });
+    });
+
+    it('stage height equals aspectMatchedH for square images', async () => {
+      await renderLandscapeAndResize(1000, 1000, 376);
+
+      await waitFor(() => {
+        const outer = screen.getByTestId('logo-crop-outer') as HTMLElement;
+        const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
+        // baseContainerW = 360, aspectMatchedH = 360 (square)
+        // baseContainerH = max(360, 232) = 360 ← square dominates
+        expect(outer.style.height).toBe('360px');
+        expect(stage.style.height).toBe('360px');
+        expect(stage.style.top).toBe('0px');
+      });
+    });
+
+    it('white crop frame stays within stage / outer container bounds (no overflow)', async () => {
+      // Use extreme landscape so the padding is the dominant effect
+      await renderLandscapeAndResize(3000, 500, 376);
+
+      await waitFor(() => {
+        const outer = screen.getByTestId('logo-crop-outer') as HTMLElement;
+        const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
+        const frameLayer = outer.querySelector(
+          '[data-testid="logo-crop-frame-layer"]',
+        ) as HTMLElement;
+        expect(frameLayer).toBeTruthy();
+
+        // Stage fills outer (stageH = outerH = 232)
+        const outerH = parseFloat(outer.style.height);
+        const stageH = parseFloat(stage.style.height);
+        expect(stageH).toBe(outerH);
+
+        // White frame inside is at left:50%, top:50%, translate(-50%, -50%)
+        // → its bounding box is centered in the outer (= stage).
+        const frame = frameLayer.firstElementChild as HTMLElement;
+        expect(frame).toBeTruthy();
+        expect(parseFloat(frame.style.width)).toBeCloseTo(200, 1);
+        expect(parseFloat(frame.style.height)).toBeCloseTo(200, 1);
+
+        // Frame is contained within stage (= outer) with breathing room above and below.
+        // outerH = 232, maskH = 200 → top of frame = 16, bottom = 216
+        // Stage: top:0, height:232 → frame top (16) ≥ stage top (0), frame bottom (216) ≤ stage bottom (232)
+        const maskH = parseFloat(frame.style.height);
+        expect(outerH - maskH).toBe(32); // 2 * FRAME_PADDING (16px each side)
+      });
+    });
+
+    /**
+     * New invariant (2026-08-30 fix): the stage's height is ALWAYS >=
+     * the mask height + 2 * FRAME_PADDING. This guarantees the white
+     * frame border is always contained within the stage (= outer
+     * container), regardless of source image aspect ratio.
+     */
+    it('invariant: stageH >= maskH + 2 * FRAME_PADDING for ALL aspect ratios', async () => {
+      // Test across portrait, square, landscape, extreme landscape.
+      // Each case uses its own isolated render so cleanup is implicit
+      // via `afterEach(cleanup)` from the test framework.
+      const { cleanup } = await import('@testing-library/react');
+      const cases = [
+        { name: 'portrait 1:3', w: 1000, h: 3000, parentW: 376 },
+        { name: 'square 1:1', w: 1000, h: 1000, parentW: 376 },
+        { name: 'mild landscape 16:9', w: 1920, h: 1080, parentW: 376 },
+        { name: 'landscape 3:1', w: 3000, h: 1000, parentW: 376 },
+        { name: 'extreme landscape 15:1', w: 3000, h: 200, parentW: 376 },
+        { name: 'extreme landscape 6:1', w: 3000, h: 500, parentW: 376 },
+      ];
+
+      for (const c of cases) {
+        cleanup();
+        await renderLandscapeAndResize(c.w, c.h, c.parentW);
+        await waitFor(() => {
+          const outer = screen.getByTestId('logo-crop-outer') as HTMLElement;
+          const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
+          const frameLayer = outer.querySelector(
+            '[data-testid="logo-crop-frame-layer"]',
+          ) as HTMLElement;
+          expect(frameLayer).toBeTruthy();
+          const frame = frameLayer.firstElementChild as HTMLElement;
+
+          const stageH = parseFloat(stage.style.height);
+          const maskH = parseFloat(frame.style.height);
+          // Invariant: stageH >= maskH + 2 * FRAME_PADDING (16)
+          // → frame has ≥ 16px breathing room above and below inside the stage
+          expect(stageH).toBeGreaterThanOrEqual(maskH + 32);
+        }, { timeout: 3000 });
+      }
     });
   });
 });

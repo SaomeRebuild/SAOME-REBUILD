@@ -144,15 +144,16 @@ export function LogoUploader({
 
   // Constants — touch momentum: moderate friction for natural glide
   const MOMENTUM_HISTORY_WINDOW_MS = 120; // captures slower swipes
-  const MOMENTUM_MIN_VELOCITY = 0.012;   // px/ms threshold to trigger glide
+  const MOMENTUM_MIN_VELOCITY = 0.005;   // px/ms threshold to trigger glide — lowered from 0.012 so slower swipes (even 2px/500ms × 5.0 = 0.02 px/ms) also get momentum
   const MOMENTUM_FRICTION = 0.96;         // decay per ~16ms frame
   const MOMENTUM_FRAME_MS = 16;           // ~60fps timestep
 
   // Mouse sensitivity: 1:1 pixel mapping for precise control
   const MOUSE_SENSITIVITY = 1.0;
-  // Touch sensitivity: 3x — matches native iOS/Android photo cropper feel.
-  // A 200px screen drag → 600px focal shift, traversing full focal range
-  // in ~67px drag. See 20260830 feedback.
+  // Touch sensitivity: 3.0 — user said 5.0 still feels "too fast" on real phone.
+  // Native iOS/Android photo croppers use 1:1 or slightly amplified (1.5–2x) sensitivity.
+  // 3.0 means a 40px finger drag → 120px focal shift, traversing full focal range in
+  // ~56px — more controlled than the previous 5.0 (full range in ~34px).
   const TOUCH_SENSITIVITY = 3.0;
 
   /**
@@ -302,9 +303,75 @@ export function LogoUploader({
     BASE_CANVAS_WIDTH,
     Math.max(availableWidth - STAGE_SAFETY_MARGIN, CROP_WINDOW_SIZE),
   );
-  const baseContainerH = cropState.naturalWidth > 0
+  // Note: `baseContainerH` is computed below in the "Stage height invariant"
+  // block (must include mask height + padding so the frame is contained within
+  // the stage for landscape images).
+
+  // Responsive crop window: proportional to stage width on mobile, capped at 200px.
+  // On desktop (400px stage) → 200px (= CROP_WINDOW_SIZE, max = 200).
+  // On mobile (329px stage) → 197px (329 * 0.6 ≈ 197).
+  //
+  // For LANDSCAPE images the stage extends vertically to fit the mask
+  // (see baseContainerH invariant below), so the white frame always fits
+  // within the stage. The image inside is letterboxed (object-fit: contain)
+  // and the dark stage background provides the breathing room above/below.
+  //
+  // IMPORTANT: the final canvas export ALWAYS outputs 200×200px (via
+  // useImageCrop). The visual mask is purely for UX feedback — its size
+  // mirrors what the user will see in the exported image.
+  const CROP_WINDOW_SHARE = 0.6;
+  const responsiveCropWindow = Math.min(
+    baseContainerW * CROP_WINDOW_SHARE,
+    CROP_WINDOW_SIZE, // never larger than 200px
+  );
+
+  /**
+   * Stage height invariant (Bug-fix 2026-08-30):
+   *
+   *   stageH = max(aspectMatchedH, maskH + 2 * FRAME_PADDING)
+   *
+   * For LANDSCAPE images (aspect-matched height < mask height), the stage
+   * extends vertically to fit the mask so the white frame is always
+   * contained within the stage. The image inside is letterboxed via
+   * object-fit: contain, and the dark padding above/below the image comes
+   * from the stage's background (= the outer container's background).
+   *
+   * For PORTRAIT / SQUARE images, the aspect-matched height already exceeds
+   * the mask height + padding, so the stage stays at the image's natural
+   * aspect — no change.
+   *
+   * Why we don't have a separate outer-container padding anymore:
+   *   Previously (bug) the stage was aspect-matched and the outer container
+   *   padded itself to fit the mask. The white frame (sibling of stage,
+   *   absolute inset-0 of outer) was centered in the OUTER, so for
+   *   landscape it extended BEYOND the stage into the outer's padding.
+   *   Users saw this as "white frame exceeds the container / stage".
+   *
+   *   Now: stage = max(aspect, mask + padding). Outer = stage. Frame is
+   *   centered in (= contained within) the stage. Image letterboxes inside
+   *   the stage for landscape.
+   *
+   * FRAME_PADDING is the breathing room above and below the white frame
+   * inside the stage. 16px matches the Tailwind `md` spacing token.
+   */
+  const FRAME_PADDING = 16; // px breathing room around the crop frame (Tailwind md)
+
+  // Stage height = max of (aspect-matched image height) and (mask height + 2 * padding).
+  // For landscape images, the stage extends vertically to include the mask area so the
+  // white frame is always contained within the stage (no "frame exceeds container" visual).
+  const aspectMatchedH = cropState.naturalWidth > 0
     ? Math.round(baseContainerW * (cropState.naturalHeight / cropState.naturalWidth))
     : BASE_CANVAS_WIDTH;
+  const baseContainerH = Math.max(
+    aspectMatchedH,
+    responsiveCropWindow + 2 * FRAME_PADDING,
+  );
+
+  // Outer container height = stage height. The outer is now just a wrapper that
+  // provides the dark background for the letterbox area (above/below the image
+  // when stage extends to fit the frame on landscape). Frame is centered in
+  // (= contained within) this combined stage/outer element.
+  const outerContainerH = baseContainerH;
 
   // Sync resolvedBaseCanvasWidth into cropState so useImageCrop.cropImage()
   // uses the same base canvas width as the UI for small src images (NW < BASE).
@@ -775,7 +842,11 @@ export function LogoUploader({
     const showPreview = Boolean(displayUrl);
 
     return (
-      <div ref={wrapperRef} className={`flex min-w-0 flex-col items-center gap-4 ${className}`}>
+      <div
+      ref={wrapperRef}
+      data-testid="logo-crop-wrapper"
+      className={`flex min-w-0 flex-col items-center gap-4 ${className}`}
+    >
         {/* min-w-0: defensive — prevents the LogoUploader root from growing
             to fit crop stage's inline width and propagating the overflow up
             the flex chain (section → aside → CardBuilderEditor → page wrapper).
@@ -886,15 +957,20 @@ export function LogoUploader({
   // ===== Cropping / Uploading state =====
 
   return (
-    <div ref={wrapperRef} className={`flex min-w-0 flex-col items-center gap-4 overflow-hidden ${className}`}>
-      {/* min-w-0 + overflow-hidden: defensive — the cropping state contains
-          the crop stage which sets an inline width (e.g. 329px on 412px viewport).
-          - min-w-0: prevents this container from inflating its flex parent's
-            min-content to 329px (stopping horizontal overflow propagation).
-          - overflow-hidden: clips the crop stage at the container boundary, so
-            even if the crop stage's 329px content slightly overflows on tiny
-            viewports (e.g. 320px wide), the wrapper absorbs it and the page
-            stays scrollable only vertically. See feedback 20260830. */}
+    <div
+      ref={wrapperRef}
+      data-testid="logo-crop-wrapper"
+      className={`flex min-w-0 flex-col items-center gap-4 ${className}`}
+    >
+      {/* min-w-0: prevents this container from inflating its flex parent's
+          min-content to 329px (stopping horizontal overflow propagation).
+          overflow-hidden REMOVED — the white crop-frame border now lives in a
+          sibling layer below (CropFrameLayer) and must be allowed to draw
+          outside the stage bounds for landscape images (stage shorter than
+          the 200px crop window). Horizontal overflow protection is preserved
+          by baseContainerW being capped at availableWidth − 16 and by the
+          `maxWidth: 100%` on the stage, so no element inside this wrapper
+          can exceed the page width even on 320px viewports. */}
       {/* Upload progress */}
       {state === 'uploading' && (
         <div className="flex flex-col items-center gap-3">
@@ -911,113 +987,168 @@ export function LogoUploader({
             {t('dragging')}
           </p>
 
-          {/* Crop stage — outer container is fixed in layout so zoom-in doesn't
-              reflow the page. The inner canvas applies a CSS scale transform
-              (around the canvas center) so the user sees the image visually
-              enlarge from the center outward.
-              maxWidth: '100%' is a belt-and-suspenders safety net: on the
-              unlikely case that viewportW tracking lags (e.g. orientation
-              change between paint and effect) the container still won't
-              overflow its parent. */}
+          {/* Outer crop container — provides the dark background and is the
+              coordinate space for both the stage and the frame layer.
+
+              With the stage-height invariant (`baseContainerH =
+              max(aspectMatchedH, maskH + 2 * FRAME_PADDING)`), the outer
+              container is sized to fit the LARGER of (image aspect) and
+              (mask + padding). On portrait / square images this equals the
+              aspect-matched image height. On landscape images, the stage
+              extends vertically to fit the mask, so the outer (= stage)
+              is tall enough to contain the white frame with breathing
+              room above and below.
+
+              The stage fills the outer (`absolute inset-0` semantics via
+              `top:0, left:0, width:baseContainerW, height:baseContainerH`).
+              Image inside is letterboxed (object-fit: contain) when the
+              stage is taller than the aspect-matched image (landscape).
+
+              The frame layer is a sibling of the stage inside the outer.
+              The white frame is centered in the outer (= stage). Since
+              the outer now always fits the frame + padding, the white
+              frame is always contained within the outer / stage — the
+              "frame exceeds container" visual is impossible.
+
+              Horizontal overflow is prevented by baseContainerW being
+              capped at `availableWidth − 16` and by `maxWidth: 100%` on
+              the outer, so the outer container never exceeds the page
+              width on any viewport. */}
           <div
-            ref={containerRef}
-            data-testid="logo-crop-stage"
+            data-testid="logo-crop-outer"
             className="relative mx-auto rounded-xl"
             style={{
               width: baseContainerW,
-              height: baseContainerH,
+              height: outerContainerH,
               maxWidth: '100%',
-              cursor: 'grab',
-              touchAction: 'none',
-              userSelect: 'none',
               backgroundColor: '#1a1a1a',
-              overflow: 'hidden',
             }}
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-            onPointerLeave={handlePointerUp}
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
           >
-            {/* Inner canvas — fixed base size in layout but transform: scale lets
-                the image visually grow without changing layout. SVG mask and
-                mask border sit OUTSIDE this canvas so they stay 200x200 — only
-                the image scales, so the user sees the same crop window frame
-                while the image inside it shows more detail. */}
+            {/* Crop stage — overflow-hidden clips the image + SVG mask to
+                the stage box. Pointer events handled here.
+
+                Fills the outer container entirely (stage height = outer
+                height, top:0, left:0). The image inside is letterboxed
+                (object-fit: contain) — when the stage is taller than the
+                aspect-matched image (landscape), the dark stage background
+                shows through above and below the bright image, providing
+                visual breathing room for the white frame.
+
+                Why the dark background moved to the outer container (and
+                not the stage): so the "canvas" feel extends through the
+                letterbox area, giving the crop frame a consistent dark
+                backdrop regardless of image aspect ratio. The stage's
+                `overflow: hidden` then clips the image + SVG mask to the
+                stage box. */}
             <div
-              className="absolute"
+              ref={containerRef}
+              data-testid="logo-crop-stage"
+              className="absolute rounded-xl"
               style={{
+                cursor: 'grab',
+                touchAction: 'none',
+                userSelect: 'none',
+                overflow: 'hidden',
+                left: 0,
+                top: 0,
                 width: baseContainerW,
                 height: baseContainerH,
-                transform: `scale(${cropState.scale})`,
-                transformOrigin: `${baseContainerW / 2}px ${baseContainerH / 2}px`,
               }}
+              onPointerDown={handlePointerDown}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+              onPointerLeave={handlePointerUp}
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
             >
-              {/* Bright full image — visible through the SVG mask "hole" */}
-              {imageUrl && (
-                <img
-                  src={imageUrl}
-                  alt=""
-                  ref={onImageLoad}
-                  className="pointer-events-none select-none"
-                  draggable={false}
-                  style={calculateImageStyle()}
-                  onLoad={(e) => onImageLoad(e.currentTarget)}
-                />
-              )}
-            </div>
-
-            {/* SVG mask layer — stays at base container size and is NOT scaled.
-                Dim everything except a fixed 200x200 center crop window. */}
-            <svg
-              className="pointer-events-none absolute inset-0"
-              width={baseContainerW}
-              height={baseContainerH}
-              style={{ display: 'block' }}
-            >
-              <defs>
-                <mask id="logo-crop-mask">
-                  {/* Outer rect: full container = white (mask shows the overlay) */}
-                  <rect width={baseContainerW} height={baseContainerH} fill="white" />
-                  {/* Inner rect: 200x200 center crop window = black (mask hides overlay there,
-                    letting bright image show through) */}
-                  <rect
-                    x={(baseContainerW - CROP_WINDOW_SIZE) / 2}
-                    y={(baseContainerH - CROP_WINDOW_SIZE) / 2}
-                    width={CROP_WINDOW_SIZE}
-                    height={CROP_WINDOW_SIZE}
-                    rx="0.5rem"
-                    fill="black"
+              {/* Inner canvas — fixed base size in layout but transform: scale lets
+                  the image visually grow without changing layout. SVG mask and
+                  mask border sit OUTSIDE this canvas so they stay 200x200 — only
+                  the image scales, so the user sees the same crop window frame
+                  while the image inside it shows more detail. */}
+              <div
+                className="absolute"
+                style={{
+                  width: baseContainerW,
+                  height: baseContainerH,
+                  transform: `scale(${cropState.scale})`,
+                  transformOrigin: `${baseContainerW / 2}px ${baseContainerH / 2}px`,
+                }}
+              >
+                {/* Bright full image — visible through the SVG mask "hole" */}
+                {imageUrl && (
+                  <img
+                    src={imageUrl}
+                    alt=""
+                    ref={onImageLoad}
+                    className="pointer-events-none select-none"
+                    draggable={false}
+                    style={calculateImageStyle()}
+                    onLoad={(e) => onImageLoad(e.currentTarget)}
                   />
-                </mask>
-              </defs>
-              {/* Dark overlay: visible in white mask areas (outside crop), hidden in black (crop window) */}
-              <rect
+                )}
+              </div>
+
+              {/* SVG mask layer — stays at base container size and is NOT scaled.
+                  Dim everything except a responsive-size center crop window. */}
+              <svg
+                className="pointer-events-none absolute inset-0"
                 width={baseContainerW}
                 height={baseContainerH}
-                fill="rgba(0,0,0,0.5)"
-                mask="url(#logo-crop-mask)"
-              />
-            </svg>
+                style={{ display: 'block' }}
+              >
+                <defs>
+                  <mask id="logo-crop-mask">
+                    {/* Outer rect: full container = white (mask shows the overlay) */}
+                    <rect width={baseContainerW} height={baseContainerH} fill="white" />
+                    {/* Inner rect: responsive center crop window = black (mask hides overlay there,
+                      letting bright image show through). Scales with stage on mobile but
+                      capped at CROP_WINDOW_SIZE (200px) on desktop. */}
+                    <rect
+                      x={(baseContainerW - responsiveCropWindow) / 2}
+                      y={(baseContainerH - responsiveCropWindow) / 2}
+                      width={responsiveCropWindow}
+                      height={responsiveCropWindow}
+                      rx="0.5rem"
+                      fill="black"
+                    />
+                  </mask>
+                </defs>
+                {/* Dark overlay: visible in white mask areas (outside crop), hidden in black (crop window) */}
+                <rect
+                  width={baseContainerW}
+                  height={baseContainerH}
+                  fill="rgba(0,0,0,0.5)"
+                  mask="url(#logo-crop-mask)"
+                />
+              </svg>
+            </div>
 
-            {/* 200x200 crop window — fixed-size white border. Sits on top of the
-                scaled image at the container center. NOT scaled, so the crop
-                frame stays the same size while the image inside it gets bigger. */}
+            {/* Crop frame layer — sibling of the stage but INSIDE the same
+                outer container, so it shares the same coordinate origin
+                (top-left of the stage). overflow-visible (default for
+                `relative` + no explicit overflow) lets the white border
+                extend beyond the stage bounds on landscape images, while
+                pointer-events-none ensures it doesn't steal drag events
+                from the stage underneath. */}
             <div
-              className="pointer-events-none absolute rounded border-2 border-white/70"
-              style={{
-                width: CROP_WINDOW_SIZE,
-                height: CROP_WINDOW_SIZE,
-                left: '50%',
-                top: '50%',
-                transform: 'translate(-50%, -50%)',
-              }}
-            />
-          </div>
-
-          {/* Scale control */}
+              data-testid="logo-crop-frame-layer"
+              className="pointer-events-none absolute inset-0"
+              aria-hidden="true"
+            >
+              <div
+                className="absolute rounded border-2 border-white/70"
+                style={{
+                  width: responsiveCropWindow,
+                  height: responsiveCropWindow,
+                  left: '50%',
+                  top: '50%',
+                  transform: 'translate(-50%, -50%)',
+                }}
+              />
+            </div>
+          </div>          {/* Scale control */}
           <div className="flex w-full items-center gap-3 px-2">
             <ZoomOut size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
             <input

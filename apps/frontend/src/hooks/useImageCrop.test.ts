@@ -16,6 +16,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { syncFocalFromOffset } from '@/components/business/dashboard/CardBuilderEditor/LogoUploader/LogoUploader';
+import { computeSrcSquareSize } from '@/hooks/useImageCrop';
 import { LOGO_CROP_CONFIG } from '@saome/shared/constants/card-images';
 
 /** Minimal CropState shape needed by conformance tests — mirrors useImageCrop.CropState */
@@ -35,20 +36,12 @@ type CropState = {
 // ---------------------------------------------------------------------------
 
 /**
- * Mirrors the srcSquareSize formula inside useImageCrop.cropImage().
- * Exposed here so conformance tests can assert the math independently.
- */
-function computeSrcSquareSize(
-  cropWindowSize: number,
-  effectiveBaseCanvasWidth: number,
-  scale: number,
-  naturalWidth: number,
-): number {
-  return (cropWindowSize / (effectiveBaseCanvasWidth * scale)) * naturalWidth;
-}
-
-/**
  * Mirrors the raw srcX/srcY computation inside useImageCrop.cropImage().
+ *
+ * `computeSrcSquareSize` itself is imported from useImageCrop so the test
+ * pins the production-side formula (no local duplicate that could drift).
+ * The focal→srcX/srcY math stays local because it lives only as test-side
+ * assertion geometry, not as production code.
  */
 function computeSrcRect(
   focalX: number,
@@ -77,7 +70,7 @@ describe('useImageCrop — conformance tests (Crop Window Invariant)', () => {
 
   describe('srcSquareSize formula', () => {
     it('scale=1, focal=0.5, src 1024×768, baseW=400, mask=200 → 512×512 square centered', () => {
-      const srcSquareSize = computeSrcSquareSize(200, 400, 1, 1024);
+      const srcSquareSize = computeSrcSquareSize(200, 400, 1, 1024, 768);
       expect(srcSquareSize).toBe(512);
 
       const { srcX, srcY, srcW, srcH } = computeSrcRect(0.5, 0.5, srcSquareSize, 1024, 768);
@@ -90,7 +83,7 @@ describe('useImageCrop — conformance tests (Crop Window Invariant)', () => {
     });
 
     it('scale=2, focal=0.5 → 256×256 square (4× zoom-in detail)', () => {
-      const srcSquareSize = computeSrcSquareSize(200, 400, 2, 1024);
+      const srcSquareSize = computeSrcSquareSize(200, 400, 2, 1024, 768);
       expect(srcSquareSize).toBe(256);
 
       const { srcX, srcY, srcW, srcH } = computeSrcRect(0.5, 0.5, srcSquareSize, 1024, 768);
@@ -104,12 +97,12 @@ describe('useImageCrop — conformance tests (Crop Window Invariant)', () => {
     });
 
     it('scale=3 → ~170.67×170.67 square (9× zoom-in detail)', () => {
-      const srcSquareSize = computeSrcSquareSize(200, 400, 3, 1024);
+      const srcSquareSize = computeSrcSquareSize(200, 400, 3, 1024, 768);
       expect(srcSquareSize).toBeCloseTo(170.67, 2);
     });
 
     it('focal point moves the src region (not just centers on 0.5)', () => {
-      const srcSquareSize = computeSrcSquareSize(200, 400, 1, 1024);
+      const srcSquareSize = computeSrcSquareSize(200, 400, 1, 1024, 1024);
       expect(srcSquareSize).toBe(512);
 
       // focalX=0.25 (25% from left), focalY=0.75 (75% from top)
@@ -123,7 +116,7 @@ describe('useImageCrop — conformance tests (Crop Window Invariant)', () => {
     });
 
     it('clamps srcX/srcY when focal pushes the region past image bounds', () => {
-      const srcSquareSize = computeSrcSquareSize(200, 400, 1, 1024);
+      const srcSquareSize = computeSrcSquareSize(200, 400, 1, 1024, 1024);
       // focal=0 (far left) → rawX = 0 - 256 = -256 → clamp to 0
       const { srcX, srcY, srcW, srcH } = computeSrcRect(0, 0, srcSquareSize, 1024, 1024);
 
@@ -141,8 +134,9 @@ describe('useImageCrop — conformance tests (Crop Window Invariant)', () => {
   describe('UI mask size must bind to cropWindowSize (no silent drift)', () => {
     it('changing cropWindowSize changes the exported src region proportionally', () => {
       // mask=100 → smaller src region; mask=400 → larger src region; ratio should be 4×
-      const small = computeSrcSquareSize(100, 400, 1, 1024);
-      const large = computeSrcSquareSize(400, 400, 1, 1024);
+      // (use a square source so naturalHeight cap is a no-op)
+      const small = computeSrcSquareSize(100, 400, 1, 1024, 1024);
+      const large = computeSrcSquareSize(400, 400, 1, 1024, 1024);
 
       expect(small * 4).toBeCloseTo(large, 0);
       expect(large / small).toBeCloseTo(4, 0);
@@ -151,7 +145,7 @@ describe('useImageCrop — conformance tests (Crop Window Invariant)', () => {
     it('LOGO_CROP_CONFIG defaults produce non-zero export region', () => {
       // Guard: defaults should never accidentally compute 0 (the "mask 0 = no crop" bug)
       const { CROP_WINDOW_SIZE, BASE_CANVAS_WIDTH } = LOGO_CROP_CONFIG;
-      const srcSquareSize = computeSrcSquareSize(CROP_WINDOW_SIZE, BASE_CANVAS_WIDTH, 1, 1024);
+      const srcSquareSize = computeSrcSquareSize(CROP_WINDOW_SIZE, BASE_CANVAS_WIDTH, 1, 1024, 1024);
 
       expect(srcSquareSize).toBeGreaterThan(0);
       expect(srcSquareSize).toBe(512); // (200 / (400*1)) * 1024
@@ -161,10 +155,92 @@ describe('useImageCrop — conformance tests (Crop Window Invariant)', () => {
       // The old formula was: min(NW, NH) / scale = 768 / 1 = 768
       // The correct formula gives 512. This test documents the regression.
       const oldBuggy = Math.min(1024, 768) / 1; // 768
-      const correct = computeSrcSquareSize(200, 400, 1, 1024); // 512
+      const correct = computeSrcSquareSize(200, 400, 1, 1024, 768); // 512
 
       expect(correct).not.toBe(oldBuggy);
       expect(correct).toBe(512);
+    });
+  });
+
+  // ========================================================================
+  // § 2.5 Landscape srcW===srcH invariant (no squash bug)
+  // ========================================================================
+
+  describe('Landscape image: src region must remain square (no export squash)', () => {
+    /**
+     * Regression: when the conceptual crop window (e.g., 200px) exceeds the
+     * stage height for landscape images, the WIDTH-based srcSquareSize formula
+     * would exceed naturalHeight. Without the naturalHeight cap, srcW would
+     * stay large while srcH gets clamped → Canvas.drawImage stretches the
+     * non-square src region into the 960×960 output → visible squash.
+     *
+     * See `runs/improvements/feedback/20260830-logo-uploader-landscape-squash.md`
+     * (full trace).
+     */
+
+    it('extreme landscape (2000×200, 10:1): srcSquareSize capped at naturalHeight', () => {
+      const srcSquareSize = computeSrcSquareSize(200, 400, 1, 2000, 200);
+      expect(srcSquareSize).toBeLessThanOrEqual(200);
+      expect(srcSquareSize).toBe(200);
+    });
+
+    it('extreme landscape (2000×200): srcW === srcH (square export)', () => {
+      const srcSquareSize = computeSrcSquareSize(200, 400, 1, 2000, 200);
+      const { srcW, srcH } = computeSrcRect(0.5, 0.5, srcSquareSize, 2000, 200);
+      expect(srcW).toBe(srcH);
+    });
+
+    it('wide landscape (2000×600): srcSquareSize capped (height is the limit)', () => {
+      // Without cap: (200/400)*2000 = 1000 → would clamp srcH to 600 → 1000×600 squash
+      // With cap: min(1000, 600) = 600 → 600×600 square
+      const srcSquareSize = computeSrcSquareSize(200, 400, 1, 2000, 600);
+      expect(srcSquareSize).toBe(600);
+    });
+
+    it('wide landscape (2000×600): srcW === srcH', () => {
+      const srcSquareSize = computeSrcSquareSize(200, 400, 1, 2000, 600);
+      const { srcW, srcH } = computeSrcRect(0.5, 0.5, srcSquareSize, 2000, 600);
+      expect(srcW).toBe(srcH);
+      expect(srcW).toBe(600);
+    });
+
+    it('mild landscape (1920×1080, 16:9): cap does NOT activate (square is achievable)', () => {
+      // Width-based: (200/400)*1920 = 960. naturalHeight=1080. min(960, 1080) = 960.
+      const srcSquareSize = computeSrcSquareSize(200, 400, 1, 1920, 1080);
+      expect(srcSquareSize).toBe(960);
+      const { srcW, srcH } = computeSrcRect(0.5, 0.5, srcSquareSize, 1920, 1080);
+      expect(srcW).toBe(srcH);
+      expect(srcW).toBe(960);
+    });
+
+    it('portrait (600×2000): cap does NOT activate (square is achievable)', () => {
+      const srcSquareSize = computeSrcSquareSize(200, 400, 1, 600, 2000);
+      expect(srcSquareSize).toBe(300); // (200/400)*600 = 300, min(300, 2000) = 300
+      const { srcW, srcH } = computeSrcRect(0.5, 0.5, srcSquareSize, 600, 2000);
+      expect(srcW).toBe(srcH);
+      expect(srcW).toBe(300);
+    });
+
+    it('square (500×500): cap does NOT activate', () => {
+      const srcSquareSize = computeSrcSquareSize(200, 400, 1, 500, 500);
+      expect(srcSquareSize).toBe(250);
+      const { srcW, srcH } = computeSrcRect(0.5, 0.5, srcSquareSize, 500, 500);
+      expect(srcW).toBe(srcH);
+      expect(srcW).toBe(250);
+    });
+
+    it('landscape + zoom-in (scale=2, 2000×600): srcSquareSize still capped', () => {
+      // Width-based: (200/(400*2))*2000 = 500. min(500, 600) = 500.
+      const srcSquareSize = computeSrcSquareSize(200, 400, 2, 2000, 600);
+      expect(srcSquareSize).toBe(500);
+      const { srcW, srcH } = computeSrcRect(0.5, 0.5, srcSquareSize, 2000, 600);
+      expect(srcW).toBe(srcH);
+    });
+
+    it('landscape + heavy zoom (scale=3, 2000×200): cap takes effect at scale', () => {
+      // Width-based: (200/(400*3))*2000 ≈ 333.33. min(333.33, 200) = 200.
+      const srcSquareSize = computeSrcSquareSize(200, 400, 3, 2000, 200);
+      expect(srcSquareSize).toBe(200);
     });
   });
 
@@ -176,13 +252,13 @@ describe('useImageCrop — conformance tests (Crop Window Invariant)', () => {
     it('uses resolvedBaseCanvasWidth when set (matches UI baseContainerW)', () => {
       // Small image 300×225. UI shows at baseContainerW=300.
       // Hook with resolvedBaseCanvasWidth=300 should use that for formula.
-      const withResolved = computeSrcSquareSize(200, 300, 1, 300);
-      // srcSquareSize = (200 / (300*1)) * 300 = 200
+      const withResolved = computeSrcSquareSize(200, 300, 1, 300, 225);
+      // srcSquareSize = min((200 / (300*1)) * 300, 225) = min(200, 225) = 200
       expect(withResolved).toBe(200);
 
       // Without resolved, falls back to baseCanvasWidth=400:
-      const withoutResolved = computeSrcSquareSize(200, 400, 1, 300);
-      // srcSquareSize = (200 / (400*1)) * 300 = 150
+      const withoutResolved = computeSrcSquareSize(200, 400, 1, 300, 225);
+      // srcSquareSize = min((200 / (400*1)) * 300, 225) = min(150, 225) = 150
       expect(withoutResolved).toBe(150);
 
       // They should differ (otherwise resolvedBaseCanvasWidth has no effect)
@@ -192,10 +268,10 @@ describe('useImageCrop — conformance tests (Crop Window Invariant)', () => {
     it('resolvedBaseCanvasWidth < baseCanvasWidth → export matches UI', () => {
       // NW=250, UI=250 (min(250,400)=250). With resolved=250 → 200×200.
       // With fallback 400 → 125×125 (wrong: too small).
-      const correct = computeSrcSquareSize(200, 250, 1, 250);
+      const correct = computeSrcSquareSize(200, 250, 1, 250, 250);
       expect(correct).toBe(200);
 
-      const wrong = computeSrcSquareSize(200, 400, 1, 250);
+      const wrong = computeSrcSquareSize(200, 400, 1, 250, 250);
       expect(wrong).toBe(125);
       expect(correct).not.toBe(wrong);
     });

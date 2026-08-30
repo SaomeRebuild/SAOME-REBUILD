@@ -117,7 +117,10 @@ describe('LogoUploader flex chain overflow (mobile)', () => {
     // is 412 - 128 = 284px, so the crop stage is min(400, 284 - 16) = 268px.
     // The OLD viewport math would have produced 412 - 128 = 284px.
     // Either way, the stage is well within the parent and never overflows.
-    const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
+    //
+    // NOTE: width now lives on the outer container (`logo-crop-outer`) since
+    // the stage became `absolute inset-0` inside it. Same numeric value.
+    const stage = screen.getByTestId('logo-crop-outer') as HTMLElement;
     const w = parseInt(stage.style.width);
     expect(w).toBeGreaterThanOrEqual(200);
     expect(w).toBeLessThan(284);

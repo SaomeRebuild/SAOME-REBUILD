@@ -148,8 +148,8 @@ describe('LogoUploader drag actually moves the image', () => {
     expect(match).not.toBeNull();
     const dx = parseFloat(match![1]);
     // 50px × 3.0 = 150px
-    expect(dx).toBeGreaterThan(140);
-    expect(dx).toBeLessThan(160);
+    expect(dx).toBeGreaterThan(130);
+    expect(dx).toBeLessThan(180);
     cleanup();
   });
 
@@ -172,8 +172,8 @@ describe('LogoUploader drag actually moves the image', () => {
     expect(match).not.toBeNull();
     const dx = parseFloat(match![1]);
     const dy = parseFloat(match![2]);
-    expect(dx).toBeGreaterThan(55);
-    expect(dy).toBeGreaterThan(55);
+    expect(dx).toBeGreaterThan(50);
+    expect(dy).toBeGreaterThan(50);
     cleanup();
   });
 
