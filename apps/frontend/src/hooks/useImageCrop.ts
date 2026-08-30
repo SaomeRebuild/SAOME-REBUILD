@@ -93,6 +93,33 @@ const DEFAULT_CROP_WINDOW_SIZE = 200;
 const DEFAULT_BASE_CANVAS_WIDTH = 400;
 
 /**
+ * Compute the src-side square size for the exported crop region.
+ *
+ * Pure function — exported so conformance tests can assert the formula
+ * without instantiating React state or invoking canvas APIs.
+ *
+ * The `naturalHeight` cap is the safety net for landscape images where
+ * the conceptual crop window exceeds the stage height — without it, the
+ * exported region would be non-square (srcW > srcH) and Canvas would
+ * squash the output to fit the 960×960 target.
+ *
+ * @see apps/frontend/src/hooks/useImageCrop.test.ts (Landscape srcW===srcH invariant)
+ * @see runs/improvements/feedback/20260830-logo-uploader-landscape-squash.md
+ */
+export function computeSrcSquareSize(
+  cropWindowSize: number,
+  effectiveBaseCanvasWidth: number,
+  scale: number,
+  naturalWidth: number,
+  naturalHeight: number,
+): number {
+  return Math.min(
+    (cropWindowSize / (effectiveBaseCanvasWidth * scale)) * naturalWidth,
+    naturalHeight,
+  );
+}
+
+/**
  * Hook for client-side image cropping with focal point and zoom.
  *
  * @example
@@ -248,7 +275,17 @@ export function useImageCrop(options: UseImageCropOptions): UseImageCropReturn {
     // the src-side square covered by the crop window = (cropWindowSize / (baseCanvasWidth * scale))
     // of the src width. Since baseCanvasWidth/NW = baseCanvasHeight/NH (aspect match),
     // the same fraction applies to height, giving a src-square.
-    const srcSquareSize = (cropWindowSize / (effectiveBaseCanvasWidth * scale)) * naturalWidth;
+    //
+    // The naturalHeight cap (inside computeSrcSquareSize) prevents landscape
+    // srcW > srcH from being exported as a stretched 960×960 — see the
+    // Landscape srcW===srcH invariant conformance tests.
+    const srcSquareSize = computeSrcSquareSize(
+      cropWindowSize,
+      effectiveBaseCanvasWidth,
+      scale,
+      naturalWidth,
+      naturalHeight,
+    );
 
     // Center the src-square on the focal point, clamped to image bounds.
     const rawX = focalX * naturalWidth - srcSquareSize / 2;
