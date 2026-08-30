@@ -113,15 +113,14 @@ describe('LogoUploader', () => {
       });
       // Fire ResizeObserver on the LogoUploader root with the parent's content-box width.
       // jsdom offsetWidth is always 0, so we have to drive the measurement via the polyfill.
-      // The cropping state's outer div carries the wrapperRef, identifiable by
-      // `data-cursor-element-id` (RTL injects this when cursor-el-* attrs exist),
-      // or by its position as the unique `.flex.min-w-0.flex-col.items-center.gap-4`
-      // AFTER cropping activates (idle wrapper is unmounted).
+      // The cropping state's outer wrapper is identified by `data-testid="logo-crop-wrapper"`
+      // — that's where the ResizeObserver is attached in LogoUploader. Note: the stage
+      // is now `absolute inset-0` inside an outer container, so we can no longer use
+      // `cropStage.parentElement` to find the wrapper.
       const { triggerResize } = await import('@/test/setup');
-      const cropStage = container.querySelector('[data-testid="logo-crop-stage"]');
-      const root = cropStage?.parentElement;
+      const root = container.querySelector('[data-testid="logo-crop-wrapper"]');
       // eslint-disable-next-line no-console
-      console.log(`[TEST] crop-stage=${!!cropStage}, root=${!!root}, rootTag=${root?.tagName}, rootClassList=${root?.className.slice(0, 60)}`);
+      console.log(`[TEST] root=${!!root}, rootTag=${root?.tagName}, rootClassList=${root?.className.slice(0, 60)}`);
       if (!root) throw new Error('cropping wrapper not found');
       triggerResize(root, parentWidth, 800);
       // eslint-disable-next-line no-console
@@ -130,21 +129,21 @@ describe('LogoUploader', () => {
       // re-renders. Wait for the new width to land in the DOM.
       const expectedW = Math.min(400, Math.max(parentWidth - 16, 200));
       await waitFor(() => {
-        const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
+        const stage = screen.getByTestId('logo-crop-outer') as HTMLElement;
         expect(stage.style.width).toBe(`${expectedW}px`);
       });
     }
 
     it('caps crop container at parentWidth − 16px on iPhone (375px parent)', async () => {
       await renderInParent(375);
-      const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
+      const stage = screen.getByTestId('logo-crop-outer') as HTMLElement;
       // 375 − 16 (STAGE_SAFETY_MARGIN) = 359px (still < BASE 400)
       expect(stage.style.width).toBe('359px');
     });
 
     it('respects narrow phone viewport (parentWidth 320 → 304px container)', async () => {
       await renderInParent(320);
-      const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
+      const stage = screen.getByTestId('logo-crop-outer') as HTMLElement;
       // 320 − 16 = 304px (still > CROP_WINDOW_SIZE 200)
       expect(stage.style.width).toBe('304px');
     });
@@ -158,21 +157,21 @@ describe('LogoUploader', () => {
      */
     it('caps crop container at 400px (BASE_CANVAS_WIDTH) on iPhone 12 Pro Max (428px parent)', async () => {
       await renderInParent(428);
-      const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
+      const stage = screen.getByTestId('logo-crop-outer') as HTMLElement;
       // 428 − 16 = 412, but min(400, 412) = 400 (BASE wins)
       expect(stage.style.width).toBe('400px');
     });
 
     it('uses BASE_CANVAS_WIDTH (400px) on desktop (parentWidth 1024)', async () => {
       await renderInParent(1024);
-      const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
+      const stage = screen.getByTestId('logo-crop-outer') as HTMLElement;
       // Desktop: parent cap is 1008px, but BASE_CANVAS_WIDTH=400 wins (min(400, 1008))
       expect(stage.style.width).toBe('400px');
     });
 
     it('has maxWidth safety net so container never overflows its parent', async () => {
       await renderInParent(375);
-      const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
+      const stage = screen.getByTestId('logo-crop-outer') as HTMLElement;
       expect(stage.style.maxWidth).toBe('100%');
     });
 
@@ -183,7 +182,7 @@ describe('LogoUploader', () => {
      */
     it('caps crop container at 374px on iPhone 12/13/14 (390px parent)', async () => {
       await renderInParent(390);
-      const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
+      const stage = screen.getByTestId('logo-crop-outer') as HTMLElement;
       // 390 − 16 = 374px
       expect(stage.style.width).toBe('374px');
     });
@@ -196,7 +195,7 @@ describe('LogoUploader', () => {
      */
     it('never overflows parent even with multiple padding wrappers (parentWidth 280)', async () => {
       await renderInParent(280);
-      const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
+      const stage = screen.getByTestId('logo-crop-outer') as HTMLElement;
       // 280 − 16 = 264px. Floor at CROP_WINDOW_SIZE 200 (so 264 wins).
       expect(stage.style.width).toBe('264px');
       expect(parseInt(stage.style.width)).toBeLessThan(280);
