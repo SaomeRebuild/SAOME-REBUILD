@@ -22,6 +22,13 @@ export interface MediaAssetUploaderProps {
   onUploaded?: (key: string) => void;
   /** CSS class for the root element. */
   className?: string;
+  /**
+   * Whether to render the in-component header (title + description).
+   * Defaults to true. Set to false when the consumer already provides its
+   * own section title (e.g. CardBuilderEditorWorkspace renders `<h3>` +
+   * `<p>` above the icon variant to group the Icon section under Step 3).
+   */
+  showHeader?: boolean;
 }
 
 export type MediaAssetUploaderState = 'idle' | 'uploading' | 'cropping' | 'success' | 'error';

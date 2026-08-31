@@ -228,7 +228,8 @@ export function CardBuilderEditorWorkspace({
 
           {/* Icon 區塊（Phase 8 — IconUploader plan 2026-08-31）
               - 在 Logo 下方,border-t 區隔
-              - 推播通知圖示,不會出現在卡片模板本身（PreviewWrapper 只在 PhoneFrame 內 overlay） */}
+              - 推播通知圖示,不會出現在卡片模板本身（PreviewWrapper 只在 PhoneFrame 內 overlay）
+              - showHeader={false}：父層已用 <h3> + <p> 提供 section 標題，避免雙重 header */}
           <section className="flex min-w-0 flex-col gap-2 border-t pt-6">
             <h3 className="text-base font-medium text-foreground">
               {t('step3.iconSection.title')}
@@ -239,6 +240,7 @@ export function CardBuilderEditorWorkspace({
             <MediaAssetUploader
               variant="icon"
               templateId={cardId ?? ''}
+              showHeader={false}
               onUploaded={(key: string) => {
                 console.log('[Step3] Icon uploaded:', key);
               }}

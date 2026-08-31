@@ -95,6 +95,79 @@ describe('LogoUploader', () => {
     expect(screen.getByText(/選擇圖片/i)).toBeInTheDocument();
   });
 
+  describe('in-component header (title + description)', () => {
+    it('renders header with variant title for logo (i18n: 上傳 Logo)', () => {
+      render(
+        <MediaAssetUploader
+          variant="logo"
+          templateId="t1"
+          onUploaded={vi.fn()}
+        />,
+      );
+
+      const header = screen.getByTestId('asset-uploader-header');
+      expect(header).toBeInTheDocument();
+      expect(header).toHaveTextContent('上傳 Logo');
+    });
+
+    it('renders variant-specific description (logo hint: 960×960)', () => {
+      render(
+        <MediaAssetUploader
+          variant="logo"
+          templateId="t1"
+          onUploaded={vi.fn()}
+        />,
+      );
+
+      const header = screen.getByTestId('asset-uploader-header');
+      expect(header).toHaveTextContent(/Logo 會被裁切為正方形/);
+      expect(header).toHaveTextContent('960');
+    });
+
+    it('renders variant-specific description (icon hint: 720×720)', () => {
+      render(
+        <MediaAssetUploader
+          variant="icon"
+          templateId="t1"
+          onUploaded={vi.fn()}
+        />,
+      );
+
+      const header = screen.getByTestId('asset-uploader-header');
+      expect(header).toHaveTextContent('上傳 Icon');
+      expect(header).toHaveTextContent(/Icon 會被裁切為正方形/);
+      expect(header).toHaveTextContent('720');
+    });
+
+    it('hides header when showHeader={false}', () => {
+      render(
+        <MediaAssetUploader
+          variant="logo"
+          templateId="t1"
+          showHeader={false}
+          onUploaded={vi.fn()}
+        />,
+      );
+
+      expect(screen.queryByTestId('asset-uploader-header')).not.toBeInTheDocument();
+      // The select-file button still renders (only the header is hidden)
+      expect(screen.getByText(/選擇圖片/i)).toBeInTheDocument();
+    });
+
+    it('uses <h3> for the title (semantic — fits inside a parent section that may already have h2)', () => {
+      render(
+        <MediaAssetUploader
+          variant="logo"
+          templateId="t1"
+          onUploaded={vi.fn()}
+        />,
+      );
+
+      const heading = screen.getByRole('heading', { level: 3, name: '上傳 Logo' });
+      expect(heading).toBeInTheDocument();
+    });
+  });
+
   describe('responsive crop container (mobile)', () => {
     /**
      * Render LogoUploader inside a parent with a known content-box width and

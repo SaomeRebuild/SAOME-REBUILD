@@ -50,6 +50,7 @@ import { UploadingIndicator } from './UploadingIndicator/UploadingIndicator';
 import { ScaleControl } from './ScaleControl/ScaleControl';
 import { CropActions } from './CropActions/CropActions';
 import { CropStage } from './CropStage/CropStage';
+import { MediaAssetUploaderHeader } from './MediaAssetUploaderHeader';
 import type { CropStageRefs } from './CropStage';
 
 export function MediaAssetUploader({
@@ -57,6 +58,7 @@ export function MediaAssetUploader({
   variant,
   onUploaded,
   className = '',
+  showHeader = true,
 }: MediaAssetUploaderProps) {
   const config = MEDIA_ASSET_CONFIG[variant]!;
   const { t } = useTranslation(config.i18nNamespace);
@@ -350,6 +352,12 @@ export function MediaAssetUploader({
         data-testid="asset-crop-wrapper"
         className={`flex min-w-0 flex-col items-center gap-4 ${className}`}
       >
+        {showHeader && (
+          <MediaAssetUploaderHeader
+            title={t('title')}
+            description={t('hint')}
+          />
+        )}
         {displayUrl ? (
           <Preview
             displayUrl={displayUrl}
@@ -383,7 +391,13 @@ export function MediaAssetUploader({
       ? t(validationError.message)
       : uploadError ?? t('error');
     return (
-      <>
+      <div className={`flex min-w-0 flex-col items-center gap-4 ${className}`}>
+        {showHeader && (
+          <MediaAssetUploaderHeader
+            title={t('title')}
+            description={t('hint')}
+          />
+        )}
         <UploadError
           message={errorMessage}
           cancelLabel={t('cancel')}
@@ -396,7 +410,7 @@ export function MediaAssetUploader({
           onChange={handleFileSelect}
           className="sr-only"
         />
-      </>
+      </div>
     );
   }
 
@@ -418,6 +432,12 @@ export function MediaAssetUploader({
       data-testid="asset-crop-wrapper"
       className={`flex min-w-0 flex-col items-center gap-4 ${className}`}
     >
+      {showHeader && (
+        <MediaAssetUploaderHeader
+          title={t('title')}
+          description={t('hint')}
+        />
+      )}
       {state === 'uploading' && <UploadingIndicator uploadingLabel={t('uploading')} />}
 
       {state === 'cropping' && (
