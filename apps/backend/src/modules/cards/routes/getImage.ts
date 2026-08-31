@@ -67,11 +67,31 @@ export const getImageRoute = new Hono<HonoEnv>()
     };
     const field = fieldMap[imageType];
 
-    // Defensive: settings can be a string (malformed DB row) or object (correct)
+    // Defensive: settings can be an array (Bug #8.5 corruption), a string
+    // (malformed DB row), or an object (correct). unwrapElement handles all types.
+    function unwrapElement(elem: unknown): Record<string, unknown> {
+      if (elem == null) return {};
+      if (typeof elem === 'string') {
+        try { return JSON.parse(elem) as Record<string, unknown>; }
+        catch { return {}; }
+      }
+      if (Array.isArray(elem)) {
+        return (elem as unknown[]).reduce<Record<string, unknown>>(
+          (acc, e) => ({ ...acc, ...unwrapElement(e) }), {});
+      }
+      if (typeof elem === 'object') return elem as Record<string, unknown>;
+      return {};
+    }
+
     let settings: Record<string, unknown>;
     const rawSettings = template.settings;
-    if (typeof rawSettings === 'string') {
-      settings = JSON.parse(rawSettings);
+    if (Array.isArray(rawSettings)) {
+      // Bug #8.5: reduce-style merge across all array elements
+      settings = (rawSettings as unknown[]).reduce<Record<string, unknown>>(
+        (acc, elem) => ({ ...acc, ...unwrapElement(elem) }), {});
+    } else if (typeof rawSettings === 'string') {
+      try { settings = JSON.parse(rawSettings); }
+      catch { settings = {}; }
     } else if (rawSettings && typeof rawSettings === 'object') {
       settings = rawSettings;
     } else {
