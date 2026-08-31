@@ -2,10 +2,10 @@
  * PassCardPreview — 卡片本體預覽
  * Apple Pass 風格：白色背景、圓角、柔陰影（Dark mode 適配）
  *
- * Phase 9 (2026-08-31): icon image is rendered by PreviewWrapper's
- * PushNotificationMockup overlay (inside PhoneFrame, above the card).
- * This component renders the card template body only — logo / type
- * label / strip placeholder / holder name / barcode.
+ * The icon image is consumed by MediaAssetUploader/Preview (128×128 panel
+ * in the editor workspace), not inside the phone preview. This component
+ * renders the card template body only — logo / type label / strip
+ * placeholder / holder name / barcode.
  */
 import type { PassCardPreviewProps } from './PassCardPreview.types';
 import { PassCardPreviewHeader } from './PassCardPreviewHeader';
@@ -53,7 +53,7 @@ export function PassCardPreview({
               compact={compact}
             />
 
-            {/* Strip / Hero — 卡片圖示 + 卡片名稱（icon 在 PushNotificationMockup 顯示，不在這） */}
+            {/* Strip / Hero — 卡片名稱 + 預設 CreditCard 圖示（icon 預覽在 MediaAssetUploader 面板） */}
             <PassCardPreviewStrip
               name={name}
               backgroundColor={backgroundColor}

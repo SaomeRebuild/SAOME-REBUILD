@@ -91,9 +91,6 @@ export default {
       title: 'Push Notification Icon',
       hint: 'This Icon appears on the lock screen and notification center, not on the card template itself',
     },
-    pushNotification: {
-      label: 'Push Notification',
-    },
   },
   step4: {
     title: 'Card Info',

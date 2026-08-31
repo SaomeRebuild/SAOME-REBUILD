@@ -55,9 +55,5 @@ test.describe('Card builder: Step 3 icon upload', () => {
     // NOT the raw key `step3.iconSection.title`.
     await expect(page.getByText('推播通知圖示')).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText('此 Icon 會顯示於手機鎖屏與推播中心')).toBeVisible();
-
-    // ── 6. PhoneFrame preview should NOT show the push notification overlay yet
-    // (iconImage is empty until the user uploads an icon).
-    await expect(page.locator('[data-testid="push-notification-mockup"]')).toHaveCount(0);
   });
 });

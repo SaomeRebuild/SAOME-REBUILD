@@ -91,9 +91,6 @@ export default {
       title: '推播通知圖示',
       hint: '此 Icon 會顯示於手機鎖屏與推播中心，不會出現在卡片模板內',
     },
-    pushNotification: {
-      label: '推播通知',
-    },
   },
   step4: {
     title: '卡片資訊',

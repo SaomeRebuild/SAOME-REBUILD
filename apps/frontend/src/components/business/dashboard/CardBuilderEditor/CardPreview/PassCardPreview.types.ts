@@ -1,10 +1,10 @@
 /**
  * PassCardPreview — Props
  *
- * Phase 9 (2026-08-31): icon image is consumed by the PreviewWrapper's
- * PushNotificationMockup overlay (rendered above the card inside the
- * PhoneFrame). The card template itself only renders logo / type label /
- * holder name / barcode — no icon or background image injected.
+ * The card template itself only renders logo / type label / holder name /
+ * barcode — no icon or background image injected. The icon image preview
+ * lives in MediaAssetUploader/Preview (128×128 panel in the editor
+ * workspace).
  */
 
 /** Apple Pass 標準尺寸比例 */
