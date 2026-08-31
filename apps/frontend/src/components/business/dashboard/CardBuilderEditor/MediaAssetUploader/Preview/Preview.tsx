@@ -94,17 +94,18 @@ export function Preview({
           </div>
         )}
       </div>
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <ImageIcon className="h-4 w-4" aria-hidden />
-        {showSuccessBadge && !loadError ? successLabel : replaceLabel}
-      </div>
       <button
         type="button"
         onClick={onReplace}
-        className="text-sm font-medium text-primary underline-offset-2 hover:underline"
+        className="flex items-center gap-2 text-sm font-medium text-primary underline-offset-2 hover:underline"
         data-testid="replace-button"
       >
-        {loadError ? (loadErrorLabel ?? replaceLabel) : replaceLabel}
+        <ImageIcon className="h-4 w-4" aria-hidden />
+        {loadError
+          ? (loadErrorLabel ?? replaceLabel)
+          : showSuccessBadge
+            ? successLabel
+            : replaceLabel}
       </button>
     </div>
   );
