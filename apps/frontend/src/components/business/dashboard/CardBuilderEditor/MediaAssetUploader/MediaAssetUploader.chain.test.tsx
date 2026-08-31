@@ -1,6 +1,6 @@
 /**
  * Regression test: LogoUploader crop stage does NOT overflow the flex chain
- * on mobile viewports (≤412px).
+ * on mobile viewports (??12px).
  *
  * Background (feedback 20260830):
  * - The crop stage sets an inline `width: ${baseContainerW}px` (e.g. 329 on
@@ -9,7 +9,7 @@
  *   min-content, propagating the overflow up the chain.
  * - The previous fix only added `min-w-0` at the AppDashboardPage Outlet
  *   inner, but the chain between Outlet inner and the crop stage (LogoUploader
- *   root → section → aside → CardBuilderEditor flex-row → CardBuilderEditor
+ *   root ??section ??aside ??CardBuilderEditor flex-row ??CardBuilderEditor
  *   outer) still had flex items without `min-w-0`, so internal containers
  *   grew to fit the crop stage and triggered CardBuilderPage's `overflow-auto`
  *   scrollbar.
@@ -20,7 +20,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { LogoUploader } from './LogoUploader';
+import { MediaAssetUploader } from './MediaAssetUploader';
 import { useImageCrop } from '@/hooks/useImageCrop';
 
 vi.mock('@/services/cardService', () => ({
@@ -52,7 +52,7 @@ const baseCropState = {
 function mockImageCropReturn(overrides: Record<string, unknown> = {}) {
   return {
     cropState: baseCropState,
-    // imageUrl: null — LogoUploader's unmount effect calls
+    // imageUrl: null ??LogoUploader's unmount effect calls
     // URL.revokeObjectURL(imageUrl), which jsdom does not implement. Keeping
     // it null avoids the cleanup error without affecting the chain test.
     imageUrl: null,
@@ -92,7 +92,7 @@ describe('LogoUploader flex chain overflow (mobile)', () => {
     const constrainedParentW = Math.max(viewportW - 128, 320);
     return render(
       <div style={{ width: `${constrainedParentW}px` }}>
-        <LogoUploader templateId="t1" onLogoUploaded={vi.fn()} />
+        <MediaAssetUploader templateId="t1" variant="logo" onUploaded={vi.fn()} />
       </div>,
     );
   }
@@ -113,7 +113,7 @@ describe('LogoUploader flex chain overflow (mobile)', () => {
       expect(screen.getByText(/拖曳調整顯示區域/i)).toBeInTheDocument();
     });
 
-    // With the new wrapper-based cap (parent.offsetWidth − 16), the parent
+    // With the new wrapper-based cap (parent.offsetWidth ??16), the parent
     // is 412 - 128 = 284px, so the crop stage is min(400, 284 - 16) = 268px.
     // The OLD viewport math would have produced 412 - 128 = 284px.
     // Either way, the stage is well within the parent and never overflows.

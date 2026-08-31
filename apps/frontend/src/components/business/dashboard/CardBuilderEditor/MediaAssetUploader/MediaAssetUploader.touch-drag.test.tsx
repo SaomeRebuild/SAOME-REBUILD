@@ -1,18 +1,18 @@
 /**
  * Test: When user drags, does the <img> element's transform actually change?
  *
- * This verifies the user's concern: "手機不能按著圖片拖著圖片到處跑".
+ * This verifies the user's concern: "?��?不能?��??��??��??��??��?�?.
  * The momentum tests verify the rAF logic. This test verifies that during
- * touch drag, the image element's CSS transform is updated — what the user
+ * touch drag, the image element's CSS transform is updated ??what the user
  * SEES on screen.
  *
  * Event model (20260830 refactor):
- *   - Touch: onTouchStart / onTouchMove / onTouchEnd → direct DOM transform writes
- *   - Mouse / Pen: onPointerDown / onPointerMove / onPointerUp → 1:1, no momentum
+ *   - Touch: onTouchStart / onTouchMove / onTouchEnd ??direct DOM transform writes
+ *   - Mouse / Pen: onPointerDown / onPointerMove / onPointerUp ??1:1, no momentum
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, createEvent, cleanup } from '@testing-library/react';
-import { LogoUploader } from './LogoUploader';
+import { MediaAssetUploader } from './MediaAssetUploader';
 import { useImageCrop } from '@/hooks/useImageCrop';
 
 vi.mock('@/services/cardService', () => ({
@@ -84,7 +84,7 @@ function polyfillPointerCapture() {
 async function setupCropping(imgElement: { current: HTMLImageElement | null }) {
   polyfillPointerCapture();
   vi.mocked(useImageCrop).mockReturnValue(mockImageCropReturn(imgElement));
-  render(<LogoUploader templateId="t1" onLogoUploaded={vi.fn()} />);
+  render(<MediaAssetUploader templateId="t1" variant="logo" onUploaded={vi.fn()} />);
   const input = document.querySelector('input[type="file"]') as HTMLInputElement;
   const file = new File(['x'], 'logo.png', { type: 'image/png' });
   Object.defineProperty(input, 'files', { value: [file], configurable: true });
@@ -132,7 +132,7 @@ describe('LogoUploader drag actually moves the image', () => {
     const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
     const img = imgElement.current!;
 
-    // 50px screen drag × TOUCH_SENSITIVITY 3.0 → 150px translate
+    // 50px screen drag ? TOUCH_SENSITIVITY 3.0 ??150px translate
     touchDrag(stage, [
       { type: 'start', x: 200, y: 200 },
       { type: 'move', x: 210, y: 200 },
@@ -147,13 +147,13 @@ describe('LogoUploader drag actually moves the image', () => {
     const match = transformStr.match(/translate\(([-\d.]+)px/);
     expect(match).not.toBeNull();
     const dx = parseFloat(match![1]);
-    // 50px × 3.0 = 150px
+    // 50px ? 3.0 = 150px
     expect(dx).toBeGreaterThan(130);
     expect(dx).toBeLessThan(180);
     cleanup();
   });
 
-  it('many touch moves stay smooth — no React reconciliation lag', async () => {
+  it('many touch moves stay smooth ??no React reconciliation lag', async () => {
     setViewport(412);
     const imgElement: { current: HTMLImageElement | null } = { current: null };
     await setupCropping(imgElement);
@@ -165,7 +165,7 @@ describe('LogoUploader drag actually moves the image', () => {
       touchDrag(stage, [{ type: 'move', x: 200 + i, y: 200 + i }]);
     }
 
-    // 20px drag × 3.0 = 60px translate
+    // 20px drag ? 3.0 = 60px translate
     const finalTransform = img.style.transform;
     expect(finalTransform).toContain('translate');
     const match = finalTransform.match(/translate\(([-\d.]+)px,\s*([-\d.]+)px\)/);
@@ -187,7 +187,7 @@ describe('LogoUploader drag actually moves the image', () => {
     const img = imgElement.current!;
 
     // Verify drag actually moves the image (the focal-sync coverage is in
-    // the momentum.test.tsx suite — here we focus on the visual transform).
+    // the momentum.test.tsx suite ??here we focus on the visual transform).
     touchDrag(stage, [
       { type: 'start', x: 100, y: 100 },
       { type: 'move', x: 150, y: 100 },
@@ -198,7 +198,7 @@ describe('LogoUploader drag actually moves the image', () => {
     const match = img.style.transform.match(/translate\(([-\d.]+)px,\s*([-\d.]+)px\)/);
     expect(match).not.toBeNull();
     const dx = parseFloat(match![1]);
-    // 100px drag × 3.0 = 300px translate
+    // 100px drag ? 3.0 = 300px translate
     expect(dx).toBeGreaterThan(250);
     cleanup();
   });
@@ -232,7 +232,7 @@ describe('LogoUploader drag actually moves the image', () => {
     fireEvent(stage, moveEvent);
 
     const dx = parseFloat((img.style.transform.match(/translate\(([-\d.]+)px/) ?? [, '0'])[1]);
-    // 50px × 1.0 = 50px
+    // 50px ? 1.0 = 50px
     expect(dx).toBeGreaterThan(45);
     expect(dx).toBeLessThan(55);
     cleanup();
@@ -264,7 +264,7 @@ describe('LogoUploader drag actually moves the image', () => {
 
     const dxBeforeRelease = parseFloat((img.style.transform.match(/translate\(([-\d.]+)px/) ?? [, '0'])[1]);
 
-    // Simulate time passing — image should NOT drift after release
+    // Simulate time passing ??image should NOT drift after release
     await new Promise((r) => setTimeout(r, 600));
 
     const dxAfterRelease = parseFloat((img.style.transform.match(/translate\(([-\d.]+)px/) ?? [, '0'])[1]);
@@ -273,7 +273,7 @@ describe('LogoUploader drag actually moves the image', () => {
     cleanup();
   });
 
-  it('pen drag applies 1.0 sensitivity (between mouse and touch — pen is precise)', async () => {
+  it('pen drag applies 1.0 sensitivity (between mouse and touch ??pen is precise)', async () => {
     setViewport(1280);
     const imgElement: { current: HTMLImageElement | null } = { current: null };
     await setupCropping(imgElement);
@@ -293,7 +293,7 @@ describe('LogoUploader drag actually moves the image', () => {
     firePen(240, 200, 'move');
     firePen(240, 200, 'up');
 
-    // 40px × 1.0 (mouse baseline) = ~40px. Pen is treated as precise,
+    // 40px ? 1.0 (mouse baseline) = ~40px. Pen is treated as precise,
     // no extra sensitivity, no momentum.
     const dx = parseFloat((img.style.transform.match(/translate\(([-\d.]+)px/) ?? [, '0'])[1]);
     expect(dx).toBeGreaterThan(35);
@@ -322,7 +322,7 @@ describe('LogoUploader drag actually moves the image', () => {
     fireEmpty(250, 200, 'up');
 
     const dx = parseFloat((img.style.transform.match(/translate\(([-\d.]+)px/) ?? [, '0'])[1]);
-    // Empty → mouse → 1.0 sensitivity → 50px
+    // Empty ??mouse ??1.0 sensitivity ??50px
     expect(dx).toBeGreaterThan(45);
     expect(dx).toBeLessThan(55);
     cleanup();
