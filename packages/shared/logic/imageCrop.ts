@@ -12,7 +12,7 @@
  * @see .cursor/skills/saome-image-upload/SKILL.md § Crop Window Invariant
  */
 
-import { LOGO_CROP_CONFIG } from '../constants/card-images';
+import { ICON_CROP_CONFIG, LOGO_CROP_CONFIG } from '../constants/card-images';
 import type { CropState, FileLike, ValidationError } from '../types/imageCrop';
 
 /**
@@ -127,27 +127,76 @@ export function computeSrcSquareSize(
 }
 
 /**
- * Validate an uploaded file against the LOGO_CROP_CONFIG constraints.
+ * Generic file validator for media-asset uploads.
+ *
+ * Used by `validateLogoFile` and `validateIconFile` (and any future
+ * `validateBackgroundFile`) — keeps validation rules aligned across
+ * variants and prevents copy-paste drift.
  *
  * Pure function — returns a ValidationError (with i18n-key message) on
  * failure, or `null` on success. UI rendering of the error message is
- * the consumer's responsibility (translate the key).
+ * the consumer's responsibility (translate the key via the appropriate
+ * namespace — e.g. `t('validation.tooLarge', { ns: 'logoUpload' })`).
  *
- * @param file  Any FileLike (web File, RN asset, etc.)
- * @returns     ValidationError | null
+ * MIME type is checked BEFORE size so that tiny wrong-format files
+ * (e.g. 100-byte SVG disguised as text) are still rejected.
+ *
+ * @param file        Any FileLike (web File, RN asset, etc.)
+ * @param mimeTypes   Allowed MIME types for this variant (e.g. LOGO_CROP_CONFIG.MIME_TYPES)
+ * @param maxFileSize Maximum file size in bytes (e.g. LOGO_CROP_CONFIG.MAX_FILE_SIZE)
+ * @returns           ValidationError | null
  */
-export function validateLogoFile(file: FileLike): ValidationError | null {
-  if (!LOGO_CROP_CONFIG.MIME_TYPES.includes(file.type as 'image/png' | 'image/jpeg')) {
+function validateMediaFile(
+  file: FileLike,
+  mimeTypes: readonly string[],
+  maxFileSize: number,
+): ValidationError | null {
+  if (!mimeTypes.includes(file.type as 'image/png' | 'image/jpeg')) {
     return {
       type: 'wrongFormat',
       message: 'validation.wrongFormat',
     };
   }
-  if (file.size > LOGO_CROP_CONFIG.MAX_FILE_SIZE) {
+  if (file.size > maxFileSize) {
     return {
       type: 'tooLarge',
       message: 'validation.tooLarge',
     };
   }
   return null;
+}
+
+/**
+ * Validate an uploaded file against the LOGO_CROP_CONFIG constraints.
+ *
+ * Backed by `validateMediaFile` factory (shared with validateIconFile).
+ *
+ * @param file  Any FileLike (web File, RN asset, etc.)
+ * @returns     ValidationError | null
+ */
+export function validateLogoFile(file: FileLike): ValidationError | null {
+  return validateMediaFile(
+    file,
+    LOGO_CROP_CONFIG.MIME_TYPES as readonly string[],
+    LOGO_CROP_CONFIG.MAX_FILE_SIZE,
+  );
+}
+
+/**
+ * Validate an uploaded file against the ICON_CROP_CONFIG constraints.
+ *
+ * Backed by `validateMediaFile` factory (shared with validateLogoFile).
+ *
+ * Icon allows PNG (transparency required by Passcreator push-notification spec)
+ * and JPG (degraded fallback). Same 5MB cap as logo.
+ *
+ * @param file  Any FileLike (web File, RN asset, etc.)
+ * @returns     ValidationError | null
+ */
+export function validateIconFile(file: FileLike): ValidationError | null {
+  return validateMediaFile(
+    file,
+    ICON_CROP_CONFIG.MIME_TYPES as readonly string[],
+    ICON_CROP_CONFIG.MAX_FILE_SIZE,
+  );
 }

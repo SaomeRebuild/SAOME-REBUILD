@@ -70,6 +70,17 @@ export const templateSettingsSchema = z.object({
   isPaid: z.boolean().optional(),
   // Step 3-4 (TBD)
   issuerLogo: z.string().optional(),
+  /**
+   * Push-notification icon (R2 key, per shared/constants/card-images.ts § 5.7 contract).
+   * Stored as a string like `{tenantId}/{templateId}/icon.png` — see CARD_IMAGE_KEYS.icon.
+   * Phase 5 of IconUploader plan (2026-08-31): added to support MediaAssetUploader variant="icon".
+   */
+  iconImage: z.string().optional(),
+  /**
+   * Background image (R2 key) — reserved for next BackgroundUploader plan.
+   * Schema entry added now so future BackgroundUploader does not need a schema migration.
+   */
+  backgroundImage: z.string().optional(),
   backgroundColor: z.string().optional(),
   textColor: z.string().optional(),
   holderName: z.string().optional(),

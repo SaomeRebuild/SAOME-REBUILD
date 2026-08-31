@@ -13,17 +13,22 @@
  */
 
 import { computeSrcSquareSize } from '@saome/shared/logic/imageCrop';
-import { LOGO_CROP_CONFIG } from '@saome/shared/constants/card-images';
 import type { CropState } from '@saome/shared/types';
 
 /**
- * Web-only: Crop the loaded image to a 960×960 PNG Blob using the current
- * CropState + the LOGO_CROP_CONFIG's OUTPUT_WIDTH as the output square size.
+ * Web-only: Crop the loaded image to a variant-driven OUTPUT_WIDTH × OUTPUT_HEIGHT PNG Blob.
+ *
+ * Output dimensions are passed in (not hardcoded) so the same hook chain can
+ * serve any MediaAssetUploader variant:
+ *   - Logo (variant='logo'):  outputWidth=960, outputHeight=null  → 960×NH aspect
+ *   - Icon  (variant='icon'):  outputWidth=720, outputHeight=720  → 720×720 square
  *
  * @param image       HTMLImageElement (already loaded)
  * @param cropState   current cropping state (focal, scale, dimensions)
- * @param cropWindowSize  UI mask window size in CSS px (matches baseContainerW/2 etc.)
- * @param baseCanvasWidth UI canvas width in CSS px
+ * @param cropWindowSize   UI mask window size in CSS px (matches baseContainerW/2 etc.)
+ * @param baseCanvasWidth  UI canvas width in CSS px
+ * @param outputWidth    Final canvas width in pixels (e.g. 960 for logo, 720 for icon)
+ * @param outputHeight   Final canvas height in pixels, or null to preserve aspect ratio
  * @returns PNG blob (Promise)
  */
 export function cropImageOnWeb(
@@ -31,6 +36,8 @@ export function cropImageOnWeb(
   cropState: CropState,
   cropWindowSize: number,
   baseCanvasWidth: number,
+  outputWidth: number,
+  outputHeight: number | null,
 ): Promise<Blob> {
   const { focalX, focalY, scale, naturalWidth, naturalHeight, resolvedBaseCanvasWidth } = cropState;
   if (naturalWidth === 0 || naturalHeight === 0) {
@@ -43,8 +50,6 @@ export function cropImageOnWeb(
   if (!ctx) {
     return Promise.reject(new Error('Failed to get canvas context'));
   }
-
-  const MAX_LOGO_SIZE = LOGO_CROP_CONFIG.OUTPUT_WIDTH;
 
   // Mirror the srcSquareSize computation from cropImage() (see
   // shared/logic/imageCrop.computeSrcSquareSize).
@@ -63,9 +68,11 @@ export function cropImageOnWeb(
   const srcW = Math.min(srcSquareSize, naturalWidth - srcX);
   const srcH = Math.min(srcSquareSize, naturalHeight - srcY);
 
-  canvas.width = MAX_LOGO_SIZE;
-  canvas.height = MAX_LOGO_SIZE;
-  ctx.drawImage(image, srcX, srcY, srcW, srcH, 0, 0, MAX_LOGO_SIZE, MAX_LOGO_SIZE);
+  // outputHeight === null → preserve aspect ratio (square by outputWidth).
+  const finalHeight = outputHeight ?? outputWidth;
+  canvas.width = outputWidth;
+  canvas.height = finalHeight;
+  ctx.drawImage(image, srcX, srcY, srcW, srcH, 0, 0, outputWidth, finalHeight);
 
   return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(
