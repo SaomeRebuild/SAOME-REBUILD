@@ -50,6 +50,16 @@ All text on dark surfaces meets WCAG 4.5:1 minimum.
 @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Nunito:wght@300;400;500;600;700&display=swap');
 ```
 
+### Heading Scale
+
+| Level | Tailwind | Font | Weight | CSS variable |
+|-------|----------|------|--------|--------------|
+| h1    | `text-2xl` | Fredoka | `font-bold` (700)    | `--font-family-heading` |
+| h2    | `text-lg`  | Fredoka | `font-semibold` (600) | `--font-family-heading` |
+| h3    | `text-base`| Fredoka | `font-semibold` (600) | `--font-family-heading` |
+
+**h3 = variant header 標準**：用於 sub-component 內部標題（如 `MediaAssetUploaderHeader`）以及 sub-section header（如 CardBuilderEditor Step 3 Icon section）。所有變體的 heading 一律 `text-base font-semibold + var(--font-family-heading)` — 不可自訂 weight 或 size。
+
 ### Usage Rules
 
 - Headings (`h1`–`h6`) always use `--font-family-heading`
@@ -395,3 +405,77 @@ srcSquareSize = (cropWindowSize / (baseCanvasWidth * scale)) * naturalWidth
 | momentum | on | off | off |
 
 chain overflow 防護：crop stage 用了 inline width 的元件，整條 flex chain 的 flex item 都要加 `min-w-0`；html/body 加 `overflow-x: hidden` 終局保護。
+
+---
+
+## 14. Variant Header Pattern（變體元件標題）
+
+> **觸發**：L2 元件有多個 variant（logo / icon / background），需要讓使用者知道現在編輯的是哪一個 variant。
+
+### Pattern
+
+```
+┌─ Parent section (optional, when showHeader={false}) ─┐
+│  <h3 text-base font-semibold + font-family-heading>  │
+│  <p  text-sm text-muted-foreground>                  │
+└──────────────────────────────────────────────────────┘
+              ↕  gap-2 (8px)
+┌─ Sub-component (when showHeader={true}) ─────────────┐
+│  <MediaAssetUploaderHeader title=... description=.../>│
+└──────────────────────────────────────────────────────┘
+```
+
+### Token（變體之間必須相同）
+
+| 元素 | Tailwind + Style |
+|---|---|
+| Title (`<h3>`) | `text-base font-semibold text-foreground` + `style={{ fontFamily: 'var(--font-family-heading)' }}` |
+| Description (`<p>`) | `text-sm text-muted-foreground` |
+| Container (`<div>`) | `flex w-full flex-col items-start gap-2` |
+
+### Left-alignment 鐵律
+
+**所有變體 header 一律 `items-start`（左對齊）**，不可 `items-center`：
+
+- 父 section header 是左對齊，uploader header 必須對齊才能讀成同一段
+- 中心對齊只適用於內部 preview（128×128 等視覺元素），不適用於文字區
+
+### 實作範例
+
+| 元件 | 場景 | 設定 |
+|---|---|---|
+| Logo variant（`MediaAssetUploader variant="logo"`）| 獨立區塊，無 parent header | `showHeader={true}`（default）— 渲染內部 header |
+| Icon variant（`MediaAssetUploader variant="icon"`）| 巢在 CardBuilder Step 3 Icon section 內 | `showHeader={false}` — parent 渲染 section header |
+
+### i18n Layout
+
+| Key | Namespace | 語意 |
+|---|---|---|
+| `iconUpload.title` / `iconUpload.hint` | 變體獨立 namespace | Action verb（「上傳 Icon」）+ 技術規格（「720×720 像素」）|
+| `cardEditor.step3.iconSection.title` / `.hint` | 父 feature namespace | 概念（「推播通知圖示」）+ 出現位置 |
+
+**禁止**：誤判為重複而合併 → 兩層語意會塌陷成一層。
+
+### 實作範本
+
+```
+apps/frontend/src/components/business/dashboard/CardBuilderEditor/MediaAssetUploader/MediaAssetUploaderHeader/
+├── MediaAssetUploaderHeader.tsx        ← ~50 行，只做渲染
+├── MediaAssetUploaderHeader.test.tsx   ← 5 tests
+└── index.ts                            ← barrel
+```
+
+### RN Migration
+
+`MediaAssetUploaderHeader` 使用標準 web typography token（`text-base` / `font-semibold` / `var(--font-family-heading)`），RN 版用 `text-base font-semibold` + `fonts.heading` 對齊即可，業務邏輯零成本遷移。
+
+### 禁止
+
+- ❌ In-component header 用不同 design token（例如 `text-lg` 而非 `text-base`）→ 變體之間大小不一致
+- ❌ `showHeader` default `false` → 多數 consumer 會忘記傳
+- ❌ 命名為 `hideHeader`（雙重否定）/ `withHeader`（語意模糊）
+- ❌ 合併 `iconUpload.title` 與 `cardEditor.step3.iconSection.title` → 兩層語意塌陷
+
+詳見 `.cursor/rules/028-image-uploader-pattern.mdc` § 15 與 `.cursor/skills/saome-image-upload/SKILL.md` § Variant Header Pattern。
+
+事故紀錄：`runs/improvements/feedback/20260901-media-asset-uploader-header-pattern.md`。
