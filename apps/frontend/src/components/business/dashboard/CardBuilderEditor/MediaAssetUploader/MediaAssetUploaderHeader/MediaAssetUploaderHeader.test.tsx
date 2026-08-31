@@ -72,7 +72,7 @@ describe('MediaAssetUploaderHeader', () => {
 
     const wrapper = screen.getByTestId('asset-uploader-header');
     expect(wrapper).toHaveClass('custom-class');
-    // Default layout classes still present
-    expect(wrapper).toHaveClass('flex', 'flex-col', 'items-center');
+    // Default layout classes still present (left-aligned to match sibling section headings).
+    expect(wrapper).toHaveClass('flex', 'flex-col', 'items-start');
   });
 });

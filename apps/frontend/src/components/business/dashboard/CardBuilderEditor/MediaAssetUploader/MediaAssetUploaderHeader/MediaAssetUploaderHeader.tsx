@@ -9,9 +9,9 @@
  * Design tokens (design-system/MASTER.md § 2 typography + § 9 spacing):
  * - Title:  text-base font-semibold + font-family-heading (Fredoka)
  * - Description: text-sm text-muted-foreground
- * - Container gap: gap-2 (title ↔ description), centered to match the
- *   MediaAssetUploader root's `items-center` layout (128×128 preview is
- *   centered, so the header is centered too).
+ * - Container gap: gap-2 (title ↔ description), left-aligned to match the
+ *   sibling section headings (e.g. CardBuilderEditorWorkspace's Icon
+ *   區塊 — 「推播通知圖示」) so the two variants read as one section.
  *
  * @module components/business/dashboard/CardBuilderEditor/MediaAssetUploader/MediaAssetUploaderHeader
  */
@@ -33,7 +33,7 @@ export function MediaAssetUploaderHeader({
   return (
     <div
       data-testid="asset-uploader-header"
-      className={`flex w-full flex-col items-center gap-2 ${className}`}
+      className={`flex w-full flex-col items-start gap-2 ${className}`}
     >
       <h3
         className="text-base font-semibold text-foreground"
@@ -42,7 +42,7 @@ export function MediaAssetUploaderHeader({
         {title}
       </h3>
       {description && (
-        <p className="text-center text-sm text-muted-foreground">{description}</p>
+        <p className="text-sm text-muted-foreground">{description}</p>
       )}
     </div>
   );

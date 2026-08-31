@@ -229,9 +229,14 @@ export function CardBuilderEditorWorkspace({
           {/* Icon 區塊（Phase 8 — IconUploader plan 2026-08-31）
               - 在 Logo 下方,border-t 區隔
               - 推播通知圖示,不會出現在卡片模板本身（PreviewWrapper 只在 PhoneFrame 內 overlay）
-              - showHeader={false}：父層已用 <h3> + <p> 提供 section 標題，避免雙重 header */}
+              - 標題使用 font-semibold + font-family-heading(同 MediaAssetUploaderHeader)
+                確保兩個變體的 heading 視覺一致
+              - showHeader={false}：MediaAssetUploader 不再渲染內部 header,因為這層已自帶 */}
           <section className="flex min-w-0 flex-col gap-2 border-t pt-6">
-            <h3 className="text-base font-medium text-foreground">
+            <h3
+              className="text-base font-semibold text-foreground"
+              style={{ fontFamily: 'var(--font-family-heading)' }}
+            >
               {t('step3.iconSection.title')}
             </h3>
             <p className="text-sm text-muted-foreground">
