@@ -29,7 +29,20 @@ export function CardBuilderEditorPreview({
   const { t } = useTranslation('cardEditor');
 
   // 從 store 取得卡片資料（issuerName, storeName 不傳入預覽：不需即時預覽）
-  const { name, cardType, issuerLogo, holderName, backgroundColor, textColor, barcodeType } = useCardBuilderStore();
+  // Phase 9 (IconUploader 2026-08-31): also read iconImage + iconImageVersion +
+  // issuerName so the push-notification overlay inside PhoneFrame can render.
+  const {
+    name,
+    cardType,
+    issuerLogo,
+    issuerName,
+    iconImage,
+    iconImageVersion,
+    holderName,
+    backgroundColor,
+    textColor,
+    barcodeType,
+  } = useCardBuilderStore();
 
   return (
     <aside className={`
@@ -43,13 +56,16 @@ export function CardBuilderEditorPreview({
         <span className="text-sm font-medium">{t('preview.title')}</span>
       </div>
 
-      {/* 卡片預覽（手機框架 + 卡片本體） */}
+      {/* 卡片預覽（手機框架 + 卡片本體 + 推播通知 overlay） */}
       <div className="flex h-auto w-full max-w-sm items-center justify-center rounded-xl border-2 border-dashed border-border bg-card p-4">
         {cardType ? (
           <PreviewWrapper
             name={name}
             cardType={cardType}
             issuerLogo={issuerLogo}
+            issuerName={issuerName}
+            iconImage={iconImage || undefined}
+            iconImageVersion={iconImageVersion}
             holderName={holderName}
             backgroundColor={backgroundColor}
             textColor={textColor}

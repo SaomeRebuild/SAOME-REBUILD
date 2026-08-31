@@ -1,43 +1,50 @@
 /**
- * LogoUploader — Card builder Step 3: Logo upload with crop + zoom preview.
+ * MediaAssetUploader — Unified media-asset uploader for Card Builder.
+ *
+ * Refactored from the previous LogoUploader (332 lines, logo-only) to be
+ * variant-driven via the `variant` prop. Each variant (logo / icon / future
+ * background) reads its crop config, i18n namespace, validator, and
+ * templateSettings field from `MEDIA_ASSET_CONFIG` in
+ * `@saome/shared/constants/card-images`.
  *
  * Orchestration (state + handlers + ResizeObserver) lives here. JSX is
- * delegated to sub-components in `./UploadPrompt`, `./LogoPreview`, `./UploadError`,
+ * delegated to sub-components: `./UploadPrompt`, `./Preview`, `./UploadError`,
  * `./UploadingIndicator`, `./CropStage`, `./ScaleControl`, `./CropActions`.
  *
  * Features:
- * - File picker with validation (PNG/JPG only, ≤ 5MB)
+ * - File picker with validation (PNG/JPG only, ≤ 5MB) via shared factory
  * - Crop preview with draggable focal point (mouse/pen/touch)
  * - Scroll/wheel + slider zoom control (0.5x - 3x)
- * - Canvas cropping to 960x960px (in useImageCrop)
+ * - Canvas cropping to variant-specific OUTPUT_WIDTH × OUTPUT_HEIGHT
  * - Direct R2 upload via pre-signed URL
- * - Updates template issuerLogo via cardService.update()
+ * - Updates template settings via cardService.update()
  *
  * RN migration: Canvas API → use react-native-image-crop-picker. All
  * business logic is platform-agnostic (see `packages/shared/logic/imageCrop`).
  *
- * @module components/business/dashboard/CardBuilderEditor/LogoUploader
+ * @module components/business/dashboard/CardBuilderEditor/MediaAssetUploader
  */
 
 import { useState, useRef, useCallback, useEffect, useLayoutEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useImageCrop } from '@/hooks/useImageCrop';
-import type { ValidationError } from '@saome/shared/types';
+import type { FileLike, ValidationError } from '@saome/shared/types';
 import {
   applyScaleChange as applyScaleChangeShared,
   validateLogoFile,
+  validateIconFile,
 } from '@saome/shared/logic';
 import { cardService } from '@/services/cardService';
 import { api } from '@/config/api';
 import { getAccessToken } from '@/services/authStore';
-import { useCardBuilderStore } from '../CardBuilderEditor.store';
-import { LOGO_CROP_CONFIG } from '@saome/shared/constants/card-images';
+import { useCardBuilderStore, unwrapCardSettings } from '../CardBuilderEditor.store';
+import { MEDIA_ASSET_CONFIG } from '@saome/shared/constants/card-images';
 import type {
-  LogoUploaderProps,
-  LogoUploaderState,
-} from './LogoUploader.types';
+  MediaAssetUploaderProps,
+  MediaAssetUploaderState,
+} from './MediaAssetUploader.types';
 import { UploadPrompt } from './UploadPrompt/UploadPrompt';
-import { LogoPreview } from './LogoPreview/LogoPreview';
+import { Preview } from './Preview/Preview';
 import { UploadError } from './UploadError/UploadError';
 import { UploadingIndicator } from './UploadingIndicator/UploadingIndicator';
 import { ScaleControl } from './ScaleControl/ScaleControl';
@@ -45,24 +52,33 @@ import { CropActions } from './CropActions/CropActions';
 import { CropStage } from './CropStage/CropStage';
 import type { CropStageRefs } from './CropStage';
 
-const MAX_SCALE = LOGO_CROP_CONFIG.MAX_SCALE;
-const MIN_SCALE = LOGO_CROP_CONFIG.MIN_SCALE;
-const CROP_WINDOW_SIZE = LOGO_CROP_CONFIG.CROP_WINDOW_SIZE;
-const BASE_CANVAS_WIDTH = LOGO_CROP_CONFIG.BASE_CANVAS_WIDTH;
-
-export function LogoUploader({
+export function MediaAssetUploader({
   templateId,
-  onLogoUploaded,
+  variant,
+  onUploaded,
   className = '',
-}: LogoUploaderProps) {
-  const { t } = useTranslation('logoUpload');
-  const setIssuerLogo = useCardBuilderStore((s) => s.setIssuerLogo);
+}: MediaAssetUploaderProps) {
+  const config = MEDIA_ASSET_CONFIG[variant]!;
+  const { t } = useTranslation(config.i18nNamespace);
+  const cropConfig = config.cropConfig;
+
+  const MAX_SCALE = cropConfig.MAX_SCALE;
+  const MIN_SCALE = cropConfig.MIN_SCALE;
+  const CROP_WINDOW_SIZE = cropConfig.CROP_WINDOW_SIZE;
+  const BASE_CANVAS_WIDTH = cropConfig.BASE_CANVAS_WIDTH;
+
+  // Variant-specific store action: logo → setIssuerLogo, icon → setIconImage.
+  const setStoreField = useCardBuilderStore(
+    variant === 'logo'
+      ? (s) => s.setIssuerLogo
+      : (s) => s.setIconImage,
+  );
 
   // Component state
-  const [state, setState] = useState<LogoUploaderState>('idle');
+  const [state, setState] = useState<MediaAssetUploaderState>('idle');
   const [validationError, setValidationError] = useState<ValidationError | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [lastUploadedLogoKey, setLastUploadedLogoKey] = useState<string | null>(null);
+  const [lastUploadedKey, setLastUploadedKey] = useState<string | null>(null);
 
   // Refs (shared with CropStage for drag/pan/momentum bookkeeping)
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -86,7 +102,7 @@ export function LogoUploader({
     };
   }, []);
 
-  // Image crop hook
+  // Image crop hook — output size driven by variant config.
   const {
     cropState,
     setCropState,
@@ -98,8 +114,8 @@ export function LogoUploader({
     resetCrop,
     hasImage,
   } = useImageCrop({
-    outputWidth: LOGO_CROP_CONFIG.OUTPUT_WIDTH,
-    outputHeight: LOGO_CROP_CONFIG.OUTPUT_HEIGHT,
+    outputWidth: cropConfig.OUTPUT_WIDTH,
+    outputHeight: cropConfig.OUTPUT_HEIGHT,
     cropWindowSize: CROP_WINDOW_SIZE,
     baseCanvasWidth: BASE_CANVAS_WIDTH,
     minScale: MIN_SCALE,
@@ -136,7 +152,7 @@ export function LogoUploader({
     };
   }, [imageUrl]);
 
-  // Derived geometry
+  // Derived geometry (Rule 028 § 12 Stage Height Invariant — same formula for both variants)
   const naturalCap =
     cropState.naturalWidth > 0 ? cropState.naturalWidth : BASE_CANVAS_WIDTH;
   const STAGE_SAFETY_MARGIN = 16;
@@ -203,13 +219,20 @@ export function LogoUploader({
     liveOffsetYRef.current = 0;
   }, []);
 
+  // Validator: variant-driven. The factory `validateMediaFile` (in shared) handles the actual logic.
+  const validateFile = useCallback(
+    (file: FileLike): ValidationError | null =>
+      variant === 'logo' ? validateLogoFile(file) : validateIconFile(file),
+    [variant],
+  );
+
   // File picker
   const handleFileSelect = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
 
-      const fileError = validateLogoFile(file);
+      const fileError = validateFile(file);
       if (fileError) {
         setValidationError(fileError);
         setState('error');
@@ -228,7 +251,7 @@ export function LogoUploader({
 
       e.target.value = '';
     },
-    [loadImage, t],
+    [loadImage, t, validateFile],
   );
 
   // Apply: crop → upload → persist template → notify parent
@@ -244,38 +267,49 @@ export function LogoUploader({
     setUploadError(null);
     try {
       const blob = await cropImage();
-      const { uploadUrl, key } = await cardService.generateLogoUploadUrl(
+      const { uploadUrl, key } = await cardService.generateUploadUrl(
         templateId,
-        'logo',
+        config.cardImageType,
       );
-      await fetch(uploadUrl, {
+      // Defensive: verify R2 PUT actually succeeded. If it failed silently
+      // (CORS rejection, network error, etc.), the key would be saved to
+      // settings but R2 would have no object — leaving the preview broken.
+      // Rule 028 § upload-error-handling: surface the failure to the user
+      // instead of pretending success.
+      const putRes = await fetch(uploadUrl, {
         method: 'PUT',
         body: blob,
         headers: { 'Content-Type': 'image/png' },
       });
+      if (!putRes.ok) {
+        throw new Error(
+          `[MediaAssetUploader] R2 PUT failed: ${putRes.status} ${putRes.statusText}`,
+        );
+      }
 
       const currentTemplate = await cardService.getById(templateId);
-      const rawSettings = currentTemplate.settings;
-      const safeSettings: Record<string, unknown> =
-        typeof rawSettings === 'string' ? JSON.parse(rawSettings) : (rawSettings ?? {});
+      // Bug #8.5 defensive: use the shared unwrapCardSettings helper so we
+      // handle object / JSON string / array-of-partials uniformly with the store.
+      const safeSettings: Record<string, unknown> = unwrapCardSettings(currentTemplate.settings);
       await cardService.update(templateId, {
-        settings: { ...safeSettings, issuerLogo: key },
+        settings: { ...safeSettings, [config.settingsField]: key },
       });
 
-      setIssuerLogo(key);
-      setLastUploadedLogoKey(key);
+      // Variant-specific store setter
+      setStoreField(key);
+      setLastUploadedKey(key);
       setState('success');
-      onLogoUploaded(key);
+      onUploaded?.(key);
 
       setTimeout(() => {
         setState('idle');
       }, 2000);
     } catch (err) {
-      console.error('[LogoUploader] Upload failed:', err);
+      console.error('[MediaAssetUploader] Upload failed:', err);
       setUploadError(t('error'));
       setState('error');
     }
-  }, [hasImage, imageRef, cropImage, templateId, onLogoUploaded, setIssuerLogo, t]);
+  }, [hasImage, imageRef, cropImage, templateId, onUploaded, setStoreField, t, config.cardImageType, config.settingsField]);
 
   const handleCancel = useCallback(() => {
     resetCrop();
@@ -297,25 +331,32 @@ export function LogoUploader({
 
   // Idle / Success: preview OR upload prompt
   if (state === 'idle' || state === 'success') {
-    const issuerLogo = useCardBuilderStore.getState().issuerLogo;
-    const issuerLogoVersion = useCardBuilderStore.getState().issuerLogoVersion;
-    const previewKey = lastUploadedLogoKey ?? issuerLogo ?? null;
+    // Variant-specific store reads for the existing preview (when no fresh upload).
+    const storeState = useCardBuilderStore.getState();
+    const existingKey = config.settingsField === 'issuerLogo'
+      ? storeState.issuerLogo
+      : storeState.iconImage;
+    const existingVersion = config.settingsField === 'issuerLogo'
+      ? storeState.issuerLogoVersion
+      : storeState.iconImageVersion;
+    const previewKey = lastUploadedKey ?? existingKey ?? null;
     const displayUrl = previewKey
-      ? `${api.baseUrl}${api.paths.cardImage(templateId, 'logo')}?token=${getAccessToken() ?? ''}&v=${issuerLogoVersion}`
+      ? `${api.baseUrl}${api.paths.cardImage(templateId, config.cardImageType)}?token=${getAccessToken() ?? ''}&v=${existingVersion}`
       : undefined;
 
     return (
       <div
         ref={wrapperRef}
-        data-testid="logo-crop-wrapper"
+        data-testid="asset-crop-wrapper"
         className={`flex min-w-0 flex-col items-center gap-4 ${className}`}
       >
         {displayUrl ? (
-          <LogoPreview
+          <Preview
             displayUrl={displayUrl}
             showSuccessBadge={state === 'success'}
             replaceLabel={t('replace')}
             successLabel={t('success')}
+            loadErrorLabel={t('loadError')}
             onReplace={() => fileInputRef.current?.click()}
           />
         ) : (
@@ -339,7 +380,7 @@ export function LogoUploader({
   // Error
   if (state === 'error') {
     const errorMessage = validationError
-      ? t(`logoUpload.${validationError.message}`)
+      ? t(validationError.message)
       : uploadError ?? t('error');
     return (
       <>
@@ -374,7 +415,7 @@ export function LogoUploader({
   return (
     <div
       ref={wrapperRef}
-      data-testid="logo-crop-wrapper"
+      data-testid="asset-crop-wrapper"
       className={`flex min-w-0 flex-col items-center gap-4 ${className}`}
     >
       {state === 'uploading' && <UploadingIndicator uploadingLabel={t('uploading')} />}

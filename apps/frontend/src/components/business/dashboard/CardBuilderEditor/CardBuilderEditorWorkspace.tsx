@@ -9,7 +9,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { CardType, EditorStep } from './CardBuilderEditor.types';
 import { CardTypeSelector } from './CardTypeSelector';
 import { Step2CardSettings } from './Step2CardSettings';
-import { LogoUploader } from './LogoUploader';
+import { MediaAssetUploader } from './MediaAssetUploader';
 import { useCardBuilderStore } from './CardBuilderEditor.store';
 import { cardService } from '@/services/cardService';
 
@@ -92,6 +92,22 @@ export function CardBuilderEditorWorkspace({
           });
         } catch (err) {
           console.error('[handleNext] onSave failed:', err);
+        }
+      }
+      // Step 3: persist logo + icon R2 keys (Phase 8 of IconUploader plan 2026-08-31).
+      // The MediaAssetUploader has already updated the store on upload, so we
+      // just forward the current store values to onSave().
+      if (step === 3 && cardId && onSave) {
+        try {
+          const { issuerLogo, iconImage } = useCardBuilderStore.getState();
+          await onSave(cardId, {
+            issuerLogo: issuerLogo || undefined,
+            iconImage: iconImage || undefined,
+          });
+          console.log('[handleNext] Step 3 image keys saved', { issuerLogo, iconImage });
+        } catch (err) {
+          // Don't block step transition — let the user proceed and retry later.
+          console.error('[handleNext] Step 3 onSave failed:', err);
         }
       }
       onStepChange((step + 1) as EditorStep);
@@ -194,18 +210,41 @@ export function CardBuilderEditorWorkspace({
         </section>
       )}
 
-      {/* Step 3: 卡片設計（Logo 上傳） */}
+      {/* Step 3: 卡片設計（Logo + Icon 上傳） */}
       {step === 3 && (
         <section className="flex min-w-0 flex-col gap-6">
           <h2 className="text-lg font-semibold text-foreground">
             {t('step3.title')}
           </h2>
-          <LogoUploader
+
+          {/* 既有 Logo 區塊 — 從既有的單一 LogoUploader 升級為 MediaAssetUploader variant="logo" */}
+          <MediaAssetUploader
+            variant="logo"
             templateId={cardId ?? ''}
-            onLogoUploaded={(logoUrl) => {
-              console.log('[Step3] Logo uploaded:', logoUrl);
+            onUploaded={(key: string) => {
+              console.log('[Step3] Logo uploaded:', key);
             }}
           />
+
+          {/* Icon 區塊（Phase 8 — IconUploader plan 2026-08-31）
+              - 在 Logo 下方,border-t 區隔
+              - 推播通知圖示,不會出現在卡片模板本身（PreviewWrapper 只在 PhoneFrame 內 overlay） */}
+          <section className="flex min-w-0 flex-col gap-2 border-t pt-6">
+            <h3 className="text-base font-medium text-foreground">
+              {t('step3.iconSection.title')}
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              {t('step3.iconSection.hint')}
+            </p>
+            <MediaAssetUploader
+              variant="icon"
+              templateId={cardId ?? ''}
+              onUploaded={(key: string) => {
+                console.log('[Step3] Icon uploaded:', key);
+              }}
+            />
+          </section>
+
           {/* 上一步 / 下一步按鈕 */}
           <div className="flex items-center justify-between pt-2">
             <button

@@ -20,8 +20,9 @@ import {
   applyScaleChange,
   computeSrcSquareSize,
   validateLogoFile,
+  validateIconFile,
 } from './imageCrop';
-import { LOGO_CROP_CONFIG } from '../constants/card-images';
+import { ICON_CROP_CONFIG, LOGO_CROP_CONFIG } from '../constants/card-images';
 import type { CropState } from '../types/imageCrop';
 
 // ---------------------------------------------------------------------------
@@ -486,5 +487,89 @@ describe('imageCrop — §6 validateLogoFile (platform-agnostic)', () => {
     // No literal Chinese / English baked in — UI resolves via i18n key.
     expect(tooLarge?.message).not.toMatch(/[\u4e00-\u9fff]/);
     expect(wrongFormat?.message).not.toMatch(/[\u4e00-\u9fff]/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// § 7. validateIconFile — Mirrors validateLogoFile via validateMediaFile factory
+// ---------------------------------------------------------------------------
+
+describe('imageCrop — §7 validateIconFile (icon variant, same factory as logo)', () => {
+  it('PNG file within size limit → null (success)', () => {
+    expect(
+      validateIconFile({ type: 'image/png', size: 1024 * 1024 }),
+    ).toBeNull();
+  });
+
+  it('JPG file within size limit → null (success)', () => {
+    expect(
+      validateIconFile({ type: 'image/jpeg', size: 2 * 1024 * 1024 }),
+    ).toBeNull();
+  });
+
+  it('file larger than MAX_FILE_SIZE → tooLarge error', () => {
+    const err = validateIconFile({
+      type: 'image/png',
+      size: ICON_CROP_CONFIG.MAX_FILE_SIZE + 1,
+    });
+    expect(err).toEqual({
+      type: 'tooLarge',
+      message: 'validation.tooLarge',
+    });
+  });
+
+  it('wrong MIME type (e.g. application/pdf) → wrongFormat error', () => {
+    const err = validateIconFile({
+      type: 'application/pdf',
+      size: 1024,
+    });
+    expect(err).toEqual({
+      type: 'wrongFormat',
+      message: 'validation.wrongFormat',
+    });
+  });
+
+  it('emits i18n-key messages, not literal strings (platform-agnostic contract)', () => {
+    const tooLarge = validateIconFile({ type: 'image/png', size: 999_999_999 });
+    const wrongFormat = validateIconFile({ type: 'text/plain', size: 100 });
+    expect(tooLarge?.message).toBe('validation.tooLarge');
+    expect(wrongFormat?.message).toBe('validation.wrongFormat');
+    expect(tooLarge?.message).not.toMatch(/[\u4e00-\u9fff]/);
+  });
+
+  it('shares validation contract with validateLogoFile (both use validateMediaFile factory)', () => {
+    // Same input → same output for both validators. This pins the shared
+    // factory contract — if anyone drifts logo/icon validation, this fails.
+    const validInput = { type: 'image/png', size: 1024 };
+    expect(validateLogoFile(validInput)).toBeNull();
+    expect(validateIconFile(validInput)).toBeNull();
+
+    const tooBig = { type: 'image/png', size: 999_999_999 };
+    expect(validateLogoFile(tooBig)).toEqual(validateIconFile(tooBig));
+
+    const wrongType = { type: 'application/pdf', size: 1024 };
+    expect(validateLogoFile(wrongType)).toEqual(validateIconFile(wrongType));
+  });
+
+  it('icon and logo share MAX_FILE_SIZE (5MB) — unified upload UX', () => {
+    // Both configs must agree on size cap so the upload UI hint is consistent.
+    expect(ICON_CROP_CONFIG.MAX_FILE_SIZE).toBe(LOGO_CROP_CONFIG.MAX_FILE_SIZE);
+    expect(ICON_CROP_CONFIG.MAX_FILE_SIZE).toBe(5 * 1024 * 1024);
+  });
+
+  it('icon crop config 1:2 CROP_WINDOW:BASE_CANVAS ratio (matches logo for shared hook chain)', () => {
+    expect(ICON_CROP_CONFIG.CROP_WINDOW_SIZE / ICON_CROP_CONFIG.BASE_CANVAS_WIDTH).toBeCloseTo(0.5, 5);
+    expect(LOGO_CROP_CONFIG.CROP_WINDOW_SIZE / LOGO_CROP_CONFIG.BASE_CANVAS_WIDTH).toBeCloseTo(0.5, 5);
+    // Both ratios must be equal so useImageCrop hook chain is reused verbatim.
+    expect(ICON_CROP_CONFIG.CROP_WINDOW_SIZE / ICON_CROP_CONFIG.BASE_CANVAS_WIDTH).toBe(
+      LOGO_CROP_CONFIG.CROP_WINDOW_SIZE / LOGO_CROP_CONFIG.BASE_CANVAS_WIDTH,
+    );
+  });
+
+  it('icon crop config OUTPUT_WIDTH = OUTPUT_HEIGHT = 720 (Passcreator square spec)', () => {
+    expect(ICON_CROP_CONFIG.OUTPUT_WIDTH).toBe(720);
+    expect(ICON_CROP_CONFIG.OUTPUT_HEIGHT).toBe(720);
+    // Square output ratio: 1:1 — distinct from logo's flexible H.
+    expect(ICON_CROP_CONFIG.OUTPUT_WIDTH / ICON_CROP_CONFIG.OUTPUT_HEIGHT).toBe(1);
   });
 });

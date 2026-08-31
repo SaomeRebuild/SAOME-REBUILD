@@ -13,6 +13,10 @@ export default {
   uploading: '上傳中...',
   success: 'Logo 上傳成功',
   error: '上傳失敗，請重試',
+  /** Bug-φ fix (Phase 3 of icon-preview plan 2026-08-31): shown when the
+   *  uploaded logo's <img src> fails to load (R2 404, expired token, etc.).
+   *  Mirrors the LogoUploader "click to re-upload" recovery pattern. */
+  loadError: '圖片載入失敗，請重新上傳',
   remove: '移除 Logo',
   apply: '套用裁切',
   cancel: '取消',

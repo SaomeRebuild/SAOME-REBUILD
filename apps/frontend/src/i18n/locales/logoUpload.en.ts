@@ -13,6 +13,9 @@ export default {
   uploading: 'Uploading...',
   success: 'Logo uploaded successfully',
   error: 'Upload failed. Please try again.',
+  /** Bug-φ fix (Phase 3 of icon-preview plan 2026-08-31): shown when the
+   *  uploaded logo's <img src> fails to load (R2 404, expired token, etc.). */
+  loadError: 'Image failed to load — please re-upload',
   remove: 'Remove Logo',
   apply: 'Apply Crop',
   cancel: 'Cancel',

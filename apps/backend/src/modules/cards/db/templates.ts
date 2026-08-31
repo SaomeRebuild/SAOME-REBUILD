@@ -51,6 +51,16 @@ export interface TemplateSettings {
   currency?: 'TWD' | 'ZAR';
   // Step 3-4 fields (TBD)
   issuerLogo?: string;
+  /**
+   * Push-notification icon (R2 key) — mirrors shared templateSettingsSchema.iconImage.
+   * Phase 5 of IconUploader plan (2026-08-31).
+   */
+  iconImage?: string;
+  /**
+   * Background image (R2 key) — reserved for next BackgroundUploader plan.
+   * Mirrors shared templateSettingsSchema.backgroundImage.
+   */
+  backgroundImage?: string;
   backgroundColor?: string;
   textColor?: string;
   holderName?: string;
@@ -151,9 +161,29 @@ export async function findTemplatesByTenantId(
  * Only updates fields that are explicitly provided.
  * When status is set to 'published', expires_at is automatically cleared.
  *
- * IMPORTANT: settings fields are MERGED with existing settings using JSONB's ||| operator.
- * This preserves existing fields that are not being updated (e.g., Step 2 only updates
- * storeName/issuerName without wiping Step 1's name).
+ * IMPORTANT: settings fields are MERGED with existing settings using JSONB's || operator
+ * (PostgreSQL JSONB concatenation). This preserves existing fields that are not being
+ * updated (e.g., Step 2 only updates storeName/issuerName without wiping Step 1's
+ * cardType, and Step 3 only updates issuerLogo/iconImage without wiping Step 2 fields).
+ *
+ * Implementation note: postgres.js's tagged template injection handles the JSON string
+ * safely — the right operand of || is interpolated via `${}` as a parameter, never
+ * concatenated into the SQL string directly.
+ *
+ * Defensive unwrap of corrupted JSONB (Bug #8 + Bug #8.5 / 2026-08-31):
+ * The existing `settings` column may have been corrupted by the previous REPLACE
+ * bug into one of:
+ *   - jsonb ARRAY of partial JSON strings (each push appended a step's payload)
+ *     → NESTED unwrap: if `settings -> -1` is itself a jsonb string, parse with
+ *       `((settings -> -1) #>> '{}')::jsonb`; if object, passthrough; else `'{}'`
+ *       (Bug #8.5: the array tail is usually a string, NOT an object — naive
+ *       `settings -> -1` returns a string and `string || object` re-corrupts)
+ *   - jsonb STRING of partial JSON (legacy corruption)
+ *     → unwrap with `(settings #>> '{}')::jsonb`
+ *   - jsonb OBJECT (normal case)
+ *     → passthrough
+ * Without this defensive CASE WHEN, `corrupted_settings || new_payload` would
+ * either grow the array (still corrupting) or yield a non-object type.
  */
 export async function updateTemplate(
   sql: Sql,
@@ -162,8 +192,8 @@ export async function updateTemplate(
 ): Promise<TemplatesRow> {
   // Build dynamic SET clauses using tagged template injection to avoid $N collisions.
   // The id is always passed as ${id} — not as a $N positional placeholder.
-  // settings is REPLACED entirely (not merged) so partial updates always reflect
-  // the full current state of the form — no stale data from previous edits.
+  // settings is MERGED with existing settings (not replaced) so partial updates
+  // never wipe unrelated fields.
 
   // Early return if nothing to update
   if (
@@ -182,8 +212,24 @@ export async function updateTemplate(
   // Build individual SET clauses via tagged template injection
   const setName = input.name !== undefined ? sql`name = ${input.name}` : null;
   const setCardType = input.cardType !== undefined ? sql`card_type = ${input.cardType}` : null;
+  // Defensive unwrap: tolerate array/string corruptions in the existing settings column
+  // (Bug #8 + Bug #8.5) so that `||` always sees a true jsonb object on the left side.
+  // Bug #8.5 fix: WHEN 'array' branch must NESTED-unwrap the last element because
+  //   legacy corruption stored `JSON.stringify(obj)` inside the array, so `settings -> -1`
+  //   returns a jsonb **string**, not an object. Naive `string || object` would re-corrupt.
   const setSettings = input.settings !== undefined
-    ? sql`settings = ${JSON.stringify(input.settings)}::jsonb`
+    ? sql`settings = CASE jsonb_typeof(settings)
+                WHEN 'object' THEN settings
+                WHEN 'array'  THEN (
+                  CASE jsonb_typeof(settings -> -1)
+                    WHEN 'string' THEN ((settings -> -1) #>> '{}')::jsonb
+                    WHEN 'object' THEN (settings -> -1)
+                    ELSE '{}'::jsonb
+                  END
+                )
+                WHEN 'string' THEN (settings #>> '{}')::jsonb
+                ELSE settings
+              END || ${sql.json(input.settings as any)}`
     : null;
   const setStatus = input.status !== undefined ? sql`status = ${input.status}` : null;
 

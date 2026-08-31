@@ -77,22 +77,109 @@ const sets = buildUpdateSet(sql, { name: input.name, status: input.status });
 await sql`UPDATE t SET ${sql.join(sets, sql`, `)} WHERE id = ${id}`;
 ```
 
+## workerd `JSON.stringify` pitfall（MANDATORY）
+
+> **觸發**：動態 UPDATE / INSERT 涉及 jsonb column 或任何 non-ASCII 字串（中文 / 日文 / emoji）。
+
+### 問題
+
+在 workerd runtime（wrangler dev / Cloudflare Workers），`JSON.stringify(obj)` 對 non-ASCII 字串會破壞成 replacement character `\uFFFD`，跟 Node.js V8 行為不對稱：
+
+| 字串 | Node.js `JSON.stringify` | workerd `JSON.stringify` |
+|---|---|---|
+| `"哈"` (U+54C8) | `"哈"` | `"\uFFFD\uFFFD"` |
+| `"Hello"` | `"Hello"` | `"Hello"` |
+| `"🎉"` (U+1F389) | `"🎉"` | 可能更糟 |
+
+後續若串接 PostgreSQL `::jsonb` cast：
+
+```typescript
+// ❌ 危險 pattern：手動 stringify + cast 在 workerd 對 non-ASCII 破壞
+await sql`UPDATE t SET settings = ${JSON.stringify(input.settings)}::jsonb`
+// 傳進 DB 的字串是 '{"storeName":"\uFFFD\uFFFD",...}'
+// 觸發 Migration 013 trigger raise "got array" → 500
+```
+
+**為什麼 vitest 沒抓到**：
+- vitest 用 `@cloudflare/vitest-pool-workers` 跑 workerd pool，**理論上會抓**
+- 但測試都用 ASCII 字串（storeName="Cafe"），non-ASCII 路徑沒被覆蓋
+- 只有「前端 → wrangler dev → Supabase」完整鏈才重現
+
+**為什麼 typecheck / lint 沒抓到**：
+- TypeScript 把 `${JSON.stringify(x)}::jsonb` 視為合法 string template
+- 沒有 lint rule 檢查 workerd 的 runtime 行為
+
+### 解法（強制）
+
+**必須使用 postgres.js 的 `sql.json()` helper**，不要手動 stringify + cast：
+
+```typescript
+// ✅ 正確：sql.json() 直接把 JS 值編碼成 jsonb parameter，繞過 JS-side JSON.stringify
+await sql`UPDATE t SET settings = ${sql.json(input.settings)}`
+
+// ❌ 錯誤：手動 stringify + cast 在 workerd 對 non-ASCII 破壞
+await sql`UPDATE t SET settings = ${JSON.stringify(input.settings)}::jsonb`
+```
+
+### 必跑 conformance test
+
+```typescript
+// apps/backend/src/modules/cards/tests/updateTemplate.non-ascii.test.ts
+it('preserves Chinese characters in settings round-trip', async () => {
+  const input = { storeName: '哈', issuerName: '你好世界' };
+  await updateTemplate(sql, id, { settings: input });
+  const row = await findTemplateById(sql, id);
+  expect(row!.settings.storeName).toBe('哈');
+  expect(row!.settings.issuerName).toBe('你好世界');
+});
+
+it('preserves emoji in description fields', async () => {
+  const input = { storeName: 'Cafe 🎉' };
+  await updateTemplate(sql, id, { settings: input });
+  const row = await findTemplateById(sql, id);
+  expect(row!.settings.storeName).toBe('Cafe 🎉');
+});
+```
+
+### 與 § tagged template injection 的分工
+
+| 章節 | 涵蓋的坑 |
+|---|---|
+| § tagged template | `$N` + tagged template 混合 → unterminated dollar-quoted string |
+| **§ workerd `JSON.stringify`** | **手動 stringify → workerd 字串破壞 → jsonb cast fail → trigger reject** |
+
+兩者都是 workerd-specific 坑，但屬於不同維度（SQL 結構 vs 字串編碼）。
+
+### 對齊既有 `insertTemplate`
+
+`apps/backend/src/modules/cards/db/templates.ts::insertTemplate` 從來都用 `sql.json()`，是 `updateTemplate` 從 Bug A（2026-08-21 修復）開始從未對齊 INSERT 的累積 bug。新寫任何 db function 涉及 jsonb → **一律**用 `sql.json()`。
+
+事故紀錄：`runs/improvements/feedback/20260831-workerd-json-stringify-jsonb-pitfall.md`
+
 ## 觸發關鍵字
 
 「updateTemplate」、「動態 UPDATE」、「SET 之後動態加欄位」、
 「dollar-quoted」、「unterminated dollar-quoted string」、
 「NOT_TAGGED_CALL」**必須**引用此 rule。
 
+「workerd `JSON.stringify` 破壞 non-ASCII」、「`sql.json()`」、「trigger raise got array」、「jsonb cast fail」、「中文 settings 500」、「non-ASCII round-trip」→ **必引** § workerd `JSON.stringify` pitfall。
+
 ## 禁止
 
 - ❌ 在 tagged template 內用 `$N` positional placeholder 動態拼接
 - ❌ 用 `sql()` untagged call 繞過 tagged template 限制
 - ❌ 用 `sql.unsafe()` 把 `$N` 當作普通字串插入
+- ❌ 用 `${JSON.stringify(jsonbValue)}::jsonb` 注入 jsonb column（workerd 破壞 non-ASCII）→ **必用 `${sql.json(value)}`**
 
 ## 參照
 
 - `runs/improvements/feedback/20260821-card-builder-update-template-500.md`
-  — 完整根因分析 + 四次失敗修復記錄
+  — tagged template 完整根因分析 + 四次失敗修復記錄
+- `runs/improvements/feedback/20260831-workerd-json-stringify-jsonb-pitfall.md`
+  — workerd JSON.stringify pitfall 完整根因 + evidence chain
+- `DEV/08-2026/0831-cardbuilder-icon-upload-settings-chain.md`
+  — 4 階段修復鏈 master narrative（Bug A → #8 → #8.5 → workerd JSON.stringify）
 - `apps/backend/src/modules/cards/db/templates.ts`
-  — `updateTemplate` 最終修復範例
+  — `updateTemplate`（最終修復範例，line 232 area 用 `sql.json()`）+ `insertTemplate`（line 90 一開始就用 `sql.json()`）
 - `000-modular-design.mdc` — Part B § DB queries（DB 查詢必須放在 `db/` 資料夾）
+- `.cursor/rules/028-image-uploader-pattern.mdc` § 2 — Settings merge cross-ref workerd pitfall

@@ -127,15 +127,18 @@ frame 跨 stage / outer            frame 永遠在 stage 內
 
 #### 適用對象
 
-- ✅ LogoUploader（已套用，commit `3c8c7b3`）
-- ⏳ BackgroundUploader（800×800 crop，尚未實作）
-- ⏳ IconUploader（256×256 crop，尚未實作）
+- ✅ LogoUploader（已套用,commit `3c8c7b3`）
+- ✅ IconUploader（720×720 crop,2026-08-31 — refactored as `MediaAssetUploader` variant="icon" via plan `iconuploader_實作計畫_2123407a.plan.md`）
+- ⏳ BackgroundUploader（1860×738 crop,尚未實作;`backgroundImage` schema field 已預留）
 
-兩個未實作的 uploader 套用此 invariant 後，未來 landscape 圖片不會再出現「frame 超出 stage」視覺。
+Icon variant 的 CROP_WINDOW_SIZE 為 **150**（非 256）,為 mobile UX 考量（在 ≤412 viewport 提供更舒服的拖曳空間）。
+詳見 plan § 1.1「比例一致性 150/300」段落。
+
+兩個未實作的 uploader 套用此 invariant 後,未來 landscape 圖片不會再出現「frame 超出 stage」視覺。
 
 #### 為什麼不直接縮小 frame 適應 stage
 
-Frame 200×200（BackgroundUploader 為 800×800、IconUploader 為 256×256）
+Frame 200×200（BackgroundUploader 為 800×800、IconUploader 為 150×150,1:2 比例）
 **是 export contract**，UI mask size 必須永遠 = export srcSquareSize。
 若 landscape 時縮小 frame，視覺是 72×72 但 export 是 200×200，使用者
 心智模型會裂掉。
@@ -393,16 +396,25 @@ saome/
 
 ### Step 7：Settings merge（在 cardService.update 內）
 
+> **必用 postgres.js `sql.json()` 而非手動 stringify + cast**——workerd runtime 對 non-ASCII 字串會破壞。詳見 Rule 027 § workerd `JSON.stringify` pitfall。
+
 ```typescript
-// apps/backend/src/modules/cards/services/cardService.ts
-// 必須 fetch → merge → write，禁止直接覆蓋 settings
-const updateData = {
-  ...existingData,
-  settings: { ...existingData.settings, ...input.settings },
-};
+// apps/backend/src/modules/cards/db/templates.ts
+const setSettings = input.settings !== undefined
+  ? sql`settings = settings || ${sql.json(input.settings as any)}`
+  : null;
 ```
 
-詳見 Rule 027（postgres dynamic query）+ Rule 028 § Settings merge。
+**為什麼必用 `sql.json()`**：
+
+| Pattern | Node.js | workerd | 推薦 |
+|---|---|---|---|
+| `sql\`settings = settings \|\| ${sql.json(input.settings)}\`` | ✅ 正常 | ✅ 正常 | ✅ **採用** |
+| `sql\`settings = settings \|\| ${JSON.stringify(input.settings)}::jsonb\`` | ✅ 正常 | ❌ 破壞 non-ASCII | ❌ 禁止 |
+
+事故紀錄：`runs/improvements/feedback/20260831-workerd-json-stringify-jsonb-pitfall.md` — 中文 `storeName` PUT 500 完整 trace。
+
+詳見 Rule 027 § workerd `JSON.stringify` pitfall 與 Rule 028 § 2 Settings merge。
 
 ### Step 8：Preview URL 串接
 

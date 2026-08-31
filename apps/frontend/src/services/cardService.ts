@@ -146,7 +146,7 @@ export const cardService = {
    * @param imageType - Type of image to upload ('logo', 'background', 'icon')
    * @returns Pre-signed upload URL and R2 key
    */
-  async generateLogoUploadUrl(
+  async generateUploadUrl(
     templateId: string,
     imageType: CardImageType,
   ): Promise<{ uploadUrl: string; key: string; publicUrl: string }> {

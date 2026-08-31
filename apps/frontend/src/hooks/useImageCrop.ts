@@ -23,12 +23,21 @@ export { computeSrcSquareSize };
 /**
  * Platform-specific cropImage signature shared by web and native impls.
  * Both `useImageCrop.web.ts` and `useImageCrop.native.ts` conform to this.
+ *
+ * The 4 environment-derived parameters are passed explicitly (no closure
+ * capture of constants) — this keeps the function pure and RN-migration-safe.
+ *
+ * outputWidth/outputHeight are the final canvas dimensions in pixels:
+ *   - Logo (variant='logo'):  outputWidth=960, outputHeight=null  → 960×NH aspect
+ *   - Icon  (variant='icon'):  outputWidth=720, outputHeight=720  → 720×720 square
  */
 export type CropImageFn = (
   image: HTMLImageElement,
   cropState: CropState,
   cropWindowSize: number,
   baseCanvasWidth: number,
+  outputWidth: number,
+  outputHeight: number | null,
 ) => Promise<Blob>;
 
 /**
@@ -112,13 +121,13 @@ const DEFAULT_MAX_SCALE = 3.0;
 const DEFAULT_INITIAL_SCALE = 1.0;
 const DEFAULT_CROP_WINDOW_SIZE = 200;
 const DEFAULT_BASE_CANVAS_WIDTH = 400;
+/** Fallback output width — used only when caller does not supply outputWidth. */
+const DEFAULT_OUTPUT_WIDTH = 960;
 
 export function useImageCrop(options: UseImageCropOptions): UseImageCropReturn {
   const {
-    // Deprecated: output dimensions are now computed internally in cropImage()
-    // (width capped at 960, height flexible). These are kept for interface compat.
-    outputWidth: _outputWidth,
-    outputHeight: _outputHeight,
+    outputWidth,
+    outputHeight,
     cropWindowSize = DEFAULT_CROP_WINDOW_SIZE,
     baseCanvasWidth = DEFAULT_BASE_CANVAS_WIDTH,
     minScale = DEFAULT_MIN_SCALE,
@@ -223,8 +232,18 @@ export function useImageCrop(options: UseImageCropOptions): UseImageCropReturn {
     if (!img) {
       throw new Error('No image loaded');
     }
-    return cropImageImpl(img, cropState, cropWindowSize, baseCanvasWidth);
-  }, [cropState, cropWindowSize, baseCanvasWidth]);
+    // Resolve fallback at call-time so callers can override defaults via options.
+    const resolvedOutputWidth = outputWidth ?? DEFAULT_OUTPUT_WIDTH;
+    const resolvedOutputHeight = outputHeight ?? null; // null → preserve aspect ratio (square-by-width)
+    return cropImageImpl(
+      img,
+      cropState,
+      cropWindowSize,
+      baseCanvasWidth,
+      resolvedOutputWidth,
+      resolvedOutputHeight,
+    );
+  }, [cropState, cropWindowSize, baseCanvasWidth, outputWidth, outputHeight]);
 
   const resetCrop = useCallback(() => {
     setCropState({

@@ -4,7 +4,7 @@
 
 import { create } from 'zustand';
 import type { CardType, EditorStep } from './CardBuilderEditor.types';
-import type { BarcodeType, TemplateSettings } from '@saome/shared/schemas/card';
+import type { BarcodeType } from '@saome/shared/schemas/card';
 
 interface CardBuilderState {
   /** Template ID（從後端建立，null = 新建模式） */
@@ -25,6 +25,10 @@ interface CardBuilderState {
   issuerLogo: string;
   /** issuerLogo 的版本號（用於 cache busting） */
   issuerLogoVersion: number;
+  /** 推播通知 icon (R2 key per § 5.7 contract) */
+  iconImage: string;
+  /** iconImage 的版本號（用於 cache busting） */
+  iconImageVersion: number;
   /** 卡片背景色 */
   backgroundColor: string;
   /** 卡片文字色 */
@@ -57,6 +61,7 @@ interface CardBuilderState {
   setCardSide: (side: 'front' | 'back') => void;
   setIssuerName: (issuerName: string) => void;
   setIssuerLogo: (issuerLogo: string) => void;
+  setIconImage: (iconImage: string) => void;
   setBackgroundColor: (backgroundColor: string) => void;
   setTextColor: (textColor: string) => void;
   setHolderName: (holderName: string) => void;
@@ -66,9 +71,56 @@ interface CardBuilderState {
   setExpiryDate: (expiryDate: string) => void;
   setCurrency: (currency: 'TWD' | 'ZAR') => void;
   setIsPaid: (isPaid: boolean) => void;
-  /** 從既有 template 的 settings 載入 store */
-  loadSettings: (settings: Partial<TemplateSettings>) => void;
+  /**
+   * 從既有 template 的 settings 載入 store.
+   *
+   * Defensive: Bug #8.5 — settings may be:
+   *   - Partial<TemplateSettings> (normal)
+   *   - JSON string (legacy corruption)
+   *   - Array of partial merges (Bug #8 partial fix)
+   *   - Array of jsonb strings (Bug #8.5 worst case)
+   *
+   * Accepts `unknown` because the helper handles all cases at runtime.
+   */
+  loadSettings: (settings: unknown) => void;
   reset: () => void;
+}
+
+/**
+ * Defensive parser for `templates.settings` JSONB.
+ *
+ * Bug #8.5 (2026-08-31): The settings column may have been corrupted into:
+ *   - a proper object (normal case)
+ *   - a JSON string (legacy corruption where JSON.stringify(obj) was stored)
+ *   - an array of partial merges (Bug #8 partial fix — array grew on each PUT)
+ *   - an array containing jsonb **strings** (Bug #8.5 worst case)
+ *
+ * This helper handles all cases and returns a single merged object:
+ *   - Object → passthrough
+ *   - String → JSON.parse with try/catch (returns `{}` on failure)
+ *   - Array → reduce-merge (later elements override earlier)
+ *   - null/undefined → `{}`
+ *
+ * Exported so MediaAssetUploader and any other consumer can share the same
+ * defensive logic (avoids drift between layers).
+ */
+export function unwrapCardSettings(raw: unknown): Record<string, unknown> {
+  if (raw == null) return {};
+  if (typeof raw === 'string') {
+    try {
+      return JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  }
+  if (Array.isArray(raw)) {
+    return raw.reduce<Record<string, unknown>>(
+      (acc, elem) => ({ ...acc, ...unwrapCardSettings(elem) }),
+      {},
+    );
+  }
+  if (typeof raw === 'object') return raw as Record<string, unknown>;
+  return {};
 }
 
 const initialState = {
@@ -81,6 +133,8 @@ const initialState = {
   issuerName: '',
   issuerLogo: '',
   issuerLogoVersion: 0,
+  iconImage: '',
+  iconImageVersion: 0,
   backgroundColor: '#1a1a1a',
   textColor: '#ffffff',
   holderName: '',
@@ -109,6 +163,7 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
   setCardSide: (cardSide) => set({ cardSide }),
   setIssuerName: (issuerName) => set({ issuerName }),
   setIssuerLogo: (issuerLogo) => set({ issuerLogo, issuerLogoVersion: Date.now() }),
+  setIconImage: (iconImage) => set({ iconImage, iconImageVersion: Date.now() }),
   setBackgroundColor: (backgroundColor) => set({ backgroundColor }),
   setTextColor: (textColor) => set({ textColor }),
   setHolderName: (holderName) => set({ holderName }),
@@ -120,32 +175,52 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
   setIsPaid: (isPaid) => set({ isPaid }),
 
   loadSettings: (settings) => {
-    // Guard: settings can be a single object or an array of partial merges.
-    // Deep-merge all array elements to recover the most complete field set.
-    // Defensive: settings can be a JSON string (malformed DB row) or object.
-    const resolved: Record<string, unknown> = Array.isArray(settings)
-      ? settings.reduce<Record<string, unknown>>((acc, s) => ({ ...acc, ...s }), {})
-      : typeof settings === 'string'
-        ? JSON.parse(settings)
-        : (settings ?? {});
+    // Bug #8.5 defensive: settings may be object / JSON string / array-of-partials
+    // (legacy corruption). unwrapCardSettings handles all cases.
+    const resolved = unwrapCardSettings(settings);
 
     console.log('[CardBuilderEditor] loadSettings resolved:', JSON.stringify(resolved));
-    set((state) => ({
-      name: (resolved?.name ?? state.name) as string,
-      cardType: (resolved?.cardType ?? state.cardType) as CardType | null,
-      issuerName: (resolved?.issuerName ?? state.issuerName) as string,
-      issuerLogo: (resolved?.issuerLogo ?? state.issuerLogo) as string,
-      backgroundColor: (resolved?.backgroundColor ?? state.backgroundColor) as string,
-      textColor: (resolved?.textColor ?? state.textColor) as string,
-      holderName: (resolved?.holderName ?? state.holderName) as string,
-      barcodeType: (resolved?.barcodeType ?? state.barcodeType) as BarcodeType,
-      storeName: (resolved?.storeName ?? state.storeName) as string,
-      passValidDays: resolved?.passValidDays !== undefined ? resolved.passValidDays as number | null : state.passValidDays,
-      expiryDate: (resolved?.expiryDate ?? state.expiryDate) as string,
-      currency: (resolved?.currency ?? state.currency) as 'TWD' | 'ZAR',
-      isPaid: (resolved?.isPaid ?? state.isPaid) as boolean,
-    }));
+    set((state) => {
+      // Bug-φ fix (Phase 3 of icon-preview plan 2026-08-31): when a user
+      // resumes a draft, the version for issuerLogo/iconImage was reset
+      // to 0 by `reset()` in CardBuilderEditor's mount effect. If the
+      // browser had previously cached a 404 / partial / stale response
+      // for the same R2 key, the cached version would be served on reload
+      // — leaving the icon image broken forever (until the user re-uploads).
+      //
+      // Bumping to Date.now() on loadSettings guarantees the URL has a
+      // fresh cache-busting query param the moment we know a key exists,
+      // forcing the browser to refetch from R2 (which now has the real
+      // object, verified by Phase 2 wrangler evidence).
+      const loadLogo = resolved?.issuerLogo as string | undefined;
+      const loadIcon = resolved?.iconImage as string | undefined;
+      const issuerLogo = loadLogo ?? state.issuerLogo;
+      const iconImage = loadIcon ?? state.iconImage;
+      return {
+        name: (resolved?.name ?? state.name) as string,
+        cardType: (resolved?.cardType ?? state.cardType) as CardType | null,
+        issuerName: (resolved?.issuerName ?? state.issuerName) as string,
+        issuerLogo,
+        iconImage,
+        // Bump version only if the key actually changed (or we just loaded one).
+        issuerLogoVersion: loadLogo && loadLogo !== state.issuerLogo
+          ? Date.now()
+          : state.issuerLogoVersion,
+        iconImageVersion: loadIcon && loadIcon !== state.iconImage
+          ? Date.now()
+          : state.iconImageVersion,
+        backgroundColor: (resolved?.backgroundColor ?? state.backgroundColor) as string,
+        textColor: (resolved?.textColor ?? state.textColor) as string,
+        holderName: (resolved?.holderName ?? state.holderName) as string,
+        barcodeType: (resolved?.barcodeType ?? state.barcodeType) as BarcodeType,
+        storeName: (resolved?.storeName ?? state.storeName) as string,
+        passValidDays: resolved?.passValidDays !== undefined ? resolved.passValidDays as number | null : state.passValidDays,
+        expiryDate: (resolved?.expiryDate ?? state.expiryDate) as string,
+        currency: (resolved?.currency ?? state.currency) as 'TWD' | 'ZAR',
+        isPaid: (resolved?.isPaid ?? state.isPaid) as boolean,
+      };
+    });
   },
 
-  reset: () => set({ ...initialState, isPaid: initialState.isPaid, issuerLogoVersion: 0 }),
+  reset: () => set({ ...initialState, isPaid: initialState.isPaid, issuerLogoVersion: 0, iconImageVersion: 0 }),
 }));

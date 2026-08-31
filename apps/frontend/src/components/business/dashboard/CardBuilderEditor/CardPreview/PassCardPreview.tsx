@@ -1,15 +1,19 @@
 /**
  * PassCardPreview — 卡片本體預覽
  * Apple Pass 風格：白色背景、圓角、柔陰影（Dark mode 適配）
+ *
+ * Phase 9 (2026-08-31): icon image is rendered by PreviewWrapper's
+ * PushNotificationMockup overlay (inside PhoneFrame, above the card).
+ * This component renders the card template body only — logo / type
+ * label / strip placeholder / holder name / barcode.
  */
 import type { PassCardPreviewProps } from './PassCardPreview.types';
 import { PassCardPreviewHeader } from './PassCardPreviewHeader';
 import { PassCardPreviewBody } from './PassCardPreviewBody';
 import { PassCardPreviewFooter } from './PassCardPreviewFooter';
 import { PassCardPreviewBack } from './PassCardPreviewBack';
+import { PassCardPreviewStrip } from './PassCardPreviewStrip';
 import { cn } from '@/lib/utils';
-import { CreditCard } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
 
 export function PassCardPreview({
   name,
@@ -24,8 +28,6 @@ export function PassCardPreview({
   compact = false,
   ...props
 }: PassCardPreviewProps) {
-  const { t } = useTranslation('passCard');
-
   return (
     <div
       className={cn(
@@ -51,16 +53,13 @@ export function PassCardPreview({
               compact={compact}
             />
 
-            {/* Strip / Hero */}
-            <div
-              className={compact ? 'mx-0 mt-2 flex h-[100px] flex-col items-center justify-center gap-1 text-center' : 'mx-0 mt-4 flex h-[120px] flex-col items-center justify-center gap-2 text-center'}
-              style={{ backgroundColor, color: textColor }}
-            >
-              <CreditCard className={compact ? 'h-6 w-6' : 'h-12 w-12'} style={{ color: textColor }} aria-hidden="true" />
-              <span className="text-xs font-semibold leading-tight" style={{ color: textColor }}>
-                {name || t('defaultName')}
-              </span>
-            </div>
+            {/* Strip / Hero — 卡片圖示 + 卡片名稱（icon 在 PushNotificationMockup 顯示，不在這） */}
+            <PassCardPreviewStrip
+              name={name}
+              backgroundColor={backgroundColor}
+              textColor={textColor}
+              compact={compact}
+            />
 
             {/* Body */}
             <PassCardPreviewBody compact={compact} />

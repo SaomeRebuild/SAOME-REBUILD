@@ -7,6 +7,10 @@
 
 | 日期 | 主題 | 路徑 | 影響 / 後續 |
 |------|------|------|------|
+| 2026-08-31 | **CardBuilder ICON 上傳 500 — workerd `JSON.stringify` + `::jsonb` pitfall**：workerd runtime（wrangler dev / Cloudflare Workers）的 `JSON.stringify` 對 non-ASCII 字串破壞成 `\uFFFD\uFFFD`；`${JSON.stringify(...)}::jsonb` cast 在 DB trigger 端 raise "got array" → 500。修法用 `sql.json(input.settings)` 取代。Node.js / Vite dev `JSON.stringify` 正常，所以 vitest + typecheck 都沒抓到；只有「前端 → wrangler dev → Supabase」完整鏈才重現 | runs/improvements/feedback/20260831-workerd-json-stringify-jsonb-pitfall.md | 觸發 Rule 027 新章節「workerd JSON.stringify pitfall」、Rule 028 § 2 cross-ref、SKILL image-upload Step 7 改 `sql.json()` 範例；insertTemplate 一直用 `sql.json()`，是 updateTemplate 從 Bug A 開始從未對齊 INSERT 的累積 bug |
+| 2026-08-31 | **CardBuilder Icon Upload Settings Chain master DEV LOG**：4 階段修復鏈 single source of truth narrative（Bug A REPLACE → Bug #8 防禦 unwrap → Bug #8.5 巢狀 unwrap → workerd JSON.stringify 500），交叉引用 4 份既有 doc，給未來追整條鏈的人 single entry point | DEV/08-2026/0831-cardbuilder-icon-upload-settings-chain.md | 不必交叉閱讀 4 份既有 DEV LOG/feedback；Rule/SKILL Sedimentation 段落列出這次新增的 3 處規範變更 |
+| 2026-08-31 | **CardBuilder data-loss + icon-preview fix**：Phase 1 SQL REPLACE → MERGE（settings `=` → `settings \|\|`）+ Phase 3 defensive（Preview onError fallback,loadSettings version bump,R2 PUT response check）+ 3 個新 test file（merge/store/preview,12 cases pass）+ i18n `loadError` key（zh-TW + en × 2 namespace）。`updateTemplate` 從此 merge settings 避免 Step 3 logo/icon upload 洗掉 Step 2 欄位;icon 預覽破圖恢復靠 R2 PUT response check + onLoad bump version | DEV/08-2026/0831-cardbuilder-data-loss-icon-preview-fix.md | 92/92 backend test pass + 46/46 frontend test pass;SQL MERGE 是 Rule 019 § 4.1 鐵律的延伸;Phase 2 evidence（wrangler verify + icon-preview test）排除 R2 沒 object / URL 構造錯;PushNotificationMockup.test.tsx 5 errors 屬 IconUploader plan 殘留(獨立追) |
+| 2026-08-31 | Icon preview Phase 2 investigation (wrangler + icon-preview test)：R2 確實有 icon object (Candidate #1 ELIMINATED),URL 構造正確 (Candidate #5 ELIMINATED),後端 field map 正確,store update 路徑正確。剩 root cause 為 runtime/browser-side (CORS / cache / token),需 DevTools 截圖才能收斂 | runs/improvements/feedback/20260830-icon-preview-investigation.md | 用戶已將本 fix 往前推到 Phase 3;若 preview 仍破圖需要 DevTools Network tab 截圖 |
 | 2026-08-30 | **LogoUploader P0+P1 Refactor + Rule Sedimentation（master DEV LOG）**：從症狀層（圖預覽不更新）→ 結構層（時間戳記 cache busting + 7 個 sub-component 拆分 + useImageCrop 平台分流 + 純邏輯搬到 shared/）→ 規範層（4 個 rule + 1 個 SKILL 補完新規範）；27 個 production code 檔案變動 + 450 行 rule 新增；零 pure code fix 之外的 production code 變動 | DEV/08-2026/0830-logouploader-p0p1-refactor-rule-sedimentation.md | Rule 028 § 13 Image Cache Busting + § 14 Image Auth Strategy（NEW）；Rule 024 Hook Split Pattern（NEW）；Rule 000 A.3 Hook Extraction Strategy（NEW）；Rule 023 Shared Validation i18n Key（NEW）；LogoUploader.tsx 887 → 394 行（-56%）；純邏輯搬到 packages/shared/logic/imageCrop.ts；useImageCrop 拆三檔 `.ts` / `.web.ts` / `.native.ts` |
 | 2026-08-30 | **LogoUploader Mobile Fix Cycle（master DEV LOG）**：4 輪 mobile UX 修正循環完整時間軸（stale closure → chain min-w-0 → iPhone 12 padding → drag stutter → landscape frame exceeds stage）；前 4 輪症狀層 try-and-error，第 5 輪才改變結構假設本身；cross-cutting pattern：≥3 輪症狀 fix 還沒清 = 結構假設錯 | DEV/08-2026/0830-logo-uploader-mobile-fix-cycle.md + runs/improvements/feedback/20260830-logo-uploader-portrait-stale-closure.md + 20260830-logo-uploader-chain-min-w-zero.md + 20260830-logo-uploader-iphone12promax-double-padding.md + 20260830-logo-uploader-mobile-drag-stutter.md + 20260830-logo-uploader-landscape-frame-exceeds-container.md + 20260830-logo-uploader-landscape-squash.md | 12 commits `db5711e` → `8d969e2`；Rule 028 § 12 Stage Height Invariant；SKILL § Stage Height Invariant；LogoUploader.test.tsx 從 9 → 15 個 test；BackgroundUploader / IconUploader 實作時必須滿足 § 11 + § 12 兩條 invariant |
 | 2026-08-30 | LogoUploader Landscape White Frame Exceeds Container：stage 是 aspect-matched 但 outer 額外 padding 給 frame，landscape 時 frame 居中於 outer 而超出 stage；前四次 fix（stale closure / drag stutter / chain min-w-0 / iPhone 12 Pro Max double padding）都是症狀層修補，這次（round 4）才改變結構假設本身 | runs/improvements/feedback/20260830-logo-uploader-landscape-frame-exceeds-container.md | 新增 rule `028` § 12 Stage Height Invariant：`baseContainerH = max(aspectMatchedH, maskH + 2 × FRAME_PADDING)`，outer = stage；SKILL `saome-image-upload` § Stage Height Invariant；FRAME_PADDING 16 走 Tailwind md token |
@@ -58,7 +62,7 @@
 | 2026-08-22 | `saome-github-deploy` skill 加 migration apply blocking check | ✅ done |
 | 2026-08-22 | 強化 `001` Decision Log：7 種架構改動必進 Decision Log | ✅ done |
 | 2026-08-27 | `syncFocalFromOffset` + `srcSquareSize` 公式抽出到 `packages/shared/logic/cropGeometry.ts`（RN-friendly）| ⏳ pending |
-| 2026-08-27 | BackgroundUploader（800×800 crop）/ IconUploader（256×256 crop）沿用 Crop Window Invariant pattern | ⏳ pending |
+| 2026-08-27 | BackgroundUploader（1860×738 crop）沿用 Crop Window Invariant pattern + MediaAssetUploader variant="background" — schema field `backgroundImage` 已預留 | ⏳ pending |
 | 2026-08-27 | LogoUploader Crop Zoom — Mask Invariant + Bug-C Fix | ✅ done |
 | 2026-08-30 | `028` § 12 或 general `000-modular-design.mdc` 加 useCallback deps 紀律：「closure 變數全列舉後逐一進 deps」 | ⏳ pending |
 | 2026-08-30 | LogoUploader Portrait Crop Stale Closure Fix | ✅ done |
@@ -79,6 +83,15 @@
 | 2026-08-30 | 寫 `runs/improvements/feedback/20260830-logouploader-887-line-refactor.md` 事故紀錄（rule 000 A.3 引用待寫） | ⏳ pending |
 | 2026-08-22 | Migration apply pipeline：CI check 確保 migration 與 code 同步 | ⏳ pending |
 | 2026-08-22 | Migration apply 後 revert `expires_at` 繞過 | ⏳ pending |
+| 2026-08-31 | MediaAssetUploader 主組件 340 行 > Rule 000 § A.2 100 行門檻——下一輪拆 sub-component | ⏳ pending |
+| 2026-08-31 | CropStage 內部 testid `logo-crop-outer`/`logo-crop-stage`/`logo-crop-frame-layer` 含 "logo" prefix——重命名為 variant-agnostic | ⏳ pending |
+| 2026-08-31 | CropImageFn signature 含 `HTMLImageElement`（RN 化障礙）——獨立 RN-migration PR | ⏳ pending |
+| 2026-08-31 | Rule 027 加新章節「§ workerd JSON.stringify pitfall（MANDATORY）」：workerd runtime 的 `JSON.stringify` 對 non-ASCII 字串破壞成 `\uFFFD`；任何 jsonb / non-ASCII 字串注入必須用 `sql.json()`，禁止 `${JSON.stringify(x)}::jsonb`。補觸發關鍵字 | ✅ done |
+| 2026-08-31 | Rule 028 § 2 Settings merge 加 workerd pitfall 註腳（cross-ref Rule 027）+ 禁止清單補一條「❌ 用 `${JSON.stringify(settings)}::jsonb` 注入 jsonb」 | ✅ done |
+| 2026-08-31 | SKILL saome-image-upload Step 7 改範例：`sql\`settings = settings \|\| ${sql.json(input.settings as any)}\`` 取代舊的 `sql\`settings = settings \|\| ${JSON.stringify(input.settings)}::jsonb\`` | ✅ done |
+| 2026-08-31 | CardBuilder Icon Upload Settings Chain master DEV LOG（4 階段修復鏈 single source of truth narrative，Bug A → Bug #8 → Bug #8.5 → workerd JSON.stringify 500） | ✅ done |
+| 2026-08-31 | `updateTemplate` 補 non-ASCII round-trip test（中文 / 日文 / emoji / mixed CJK+ASCII）——見 `runs/improvements/feedback/20260831-workerd-json-stringify-jsonb-pitfall.md` § Test Coverage Status | ⏳ pending |
+| 2026-08-31 | `unwrapCardSettings` 從 `CardBuilderEditor.store.ts`（frontend）與 `cardService.ts`（backend）抽出到 `packages/shared/logic/cardSettings.ts`，backend + frontend + 未來 RN 共用一份 | ⏳ pending |
 
 ## 使用方式
 

@@ -47,6 +47,16 @@ export const templateSettingsSchema = z.object({
   currency: sharedCurrencySchema.optional(),
   // Step 3-4 (TBD)
   issuerLogo: z.string().optional(),
+  /**
+   * Push-notification icon (R2 key) — mirrors shared templateSettingsSchema.iconImage.
+   * Phase 5 of IconUploader plan (2026-08-31).
+   */
+  iconImage: z.string().optional(),
+  /**
+   * Background image (R2 key) — reserved for next BackgroundUploader plan.
+   * Mirrors shared templateSettingsSchema.backgroundImage.
+   */
+  backgroundImage: z.string().optional(),
   backgroundColor: z.string().optional(),
   textColor: z.string().optional(),
   holderName: z.string().optional(),

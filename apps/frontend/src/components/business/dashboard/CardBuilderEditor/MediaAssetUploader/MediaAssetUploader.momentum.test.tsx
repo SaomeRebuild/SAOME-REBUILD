@@ -4,13 +4,13 @@
  * Background (feedback 20260830):
  * - On phones, releasing the finger after a quick drag should "flick" the
  *   image onward (iOS / Android photo crop standard). Without this:
- *     - User drags 50px, releases → image stops immediately.
+ *     - User drags 50px, releases ??image stops immediately.
  *     - To reach the desired position, user must re-grab and drag again
- *       (often many times for a large image) → "一次只能移動一點，要滑好幾次".
+ *       (often many times for a large image) ??"一次只?�移?��?點�?要�?好幾�?.
  *
  * Event model (20260830 refactor):
- *   - Touch: onTouchStart / onTouchMove / onTouchEnd → handles momentum
- *   - Mouse / Pen: onPointerDown / onPointerMove / onPointerUp → NO momentum
+ *   - Touch: onTouchStart / onTouchMove / onTouchEnd ??handles momentum
+ *   - Mouse / Pen: onPointerDown / onPointerMove / onPointerUp ??NO momentum
  *
  * Strategy:
  *   - Mock requestAnimationFrame so we can deterministically advance the
@@ -20,7 +20,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
-import { LogoUploader } from './LogoUploader';
+import { MediaAssetUploader } from './MediaAssetUploader';
 import { useImageCrop } from '@/hooks/useImageCrop';
 
 vi.mock('@/services/cardService', () => ({
@@ -84,7 +84,7 @@ function polyfillPointerCapture() {
 
 async function enterCroppingState() {
   polyfillPointerCapture();
-  render(<LogoUploader templateId="t1" onLogoUploaded={vi.fn()} />);
+  render(<MediaAssetUploader templateId="t1" variant="logo" onUploaded={vi.fn()} />);
   const input = document.querySelector('input[type="file"]') as HTMLInputElement;
   const file = new File(['x'], 'logo.png', { type: 'image/png' });
   Object.defineProperty(input, 'files', { value: [file], configurable: true });
@@ -95,7 +95,7 @@ async function enterCroppingState() {
 }
 
 describe('LogoUploader drag momentum (mobile UX)', () => {
-  // rAF callback tracker — replaced by beforeEach so tests can drive the
+  // rAF callback tracker ??replaced by beforeEach so tests can drive the
   // momentum loop manually without depending on real time or jsdom timing quirks.
   let rafCallbacks: FrameRequestCallback[] = [];
   const originalRaf = globalThis.requestAnimationFrame;
@@ -106,7 +106,7 @@ describe('LogoUploader drag momentum (mobile UX)', () => {
 
     // Test stub: rAF stores the callback for manual driving; cAF drops the last one.
     // The DOM lib declares rAF as (handle: number) => void but browser runtime
-    // is (callback) => number — our stub uses the runtime signature (no @ts-expect-error needed,
+    // is (callback) => number ??our stub uses the runtime signature (no @ts-expect-error needed,
     // the variable type from `originalRaf` resolves the conflict).
     globalThis.requestAnimationFrame = (cb: FrameRequestCallback): number => {
       rafCallbacks.push(cb);
@@ -199,8 +199,8 @@ describe('LogoUploader drag momentum (mobile UX)', () => {
     await enterCroppingState();
     const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
 
-    // Fast swipe: 10px per 16ms → velocity ≈ 0.625 px/ms. × TOUCH_SENSITIVITY 3.0
-    // → ≈ 1.875 px/ms, way above MOMENTUM_MIN_VELOCITY 0.012.
+    // Fast swipe: 10px per 16ms ??velocity ??0.625 px/ms. ? TOUCH_SENSITIVITY 3.0
+    // ????1.875 px/ms, way above MOMENTUM_MIN_VELOCITY 0.012.
     await simulateTouchDrag(stage, [
       { type: 'start', x: 200, y: 200 },
       { type: 'move', x: 210, y: 200, delayMs: 16 },
@@ -214,22 +214,22 @@ describe('LogoUploader drag momentum (mobile UX)', () => {
     // One rAF should be scheduled for the momentum loop start.
     expect(rafCallbacks.length).toBe(1);
 
-    // Tick one frame — setCropState should be called (momentum tick syncs offset).
+    // Tick one frame ??setCropState should be called (momentum tick syncs offset).
     const callsBefore = setCropState.mock.calls.length;
     tickOneFrame();
     expect(setCropState.mock.calls.length).toBeGreaterThan(callsBefore);
   });
 
-  it('slow touch drag does NOT schedule momentum — no rAF queued', async () => {
+  it('slow touch drag does NOT schedule momentum ??no rAF queued', async () => {
     setViewport(1024);
     const setCropState = vi.fn();
     vi.mocked(useImageCrop).mockReturnValue(mockImageCropReturn({ setCropState }));
     await enterCroppingState();
     const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
 
-    // Truly slow: 0.5px per 500ms → velocity ≈ 0.001 px/ms.
-    // × TOUCH_SENSITIVITY 5.0 → 0.005 px/ms, right at MOMENTUM_MIN_VELOCITY 0.005.
-    // Slightly below: 0.4px per 500ms → 0.0008 × 5.0 = 0.004 < 0.005. No rAF fires.
+    // Truly slow: 0.5px per 500ms ??velocity ??0.001 px/ms.
+    // ? TOUCH_SENSITIVITY 5.0 ??0.005 px/ms, right at MOMENTUM_MIN_VELOCITY 0.005.
+    // Slightly below: 0.4px per 500ms ??0.0008 ? 5.0 = 0.004 < 0.005. No rAF fires.
     await simulateTouchDrag(stage, [
       { type: 'start', x: 200, y: 200 },
       { type: 'move', x: 200.4, y: 200, delayMs: 500 },
@@ -242,7 +242,7 @@ describe('LogoUploader drag momentum (mobile UX)', () => {
     expect(setCropState).toHaveBeenCalled();
   });
 
-  it('new touch start during momentum cancels it — no surprise continuation', async () => {
+  it('new touch start during momentum cancels it ??no surprise continuation', async () => {
     setViewport(1024);
     const setCropState = vi.fn();
     vi.mocked(useImageCrop).mockReturnValue(mockImageCropReturn({ setCropState }));
@@ -262,24 +262,24 @@ describe('LogoUploader drag momentum (mobile UX)', () => {
 
     expect(rafCallbacks.length).toBe(1);
 
-    // User grabs again — touch start should cancel the rAF.
+    // User grabs again ??touch start should cancel the rAF.
     const touchObj = { clientX: 250, clientY: 200, identifier: 0 } as unknown as React.Touch;
     fireEvent.touchStart(stage, { touches: [touchObj], changedTouches: [touchObj] });
 
     expect(rafCallbacks.length).toBe(0);
 
-    // Drive a frame — setCropState should NOT have been called by momentum.
+    // Drive a frame ??setCropState should NOT have been called by momentum.
     const callsBefore = setCropState.mock.calls.length;
     tickOneFrame();
     expect(setCropState.mock.calls.length).toBe(callsBefore);
   });
 
-  it('unmount cancels in-flight momentum — no setState after unmount', async () => {
+  it('unmount cancels in-flight momentum ??no setState after unmount', async () => {
     setViewport(1024);
     const setCropState = vi.fn();
     vi.mocked(useImageCrop).mockReturnValue(mockImageCropReturn({ setCropState }));
     polyfillPointerCapture();
-    const rendered = render(<LogoUploader templateId="t1" onLogoUploaded={vi.fn()} />);
+    const rendered = render(<MediaAssetUploader templateId="t1" variant="logo" onUploaded={vi.fn()} />);
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     const file = new File(['x'], 'logo.png', { type: 'image/png' });
     Object.defineProperty(input, 'files', { value: [file], configurable: true });
@@ -301,13 +301,13 @@ describe('LogoUploader drag momentum (mobile UX)', () => {
 
     expect(rafCallbacks.length).toBe(1);
 
-    // Unmount — the useEffect cleanup cancels the rAF.
+    // Unmount ??the useEffect cleanup cancels the rAF.
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     rendered.unmount();
 
     expect(rafCallbacks.length).toBe(0);
 
-    // Drive a frame — the cancelled callback must not fire.
+    // Drive a frame ??the cancelled callback must not fire.
     const callsBefore = setCropState.mock.calls.length;
     tickOneFrame();
     expect(setCropState.mock.calls.length).toBe(callsBefore);
@@ -374,7 +374,7 @@ describe('LogoUploader drag momentum (mobile UX)', () => {
 
     expect(rafCallbacks.length).toBe(1);
 
-    // User switches to mouse — pointerDown should cancel momentum.
+    // User switches to mouse ??pointerDown should cancel momentum.
     fireEvent.pointerDown(stage, { clientX: 250, clientY: 200, pointerId: 2, pointerType: 'mouse' });
 
     expect(rafCallbacks.length).toBe(0);

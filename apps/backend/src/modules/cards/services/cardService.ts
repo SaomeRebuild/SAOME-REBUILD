@@ -32,12 +32,13 @@ import type {
 
 /**
  * Convert a DB row to a TemplateDto.
+ *
+ * Bug #8.5 defensive (2026-08-31): the settings column may be a JSON object,
+ * a JSON string (legacy corruption), or an array of partial merges (Bug #8
+ * partial fix). unwrapCardSettings handles all cases.
  */
 function toDto(row: TemplatesRow): TemplateDto {
-  // Defensive: if settings is stored as a JSON string (bug from insertTemplate
-  // storing JSON.stringify(obj) instead of obj), parse it first.
-  const settings: Record<string, unknown> =
-    typeof row.settings === 'string' ? JSON.parse(row.settings) : row.settings;
+  const settings: Record<string, unknown> = unwrapCardSettings(row.settings);
   return {
     id: row.id,
     status: row.status,
@@ -53,6 +54,39 @@ function toDto(row: TemplatesRow): TemplateDto {
         ? row.updated_at.toISOString()
         : String(row.updated_at),
   };
+}
+
+/**
+ * Defensive parser for `templates.settings` JSONB.
+ *
+ * Bug #8.5 (2026-08-31): handles:
+ *   - jsonb object (normal)
+ *   - jsonb string (legacy corruption)
+ *   - jsonb array of partial merges (Bug #8 partial fix)
+ *   - jsonb array of jsonb strings (Bug #8.5 worst case)
+ *
+ * Mirrors the frontend `unwrapCardSettings` helper (apps/frontend/src/components/
+ * business/dashboard/CardBuilderEditor/CardBuilderEditor.store.ts). Kept inline
+ * here because backend doesn't import the shared package — moving to packages/
+ * shared/ is a separate refactor PR to avoid coupling this fix to that work.
+ */
+function unwrapCardSettings(raw: unknown): Record<string, unknown> {
+  if (raw == null) return {};
+  if (typeof raw === 'string') {
+    try {
+      return JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  }
+  if (Array.isArray(raw)) {
+    return raw.reduce<Record<string, unknown>>(
+      (acc, elem) => ({ ...acc, ...unwrapCardSettings(elem) }),
+      {},
+    );
+  }
+  if (typeof raw === 'object') return raw as Record<string, unknown>;
+  return {};
 }
 
 /**

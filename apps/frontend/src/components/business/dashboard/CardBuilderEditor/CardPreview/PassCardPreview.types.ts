@@ -1,3 +1,19 @@
+/**
+ * PassCardPreview — Props
+ *
+ * Phase 9 (2026-08-31): icon image is consumed by the PreviewWrapper's
+ * PushNotificationMockup overlay (rendered above the card inside the
+ * PhoneFrame). The card template itself only renders logo / type label /
+ * holder name / barcode — no icon or background image injected.
+ */
+
+/** Apple Pass 標準尺寸比例 */
+export const PASS_ASPECT_RATIO = {
+  width: 375,
+  height: 503,
+  ratio: '375 / 503',
+} as const;
+
 import type { HTMLAttributes } from 'react';
 import type { CardType } from '@/components/business/dashboard/CardBuilderEditor/CardBuilderEditor.types';
 import type { BarcodeType } from '@saome/shared/schemas/cardBuilder';
@@ -23,10 +39,3 @@ export interface PassCardPreviewProps extends HTMLAttributes<HTMLDivElement> {
   /** 緊湊模式（用於手機框架內，縮小字體和間距） */
   compact?: boolean;
 }
-
-/** Apple Pass 標準尺寸比例 */
-export const PASS_ASPECT_RATIO = {
-  width: 375,
-  height: 503,
-  ratio: '375 / 503',
-} as const;

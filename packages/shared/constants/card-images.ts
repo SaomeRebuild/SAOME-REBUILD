@@ -84,6 +84,110 @@ export const LOGO_CROP_CONFIG = {
 } as const;
 
 /**
+ * Icon crop configuration.
+ * Based on PassCreator specifications for the push-notification icon field.
+ *
+ * PassCreator Icon: minimum 720×720 pixels, equal ratio (square, transparency required).
+ * @see https://passcreator.com/documentation/pass-components/
+ *
+ * UI dimensions are proportional to LogoUploader (CROP_WINDOW 200 → 150, BASE_CANVAS 400 → 300)
+ * so mask/OUTPUT_WIDTH ratio (~20.8%) and mask/canvas ratio (50%) match the logo cropper exactly.
+ */
+export const ICON_CROP_CONFIG = {
+  /** Output width in pixels. Fixed square per PassCreator spec (push icon). */
+  OUTPUT_WIDTH: 720,
+  /** Output height in pixels. Fixed square (matches OUTPUT_WIDTH for icon). */
+  OUTPUT_HEIGHT: 720,
+  /** Minimum input image width in pixels. User must upload >= 720px wide image. */
+  MIN_INPUT_WIDTH: 720,
+  /** Allowed MIME types for upload. PNG strongly preferred (transparency). */
+  MIME_TYPES: ['image/png', 'image/jpeg'] as const,
+  /** Maximum file size: 5MB */
+  MAX_FILE_SIZE: 5 * 1024 * 1024,
+  /** Minimum zoom scale: 50% */
+  MIN_SCALE: 0.5,
+  /** Maximum zoom scale: 300% */
+  MAX_SCALE: 3.0,
+  /** Default zoom scale: 100% */
+  DEFAULT_SCALE: 1.0,
+  /**
+   * UI crop window size in CSS px. Smaller than logo (150 vs 200) because icon
+   * lives in a more compact mobile layout (Step 3 with logo + icon stacked).
+   * Mask/OUTPUT_WIDTH ratio = 150/720 = 20.8% (same as logo 200/960).
+   */
+  CROP_WINDOW_SIZE: 150,
+  /**
+   * UI base canvas width in CSS px. 1:2 ratio with CROP_WINDOW_SIZE preserved
+   * from LogoUploader so hook chain (useImageCrop) is shared verbatim.
+   */
+  BASE_CANVAS_WIDTH: 300,
+} as const;
+
+/**
  * Asserted type for LOGO_CROP_CONFIG members to avoid 'as const' widening.
  */
 export type LogoCropConfig = typeof LOGO_CROP_CONFIG;
+
+/**
+ * Asserted type for ICON_CROP_CONFIG members to avoid 'as const' widening.
+ */
+export type IconCropConfig = typeof ICON_CROP_CONFIG;
+
+/**
+ * Union of all media-asset crop configurations (logo + icon today, + background later).
+ * Use this for code that needs to accept any crop config (e.g. MediaAssetUploader hooks).
+ */
+export type MediaAssetCropConfig = LogoCropConfig | IconCropConfig;
+
+/**
+ * Media asset variant discriminator.
+ *
+ * - 'logo' — Hero brand mark on the card (issuerLogo in templateSettings)
+ * - 'icon' — Push-notification icon (iconImage in templateSettings)
+ * - 'background' — Reserved for future BackgroundUploader (not implemented yet)
+ */
+export type MediaAssetVariant = 'logo' | 'icon' | 'background';
+
+/**
+ * Per-variant config entry shape. Each MEDIA_ASSET_CONFIG entry must satisfy this.
+ *
+ * Declared BEFORE MEDIA_ASSET_CONFIG so the `satisfies` clause can reference it
+ * (TypeScript does not allow forward-reference in `satisfies`).
+ */
+export type MediaAssetVariantEntry = {
+  i18nNamespace: string;
+  cropConfig: MediaAssetCropConfig;
+  settingsField: string;
+  cardImageType: CardImageType;
+};
+
+/**
+ * Variant-driven configuration map for the unified MediaAssetUploader component.
+ *
+ * Each entry bundles everything that differs between variants, so the component
+ * code stays variant-agnostic and reads `config.cropConfig / i18nNamespace /
+ * settingsField / cardImageType` instead of branching on `variant`.
+ *
+ * NOTE: 'background' entry is intentionally omitted in this plan (Phase 16 ❌),
+ * but the type allows it for the next BackgroundUploader plan. Consumers MUST
+ * null-check `MEDIA_ASSET_CONFIG[variant]` or restrict the variant prop to
+ * 'logo' | 'icon' until the background entry lands.
+ */
+export const MEDIA_ASSET_CONFIG: {
+  readonly [K in MediaAssetVariant]?: MediaAssetVariantEntry;
+} = {
+  logo: {
+    i18nNamespace: 'logoUpload',
+    cropConfig: LOGO_CROP_CONFIG,
+    settingsField: 'issuerLogo' as const,
+    cardImageType: 'logo' as const,
+  },
+  icon: {
+    i18nNamespace: 'iconUpload',
+    cropConfig: ICON_CROP_CONFIG,
+    settingsField: 'iconImage' as const,
+    cardImageType: 'icon' as const,
+  },
+  // background variant deliberately omitted — BackgroundUploader is a separate plan.
+  // See plan § 16 for why and what the next plan needs.
+};
