@@ -45,7 +45,17 @@ const updateData = {
 const updateData = { ...existingData, settings: input.settings };
 ```
 
-詳見 Rule 027（postgres dynamic query）。
+> ⚠️ **workerd pitfall**：上述 spread 是 application 邏輯層的 merge，但最終寫入 DB 的 SQL 注入**必須**用 postgres.js 的 `sql.json()` 而非手動 `JSON.stringify(x).jsonb`。workerd runtime 的 `JSON.stringify` 對 non-ASCII 字串（中文 / 日文 / emoji）會破壞成 `\uFFFD`，觸發 DB trigger "got array" → 500。
+>
+> ```typescript
+> // ✅ 正確
+> sql`settings = settings || ${sql.json(input.settings)}`
+>
+> // ❌ 危險：workerd 破壞 non-ASCII → trigger reject
+> sql`settings = settings || ${JSON.stringify(input.settings)}::jsonb`
+> ```
+>
+> 詳見 Rule 027 § workerd `JSON.stringify` pitfall + `runs/improvements/feedback/20260831-workerd-json-stringify-jsonb-pitfall.md`。
 
 ### 3. Focal point coordinate（強制）
 
