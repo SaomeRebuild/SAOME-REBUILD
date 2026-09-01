@@ -12,7 +12,7 @@
  * @module hooks/useImageCrop.web
  */
 
-import { computeSrcSquareSize } from '@saome/shared/logic/imageCrop';
+import { computeSrcRegion, computeSrcSquareSize } from '@saome/shared/logic/imageCrop';
 import type { CropState } from '@saome/shared/types';
 
 /**
@@ -20,26 +20,36 @@ import type { CropState } from '@saome/shared/types';
  *
  * Output dimensions are passed in (not hardcoded) so the same hook chain can
  * serve any MediaAssetUploader variant:
- *   - Logo (variant='logo'):  outputWidth=960, outputHeight=null  → 960×NH aspect
- *   - Icon  (variant='icon'):  outputWidth=720, outputHeight=720  → 720×720 square
+ *   - Logo (variant='logo'):      outputWidth=960, outputHeight=null  → 960×NH landscape
+ *   - Icon (variant='icon'):        outputWidth=720, outputHeight=720  → 720×720 square
+ *   - Background (variant='background'): outputWidth=1860, outputHeight=738 → 1860×738 landscape
  *
  * @param image       HTMLImageElement (already loaded)
  * @param cropState   current cropping state (focal, scale, dimensions)
- * @param cropWindowSize   UI mask window size in CSS px (matches baseContainerW/2 etc.)
- * @param baseCanvasWidth  UI canvas width in CSS px
- * @param outputWidth    Final canvas width in pixels (e.g. 960 for logo, 720 for icon)
- * @param outputHeight   Final canvas height in pixels, or null to preserve aspect ratio
+ * @param cropWindowWidth   UI mask window width in CSS px (matches baseContainerW)
+ * @param cropWindowHeight  UI mask window height in CSS px (for non-square variants)
+ * @param baseCanvasWidth   UI canvas width in CSS px
+ * @param outputWidth        Final canvas width in pixels (e.g. 960 for logo, 1860 for background)
+ * @param outputHeight       Final canvas height in pixels, or null to preserve aspect ratio
  * @returns PNG blob (Promise)
  */
 export function cropImageOnWeb(
   image: HTMLImageElement,
   cropState: CropState,
-  cropWindowSize: number,
+  cropWindowWidth: number,
+  cropWindowHeight: number,
   baseCanvasWidth: number,
   outputWidth: number,
   outputHeight: number | null,
 ): Promise<Blob> {
-  const { focalX, focalY, scale, naturalWidth, naturalHeight, resolvedBaseCanvasWidth } = cropState;
+  const {
+    focalX,
+    focalY,
+    scale,
+    naturalWidth,
+    naturalHeight,
+    resolvedBaseCanvasWidth,
+  } = cropState;
   if (naturalWidth === 0 || naturalHeight === 0) {
     return Promise.reject(new Error('Image dimensions not yet available'));
   }
@@ -51,24 +61,52 @@ export function cropImageOnWeb(
     return Promise.reject(new Error('Failed to get canvas context'));
   }
 
-  // Mirror the srcSquareSize computation from cropImage() (see
-  // shared/logic/imageCrop.computeSrcSquareSize).
-  const srcSquareSize = computeSrcSquareSize(
-    cropWindowSize,
-    effectiveBaseCanvasWidth,
-    scale,
-    naturalWidth,
-    naturalHeight,
-  );
+  // Determine whether this is a square or rectangular crop.
+  // Square: cropWindowWidth === cropWindowHeight (logo, icon).
+  // Rectangular: cropWindowWidth !== cropWindowHeight (background).
+  const isSquare = cropWindowWidth === cropWindowHeight;
 
-  const rawX = focalX * naturalWidth - srcSquareSize / 2;
-  const rawY = focalY * naturalHeight - srcSquareSize / 2;
-  const srcX = Math.max(0, rawX);
-  const srcY = Math.max(0, rawY);
-  const srcW = Math.min(srcSquareSize, naturalWidth - srcX);
-  const srcH = Math.min(srcSquareSize, naturalHeight - srcY);
+  let srcX: number;
+  let srcY: number;
+  let srcW: number;
+  let srcH: number;
 
-  // outputHeight === null → preserve aspect ratio (square by outputWidth).
+  if (isSquare) {
+    // Square crop — use the legacy formula (same as before this refactor).
+    const srcSquareSize = computeSrcSquareSize(
+      cropWindowWidth,
+      effectiveBaseCanvasWidth,
+      scale,
+      naturalWidth,
+      naturalHeight,
+    );
+    const rawX = focalX * naturalWidth - srcSquareSize / 2;
+    const rawY = focalY * naturalHeight - srcSquareSize / 2;
+    srcX = Math.max(0, rawX);
+    srcY = Math.max(0, rawY);
+    srcW = Math.min(srcSquareSize, naturalWidth - srcX);
+    srcH = Math.min(srcSquareSize, naturalHeight - srcY);
+  } else {
+    // Rectangular crop — use computeSrcRegion to guarantee output aspect.
+    const region = computeSrcRegion({
+      cropWindowWidth,
+      cropWindowHeight,
+      baseCanvasWidth: effectiveBaseCanvasWidth,
+      outputWidth,
+      outputHeight: outputHeight ?? outputWidth,
+      scale,
+      naturalWidth,
+      naturalHeight,
+      focalX,
+      focalY,
+    });
+    srcX = region.srcX;
+    srcY = region.srcY;
+    srcW = region.srcW;
+    srcH = region.srcH;
+  }
+
+  // outputHeight === null → preserve aspect ratio (square by width).
   const finalHeight = outputHeight ?? outputWidth;
   canvas.width = outputWidth;
   canvas.height = finalHeight;

@@ -1,55 +1,40 @@
 /**
- * PreviewWrapper — 包裝層（PhoneFrame + PassCardPreview + PushNotificationMockup overlay）
+ * PreviewWrapper — 包裝層（PhoneFrame + PassCardPreview）
  *
- * Phase 9 of IconUploader plan (2026-08-31):
- * - Added PushNotificationMockup overlay inside PhoneFrame (sibling to the card
- *   preview, not on the card itself).
- * - iconImage comes from store via CardBuilderEditorPreview → PreviewWrapper.
- * - PhoneFrame (L1 SVG shell) is intentionally NOT modified — see Rule 022.
+ * The icon image is intentionally NOT shown inside the phone preview;
+ * it is only shown in MediaAssetUploader/Preview (128×128) which reads
+ * the same Zustand store independently.
  *
- * The overlay is rendered only when iconImage is present (push notifications
- * don't appear before the icon is uploaded).
+ * PhoneFrame (L1 SVG shell) is intentionally NOT modified — see Rule 022.
  */
 
 import { PhoneFrame } from '@/components/ui/phone';
 import { PassCardPreview } from '../CardPreview';
-import { PushNotificationMockup } from './PushNotificationMockup/PushNotificationMockup';
 import type { PreviewWrapperProps } from './PreviewWrapper.types';
 
 export function PreviewWrapper({
   name,
   cardType,
   issuerLogo,
+  backgroundImage,
   backgroundColor,
   textColor,
   side = 'front',
   holderName,
   barcodeType,
   showPhoneFrame = true,
-  iconImage,
-  iconImageVersion,
-  issuerName,
 }: PreviewWrapperProps) {
-  // PhoneFrame (L1) wraps the card + the optional push-notification mockup.
-  // The mockup is a sibling of the card, presented inside the phone's status
-  // bar area — visually similar to a real OS notification banner.
+  // PhoneFrame (L1) wraps the card. The icon image preview lives in the
+  // MediaAssetUploader panel (left column), not here.
   if (showPhoneFrame) {
     return (
       <PhoneFrame className="w-full shadow-xl">
         <div className="relative h-full w-full">
-          {/* push notification mockup (only when iconImage is set) */}
-          {iconImage && (
-            <PushNotificationMockup
-              iconImage={iconImage}
-              iconImageVersion={iconImageVersion}
-              issuerName={issuerName ?? name}
-            />
-          )}
-          {/* card preview sits below the notification overlay */}
           <PassCardPreview
             name={name}
             cardType={cardType}
             issuerLogo={issuerLogo}
+            backgroundImage={backgroundImage}
             backgroundColor={backgroundColor}
             textColor={textColor}
             side={side}
@@ -68,6 +53,7 @@ export function PreviewWrapper({
       name={name}
       cardType={cardType}
       issuerLogo={issuerLogo}
+      backgroundImage={backgroundImage}
       backgroundColor={backgroundColor}
       textColor={textColor}
       side={side}

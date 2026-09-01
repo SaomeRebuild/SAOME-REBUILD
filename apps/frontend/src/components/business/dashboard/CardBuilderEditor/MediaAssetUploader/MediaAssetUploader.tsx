@@ -33,6 +33,7 @@ import {
   applyScaleChange as applyScaleChangeShared,
   validateLogoFile,
   validateIconFile,
+  validateBackgroundFile,
 } from '@saome/shared/logic';
 import { cardService } from '@/services/cardService';
 import { api } from '@/config/api';
@@ -50,6 +51,7 @@ import { UploadingIndicator } from './UploadingIndicator/UploadingIndicator';
 import { ScaleControl } from './ScaleControl/ScaleControl';
 import { CropActions } from './CropActions/CropActions';
 import { CropStage } from './CropStage/CropStage';
+import { MediaAssetUploaderHeader } from './MediaAssetUploaderHeader';
 import type { CropStageRefs } from './CropStage';
 
 export function MediaAssetUploader({
@@ -57,6 +59,7 @@ export function MediaAssetUploader({
   variant,
   onUploaded,
   className = '',
+  showHeader = true,
 }: MediaAssetUploaderProps) {
   const config = MEDIA_ASSET_CONFIG[variant]!;
   const { t } = useTranslation(config.i18nNamespace);
@@ -64,14 +67,26 @@ export function MediaAssetUploader({
 
   const MAX_SCALE = cropConfig.MAX_SCALE;
   const MIN_SCALE = cropConfig.MIN_SCALE;
-  const CROP_WINDOW_SIZE = cropConfig.CROP_WINDOW_SIZE;
+  // MediaAssetCropConfig is a union (LogoCropConfig | IconCropConfig | BackgroundCropConfig).
+  // Background variant has CROP_WINDOW_WIDTH/HEIGHT; logo/icon variants have
+  // CROP_WINDOW_SIZE (square). Cast to a structural shape that includes both
+  // possible field names so TypeScript can resolve them.
+  const cropWindowLike = cropConfig as unknown as {
+    CROP_WINDOW_WIDTH?: number;
+    CROP_WINDOW_HEIGHT?: number;
+    CROP_WINDOW_SIZE?: number;
+  };
+  const CROP_WINDOW_WIDTH = cropWindowLike.CROP_WINDOW_WIDTH ?? cropWindowLike.CROP_WINDOW_SIZE ?? 0;
+  const CROP_WINDOW_HEIGHT = cropWindowLike.CROP_WINDOW_HEIGHT ?? CROP_WINDOW_WIDTH;
   const BASE_CANVAS_WIDTH = cropConfig.BASE_CANVAS_WIDTH;
 
-  // Variant-specific store action: logo → setIssuerLogo, icon → setIconImage.
+  // Variant-specific store action: logo → setIssuerLogo, icon → setIconImage, background → setBackgroundImage.
   const setStoreField = useCardBuilderStore(
     variant === 'logo'
       ? (s) => s.setIssuerLogo
-      : (s) => s.setIconImage,
+      : variant === 'icon'
+        ? (s) => s.setIconImage
+        : (s) => s.setBackgroundImage,
   );
 
   // Component state
@@ -116,7 +131,8 @@ export function MediaAssetUploader({
   } = useImageCrop({
     outputWidth: cropConfig.OUTPUT_WIDTH,
     outputHeight: cropConfig.OUTPUT_HEIGHT,
-    cropWindowSize: CROP_WINDOW_SIZE,
+    cropWindowWidth: CROP_WINDOW_WIDTH,
+    cropWindowHeight: CROP_WINDOW_HEIGHT,
     baseCanvasWidth: BASE_CANVAS_WIDTH,
     minScale: MIN_SCALE,
     maxScale: MAX_SCALE,
@@ -156,17 +172,33 @@ export function MediaAssetUploader({
   const naturalCap =
     cropState.naturalWidth > 0 ? cropState.naturalWidth : BASE_CANVAS_WIDTH;
   const STAGE_SAFETY_MARGIN = 16;
+  // Floor at MIN_STAGE_WIDTH (200) instead of CROP_WINDOW_WIDTH. The previous
+  // floor (CROP_WINDOW_WIDTH = 800 for background variant) forced the stage
+  // to 800px on a 376px phone viewport, overflowing the viewport and making
+  // the white frame (480px wide, centered in the 360px-capped outer) appear
+  // as full-width horizontal lines outside the container. The crop window
+  // itself scales to `min(baseContainerW * 0.6, CROP_WINDOW_WIDTH)`, so it
+  // always fits inside the stage regardless of stage size. The 200 floor
+  // also covers the jsdom test case where `offsetWidth` reports 0 (so the
+  // ResizeObserver-based `availableWidth` collapses to 0 and the floor
+  // prevents a degenerate 0px-wide stage).
+  const MIN_STAGE_WIDTH = 200;
   const baseContainerW = Math.min(
     naturalCap,
     BASE_CANVAS_WIDTH,
-    Math.max(availableWidth - STAGE_SAFETY_MARGIN, CROP_WINDOW_SIZE),
+    Math.max(availableWidth - STAGE_SAFETY_MARGIN, MIN_STAGE_WIDTH),
   );
 
   const CROP_WINDOW_SHARE = 0.6;
-  const responsiveCropWindow = Math.min(
+  const responsiveCropWindowWidth = Math.min(
     baseContainerW * CROP_WINDOW_SHARE,
-    CROP_WINDOW_SIZE,
+    CROP_WINDOW_WIDTH,
   );
+  // For square crops (logo/icon), height equals width. For rectangular (background),
+  // height = width × outputHeight/outputWidth (preserves output aspect).
+  const responsiveCropWindowHeight = cropConfig.OUTPUT_HEIGHT !== null
+    ? Math.round(responsiveCropWindowWidth * (cropConfig.OUTPUT_HEIGHT / cropConfig.OUTPUT_WIDTH))
+    : responsiveCropWindowWidth;
 
   const FRAME_PADDING = 16;
   const aspectMatchedH =
@@ -175,8 +207,12 @@ export function MediaAssetUploader({
       : BASE_CANVAS_WIDTH;
   const baseContainerH = Math.max(
     aspectMatchedH,
-    responsiveCropWindow + 2 * FRAME_PADDING,
+    responsiveCropWindowHeight + 2 * FRAME_PADDING,
   );
+  // Apply same FRAME_PADDING floor to outer height for ALL variants (logo / icon / background).
+  // Without this, portrait images make the stage much taller than the mask + padding,
+  // causing the SVG mask hole and the white frame to center at different y-positions
+  // (mask in stage coords, frame in outer coords), producing a visual misalignment.
   const outerContainerH = baseContainerH;
 
   // Sync resolvedBaseCanvasWidth into cropState
@@ -222,7 +258,11 @@ export function MediaAssetUploader({
   // Validator: variant-driven. The factory `validateMediaFile` (in shared) handles the actual logic.
   const validateFile = useCallback(
     (file: FileLike): ValidationError | null =>
-      variant === 'logo' ? validateLogoFile(file) : validateIconFile(file),
+      variant === 'logo'
+        ? validateLogoFile(file)
+        : variant === 'icon'
+          ? validateIconFile(file)
+          : validateBackgroundFile(file),
     [variant],
   );
 
@@ -333,12 +373,16 @@ export function MediaAssetUploader({
   if (state === 'idle' || state === 'success') {
     // Variant-specific store reads for the existing preview (when no fresh upload).
     const storeState = useCardBuilderStore.getState();
-    const existingKey = config.settingsField === 'issuerLogo'
+    const existingKey = variant === 'logo'
       ? storeState.issuerLogo
-      : storeState.iconImage;
-    const existingVersion = config.settingsField === 'issuerLogo'
+      : variant === 'icon'
+        ? storeState.iconImage
+        : storeState.backgroundImage;
+    const existingVersion = variant === 'logo'
       ? storeState.issuerLogoVersion
-      : storeState.iconImageVersion;
+      : variant === 'icon'
+        ? storeState.iconImageVersion
+        : storeState.backgroundImageVersion;
     const previewKey = lastUploadedKey ?? existingKey ?? null;
     const displayUrl = previewKey
       ? `${api.baseUrl}${api.paths.cardImage(templateId, config.cardImageType)}?token=${getAccessToken() ?? ''}&v=${existingVersion}`
@@ -350,6 +394,12 @@ export function MediaAssetUploader({
         data-testid="asset-crop-wrapper"
         className={`flex min-w-0 flex-col items-center gap-4 ${className}`}
       >
+        {showHeader && (
+          <MediaAssetUploaderHeader
+            title={t('title')}
+            description={t('hint')}
+          />
+        )}
         {displayUrl ? (
           <Preview
             displayUrl={displayUrl}
@@ -383,7 +433,13 @@ export function MediaAssetUploader({
       ? t(validationError.message)
       : uploadError ?? t('error');
     return (
-      <>
+      <div className={`flex min-w-0 flex-col items-center gap-4 ${className}`}>
+        {showHeader && (
+          <MediaAssetUploaderHeader
+            title={t('title')}
+            description={t('hint')}
+          />
+        )}
         <UploadError
           message={errorMessage}
           cancelLabel={t('cancel')}
@@ -396,7 +452,7 @@ export function MediaAssetUploader({
           onChange={handleFileSelect}
           className="sr-only"
         />
-      </>
+      </div>
     );
   }
 
@@ -418,6 +474,12 @@ export function MediaAssetUploader({
       data-testid="asset-crop-wrapper"
       className={`flex min-w-0 flex-col items-center gap-4 ${className}`}
     >
+      {showHeader && (
+        <MediaAssetUploaderHeader
+          title={t('title')}
+          description={t('hint')}
+        />
+      )}
       {state === 'uploading' && <UploadingIndicator uploadingLabel={t('uploading')} />}
 
       {state === 'cropping' && (
@@ -427,7 +489,8 @@ export function MediaAssetUploader({
             baseContainerW={baseContainerW}
             baseContainerH={baseContainerH}
             outerContainerH={outerContainerH}
-            responsiveCropWindow={responsiveCropWindow}
+            responsiveCropWindowWidth={responsiveCropWindowWidth}
+            responsiveCropWindowHeight={responsiveCropWindowHeight}
             cropState={cropState}
             setCropState={setCropState}
             imageUrl={imageUrl}

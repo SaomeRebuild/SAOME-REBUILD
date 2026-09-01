@@ -29,6 +29,10 @@ interface CardBuilderState {
   iconImage: string;
   /** iconImage 的版本號（用於 cache busting） */
   iconImageVersion: number;
+  /** 卡片背景圖 (R2 key per § 5.7 contract) */
+  backgroundImage: string;
+  /** backgroundImage 的版本號（用於 cache busting） */
+  backgroundImageVersion: number;
   /** 卡片背景色 */
   backgroundColor: string;
   /** 卡片文字色 */
@@ -62,6 +66,7 @@ interface CardBuilderState {
   setIssuerName: (issuerName: string) => void;
   setIssuerLogo: (issuerLogo: string) => void;
   setIconImage: (iconImage: string) => void;
+  setBackgroundImage: (backgroundImage: string) => void;
   setBackgroundColor: (backgroundColor: string) => void;
   setTextColor: (textColor: string) => void;
   setHolderName: (holderName: string) => void;
@@ -135,6 +140,8 @@ const initialState = {
   issuerLogoVersion: 0,
   iconImage: '',
   iconImageVersion: 0,
+  backgroundImage: '',
+  backgroundImageVersion: 0,
   backgroundColor: '#1a1a1a',
   textColor: '#ffffff',
   holderName: '',
@@ -164,6 +171,7 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
   setIssuerName: (issuerName) => set({ issuerName }),
   setIssuerLogo: (issuerLogo) => set({ issuerLogo, issuerLogoVersion: Date.now() }),
   setIconImage: (iconImage) => set({ iconImage, iconImageVersion: Date.now() }),
+  setBackgroundImage: (backgroundImage) => set({ backgroundImage, backgroundImageVersion: Date.now() }),
   setBackgroundColor: (backgroundColor) => set({ backgroundColor }),
   setTextColor: (textColor) => set({ textColor }),
   setHolderName: (holderName) => set({ holderName }),
@@ -194,8 +202,10 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
       // object, verified by Phase 2 wrangler evidence).
       const loadLogo = resolved?.issuerLogo as string | undefined;
       const loadIcon = resolved?.iconImage as string | undefined;
+      const loadBg = resolved?.backgroundImage as string | undefined;
       const issuerLogo = loadLogo ?? state.issuerLogo;
       const iconImage = loadIcon ?? state.iconImage;
+      const backgroundImage = loadBg ?? state.backgroundImage;
       return {
         name: (resolved?.name ?? state.name) as string,
         cardType: (resolved?.cardType ?? state.cardType) as CardType | null,
@@ -209,6 +219,10 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
         iconImageVersion: loadIcon && loadIcon !== state.iconImage
           ? Date.now()
           : state.iconImageVersion,
+        backgroundImage,
+        backgroundImageVersion: loadBg && loadBg !== state.backgroundImage
+          ? Date.now()
+          : state.backgroundImageVersion,
         backgroundColor: (resolved?.backgroundColor ?? state.backgroundColor) as string,
         textColor: (resolved?.textColor ?? state.textColor) as string,
         holderName: (resolved?.holderName ?? state.holderName) as string,
@@ -222,5 +236,5 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
     });
   },
 
-  reset: () => set({ ...initialState, isPaid: initialState.isPaid, issuerLogoVersion: 0, iconImageVersion: 0 }),
+  reset: () => set({ ...initialState, isPaid: initialState.isPaid, issuerLogoVersion: 0, iconImageVersion: 0, backgroundImageVersion: 0 }),
 }));

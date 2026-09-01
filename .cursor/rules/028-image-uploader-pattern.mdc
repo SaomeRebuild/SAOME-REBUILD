@@ -512,12 +512,79 @@ GET /api/cards/{templateId}/image/{logo|background|icon}?token={JWT}&v={version}
 
 決策紀錄：`runs/decisions/2026-08-30-image-auth-strategy-query-token.md`（待寫）
 
+### 15. Variant Header Pattern — Variant-agnostic title + description with opt-out（MANDATORY）
+
+> **觸發**：任何 image uploader 有多個 variant（logo / icon / background / future avatar）。
+> 變體各自需要 title + description 解釋：使用者上傳什麼、技術規格為何（裁切尺寸等）。
+
+#### 15.1 Pattern 三件
+
+1. **Sub-component `MediaAssetUploaderHeader/`** — 接受 `title` + `description?` + `className?` props
+2. **`showHeader?: boolean` prop on parent** — default `true`，讓 consumer 可 opt-out
+3. **Consumer 自己渲染 header** — 當 `showHeader={false}`，consumer 在自己的 section 用相同 token 渲染
+
+#### 15.2 Visual tokens（兩個 header 路徑必須完全相同）
+
+| 元素 | Token |
+|---|---|
+| Title (`<h3>`) | `text-base font-semibold text-foreground` + `style={{ fontFamily: 'var(--font-family-heading)' }}` |
+| Description (`<p>`) | `text-sm text-muted-foreground`（無 `text-center`，左對齊）|
+| Container (`<div>`) | `flex w-full flex-col items-start gap-2` |
+
+#### 15.3 對齊規則（鐵律）
+
+- ✅ **Header 一律 left-aligned**（`items-start`）
+  - 理由：CardBuilderEditor Step 3 section header 是 left-aligned，uploader header 必須對齊才能讀成同一段
+  - 之前 default `items-center` 是錯誤決策，因為 128×128 preview 在中央並不代表 header 也該置中
+- ❌ Header `items-center` 與 parent section 不一致 → 視覺漂移
+- ❌ Title `font-medium` 而 parent section `font-semibold`（或反之）→ 權重不一致
+- ❌ Title 不用 `var(--font-family-heading)` → Fredoka 字體 fallback 到系統字
+
+#### 15.4 i18n layout（避免誤判為重複）
+
+兩套 key **不是** 重複，是不同 UI 層的職責：
+
+| Key | Namespace | 何時用 | 語意 |
+|---|---|---|---|
+| `iconUpload.title` / `iconUpload.hint` | 變體獨立 namespace（iconUpload / logoUpload）| `showHeader={true}` 時 | Action verb（「上傳 Icon」）+ 技術規格（「720×720 像素」）|
+| `cardEditor.step3.iconSection.title` / `.hint` | 父 feature namespace | 父 section header | 概念（「推播通知圖示」）+ 出現位置（「手機鎖屏與推播中心」）|
+
+**禁止**：誤判為重複而合併 → 兩層的語意會塌陷成一層。
+
+#### 15.5 何時用 `showHeader={false}`
+
+| 情境 | 設定 |
+|---|---|
+| Uploader 獨立成一區（無 parent section）| `showHeader={true}`（default）— 顯示內部 header |
+| Uploader 巢在已有 section header 的 parent 內 | `showHeader={false}` — parent 自己渲染，避免雙重 header |
+
+範例：`CardBuilderEditor Step 3` 的 Icon 區塊已有 `<section><h3>推播通知圖示</h3><p>...</p></section>`，所以 `<MediaAssetUploader variant="icon" showHeader={false}>`。
+
+#### 15.6 Sub-component 結構（§ A.1 modular design）
+
+```
+MediaAssetUploaderHeader/
+├── MediaAssetUploaderHeader.tsx     ← ~50 行，只做渲染
+├── MediaAssetUploaderHeader.test.tsx ← 5 tests（title / description / className / showHeader / items-start）
+└── index.ts                          ← barrel
+```
+
+#### 15.7 禁止
+
+- ❌ 在主組件（`MediaAssetUploader.tsx`）inline header JSX → 違反 § A.1「主組件 ≤ 100 行 + JSX > 50 行拆 sub-component」
+- ❌ `showHeader` default `false` → 多數 consumer 會忘記傳，UI 無標題漂移問題
+- ❌ 把 `showHeader` 命名為 `hideHeader`（雙重否定）/ `withHeader`（語意模糊）
+- ❌ In-component header 用不同 design token（例如 `text-lg` 而非 `text-base`）→ 變體之間大小不一致
+
+事故紀錄：`runs/improvements/feedback/20260901-media-asset-uploader-header-pattern.md`
+
 ## L2 Checklist 對齊
 
 | 動作 | 標準 |
 |---|---|
 | i18n namespace | **先建立** 獨立的 component-bound namespace（如 `logoUpload`），**禁止**放在 feature namespace（如 `cardBuilder`） |
 | 元件結構 | `components/business/dashboard/CardBuilderEditor/LogoUploader/` 一個資料夾 |
+| Sub-component 結構 | 遵守 Rule 000 § A.1：主組件 ≤ 100 行 + JSX > 50 行拆 sub-component。例：`MediaAssetUploaderHeader/` 是 `MediaAssetUploader` 的 title + description sub-component（見 § 15） |
 | Test | `LogoUploader.test.tsx` + RTL |
 | Storybook | `LogoUploader.stories.tsx` |
 
@@ -527,6 +594,8 @@ GET /api/cards/{templateId}/image/{logo|background|icon}?token={JWT}&v={version}
 
 「上傳圖片」「R2」「presigned URL」「CORS 403」「LogoUploader」「BackgroundUploader」「裁切」「crop」「zoom」「scale」「mask」**必須**引用此 rule。
 
+「變體 header」「多 variant」「variant header」「`showHeader`」「內部標題」「MediaAssetUploaderHeader」「跨變體 header 不一致」→ 必引 § 15 Variant Header Pattern。
+
 「cache」「Cache-Control」「上傳後圖沒變」「image preview stale」「URL versioning」「`?v=` query」→ 必引 § 13 Image Cache Busting。
 
 「image 401」「`<img>` auth」「RN `<Image>` auth」「query token」「presigned GET URL」→ 必引 § 14 Image Auth Strategy。
@@ -535,6 +604,8 @@ GET /api/cards/{templateId}/image/{logo|background|icon}?token={JWT}&v={version}
 
 ## 參照
 
+- `runs/improvements/feedback/20260901-media-asset-uploader-header-pattern.md`
+ — Variant Header Pattern 起源（126ad99 新增 header + 155019f 對齊）→ § 15
 - `runs/improvements/feedback/20260823-logo-uploader-full-trace.md`
  — LogoUploader 完整 bug trace + Decision Log
 - `runs/improvements/feedback/20260826-0827-logo-crop-zoom-full-trace.md`
@@ -570,6 +641,10 @@ GET /api/cards/{templateId}/image/{logo|background|icon}?token={JWT}&v={version}
  — Dual-mode auth（Authorization header + ?token= query）
 - `apps/backend/r2-cors.json`
  — CORS 設定檔
+- `apps/frontend/src/components/business/dashboard/CardBuilderEditor/MediaAssetUploader/MediaAssetUploaderHeader/`
+ — Variant Header Pattern 實作範本（§ 15）
+- `apps/frontend/src/components/business/dashboard/CardBuilderEditor/CardBuilderEditorWorkspace.tsx`
+ — Icon section header（跨變體 token 一致性對照基準）
 - `apps/frontend/src/hooks/useImageCrop.ts`
  — `cropImage()` 實作 + `srcSquareSize` 公式
 - `apps/frontend/src/hooks/useImageCrop.web.ts`

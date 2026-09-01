@@ -95,6 +95,79 @@ describe('LogoUploader', () => {
     expect(screen.getByText(/選擇圖片/i)).toBeInTheDocument();
   });
 
+  describe('in-component header (title + description)', () => {
+    it('renders header with variant title for logo (i18n: 上傳 Logo)', () => {
+      render(
+        <MediaAssetUploader
+          variant="logo"
+          templateId="t1"
+          onUploaded={vi.fn()}
+        />,
+      );
+
+      const header = screen.getByTestId('asset-uploader-header');
+      expect(header).toBeInTheDocument();
+      expect(header).toHaveTextContent('上傳 Logo');
+    });
+
+    it('renders variant-specific description (logo hint: 960×960)', () => {
+      render(
+        <MediaAssetUploader
+          variant="logo"
+          templateId="t1"
+          onUploaded={vi.fn()}
+        />,
+      );
+
+      const header = screen.getByTestId('asset-uploader-header');
+      expect(header).toHaveTextContent(/Logo 會被裁切為正方形/);
+      expect(header).toHaveTextContent('960');
+    });
+
+    it('renders variant-specific description (icon hint: 720×720)', () => {
+      render(
+        <MediaAssetUploader
+          variant="icon"
+          templateId="t1"
+          onUploaded={vi.fn()}
+        />,
+      );
+
+      const header = screen.getByTestId('asset-uploader-header');
+      expect(header).toHaveTextContent('上傳 Icon');
+      expect(header).toHaveTextContent(/Icon 會被裁切為正方形/);
+      expect(header).toHaveTextContent('720');
+    });
+
+    it('hides header when showHeader={false}', () => {
+      render(
+        <MediaAssetUploader
+          variant="logo"
+          templateId="t1"
+          showHeader={false}
+          onUploaded={vi.fn()}
+        />,
+      );
+
+      expect(screen.queryByTestId('asset-uploader-header')).not.toBeInTheDocument();
+      // The select-file button still renders (only the header is hidden)
+      expect(screen.getByText(/選擇圖片/i)).toBeInTheDocument();
+    });
+
+    it('uses <h3> for the title (semantic — fits inside a parent section that may already have h2)', () => {
+      render(
+        <MediaAssetUploader
+          variant="logo"
+          templateId="t1"
+          onUploaded={vi.fn()}
+        />,
+      );
+
+      const heading = screen.getByRole('heading', { level: 3, name: '上傳 Logo' });
+      expect(heading).toBeInTheDocument();
+    });
+  });
+
   describe('responsive crop container (mobile)', () => {
     /**
      * Render LogoUploader inside a parent with a known content-box width and
@@ -447,7 +520,8 @@ describe('MediaAssetUploader (icon variant)', () => {
 
   it('uses ICON_CROP_CONFIG (OUTPUT_WIDTH=720, OUTPUT_HEIGHT=720) for icon variant', () => {
     // The hook is called with variant-specific crop dimensions.
-    // ICON_CROP_CONFIG: OUTPUT_WIDTH=720, OUTPUT_HEIGHT=720 (square).
+    // ICON_CROP_CONFIG: OUTPUT_WIDTH=720, OUTPUT_HEIGHT=720 (square),
+    // CROP_WINDOW_WIDTH=CROP_WINDOW_HEIGHT=150, BASE_CANVAS_WIDTH=300.
     vi.mocked(useImageCrop).mockClear();
     render(
       <MediaAssetUploader variant="icon" templateId="t1" onUploaded={vi.fn()} />,
@@ -456,7 +530,9 @@ describe('MediaAssetUploader (icon variant)', () => {
     expect(call).toBeDefined();
     expect(call!.outputWidth).toBe(720);
     expect(call!.outputHeight).toBe(720);
-    expect(call!.cropWindowSize).toBe(150);
+    // New API (Phase A — BackgroundUploader L2 plan 2026-09-01): separate width/height.
+    expect(call!.cropWindowWidth).toBe(150);
+    expect(call!.cropWindowHeight).toBe(150);
     expect(call!.baseCanvasWidth).toBe(300);
   });
 
@@ -471,7 +547,171 @@ describe('MediaAssetUploader (icon variant)', () => {
     expect(call).toBeDefined();
     expect(call!.outputWidth).toBe(960);
     expect(call!.outputHeight).toBeNull();
-    expect(call!.cropWindowSize).toBe(200);
+    // New API (Phase A — BackgroundUploader L2 plan 2026-09-01): separate width/height.
+    expect(call!.cropWindowWidth).toBe(200);
+    expect(call!.cropWindowHeight).toBe(200);
     expect(call!.baseCanvasWidth).toBe(400);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// § Background variant — first non-square variant (landscape 1860×738).
+// Bug regression 2026-09-01: the formula `Math.max(availableWidth - 16,
+// CROP_WINDOW_WIDTH)` used CROP_WINDOW_WIDTH=800 as the floor. On mobile
+// viewports (376px wide), `Math.max(360, 800) = 800`, forcing the stage
+// to 800px wide. The outer container has `maxWidth: 100%` so it shrinks
+// to 360px, but the inner stage (no maxWidth) overflows by 440px. The white
+// frame (480px wide, centered in the 360px outer) extends from x=-60 to
+// x=420, making the top/bottom edges of the frame appear as full-width
+// horizontal lines far outside the visible stage area.
+// ---------------------------------------------------------------------------
+
+describe('MediaAssetUploader (background variant)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(useImageCrop).mockReturnValue(mockImageCropReturn());
+  });
+
+  async function renderBackgroundAndResize(
+    naturalWidth: number,
+    naturalHeight: number,
+    parentWidth: number,
+  ) {
+    vi.mocked(useImageCrop).mockReturnValue(
+      mockImageCropReturn({
+        cropState: {
+          naturalWidth,
+          naturalHeight,
+          resolvedBaseCanvasWidth: Math.min(parentWidth - 16, 800),
+        },
+      }),
+    );
+    const { container } = render(
+      <div style={{ width: `${parentWidth}px` }} data-testid="constrained-parent">
+        <MediaAssetUploader templateId="t1" variant="background" onUploaded={vi.fn()} />
+      </div>,
+    );
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(['x'], 'background.png', { type: 'image/png' });
+    Object.defineProperty(input, 'files', { value: [file], configurable: true });
+    fireEvent.change(input);
+    await waitFor(() => {
+      expect(screen.getByText(/拖曳調整顯示區域/i)).toBeInTheDocument();
+    });
+    const { triggerResize } = await import('@/test/setup');
+    const root = container.querySelector('[data-testid="asset-crop-wrapper"]');
+    if (!root) throw new Error('cropping wrapper not found');
+    triggerResize(root, parentWidth, 800);
+  }
+
+  it('uses BACKGROUND_CROP_CONFIG (OUTPUT_WIDTH=1860, OUTPUT_HEIGHT=738) for background variant', () => {
+    vi.mocked(useImageCrop).mockClear();
+    render(<MediaAssetUploader variant="background" templateId="t1" onUploaded={vi.fn()} />);
+    const call = vi.mocked(useImageCrop).mock.calls[0]?.[0];
+    expect(call).toBeDefined();
+    expect(call!.outputWidth).toBe(1860);
+    expect(call!.outputHeight).toBe(738);
+    // BACKGROUND_CROP_CONFIG: CROP_WINDOW_WIDTH=800, CROP_WINDOW_HEIGHT=317,
+    // BASE_CANVAS_WIDTH=800.
+    expect(call!.cropWindowWidth).toBe(800);
+    expect(call!.cropWindowHeight).toBe(317);
+    expect(call!.baseCanvasWidth).toBe(800);
+  });
+
+  it('BUG REGRESSION: stage width NEVER exceeds parent width minus 16px on mobile (376px)', async () => {
+    // Before the fix: `Math.max(360, 800) = 800` → stage width = 800px,
+    // overflowing the 376px parent. White frame (480px wide, centered in
+    // the capped outer of 360px) extends from x=-60 to x=420, way outside
+    // the visible viewport.
+    await renderBackgroundAndResize(1860, 738, 376);
+
+    await waitFor(() => {
+      const outer = screen.getByTestId('logo-crop-outer') as HTMLElement;
+      const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
+      const outerW = parseFloat(outer.style.width);
+      const stageW = parseFloat(stage.style.width);
+
+      // Outer must fit within parent (maxWidth: 100%)
+      expect(outerW).toBeLessThanOrEqual(376);
+      // Stage must equal outer (they're locked together since the fix)
+      expect(stageW).toBe(outerW);
+      // Stage must fit within parent (the actual bug — stage was 800px on a 376px parent)
+      expect(stageW).toBeLessThanOrEqual(376);
+    });
+  });
+
+  it('white crop frame stays within outer container width on mobile (no horizontal overflow)', async () => {
+    // Before the fix: frame width 480px centered in outer 360px → extends
+    // from x=-60 to x=420. After the fix: frame is responsive to actual
+    // stage width and stays within the container.
+    await renderBackgroundAndResize(1860, 738, 376);
+
+    await waitFor(() => {
+      const outer = screen.getByTestId('logo-crop-outer') as HTMLElement;
+      const frameLayer = outer.querySelector(
+        '[data-testid="logo-crop-frame-layer"]',
+      ) as HTMLElement;
+      expect(frameLayer).toBeTruthy();
+
+      const frame = frameLayer.firstElementChild as HTMLElement;
+      const frameW = parseFloat(frame.style.width);
+      const outerW = parseFloat(outer.style.width);
+
+      // Frame width must not exceed outer width — otherwise the centered
+      // translate(-50%, -50%) places the frame's left/right edges outside
+      // the container.
+      expect(frameW).toBeLessThanOrEqual(outerW);
+    });
+  });
+
+  it('mask coordinates align with white frame position (mask hole equals frame bounding box)', async () => {
+    // SVG mask is centered in the stage (baseContainerW × baseContainerH).
+    // White frame layer is centered in the outer (= stage, post-fix).
+    // If baseContainerW === outerContainerW and baseContainerH === outerContainerH,
+    // both centers coincide and the mask hole aligns with the frame.
+    await renderBackgroundAndResize(1860, 738, 376);
+
+    await waitFor(() => {
+      const outer = screen.getByTestId('logo-crop-outer') as HTMLElement;
+      const stage = screen.getByTestId('logo-crop-stage') as HTMLElement;
+      const svg = stage.querySelector('svg') as SVGSVGElement;
+      expect(svg).toBeTruthy();
+
+      // SVG width/height come from baseContainerW / baseContainerH
+      // (set as `width={baseContainerW}` on the JSX).
+      const svgW = parseFloat(svg.getAttribute('width') ?? '0');
+      const svgH = parseFloat(svg.getAttribute('height') ?? '0');
+      const stageW = parseFloat(stage.style.width);
+      const stageH = parseFloat(stage.style.height);
+      const outerW = parseFloat(outer.style.width);
+
+      // SVG equals stage (SVG is rendered inside the stage)
+      expect(svgW).toBe(stageW);
+      expect(svgH).toBe(stageH);
+
+      // SVG mask coords: the inner black rect (the crop window hole) is
+      // centered at (svgW/2, svgH/2) with width = min(stageW*0.6, 800)
+      // and height = width * 738/1860. The frame is centered in the outer
+      // (== stage post-fix) with the same width/height. They must align.
+      const expectedFrameW = Math.min(stageW * 0.6, 800);
+      const expectedFrameH = Math.round(expectedFrameW * (738 / 1860));
+
+      const maskRect = svg.querySelector('mask rect[fill="black"]') as SVGRectElement;
+      expect(maskRect).toBeTruthy();
+      const maskW = parseFloat(maskRect.getAttribute('width') ?? '0');
+      const maskH = parseFloat(maskRect.getAttribute('height') ?? '0');
+      expect(maskW).toBeCloseTo(expectedFrameW, 1);
+      expect(maskH).toBe(expectedFrameH);
+
+      // Mask center should equal SVG center (which equals stage center
+      // which equals outer center post-fix).
+      const maskCenterX = parseFloat(maskRect.getAttribute('x') ?? '0') + maskW / 2;
+      const maskCenterY = parseFloat(maskRect.getAttribute('y') ?? '0') + maskH / 2;
+      expect(maskCenterX).toBeCloseTo(svgW / 2, 1);
+      expect(maskCenterY).toBeCloseTo(svgH / 2, 1);
+
+      // outerW === stageW === svgW (the invariant)
+      expect(outerW).toBe(stageW);
+    });
   });
 });

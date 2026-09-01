@@ -29,6 +29,8 @@ describe('CardBuilderEditor.store — loadSettings cache-busting fix', () => {
       issuerLogoVersion: 0,
       iconImage: '',
       iconImageVersion: 0,
+      backgroundImage: '',
+      backgroundImageVersion: 0,
       backgroundColor: '#1a1a1a',
       textColor: '#ffffff',
       holderName: '',
@@ -133,6 +135,8 @@ describe('loadSettings — defensive parsing (Bug #8.5 / 2026-08-31)', () => {
       issuerLogoVersion: 0,
       iconImage: '',
       iconImageVersion: 0,
+      backgroundImage: '',
+      backgroundImageVersion: 0,
       backgroundColor: '#1a1a1a',
       textColor: '#ffffff',
       holderName: '',
@@ -200,5 +204,71 @@ describe('loadSettings — defensive parsing (Bug #8.5 / 2026-08-31)', () => {
     expect(unwrapCardSettings(undefined)).toEqual({});
     // Nested array (recursion)
     expect(unwrapCardSettings([[{ a: 1 }], [{ b: 2 }]])).toEqual({ a: 1, b: 2 });
+  });
+});
+
+describe('CardBuilderEditor.store — backgroundImage state (BackgroundUploader L2 plan 2026-09-01)', () => {
+  beforeEach(() => {
+    useCardBuilderStore.setState({
+      cardId: null, name: '', cardType: null, step: 1,
+      completedSteps: new Set(), cardSide: 'front',
+      issuerName: '', issuerLogo: '', issuerLogoVersion: 0,
+      iconImage: '', iconImageVersion: 0,
+      backgroundImage: '', backgroundImageVersion: 0,
+      backgroundColor: '#1a1a1a', textColor: '#ffffff', holderName: '',
+      barcodeType: 'qr_code', storeName: '', passValidDays: null,
+      expiryDate: '', currency: 'TWD', isPaid: false,
+    });
+  });
+
+  it('bumps backgroundImageVersion when loading a new backgroundImage key from settings', () => {
+    expect(useCardBuilderStore.getState().backgroundImageVersion).toBe(0);
+    const before = Date.now();
+    useCardBuilderStore.getState().loadSettings({
+      backgroundImage: 'tenant-1/template-1/background.png',
+    });
+    const after = Date.now();
+    const state = useCardBuilderStore.getState();
+    expect(state.backgroundImage).toBe('tenant-1/template-1/background.png');
+    expect(state.backgroundImageVersion).toBeGreaterThanOrEqual(before);
+    expect(state.backgroundImageVersion).toBeLessThanOrEqual(after);
+  });
+
+  it('does NOT bump version when the loaded key is the same as the current one (idempotent resume)', () => {
+    useCardBuilderStore.setState({
+      backgroundImage: 'tenant-1/template-1/background.png',
+      backgroundImageVersion: 12345,
+    });
+    useCardBuilderStore.getState().loadSettings({
+      backgroundImage: 'tenant-1/template-1/background.png',
+    });
+    expect(useCardBuilderStore.getState().backgroundImageVersion).toBe(12345);
+  });
+
+  it('setBackgroundImage bumps backgroundImageVersion to Date.now()', () => {
+    const before = Date.now();
+    useCardBuilderStore.getState().setBackgroundImage('tenant-1/template-1/background.png');
+    const after = Date.now();
+    const state = useCardBuilderStore.getState();
+    expect(state.backgroundImage).toBe('tenant-1/template-1/background.png');
+    expect(state.backgroundImageVersion).toBeGreaterThanOrEqual(before);
+    expect(state.backgroundImageVersion).toBeLessThanOrEqual(after);
+  });
+
+  it('handles combined loadSettings (backgroundImage + logo + icon + step2 fields) without losing versions', () => {
+    useCardBuilderStore.getState().loadSettings({
+      issuerLogo: 'tenant-1/template-1/issuer-logo.png',
+      iconImage: 'tenant-1/template-1/icon.png',
+      backgroundImage: 'tenant-1/template-1/background.png',
+      storeName: 'My Store',
+      issuerName: 'My Issuer',
+    });
+    const state = useCardBuilderStore.getState();
+    expect(state.issuerLogo).toBe('tenant-1/template-1/issuer-logo.png');
+    expect(state.iconImage).toBe('tenant-1/template-1/icon.png');
+    expect(state.backgroundImage).toBe('tenant-1/template-1/background.png');
+    expect(state.backgroundImageVersion).toBeGreaterThan(0);
+    expect(state.issuerLogoVersion).toBeGreaterThan(0);
+    expect(state.iconImageVersion).toBeGreaterThan(0);
   });
 });

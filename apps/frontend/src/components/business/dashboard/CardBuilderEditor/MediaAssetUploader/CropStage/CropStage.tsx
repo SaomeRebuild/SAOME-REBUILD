@@ -58,7 +58,10 @@ export interface CropStageProps {
   baseContainerW: number;
   baseContainerH: number;
   outerContainerH: number;
-  responsiveCropWindow: number;
+  /** Responsive crop window width in CSS px. */
+  responsiveCropWindowWidth: number;
+  /** Responsive crop window height in CSS px (may differ from width for non-square variants). */
+  responsiveCropWindowHeight: number;
   // Crop state
   cropState: CropState;
   setCropState: React.Dispatch<React.SetStateAction<CropState>>;
@@ -79,7 +82,8 @@ export function CropStage({
   baseContainerW,
   baseContainerH,
   outerContainerH,
-  responsiveCropWindow,
+  responsiveCropWindowWidth,
+  responsiveCropWindowHeight,
   cropState,
   setCropState,
   imageUrl,
@@ -363,10 +367,10 @@ export function CropStage({
             <mask id="logo-crop-mask">
               <rect width={baseContainerW} height={baseContainerH} fill="white" />
               <rect
-                x={(baseContainerW - responsiveCropWindow) / 2}
-                y={(baseContainerH - responsiveCropWindow) / 2}
-                width={responsiveCropWindow}
-                height={responsiveCropWindow}
+                x={(baseContainerW - responsiveCropWindowWidth) / 2}
+                y={(baseContainerH - responsiveCropWindowHeight) / 2}
+                width={responsiveCropWindowWidth}
+                height={responsiveCropWindowHeight}
                 rx="0.5rem"
                 fill="black"
               />
@@ -391,8 +395,8 @@ export function CropStage({
         <div
           className="absolute rounded border-2 border-white/70"
           style={{
-            width: responsiveCropWindow,
-            height: responsiveCropWindow,
+            width: responsiveCropWindowWidth,
+            height: responsiveCropWindowHeight,
             left: '50%',
             top: '50%',
             transform: 'translate(-50%, -50%)',

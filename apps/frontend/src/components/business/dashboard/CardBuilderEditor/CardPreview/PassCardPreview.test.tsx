@@ -58,13 +58,88 @@ describe('PassCardPreview', () => {
     expect(screen.getByText('4938591027384')).toBeInTheDocument();
   });
 
-  it('applies custom background color', () => {
+  it('applies background color to strip (h-[100px] hero area, not body)', () => {
     const { container } = render(
       <PassCardPreview name="測試卡片" backgroundColor="#ff0000" />
     );
-    // Find the strip element with background color
-    const strip = container.querySelector('[style*="background-color"]') as HTMLElement;
+    // After the fix, backgroundColor is applied to the strip element
+    // (h-[100px] hero area), NOT to the inner card body or the outer card root.
+    // Find the strip by its className signature (relative + h-[100px]).
+    const strip = Array.from(container.querySelectorAll('div')).find(
+      (el) => el.className.includes('relative') && (
+        el.className.includes('h-[100px]') || el.className.includes('h-[120px]')
+      )
+    ) as HTMLElement;
     expect(strip).toBeInTheDocument();
-    expect(strip.style.backgroundColor).toBe('rgb(255, 0, 0)'); // #ff0000 in rgb
+    expect(strip.style.backgroundColor).toBe('rgb(255, 0, 0)');
+    // The outer card root must NOT carry the backgroundColor directly
+    const cardRoot = container.querySelector('[style*="aspect-ratio"]') as HTMLElement;
+    expect(cardRoot.style.backgroundColor || '').not.toBe('rgb(255, 0, 0)');
+  });
+
+  it('applies background image INSIDE the strip (constrained to strip area, not full card)', () => {
+    const { container } = render(
+      <PassCardPreview name="測試卡片" backgroundImage="https://example.com/bg.jpg" />
+    );
+    // The background image lives INSIDE the strip element (h-[100px]).
+    // The outer card root (with aspect-ratio) does NOT have an <img> as a
+    // DIRECT child anymore — the previous bug was the bg image being placed
+    // at the outer container, which then visually covered the header / body.
+    const cardRoot = container.querySelector('[style*="aspect-ratio"]') as HTMLElement;
+    expect(cardRoot).toBeInTheDocument();
+    const directImg = cardRoot.querySelector(':scope > img[src="https://example.com/bg.jpg"]');
+    expect(directImg).toBeNull();
+
+    // The bg img must live inside the strip
+    const strip = Array.from(container.querySelectorAll('div')).find(
+      (el) => el.className.includes('relative') && (
+        el.className.includes('h-[100px]') || el.className.includes('h-[120px]')
+      )
+    ) as HTMLElement;
+    expect(strip).toBeInTheDocument();
+    const stripImg = strip.querySelector('img[src="https://example.com/bg.jpg"]') as HTMLImageElement;
+    expect(stripImg).toBeInTheDocument();
+    expect(stripImg.className).toContain('absolute');
+    expect(stripImg.className).toContain('inset-0');
+    expect(stripImg.className).toContain('object-cover');
+  });
+
+  it('strip is a positioned container so the background image cannot leak up to header or down to body', () => {
+    const { container } = render(
+      <PassCardPreview name="測試卡片" backgroundImage="https://example.com/bg.jpg" />
+    );
+    // The strip must have `relative` + `overflow-hidden` so the absolute
+    // background image is constrained to the strip area only. Previously
+    // the strip was `static`, so the absolute overlay escaped upward into
+    // the header.
+    const strip = Array.from(container.querySelectorAll('div')).find(
+      (el) => el.className.includes('relative') && (
+        el.className.includes('h-[100px]') || el.className.includes('h-[120px]')
+      )
+    ) as HTMLElement;
+    expect(strip).toBeInTheDocument();
+    expect(strip.className).toContain('relative');
+    expect(strip.className).toContain('overflow-hidden');
+  });
+
+  it('strip always renders semi-transparent overlay for text readability', () => {
+    const { container } = render(
+      <PassCardPreview name="測試卡片" />
+    );
+    // The strip always renders its dark overlay (rgba(0,0,0,0.35)) so the
+    // card name + icon are readable regardless of the card's background.
+    const stripDiv = Array.from(container.querySelectorAll('div')).find(
+      (el) => el.className.includes('relative') && (
+        el.className.includes('h-[100px]') || el.className.includes('h-[120px]')
+      )
+    ) as HTMLElement;
+    expect(stripDiv).toBeInTheDocument();
+    // The overlay is the absolute child with aria-hidden="true" and the
+    // dark rgba background color.
+    const overlay = Array.from(stripDiv.querySelectorAll('div')).find(
+      (el) => el.style.backgroundColor === 'rgba(0, 0, 0, 0.35)'
+    ) as HTMLElement;
+    expect(overlay).toBeInTheDocument();
+    expect(overlay.style.backgroundColor).toBe('rgba(0, 0, 0, 0.35)');
   });
 });

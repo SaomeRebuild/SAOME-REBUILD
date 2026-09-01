@@ -214,6 +214,70 @@ crop stage 用了 inline width 的元件（如 LogoUploader），整條 chain �
 
 ---
 
+## Variant Header Pattern（MANDATORY）
+
+> **觸發**：實作 variant-driven image uploader（logo / icon / background 等）。
+
+### Pattern 三件
+
+詳見 `.cursor/rules/028-image-uploader-pattern.mdc` § 15：
+
+| 元件 | 角色 | 必備元素 |
+|---|---|---|
+| `MediaAssetUploaderHeader/` sub-component | 變體 agnostic 渲染 title + description | 接受 `title` + `description?` + `className?` props |
+| `showHeader?: boolean` prop on parent | Consumer opt-out | default `true`，consumer 巢在已有 section 時設 `false` |
+| Cross-variant visual consistency | 所有 variant 一律相同 token | 見下表 |
+
+### 跨變體 Token（兩個 header 路徑必須完全相同）
+
+| 元素 | Token |
+|---|---|
+| Title (`<h3>`) | `text-base font-semibold text-foreground` + `style={{ fontFamily: 'var(--font-family-heading)' }}` |
+| Description (`<p>`) | `text-sm text-muted-foreground`（無 `text-center`，左對齊）|
+| Container (`<div>`) | `flex w-full flex-col items-start gap-2` |
+
+### 對齊鐵律
+
+- ✅ Header 一律 left-aligned（`items-start`），與 parent section heading 對齊才能讀成同一段
+- ❌ `items-center` → 視覺漂移
+- ❌ Title 不設 `var(--font-family-heading)` → Fredoka 字體 fallback 到系統字
+
+### 何時用 `showHeader={false}`
+
+| 情境 | 設定 |
+|---|---|
+| Uploader 獨立成一區（無 parent section）| `showHeader={true}`（default）— 顯示內部 header |
+| Uploader 巢在已有 section header 的 parent 內 | `showHeader={false}` — parent 自己渲染，避免雙重 header |
+
+範例：`CardBuilderEditor Step 3` 的 Icon 區塊已有 `<section><h3>推播通知圖示</h3><p>...</p></section>`，所以 `<MediaAssetUploader variant="icon" showHeader={false}>`。
+
+### i18n layout（避免誤判為重複）
+
+| Key | Namespace | 語意 |
+|---|---|---|
+| `iconUpload.title` / `iconUpload.hint` | 變體獨立 namespace | Action verb + 技術規格 |
+| `cardEditor.step3.iconSection.title` / `.hint` | 父 feature namespace | 概念 + 出現位置 |
+
+**禁止**：誤判為重複而合併 → 兩層語意會塌陷成一層。
+
+### 禁止
+
+- ❌ 在主組件 inline header JSX（違反 Rule 000 § A.1 modular design）
+- ❌ `showHeader` default `false`（多數 consumer 會忘記傳）
+- ❌ 命名為 `hideHeader`（雙重否定）/ `withHeader`（語意模糊）
+- ❌ In-component header 用不同 design token（例如 `text-lg` 而非 `text-base`）→ 變體之間大小不一致
+
+### 實作範本
+
+`apps/frontend/src/components/business/dashboard/CardBuilderEditor/MediaAssetUploader/MediaAssetUploaderHeader/`：
+- `MediaAssetUploaderHeader.tsx`（~50 行，只做渲染）
+- `MediaAssetUploaderHeader.test.tsx`（5 tests：title / description / className / showHeader / items-start）
+- `index.ts`（barrel）
+
+事故紀錄：`runs/improvements/feedback/20260901-media-asset-uploader-header-pattern.md`。
+
+---
+
 ## 完整流程圖
 
 ```mermaid

@@ -12,7 +12,7 @@
  * @see .cursor/skills/saome-image-upload/SKILL.md § Crop Window Invariant
  */
 
-import { ICON_CROP_CONFIG, LOGO_CROP_CONFIG } from '../constants/card-images';
+import { BACKGROUND_CROP_CONFIG, ICON_CROP_CONFIG, LOGO_CROP_CONFIG } from '../constants/card-images';
 import type { CropState, FileLike, ValidationError } from '../types/imageCrop';
 
 /**
@@ -127,6 +127,76 @@ export function computeSrcSquareSize(
 }
 
 /**
+ * Compute the rectangular src crop region for non-square variants
+ * (BackgroundUploader, future landscape avatar variants).
+ *
+ * The rectangle is what `cropImage()` exports to the output canvas —
+ * equivalent to `computeSrcSquareSize` but for rectangular mask + output.
+ *
+ * **Aspect handling — the subtle part**:
+ * The UI mask has its own aspect (`cropWindowWidth / cropWindowHeight`),
+ * the natural image has another aspect (`naturalWidth / naturalHeight`),
+ * and the output canvas has a third (`outputWidth / outputHeight`). The
+ * Crop Window Invariant (§ 11) requires that **mask aspect === output aspect**
+ * so "what you see is what you get". The natural image aspect is expected
+ * to match (users upload landscape images for the landscape hero).
+ *
+ * To guarantee the exported region matches the output aspect regardless
+ * of small mask/output ratio drift (e.g. mask 800×317 ratio 2.5237 vs
+ * output 1860×738 ratio 2.5203 — 0.13% drift), we compute `srcW` from the
+ * mask formula and **derive `srcH = srcW * outputH / outputW`**. This
+ * ensures the canvas drawImage call never stretches the export region.
+ *
+ * Pure function — exported for testability and so conformance tests can
+ * pin the formula without instantiating React state or canvas APIs.
+ *
+ * @see .cursor/skills/saome-image-upload/SKILL.md § Crop Window Invariant
+ * @see .cursor/rules/028-image-uploader-pattern.mdc § 11
+ */
+export function computeSrcRegion(params: {
+  cropWindowWidth: number;
+  cropWindowHeight: number;
+  baseCanvasWidth: number;
+  outputWidth: number;
+  outputHeight: number;
+  scale: number;
+  naturalWidth: number;
+  naturalHeight: number;
+  focalX: number;
+  focalY: number;
+}): { srcX: number; srcY: number; srcW: number; srcH: number } {
+  const {
+    cropWindowWidth,
+    baseCanvasWidth,
+    outputWidth,
+    outputHeight,
+    scale,
+    naturalWidth,
+    naturalHeight,
+    focalX,
+    focalY,
+  } = params;
+
+  // srcW derived from the UI mask (maskW maps to baseCanvasW UI pixels,
+  // which maps to naturalWidth src pixels at scale=1, divided by scale).
+  const rawSrcW = (cropWindowWidth / (baseCanvasWidth * scale)) * naturalWidth;
+  const srcW = Math.min(rawSrcW, naturalWidth);
+
+  // srcH derived from srcW × output aspect — guarantees export region
+  // matches output canvas aspect, not mask aspect (avoids sub-pixel drift
+  // from 317/800 vs 738/1860).
+  const rawSrcH = srcW * (outputHeight / outputWidth);
+  const srcH = Math.min(rawSrcH, naturalHeight);
+
+  const rawX = focalX * naturalWidth - srcW / 2;
+  const rawY = focalY * naturalHeight - srcH / 2;
+  const srcX = Math.max(0, rawX);
+  const srcY = Math.max(0, rawY);
+
+  return { srcX, srcY, srcW, srcH };
+}
+
+/**
  * Generic file validator for media-asset uploads.
  *
  * Used by `validateLogoFile` and `validateIconFile` (and any future
@@ -198,5 +268,28 @@ export function validateIconFile(file: FileLike): ValidationError | null {
     file,
     ICON_CROP_CONFIG.MIME_TYPES as readonly string[],
     ICON_CROP_CONFIG.MAX_FILE_SIZE,
+  );
+}
+
+/**
+ * Validate an uploaded file against the BACKGROUND_CROP_CONFIG constraints.
+ *
+ * Backed by `validateMediaFile` factory (shared with validateLogoFile /
+ * validateIconFile).
+ *
+ * Background image MIME / size policy mirrors logo/icon (PNG / JPG, 5MB cap)
+ * for unified upload UX. PassCreator 1860×738 strict spec is enforced
+ * downstream by the crop preview (the user sees a UI mask that matches the
+ * output aspect — they will not be able to crop to a region smaller than
+ * 1860×738 in source coordinates).
+ *
+ * @param file  Any FileLike (web File, RN asset, etc.)
+ * @returns     ValidationError | null
+ */
+export function validateBackgroundFile(file: FileLike): ValidationError | null {
+  return validateMediaFile(
+    file,
+    BACKGROUND_CROP_CONFIG.MIME_TYPES as readonly string[],
+    BACKGROUND_CROP_CONFIG.MAX_FILE_SIZE,
   );
 }

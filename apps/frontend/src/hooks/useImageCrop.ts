@@ -24,17 +24,24 @@ export { computeSrcSquareSize };
  * Platform-specific cropImage signature shared by web and native impls.
  * Both `useImageCrop.web.ts` and `useImageCrop.native.ts` conform to this.
  *
- * The 4 environment-derived parameters are passed explicitly (no closure
+ * The 6 environment-derived parameters are passed explicitly (no closure
  * capture of constants) — this keeps the function pure and RN-migration-safe.
  *
  * outputWidth/outputHeight are the final canvas dimensions in pixels:
- *   - Logo (variant='logo'):  outputWidth=960, outputHeight=null  → 960×NH aspect
- *   - Icon  (variant='icon'):  outputWidth=720, outputHeight=720  → 720×720 square
+ *   - Logo (variant='logo'):      outputWidth=960, outputHeight=null  → 960×NH aspect
+ *   - Icon (variant='icon'):       outputWidth=720, outputHeight=720  → 720×720 square
+ *   - Background (variant='background'): outputWidth=1860, outputHeight=738 → 1860×738 landscape
+ *
+ * cropWindowWidth / cropWindowHeight describe the UI mask in CSS px.
+ * They can be equal (square mask for logo/icon) or different (rectangular
+ * mask for background). When they differ, the binding uses
+ * `computeSrcRegion` instead of `computeSrcSquareSize`.
  */
 export type CropImageFn = (
   image: HTMLImageElement,
   cropState: CropState,
-  cropWindowSize: number,
+  cropWindowWidth: number,
+  cropWindowHeight: number,
   baseCanvasWidth: number,
   outputWidth: number,
   outputHeight: number | null,
@@ -56,10 +63,16 @@ export interface UseImageCropOptions {
   outputWidth: number;
   /** Output height in pixels. Pass null for flexible height (preserves aspect ratio). */
   outputHeight: number | null;
-  /** UI crop window size in CSS px (default: 200). Must match the visible
+  /** UI crop window width in CSS px (default: 200). Must match the visible
       crop window in the editor so the exported crop region corresponds to
       what the user sees. */
-  cropWindowSize?: number;
+  cropWindowWidth?: number;
+  /** UI crop window height in CSS px (default: same as cropWindowWidth for
+      backward compatibility with the legacy square-crop variants). For
+      non-square masks (background, future variants), set this to the mask
+      height — the binding will derive the rectangular src region via
+      `computeSrcRegion` to preserve output aspect. */
+  cropWindowHeight?: number;
   /** UI base canvas width in CSS px (default: 400). Must match the canvas
       the image is rendered into before the scale transform. */
   baseCanvasWidth?: number;
@@ -128,7 +141,8 @@ export function useImageCrop(options: UseImageCropOptions): UseImageCropReturn {
   const {
     outputWidth,
     outputHeight,
-    cropWindowSize = DEFAULT_CROP_WINDOW_SIZE,
+    cropWindowWidth = DEFAULT_CROP_WINDOW_SIZE,
+    cropWindowHeight = cropWindowWidth, // backward compat: square crop when height not specified
     baseCanvasWidth = DEFAULT_BASE_CANVAS_WIDTH,
     minScale = DEFAULT_MIN_SCALE,
     maxScale = DEFAULT_MAX_SCALE,
@@ -238,12 +252,13 @@ export function useImageCrop(options: UseImageCropOptions): UseImageCropReturn {
     return cropImageImpl(
       img,
       cropState,
-      cropWindowSize,
+      cropWindowWidth,
+      cropWindowHeight,
       baseCanvasWidth,
       resolvedOutputWidth,
       resolvedOutputHeight,
     );
-  }, [cropState, cropWindowSize, baseCanvasWidth, outputWidth, outputHeight]);
+  }, [cropState, cropWindowWidth, cropWindowHeight, baseCanvasWidth, outputWidth, outputHeight]);
 
   const resetCrop = useCallback(() => {
     setCropState({
