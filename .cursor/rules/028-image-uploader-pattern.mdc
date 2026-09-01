@@ -247,19 +247,24 @@ baseCanvasWidth / naturalWidth = baseCanvasHeight / naturalHeight
 ```typescript
 useImageCrop({
   outputWidth, outputHeight,
-  cropWindowSize,    // 必填：UI mask size in CSS px (e.g. 200)
+  cropWindowWidth,    // 必填：UI mask width in CSS px (e.g. 200 for logo, 800 for background)
+  cropWindowHeight,   // 必填：UI mask height in CSS px (e.g. 200 for logo, 317 for background)
   baseCanvasWidth,   // 必填：UI canvas width in CSS px (e.g. 400)
   minScale, maxScale, initialScale,
 });
 ```
 
+> square variant（logo / icon）使用 `cropWindowWidth === cropWindowHeight`。
+> rectangular variant（background）使用不同 width / height，aspect = output aspect。
+> 向後相容：舊 `cropWindowSize?: number` 仍 fallback 為正方形。
+
 #### 每個 imageType 對應的 crop window 設定
 
-| imageType        | cropWindowSize | baseCanvasWidth | 用途 |
-|------------------|----------------|------------------|------|
-| `issuerLogo`     | 200            | 400              | LogoUploader |
-| `backgroundImage`| 800            | 800              | BackgroundUploader |
-| `icon`           | 256            | 256              | IconUploader |
+| imageType        | CROP_WINDOW_WIDTH | CROP_WINDOW_HEIGHT | baseCanvasWidth | 用途 |
+|------------------|-------------------|--------------------|------------------|------|
+| `issuerLogo`     | 200               | 200                | 400              | LogoUploader（square） |
+| `backgroundImage`| 800               | 317                | 800              | BackgroundUploader（rectangular 2.52:1） |
+| `icon`           | 150               | 150                | 300              | IconUploader（square） |
 
 詳見 `.cursor/skills/saome-image-upload/SKILL.md` § Crop Window Invariant 與 `apps/frontend/src/hooks/useImageCrop.ts` 實作。
 
@@ -272,6 +277,95 @@ useImageCrop({
 
 事故紀錄：`runs/improvements/feedback/20260826-0827-logo-crop-zoom-full-trace.md`。
 決策：`runs/decisions/2026-08-27-logo-crop-zoom-invariant-mask.md`。
+
+#### § 11.1 Rectangular Crop Window — Mask 從 square 升級為 rectangular（強制）
+
+> **觸發**：任何 imageType 的 export aspect 不為 1（如 background 1860×738，aspect 2.52:1）。
+> square variant（logo / icon）仍走 § 11，本節是 rectangular variant 的補充鐵律。
+
+#### 設計意圖
+
+Hook signature 應該從「**最 general 的 shape**」開始，而非「最 specific 的特例」。Square 是 rectangle 的特例（`WIDTH === HEIGHT`），所以 rectangle 才是 general form。
+
+把 `cropWindowSize: number` 拆成 `cropWindowWidth + cropWindowHeight`：
+
+- ✅ Square caller 給 `width === height`，行為不變
+- ✅ Rectangular caller（background）給 `800 / 317`，UI mask 跟 export aspect 一致
+- ✅ 未來新 variant（如 banner、avatar）可選任一 shape，不用 deprecate 舊欄位
+
+#### Hook signature 演進
+
+```typescript
+// v1（square-only）
+type UseImageCropOptions = {
+  cropWindowSize: number;
+};
+
+// v2（rectangular，向後相容）— 採用
+type UseImageCropOptions = {
+  cropWindowWidth: number;
+  cropWindowHeight: number;
+  /** @deprecated Use cropWindowWidth/Height. Square fallback only. */
+  cropWindowSize?: number;
+};
+```
+
+`cropImage` 從 `computeSrcSquareSize` 改為 `computeSrcRegion`，回傳 `{ srcX, srcY, srcW, srcH }` 矩形。
+
+#### MediaAssetUploader 從 union cropConfig 取 WIDTH/HEIGHT（structural cast）
+
+```typescript
+const cropWindowLike = cropConfig as unknown as {
+  CROP_WINDOW_WIDTH?: number;
+  CROP_WINDOW_HEIGHT?: number;
+  CROP_WINDOW_SIZE?: number;
+};
+const CROP_WINDOW_WIDTH = cropWindowLike.CROP_WINDOW_WIDTH ?? cropWindowLike.CROP_WINDOW_SIZE ?? 0;
+const CROP_WINDOW_HEIGHT = cropWindowLike.CROP_WINDOW_HEIGHT ?? CROP_WINDOW_WIDTH;
+```
+
+`as unknown as {...}` 是必要的：union config 中 `LogoCropConfig` 有 `CROP_WINDOW_SIZE`、`BackgroundCropConfig` 有 `CROP_WINDOW_WIDTH/HEIGHT`，runtime 讀欄位前需 fallback。
+
+#### CropStage SVG mask 矩形化
+
+```tsx
+// Square (logo / icon)
+<rect width={maskSize} height={maskSize} x={...} y={...} />
+
+// Rectangular (background)
+<rect width={maskW} height={maskH} x={(stageW - maskW) / 2} y={(stageH - maskH) / 2} />
+```
+
+frameLayer 同樣矩形化。
+
+#### Responsive crop window height 由 output aspect 推導
+
+```typescript
+const responsiveCropWindowHeight = cropConfig.OUTPUT_HEIGHT !== null
+  ? Math.round(responsiveCropWindowWidth * (cropConfig.OUTPUT_HEIGHT / cropConfig.OUTPUT_WIDTH))
+  : responsiveCropWindowWidth;
+```
+
+- logo（`OUTPUT_HEIGHT: null`）：height = width（square fallback）
+- icon（`OUTPUT_HEIGHT === OUTPUT_WIDTH`）：height = width × 1 = width
+- background（`OUTPUT_HEIGHT: 738, OUTPUT_WIDTH: 1860`）：height = width × 0.397
+
+#### 禁止
+
+- ❌ 用 `cropWindowSize = 800` 給 background variant → mask 變 800×800 正方，違反 Crop Window Invariant
+- ❌ 為 rectangular 重新發明 hook（沿用 `useImageCrop`，僅改參數 shape）
+- ❌ Square / Rectangular 分兩個 hook（違反 single-responsibility，未來加新 shape 又要分支）
+
+事故紀錄：`runs/improvements/feedback/20260901-use-image-crop-rectangular-support.md`。
+
+#### 與其他章節的分工
+
+| § | 不變量 |
+|---|--------|
+| § 11 | Mask size === export srcSquareSize（square case） |
+| **§ 11.1** | **Mask shape === export shape（rectangular case）** |
+| § 12 | Stage height ≥ mask + padding |
+| § 12.1 | Stage width floor = 200 |
 
 ### 12. Stage Height Invariant — Stage 必須包含 Mask + Padding（強制）
 
@@ -372,6 +466,76 @@ it('invariant: stageH >= maskH + 2 * FRAME_PADDING for ALL aspect ratios', () =>
 |---|---|---|
 | 11 | mask size === export srcSquareSize | UI ↔ export |
 | **12** | **stage height ≥ mask + padding** | **stage ↔ mask** |
+
+#### § 12.1 Stage Width Floor — MIN_STAGE_WIDTH = 200，不跟 CROP_WINDOW 走（強制）
+
+> **觸發**：任何 image crop 元件。§ 12 解釋 height 不變量，本節是 **width 不變量**。
+> Background variant（`CROP_WINDOW_WIDTH = 800`）在 376px iPhone viewport 上把 stage floor 撐成 800，導致 white crop frame 跑出容器。本節是這條 bug 的結構性修法。
+
+#### 問題
+
+LogoUploader 時代的 Stage Height Invariant 只解釋 **height**：
+
+```ts
+const baseContainerH = Math.max(
+  aspectMatchedH,
+  responsiveCropWindowHeight + 2 * FRAME_PADDING,
+);
+```
+
+沒解釋 **width floor**。當時 LogoUploader 用 `CROP_WINDOW_SIZE = 200` 為 floor 巧合 200 == mask size，沒出問題。Background variant 的 `CROP_WINDOW_WIDTH = 800` 直接套用：
+
+```ts
+// ❌ 錯誤：把 CROP_WINDOW_WIDTH 當 stage floor
+const baseContainerW = Math.min(
+  naturalCap,
+  BASE_CANVAS_WIDTH,
+  Math.max(availableWidth - STAGE_SAFETY_MARGIN, CROP_WINDOW_WIDTH),  // ← 800 對手機 viewport 太大
+);
+```
+
+`Math.max(x, 800)` 在 viewport < 800 時永遠 return 800，導致 stage 寬度永遠 ≥ 800，但實際容器（`<aside>` in Step 3）只有 ~360px。`overflow: hidden` 沒設，frame 跑出去。
+
+**概念錯誤**：把 `CROP_WINDOW_*`（使用者介面互動尺寸）當作 stage container 的下限。
+
+#### 解法（強制）
+
+```ts
+const MIN_STAGE_WIDTH = 200;
+const baseContainerW = Math.min(
+  naturalCap,
+  BASE_CANVAS_WIDTH,
+  Math.max(availableWidth - STAGE_SAFETY_MARGIN, MIN_STAGE_WIDTH),  // ← 200 取代 CROP_WINDOW
+);
+```
+
+`MIN_STAGE_WIDTH = 200` 兩個覆蓋：
+
+1. **Mobile viewport**（≥ 320px）：floor 200 保證 stage 至少 200px，frame 在容器內
+2. **jsdom test**：當 `offsetWidth = 0`（ResizeObserver 還沒觸發或 wrapper 未 mounted），`availableWidth - STAGE_SAFETY_MARGIN = -16`，floor 200 把它撐成 200，避免 degenerate 0px-wide stage 導致 cropImage 算 NaN
+
+#### 為什麼是 200
+
+- 比 logo/icon mask size 200/150 都小，確保 floor 不會比 mask 還大
+- 200 × 0.6（CROP_WINDOW_SHARE）= 120，仍小於 mask size，所以 stage 仍能顯示完整 mask
+- 大於 jsdom 退化情況的 0/負值
+
+#### 禁止
+
+- ❌ 用 `CROP_WINDOW_SIZE` / `CROP_WINDOW_WIDTH` 為 stage width floor（會跟著 variant 走，background 直接撐爆手機）
+- ❌ 動態計算 floor（如 `Math.max(80, MIN_VIEWPORT_WIDTH / 4)`）— 失去 invariant 性質，每個 variant 都要重新驗證
+- ❌ 移除 floor（jsdom 退化情況下 stage 變 0，cropImage NaN）
+
+事故紀錄：`runs/improvements/feedback/20260901-background-uploader-min-stage-width-floor.md`。
+
+#### 與其他章節的分工
+
+| § | 不變量 | 對齊目標 |
+|---|---|---|
+| 11 | mask size === export srcSquareSize | UI ↔ export |
+| 11.1 | Mask shape === export shape（rectangular） | UI ↔ export |
+| 12 | Stage height ≥ mask + padding | stage ↔ mask |
+| **12.1** | **Stage width floor = 200** | **stage ↔ mobile viewport** |
 
 ### 13. Image Cache Busting — Fixed Filename + Version Query Param（強制）
 
@@ -578,6 +742,89 @@ MediaAssetUploaderHeader/
 
 事故紀錄：`runs/improvements/feedback/20260901-media-asset-uploader-header-pattern.md`
 
+### 16. Variant Config Bundle Pattern — `MEDIA_ASSET_CONFIG[variant]` 5 維 bundle（MANDATORY）
+
+> **觸發**：任何 MediaAssetUploader 的 variant 擴充（新加 background / icon / 未來 membershipCard 等）。
+> 本節是新增 variant 的 SOP，bundle pattern 讓元件讀 config 而非分支運算。
+
+#### 5 維 bundle 結構
+
+```ts
+export type MediaAssetVariantEntry = {
+  i18nNamespace: string;
+  cropConfig: MediaAssetCropConfig;
+  settingsField: string;
+  cardImageType: CardImageType;
+};
+
+export const MEDIA_ASSET_CONFIG: {
+  readonly [K in MediaAssetVariant]?: MediaAssetVariantEntry;
+} = {
+  logo:       { i18nNamespace: 'logoUpload',       cropConfig: LOGO_CROP_CONFIG,       settingsField: 'issuerLogo',    cardImageType: 'logo' },
+  icon:       { i18nNamespace: 'iconUpload',       cropConfig: ICON_CROP_CONFIG,       settingsField: 'iconImage',     cardImageType: 'icon' },
+  background: { i18nNamespace: 'backgroundUpload', cropConfig: BACKGROUND_CROP_CONFIG, settingsField: 'backgroundImage', cardImageType: 'background' },
+};
+```
+
+元件從 config 讀：
+
+```ts
+const config = MEDIA_ASSET_CONFIG[variant]!;
+const cropConfig = config.cropConfig;
+// 4 個維度全部從 config 讀，零分支
+```
+
+唯一保留的 ternary 是 **store action setter**（React hook selector 必須 ternary），這是合理的 escape hatch。
+
+#### 新 variant SOP checklist
+
+1. **新 `Xxx_CROP_CONFIG` 加進 `card-images.ts`**（含 `OUTPUT_WIDTH/HEIGHT`、`MIN_INPUT_*`、`CROP_WINDOW_WIDTH/HEIGHT`、`BASE_CANVAS_WIDTH`、`MIN_SCALE/MAX_SCALE`）
+2. **加 `MEDIA_ASSET_CONFIG.xxx` entry**（5 維 bundle）
+3. **加 `xxxUpload` i18n namespace + `cardEditor.stepN.xxxSection`**（Section header 跟隨 § 15 Variant Header Pattern）
+4. **store 加 `setXxx` + `xxxVersion`**（用 `set({ xxx, xxxVersion: Date.now() })` 觸發 cache busting，§ 13）
+5. **CardBuilderEditorWorkspace 補 render branch**（section wrapper + `<MediaAssetUploader variant="xxx" showHeader={false}>`）
+6. **PassCardPreview 補 render branch**（組 URL + 傳給 `PassCardPreviewStrip`）
+7. ⚠️ **加 stage width floor 驗證**（§ 12.1：`MIN_STAGE_WIDTH = 200` 必須確認）
+8. ⚠️ **加 rectangular crop 公式**（§ 11.1：`cropWindowWidth/Height` 而非 `cropWindowSize`）
+
+#### 為什麼 union 而非 intersection
+
+```ts
+// A. intersection（全部都要有）— ❌ 拒絕
+type MediaAssetCropConfig = LogoCropConfig & IconCropConfig & BackgroundCropConfig;
+// → LOGO_CROP_CONFIG 也要有 CROP_WINDOW_WIDTH/HEIGHT 這種沒意義欄位
+
+// B. union（任一即可）— ✅ 採用
+type MediaAssetCropConfig = LogoCropConfig | IconCropConfig | BackgroundCropConfig;
+// → 每個 variant config 只實作自己需要的欄位；讀時用 structural cast
+```
+
+#### 為什麼 optional map 而非 required map
+
+```ts
+readonly [K in MediaAssetVariant]?: MediaAssetVariantEntry;
+```
+
+未來新增 variant 時（如 `membershipCard`），可以**先在 `MediaAssetVariant` union 加成員，再分階段補 MEDIA_ASSET_CONFIG entry**。Required map 會迫使原子性 commit，違反增量開發節奏。
+
+Optional map 容許 **union 增加** 與 **config entry 補完** 分兩個 commit，避免巨型 PR。
+
+#### 禁止
+
+- ❌ 元件內 inline 5 個 `variant === 'logo' ? ... : variant === 'icon' ? ...` 三元鏈（違反 bundle 模式）
+- ❌ 為每個 variant 寫獨立 component（如 `<BackgroundUploader>` `<LogoUploader>`）— 用 variant 區分即可
+- ❌ 為 rectangular / square 分兩個 config 介面（union 已涵蓋兩種 shape）
+
+事故紀錄：`runs/improvements/feedback/20260901-media-asset-variant-config-pattern.md`。
+
+#### 與其他章節的分工
+
+| § | 規範 |
+|---|------|
+| § 11.1 | Hook signature rectangular 擴充 |
+| § 12.1 | Stage width floor |
+| **§ 16** | **5 維 bundle + 新 variant SOP** |
+
 ## L2 Checklist 對齊
 
 | 動作 | 標準 |
@@ -594,7 +841,13 @@ MediaAssetUploaderHeader/
 
 「上傳圖片」「R2」「presigned URL」「CORS 403」「LogoUploader」「BackgroundUploader」「裁切」「crop」「zoom」「scale」「mask」**必須**引用此 rule。
 
+「rectangular crop」「aspect 2.52:1」「1860×738」「landscape mask」「`cropWindowSize` 改 `cropWindowWidth/Height`」「`computeSrcRegion`」→ 必引 § 11.1 Rectangular Crop Window。
+
+「stage width floor」「`MIN_STAGE_WIDTH`」「`baseContainerW` floor」「mobile viewport 撐不下」「jsdom 0 退化」「white frame 跑出容器」→ 必引 § 12.1 Stage Width Floor。
+
 「變體 header」「多 variant」「variant header」「`showHeader`」「內部標題」「MediaAssetUploaderHeader」「跨變體 header 不一致」→ 必引 § 15 Variant Header Pattern。
+
+「`MEDIA_ASSET_CONFIG`」「`MediaAssetVariant`」「variant config bundle」「5 維 bundle」「union type cropConfig」「新 variant SOP」→ 必引 § 16 Variant Config Bundle Pattern。
 
 「cache」「Cache-Control」「上傳後圖沒變」「image preview stale」「URL versioning」「`?v=` query」→ 必引 § 13 Image Cache Busting。
 
@@ -604,6 +857,14 @@ MediaAssetUploaderHeader/
 
 ## 參照
 
+- `DEV/08-2026/0901-background-uploader-implementation.md`
+ — BackgroundUploader L2 實作 master DEV LOG（3 commits：efeff08 i18n / 09cd641 variant 重構 / ffcaf28 pipeline）→ § 11.1 / § 12.1 / § 16
+- `runs/improvements/feedback/20260901-background-uploader-min-stage-width-floor.md`
+ — Stage width floor = MIN_STAGE_WIDTH (200)，不跟 CROP_WINDOW 走 → § 12.1
+- `runs/improvements/feedback/20260901-media-asset-variant-config-pattern.md`
+ — `MEDIA_ASSET_CONFIG[variant]` 5 維 bundle + 新 variant SOP → § 16
+- `runs/improvements/feedback/20260901-use-image-crop-rectangular-support.md`
+ — useImageCrop 從 `cropWindowSize` 升級為 `cropWindowWidth × cropWindowHeight` → § 11.1
 - `runs/improvements/feedback/20260901-media-asset-uploader-header-pattern.md`
  — Variant Header Pattern 起源（126ad99 新增 header + 155019f 對齊）→ § 15
 - `runs/improvements/feedback/20260823-logo-uploader-full-trace.md`

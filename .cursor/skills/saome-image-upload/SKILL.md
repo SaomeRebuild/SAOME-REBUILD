@@ -169,6 +169,28 @@ it('invariant: stageH >= maskH + 2 * FRAME_PADDING for ALL aspect ratios', () =>
 |---|---|---|
 | Crop Window Invariant | mask size === export srcSquareSize | UI ↔ export |
 | **Stage Height Invariant** | **stage height ≥ mask + padding** | **stage ↔ mask** |
+| **Stage Width Invariant** | **stage width floor = 200** | **stage ↔ mobile viewport** |
+
+#### Stage Width Floor（NEW — Rule 028 § 12.1）
+
+`MIN_STAGE_WIDTH = 200` 為 stage 寬度的 universal floor，**不跟 `CROP_WINDOW_SIZE/WIDTH` 走**。
+
+```ts
+const MIN_STAGE_WIDTH = 200;
+const baseContainerW = Math.min(
+  naturalCap,
+  BASE_CANVAS_WIDTH,
+  Math.max(availableWidth - STAGE_SAFETY_MARGIN, MIN_STAGE_WIDTH),
+);
+```
+
+**為什麼不直接用 `CROP_WINDOW_WIDTH` 為 floor**：background variant `CROP_WINDOW_WIDTH = 800`，套到 376px iPhone viewport 會把 stage 撐成 800px，導致 white crop frame 跑出容器。Floor 必須跟著 mobile viewport 對齊而非 crop window。
+
+**兩個覆蓋場景**：
+1. **Mobile viewport 退化**（≥ 320px）：floor 200 保證 stage 至少 200px，frame 在容器內
+2. **jsdom 退化**：`offsetWidth = 0` 時 `availableWidth - STAGE_SAFETY_MARGIN = -16`，floor 200 把它撐成 200，避免 degenerate 0px-wide stage 導致 cropImage 算 NaN
+
+詳見 `.cursor/rules/028-image-uploader-pattern.mdc` § 12.1 + `runs/improvements/feedback/20260901-background-uploader-min-stage-width-floor.md`。
 
 事故紀錄：`runs/improvements/feedback/20260830-logo-uploader-landscape-frame-exceeds-container.md`。
 詳見 `.cursor/rules/028-image-uploader-pattern.mdc` § 12。
@@ -275,6 +297,62 @@ crop stage 用了 inline width 的元件（如 LogoUploader），整條 chain �
 - `index.ts`（barrel）
 
 事故紀錄：`runs/improvements/feedback/20260901-media-asset-uploader-header-pattern.md`。
+
+---
+
+## Variant Config Bundle Pattern（MANDATORY）
+
+> **觸發**：MediaAssetUploader 加入新 variant（如 background / 未來 membershipCard / avatar 等）。
+> 這是新 variant 的 SOP，bundle pattern 取代 5 個 inline 三元鏈。
+
+### 5 維 bundle 結構
+
+`packages/shared/constants/card-images.ts` 提供 `MEDIA_ASSET_CONFIG[variant]` map：
+
+```ts
+export const MEDIA_ASSET_CONFIG: {
+  readonly [K in MediaAssetVariant]?: MediaAssetVariantEntry;
+} = {
+  logo:       { i18nNamespace: 'logoUpload',       cropConfig: LOGO_CROP_CONFIG,       settingsField: 'issuerLogo',    cardImageType: 'logo' },
+  icon:       { i18nNamespace: 'iconUpload',       cropConfig: ICON_CROP_CONFIG,       settingsField: 'iconImage',     cardImageType: 'icon' },
+  background: { i18nNamespace: 'backgroundUpload', cropConfig: BACKGROUND_CROP_CONFIG, settingsField: 'backgroundImage', cardImageType: 'background' },
+};
+```
+
+元件從 config 讀，零分支：
+
+```ts
+const config = MEDIA_ASSET_CONFIG[variant]!;
+const cropConfig = config.cropConfig;
+```
+
+唯一保留的 ternary 是 **store action setter**（React hook selector 必須 ternary）。
+
+### 新 variant SOP（8 步）
+
+1. **新 `Xxx_CROP_CONFIG` 加進 `card-images.ts`**（含 `OUTPUT_WIDTH/HEIGHT`、`MIN_INPUT_*`、`CROP_WINDOW_WIDTH/HEIGHT`、`BASE_CANVAS_WIDTH`、`MIN_SCALE/MAX_SCALE`）
+2. **加 `MEDIA_ASSET_CONFIG.xxx` entry**（5 維 bundle）
+3. **加 `xxxUpload` i18n namespace + `cardEditor.stepN.xxxSection`**（Section header 跟隨 § Variant Header Pattern）
+4. **store 加 `setXxx` + `xxxVersion`**（用 `set({ xxx, xxxVersion: Date.now() })` 觸發 cache busting）
+5. **CardBuilderEditorWorkspace 補 render branch**（section wrapper + `<MediaAssetUploader variant="xxx" showHeader={false}>`）
+6. **PassCardPreview 補 render branch**（組 URL + 傳給 `PassCardPreviewStrip`）
+7. ⚠️ **加 stage width floor 驗證**（`MIN_STAGE_WIDTH = 200` 必須確認）
+8. ⚠️ **加 rectangular crop 公式**（`cropWindowWidth/Height` 而非 `cropWindowSize`）
+
+### 設計決策
+
+**Union 而非 intersection**：`MediaAssetCropConfig = LogoCropConfig | IconCropConfig | BackgroundCropConfig`，每個 variant config 只實作自己需要的欄位；讀時用 structural cast（見 MediaAssetUploader.tsx L122–128）。
+
+**Optional map 而非 required map**：容許 union 增加與 config entry 補完分兩個 commit，避免巨型 PR。
+
+### 禁止
+
+- ❌ 元件內 inline 5 個 `variant === 'logo' ? ... : variant === 'icon' ? ...` 三元鏈
+- ❌ 為每個 variant 寫獨立 component（用 variant 區分即可）
+- ❌ 為 rectangular / square 分兩個 config 介面（union 已涵蓋兩種 shape）
+
+事故紀錄：`runs/improvements/feedback/20260901-media-asset-variant-config-pattern.md`。
+詳見 `.cursor/rules/028-image-uploader-pattern.mdc` § 16。
 
 ---
 
@@ -448,13 +526,18 @@ saome/
 - 所有翻譯走 `useTranslation('logoUpload')`
 - **必跑 Crop Window Invariant**（見上方 § Crop Window Invariant）：三層結構 + srcSquareSize 公式
 
-#### 每個 imageType 對應的 crop window 設定
+#### 每個 imageType 對應的 crop window 設定（NEW — Rule 028 § 11.1）
 
-| imageType        | cropWindowSize | baseCanvasWidth | baseCanvasHeight | 備註 |
-|------------------|----------------|------------------|------------------|------|
-| `issuerLogo`     | 200            | 400              | auto (NH/NW × W) | LogoUploader |
-| `backgroundImage`| 800            | 800              | auto             | BackgroundUploader |
-| `icon`           | 256            | 256              | auto             | IconUploader |
+| imageType        | CROP_WINDOW_WIDTH | CROP_WINDOW_HEIGHT | baseCanvasWidth | baseCanvasHeight | Shape | 備註 |
+|------------------|-------------------|--------------------|------------------|------------------|-------|------|
+| `issuerLogo`     | 200               | 200                | 400              | auto (NH/NW × W) | square | LogoUploader |
+| `backgroundImage`| 800               | 317                | 800              | auto             | rectangular 2.52:1 | BackgroundUploader |
+| `icon`           | 150               | 150                | 300              | auto (NH/NW × W) | square | IconUploader |
+
+> **square variant**（logo / icon）：`CROP_WINDOW_HEIGHT = CROP_WINDOW_WIDTH`，UI mask 正方。
+> **rectangular variant**（background）：`CROP_WINDOW_HEIGHT` 從 output aspect 推導（`OUTPUT_HEIGHT / OUTPUT_WIDTH`），UI mask 矩形。
+
+詳見 `packages/shared/constants/card-images.ts` + `.cursor/rules/028-image-uploader-pattern.mdc` § 11.1。
 
 詳見 `apps/frontend/src/components/business/dashboard/CardBuilderEditor/LogoUploader/LogoUploader.tsx`。
 
