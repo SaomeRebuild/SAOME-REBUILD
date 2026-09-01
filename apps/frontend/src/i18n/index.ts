@@ -31,6 +31,8 @@ import logoUploadZhTW from './locales/logoUpload.zh-TW';
 import logoUploadEn from './locales/logoUpload.en';
 import iconUploadZhTW from './locales/iconUpload.zh-TW';
 import iconUploadEn from './locales/iconUpload.en';
+import backgroundUploadZhTW from './locales/backgroundUpload.zh-TW';
+import backgroundUploadEn from './locales/backgroundUpload.en';
 
 const resources = {
   'zh-TW': {
@@ -49,6 +51,7 @@ const resources = {
     confirmDraft: confirmDraftZhTW,
     logoUpload: logoUploadZhTW,
     iconUpload: iconUploadZhTW,
+    backgroundUpload: backgroundUploadZhTW,
   },
   en: {
     auth: authEn,
@@ -66,6 +69,7 @@ const resources = {
     confirmDraft: confirmDraftEn,
     logoUpload: logoUploadEn,
     iconUpload: iconUploadEn,
+    backgroundUpload: backgroundUploadEn,
   },
 };
 

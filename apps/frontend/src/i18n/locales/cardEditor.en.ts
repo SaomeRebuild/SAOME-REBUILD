@@ -91,6 +91,10 @@ export default {
       title: 'Push Notification Icon',
       hint: 'This Icon appears on the lock screen and notification center, not on the card template itself',
     },
+    backgroundSection: {
+      title: 'Card Background Image',
+      hint: 'The background image appears in the card header area (1860×738 pixels) for visual brand identification',
+    },
   },
   step4: {
     title: 'Card Info',

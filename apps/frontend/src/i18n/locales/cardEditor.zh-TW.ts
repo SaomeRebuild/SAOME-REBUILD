@@ -91,6 +91,10 @@ export default {
       title: '推播通知圖示',
       hint: '此 Icon 會顯示於手機鎖屏與推播中心，不會出現在卡片模板內',
     },
+    backgroundSection: {
+      title: '卡片背景圖',
+      hint: '背景圖會顯示在卡片頂部區域（1860×738 像素），用於視覺化品牌識別',
+    },
   },
   step4: {
     title: '卡片資訊',
