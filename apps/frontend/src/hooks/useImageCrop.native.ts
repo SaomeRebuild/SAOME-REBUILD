@@ -24,8 +24,19 @@ import type { CropImageFn } from './useImageCrop';
  * Once the RN migration adds react-native-image-crop-picker (or equivalent),
  * replace this body with the real implementation and keep the signature
  * identical to `useImageCrop.web.cropImageOnWeb`.
+ *
+ * Signature must match `CropImageFn` in `useImageCrop.ts`:
+ * (image, cropState, cropWindowWidth, cropWindowHeight, baseCanvasWidth, outputWidth, outputHeight) => Promise<Blob>
  */
-export const cropImageOnNative: CropImageFn = (): Promise<Blob> => {
+export const cropImageOnNative: CropImageFn = (
+  _image,
+  _cropState,
+  _cropWindowWidth,
+  _cropWindowHeight,
+  _baseCanvasWidth,
+  _outputWidth,
+  _outputHeight,
+): Promise<Blob> => {
   throw new Error(
     '[useImageCrop.native] cropImage() not yet implemented on React Native. ' +
     'See RN migration backlog (use react-native-image-crop-picker).',

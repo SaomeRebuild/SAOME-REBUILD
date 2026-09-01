@@ -75,7 +75,9 @@ describe('useImageCrop.web — Phase 7b: variant-driven output dimensions', () =
     } as unknown as HTMLImageElement;
 
     try {
-      await cropImageOnWeb(fakeImage, makeCropState(), 150, 300, 960, null);
+      // New 7-arg signature (Phase A — BackgroundUploader L2 plan 2026-09-01):
+      // (image, cropState, cropWindowWidth, cropWindowHeight, baseCanvasWidth, outputWidth, outputHeight)
+      await cropImageOnWeb(fakeImage, makeCropState(), 150, 300, 300, 960, null);
       expect(captured).toEqual({ width: 960, height: 960 });
     } finally {
       createElementSpy.mockRestore();
@@ -127,7 +129,9 @@ describe('useImageCrop.web — Phase 7b: variant-driven output dimensions', () =
     } as unknown as HTMLImageElement;
 
     try {
-      await cropImageOnWeb(fakeImage, makeCropState(), 150, 300, 720, 720);
+      // New 7-arg signature (Phase A — BackgroundUploader L2 plan 2026-09-01):
+      // (image, cropState, cropWindowWidth, cropWindowHeight, baseCanvasWidth, outputWidth, outputHeight)
+      await cropImageOnWeb(fakeImage, makeCropState(), 150, 300, 300, 720, 720);
       expect(captured).toEqual({ width: 720, height: 720 });
     } finally {
       createElementSpy.mockRestore();
