@@ -94,17 +94,18 @@ export function CardBuilderEditorWorkspace({
           console.error('[handleNext] onSave failed:', err);
         }
       }
-      // Step 3: persist logo + icon R2 keys (Phase 8 of IconUploader plan 2026-08-31).
+      // Step 3: persist logo + icon + background R2 keys (Phase 8 of IconUploader plan 2026-08-31 + BackgroundUploader plan 2026-09-01).
       // The MediaAssetUploader has already updated the store on upload, so we
       // just forward the current store values to onSave().
       if (step === 3 && cardId && onSave) {
         try {
-          const { issuerLogo, iconImage } = useCardBuilderStore.getState();
+          const { issuerLogo, iconImage, backgroundImage } = useCardBuilderStore.getState();
           await onSave(cardId, {
             issuerLogo: issuerLogo || undefined,
             iconImage: iconImage || undefined,
+            backgroundImage: backgroundImage || undefined,
           });
-          console.log('[handleNext] Step 3 image keys saved', { issuerLogo, iconImage });
+          console.log('[handleNext] Step 3 image keys saved', { issuerLogo, iconImage, backgroundImage });
         } catch (err) {
           // Don't block step transition — let the user proceed and retry later.
           console.error('[handleNext] Step 3 onSave failed:', err);
@@ -248,6 +249,33 @@ export function CardBuilderEditorWorkspace({
               showHeader={false}
               onUploaded={(key: string) => {
                 console.log('[Step3] Icon uploaded:', key);
+              }}
+            />
+          </section>
+
+          {/* Background 區塊（BackgroundUploader plan 2026-09-01）
+              - 在 Icon 下方,border-t 區隔
+              - 背景圖顯示在卡片頂部 hero strip (PassCardPreviewStrip)
+                size: 1860×738 像素（PassCreator spec）
+              - 結構與 Icon 區塊對稱: <h3> + <p hint> + MediaAssetUploader showHeader={false}
+              - showHeader={false}: MediaAssetUploader 不再渲染內部 header,
+                因為這層已自帶 heading */}
+          <section className="flex min-w-0 flex-col gap-2 border-t pt-6">
+            <h3
+              className="text-base font-semibold text-foreground"
+              style={{ fontFamily: 'var(--font-family-heading)' }}
+            >
+              {t('step3.backgroundSection.title')}
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              {t('step3.backgroundSection.hint')}
+            </p>
+            <MediaAssetUploader
+              variant="background"
+              templateId={cardId ?? ''}
+              showHeader={false}
+              onUploaded={(key: string) => {
+                console.log('[Step3] Background uploaded:', key);
               }}
             />
           </section>

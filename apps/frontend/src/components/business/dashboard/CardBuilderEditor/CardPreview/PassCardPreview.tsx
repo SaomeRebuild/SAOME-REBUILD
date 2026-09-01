@@ -6,6 +6,13 @@
  * in the editor workspace), not inside the phone preview. This component
  * renders the card template body only — logo / type label / strip
  * placeholder / holder name / barcode.
+ *
+ * BACKGROUND IMAGE: The card background is rendered INSIDE PassCardPreviewStrip
+ * and constrained to that strip area via `position: relative` on the strip
+ * container + `position: absolute; inset: 0` on the bg image. The card body
+ * / footer below the strip stays white. This matches Apple Wallet's
+ * hero-strip pattern where the background image only covers the colored
+ * header strip, not the entire card.
  */
 import type { PassCardPreviewProps } from './PassCardPreview.types';
 import { PassCardPreviewHeader } from './PassCardPreviewHeader';
@@ -19,6 +26,7 @@ export function PassCardPreview({
   name,
   cardType,
   issuerLogo,
+  backgroundImage,
   backgroundColor,
   textColor,
   side = 'front',
@@ -38,7 +46,7 @@ export function PassCardPreview({
       style={{ aspectRatio: '375 / 503' }}
       {...props}
     >
-      {/* 卡片本體 — 固定白色背景，模擬實體 Pass */}
+      {/* 卡片本體 — 白色背景（背景圖與色塊由 PassCardPreviewStrip 內部處理） */}
       <div className="relative flex h-full w-full flex-col bg-white">
         {side === 'back' ? (
           // ─── Back Side：完全清除正面殘留 UI ───
@@ -53,9 +61,13 @@ export function PassCardPreview({
               compact={compact}
             />
 
-            {/* Strip / Hero — 卡片名稱 + 預設 CreditCard 圖示（icon 預覽在 MediaAssetUploader 面板） */}
+            {/* Strip / Hero — 卡片名稱 + 預設 CreditCard 圖示
+                背景圖與背景色由 strip 內部渲染,透過 `position: relative`
+                容器約束在 h-[100px] / h-[120px] 的 strip 區塊內,
+                不會溢出到 header / body / footer */}
             <PassCardPreviewStrip
               name={name}
+              backgroundImage={backgroundImage}
               backgroundColor={backgroundColor}
               textColor={textColor}
               compact={compact}

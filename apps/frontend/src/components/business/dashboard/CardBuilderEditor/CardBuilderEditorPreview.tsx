@@ -7,6 +7,8 @@ import { useTranslation } from 'react-i18next';
 import { Eye } from 'lucide-react';
 import { PreviewWrapper } from './PreviewWrapper';
 import { useCardBuilderStore } from './CardBuilderEditor.store';
+import { api } from '@/config/api';
+import { getAccessToken } from '@/services/authStore';
 
 export type CardSide = 'front' | 'back';
 
@@ -37,7 +39,15 @@ export function CardBuilderEditorPreview({
     backgroundColor,
     textColor,
     barcodeType,
+    backgroundImage,
+    backgroundImageVersion,
+    cardId,
   } = useCardBuilderStore();
+
+  // 組裝背景圖 URL（cache-busting via backgroundImageVersion）
+  const backgroundImageUrl = backgroundImage && cardId
+    ? `${api.baseUrl}${api.paths.cardImage(cardId, 'background')}?token=${encodeURIComponent(getAccessToken() ?? '')}&v=${backgroundImageVersion}`
+    : undefined;
 
   return (
     <aside className={`
@@ -58,6 +68,7 @@ export function CardBuilderEditorPreview({
             name={name}
             cardType={cardType}
             issuerLogo={issuerLogo}
+            backgroundImage={backgroundImageUrl}
             holderName={holderName}
             backgroundColor={backgroundColor}
             textColor={textColor}
