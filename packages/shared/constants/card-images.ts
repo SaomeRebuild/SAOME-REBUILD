@@ -134,17 +134,78 @@ export type LogoCropConfig = typeof LOGO_CROP_CONFIG;
 export type IconCropConfig = typeof ICON_CROP_CONFIG;
 
 /**
- * Union of all media-asset crop configurations (logo + icon today, + background later).
+ * Background crop configuration.
+ * Based on PassCreator specifications for the background image field.
+ *
+ * PassCreator Background: 1860×738 pixels minimum (or larger, keep ratio).
+ * 3× size (5580×2214) recommended for retina rendering.
+ * @see https://passcreator.com/documentation/pass-components/
+ *
+ * This is the first non-square variant — output aspect 1860:738 ≈ 2.52:1.
+ * The UI crop window is therefore rectangular (800×317, same aspect) and
+ * `computeSrcRegion` produces a rectangular src crop rather than the
+ * legacy `computeSrcSquareSize`.
+ *
+ * IMPORTANT: this constant must be added BEFORE the MediaAssetVariant
+ * type and MEDIA_ASSET_CONFIG map are extended with 'background' entries
+ * (see `BACKGROUND_CROP_CONFIG` referenced in `MEDIA_ASSET_CONFIG.background`).
+ */
+export const BACKGROUND_CROP_CONFIG = {
+  /** Output width in pixels (PassCreator hero strip spec). */
+  OUTPUT_WIDTH: 1860,
+  /** Output height in pixels (PassCreator hero strip spec, fixed landscape). */
+  OUTPUT_HEIGHT: 738,
+  /** Minimum input image width in pixels. PassCreator spec is strict 1860+. */
+  MIN_INPUT_WIDTH: 1860,
+  /** Minimum input image height in pixels. PassCreator spec is strict 738+. */
+  MIN_INPUT_HEIGHT: 738,
+  /** Allowed MIME types for upload. */
+  MIME_TYPES: ['image/png', 'image/jpeg'] as const,
+  /** Maximum file size: 5MB */
+  MAX_FILE_SIZE: 5 * 1024 * 1024,
+  /** Minimum zoom scale: 50% */
+  MIN_SCALE: 0.5,
+  /** Maximum zoom scale: 300% */
+  MAX_SCALE: 3.0,
+  /** Default zoom scale: 100% */
+  DEFAULT_SCALE: 1.0,
+  /**
+   * UI crop window WIDTH in CSS px. Landscape orientation (wider than tall).
+   * UI mask 800×317 (aspect 2.52:1) must match the output 1860×738 ratio so
+   * the user sees exactly the region that gets exported on Apply Crop.
+   */
+  CROP_WINDOW_WIDTH: 800,
+  /**
+   * UI crop window HEIGHT in CSS px. 317 = round(800 × 738 / 1860).
+   * Kept as a separate constant (not derived at runtime) so the type system
+   * can pin the invariant.
+   */
+  CROP_WINDOW_HEIGHT: 317,
+  /**
+   * UI base canvas width in CSS px. Image rendered at this width before the
+   * scale transform applies. Height auto-computed as `baseCanvasWidth *
+   * NH/NW` (aspect-matched) so canvas aspect = source aspect.
+   */
+  BASE_CANVAS_WIDTH: 800,
+} as const;
+
+/**
+ * Asserted type for BACKGROUND_CROP_CONFIG members to avoid 'as const' widening.
+ */
+export type BackgroundCropConfig = typeof BACKGROUND_CROP_CONFIG;
+
+/**
+ * Union of all media-asset crop configurations (logo + icon + background).
  * Use this for code that needs to accept any crop config (e.g. MediaAssetUploader hooks).
  */
-export type MediaAssetCropConfig = LogoCropConfig | IconCropConfig;
+export type MediaAssetCropConfig = LogoCropConfig | IconCropConfig | BackgroundCropConfig;
 
 /**
  * Media asset variant discriminator.
  *
  * - 'logo' — Hero brand mark on the card (issuerLogo in templateSettings)
  * - 'icon' — Push-notification icon (iconImage in templateSettings)
- * - 'background' — Reserved for future BackgroundUploader (not implemented yet)
+ * - 'background' — Hero strip background image (backgroundImage in templateSettings)
  */
 export type MediaAssetVariant = 'logo' | 'icon' | 'background';
 
@@ -168,10 +229,9 @@ export type MediaAssetVariantEntry = {
  * code stays variant-agnostic and reads `config.cropConfig / i18nNamespace /
  * settingsField / cardImageType` instead of branching on `variant`.
  *
- * NOTE: 'background' entry is intentionally omitted in this plan (Phase 16 ❌),
- * but the type allows it for the next BackgroundUploader plan. Consumers MUST
- * null-check `MEDIA_ASSET_CONFIG[variant]` or restrict the variant prop to
- * 'logo' | 'icon' until the background entry lands.
+ * The 'background' entry is required by the BackgroundUploader plan
+ * (L2 Standard, approved 2026-09-01). The variant is the first non-square
+ * one — UI mask is rectangular 800×317 (CROP_WINDOW_WIDTH × CROP_WINDOW_HEIGHT).
  */
 export const MEDIA_ASSET_CONFIG: {
   readonly [K in MediaAssetVariant]?: MediaAssetVariantEntry;
@@ -188,6 +248,10 @@ export const MEDIA_ASSET_CONFIG: {
     settingsField: 'iconImage' as const,
     cardImageType: 'icon' as const,
   },
-  // background variant deliberately omitted — BackgroundUploader is a separate plan.
-  // See plan § 16 for why and what the next plan needs.
+  background: {
+    i18nNamespace: 'backgroundUpload',
+    cropConfig: BACKGROUND_CROP_CONFIG,
+    settingsField: 'backgroundImage' as const,
+    cardImageType: 'background' as const,
+  },
 };

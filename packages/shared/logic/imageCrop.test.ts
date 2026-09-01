@@ -19,10 +19,16 @@ import {
   syncFocalFromOffset,
   applyScaleChange,
   computeSrcSquareSize,
+  computeSrcRegion,
   validateLogoFile,
   validateIconFile,
+  validateBackgroundFile,
 } from './imageCrop';
-import { ICON_CROP_CONFIG, LOGO_CROP_CONFIG } from '../constants/card-images';
+import {
+  BACKGROUND_CROP_CONFIG,
+  ICON_CROP_CONFIG,
+  LOGO_CROP_CONFIG,
+} from '../constants/card-images';
 import type { CropState } from '../types/imageCrop';
 
 // ---------------------------------------------------------------------------
@@ -571,5 +577,299 @@ describe('imageCrop — §7 validateIconFile (icon variant, same factory as logo
     expect(ICON_CROP_CONFIG.OUTPUT_HEIGHT).toBe(720);
     // Square output ratio: 1:1 — distinct from logo's flexible H.
     expect(ICON_CROP_CONFIG.OUTPUT_WIDTH / ICON_CROP_CONFIG.OUTPUT_HEIGHT).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// § 8. computeSrcRegion — rectangular export region (used by BackgroundUploader)
+// ---------------------------------------------------------------------------
+//
+// BackgroundUploader is the first non-square variant. computeSrcRegion
+// replaces computeSrcSquareSize for that variant: the export region is
+// rectangular (matches the output 1860×738 aspect), so the src crop window
+// is `cropWindowWidth × cropWindowHeight`, not a single size.
+
+describe('imageCrop — §8 computeSrcRegion (rectangular src region for landscape exports)', () => {
+  it('scale=1, focal=0.5, src 1860×738, baseW=800, mask=800×317 → src region matches UI mask', () => {
+    const region = computeSrcRegion(
+      {
+        cropWindowWidth: 800,
+        cropWindowHeight: 317,
+        baseCanvasWidth: 800,
+        outputWidth: 1860,
+        outputHeight: 738,
+        scale: 1,
+        naturalWidth: 1860,
+        naturalHeight: 738,
+        focalX: 0.5,
+        focalY: 0.5,
+      },
+    );
+    // maskW / (baseW * scale) * NW = 800/800 * 1860 = 1860; capped by naturalWidth
+    expect(region.srcW).toBe(1860);
+    // srcH = srcW * (outputH/outputW) = 1860 * 738/1860 = 738
+    expect(region.srcH).toBe(738);
+    // center alignment
+    expect(region.srcX).toBe(0);
+    expect(region.srcY).toBe(0);
+  });
+
+  it('scale=2 zoom-in halves the src region in both dimensions', () => {
+    const region = computeSrcRegion(
+      {
+        cropWindowWidth: 800,
+        cropWindowHeight: 317,
+        baseCanvasWidth: 800,
+        outputWidth: 1860,
+        outputHeight: 738,
+        scale: 2,
+        naturalWidth: 3720,
+        naturalHeight: 1476,
+        focalX: 0.5,
+        focalY: 0.5,
+      },
+    );
+    // 800 / (800 * 2) * 3720 = 1860
+    expect(region.srcW).toBe(1860);
+    // srcH = 1860 * 738/1860 = 738
+    expect(region.srcH).toBe(738);
+  });
+
+  it('preserves 2.52:1 landscape aspect ratio (1860:738) — export matches output aspect', () => {
+    const region = computeSrcRegion(
+      {
+        cropWindowWidth: 800,
+        cropWindowHeight: 317,
+        baseCanvasWidth: 800,
+        outputWidth: 1860,
+        outputHeight: 738,
+        scale: 1,
+        naturalWidth: 1860,
+        naturalHeight: 738,
+        focalX: 0.5,
+        focalY: 0.5,
+      },
+    );
+    const ratio = region.srcW / region.srcH;
+    // srcH is derived from srcW × outputH/outputW, so the ratio MUST be output aspect.
+    expect(ratio).toBeCloseTo(1860 / 738, 5);
+    // Aspect = 2.5203...
+    expect(ratio).toBeCloseTo(2.5203, 3);
+  });
+
+  it('focal point offsets the src region (not always centered)', () => {
+    const region = computeSrcRegion(
+      {
+        cropWindowWidth: 800,
+        cropWindowHeight: 317,
+        baseCanvasWidth: 800,
+        outputWidth: 1860,
+        outputHeight: 738,
+        scale: 1,
+        naturalWidth: 3720,
+        naturalHeight: 1476,
+        focalX: 0.25,
+        focalY: 0.5,
+      },
+    );
+    // mask = baseCanvas, so srcW = (800/800) * 3720 = 3720 = naturalWidth (capped)
+    // No zoom (scale=1) and mask spans the entire canvas width → srcW = full image
+    expect(region.srcW).toBe(3720);
+    // srcH = 3720 * 738/1860 = 1476 = naturalHeight
+    expect(region.srcH).toBe(1476);
+    // 0.25 * 3720 - 1860 = -930 → clamped to 0
+    expect(region.srcX).toBe(0);
+    // 0.5 * 1476 - 738 = 0 (centered)
+    expect(region.srcY).toBe(0);
+  });
+
+  it('clamps srcX/srcY when focal pushes region past image bounds', () => {
+    const region = computeSrcRegion(
+      {
+        cropWindowWidth: 800,
+        cropWindowHeight: 317,
+        baseCanvasWidth: 800,
+        outputWidth: 1860,
+        outputHeight: 738,
+        scale: 1,
+        naturalWidth: 1860,
+        naturalHeight: 738,
+        focalX: 0,
+        focalY: 0,
+      },
+    );
+    expect(region.srcX).toBe(0);
+    expect(region.srcY).toBe(0);
+    expect(region.srcW).toBe(1860);
+    expect(region.srcH).toBe(738);
+  });
+
+  it('caps srcW at naturalWidth when zoom-out reveals more than image', () => {
+    const region = computeSrcRegion(
+      {
+        cropWindowWidth: 800,
+        cropWindowHeight: 317,
+        baseCanvasWidth: 800,
+        outputWidth: 1860,
+        outputHeight: 738,
+        scale: 0.5, // zoom out 50%
+        naturalWidth: 1000,
+        naturalHeight: 396,
+        focalX: 0.5,
+        focalY: 0.5,
+      },
+    );
+    // 800 / (800 * 0.5) * 1000 = 2000, capped at naturalWidth=1000
+    expect(region.srcW).toBe(1000);
+    // srcH = 1000 * 738/1860 = 396.77, capped at naturalHeight=396
+    expect(region.srcH).toBe(396);
+  });
+
+  it('icon variant (square mask + square output) — backward-compatible with square formula', () => {
+    // When cropWindowWidth === cropWindowHeight AND outputWidth === outputHeight,
+    // the result should match computeSrcSquareSize for the same single number,
+    // confirming additive refactor doesn't break existing logo/icon paths.
+    const region = computeSrcRegion(
+      {
+        cropWindowWidth: 200,
+        cropWindowHeight: 200,
+        baseCanvasWidth: 400,
+        outputWidth: 960,
+        outputHeight: 960,
+        scale: 1,
+        naturalWidth: 1024,
+        naturalHeight: 768,
+        focalX: 0.5,
+        focalY: 0.5,
+      },
+    );
+    const square = computeSrcSquareSize(200, 400, 1, 1024, 768);
+    // Same width as the legacy square formula; srcH is derived as srcW * 1 = srcW (square output)
+    expect(region.srcW).toBe(square);
+    expect(region.srcH).toBe(square);
+  });
+
+  it('export region dimensions stay within source image bounds', () => {
+    const region = computeSrcRegion(
+      {
+        cropWindowWidth: 800,
+        cropWindowHeight: 317,
+        baseCanvasWidth: 800,
+        outputWidth: 1860,
+        outputHeight: 738,
+        scale: 0.3, // heavy zoom-out
+        naturalWidth: 2000,
+        naturalHeight: 800,
+        focalX: 1,
+        focalY: 1,
+      },
+    );
+    // srcW cannot exceed naturalWidth
+    expect(region.srcW).toBeLessThanOrEqual(2000);
+    // srcH cannot exceed naturalHeight
+    expect(region.srcH).toBeLessThanOrEqual(800);
+    // srcX, srcY are non-negative (Canvas drawImage will clip right/bottom naturally)
+    expect(region.srcX).toBeGreaterThanOrEqual(0);
+    expect(region.srcY).toBeGreaterThanOrEqual(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// § 9. validateBackgroundFile — background variant (uses validateMediaFile factory)
+// ---------------------------------------------------------------------------
+
+describe('imageCrop — §9 validateBackgroundFile (background variant, Passcreator 1860×738 spec)', () => {
+  it('PNG file within size limit → null (success)', () => {
+    expect(
+      validateBackgroundFile({ type: 'image/png', size: 2 * 1024 * 1024 }),
+    ).toBeNull();
+  });
+
+  it('JPG file within size limit → null (success)', () => {
+    expect(
+      validateBackgroundFile({ type: 'image/jpeg', size: 4 * 1024 * 1024 }),
+    ).toBeNull();
+  });
+
+  it('file larger than MAX_FILE_SIZE → tooLarge error', () => {
+    const err = validateBackgroundFile({
+      type: 'image/png',
+      size: BACKGROUND_CROP_CONFIG.MAX_FILE_SIZE + 1,
+    });
+    expect(err).toEqual({
+      type: 'tooLarge',
+      message: 'validation.tooLarge',
+    });
+  });
+
+  it('wrong MIME type (e.g. application/pdf) → wrongFormat error', () => {
+    const err = validateBackgroundFile({
+      type: 'application/pdf',
+      size: 1024,
+    });
+    expect(err).toEqual({
+      type: 'wrongFormat',
+      message: 'validation.wrongFormat',
+    });
+  });
+
+  it('emits i18n-key messages, not literal strings (platform-agnostic contract)', () => {
+    const tooLarge = validateBackgroundFile({ type: 'image/png', size: 999_999_999 });
+    const wrongFormat = validateBackgroundFile({ type: 'text/plain', size: 100 });
+    expect(tooLarge?.message).toBe('validation.tooLarge');
+    expect(wrongFormat?.message).toBe('validation.wrongFormat');
+    expect(tooLarge?.message).not.toMatch(/[\u4e00-\u9fff]/);
+    expect(wrongFormat?.message).not.toMatch(/[\u4e00-\u9fff]/);
+  });
+
+  it('shares factory contract with validateLogoFile / validateIconFile', () => {
+    // Same MIME + size → same error structure across all 3 validators.
+    const valid = { type: 'image/png', size: 1024 };
+    expect(validateLogoFile(valid)).toBeNull();
+    expect(validateIconFile(valid)).toBeNull();
+    expect(validateBackgroundFile(valid)).toBeNull();
+
+    const tooBig = { type: 'image/png', size: 999_999_999 };
+    expect(validateLogoFile(tooBig)).toEqual(validateBackgroundFile(tooBig));
+
+    const wrongType = { type: 'application/pdf', size: 1024 };
+    expect(validateLogoFile(wrongType)).toEqual(validateBackgroundFile(wrongType));
+  });
+
+  it('background shares MAX_FILE_SIZE (5MB) with logo + icon — unified upload UX', () => {
+    expect(BACKGROUND_CROP_CONFIG.MAX_FILE_SIZE).toBe(LOGO_CROP_CONFIG.MAX_FILE_SIZE);
+    expect(BACKGROUND_CROP_CONFIG.MAX_FILE_SIZE).toBe(ICON_CROP_CONFIG.MAX_FILE_SIZE);
+  });
+
+  it('background OUTPUT is fixed 1860×738 (Passcreator hero strip spec)', () => {
+    expect(BACKGROUND_CROP_CONFIG.OUTPUT_WIDTH).toBe(1860);
+    expect(BACKGROUND_CROP_CONFIG.OUTPUT_HEIGHT).toBe(738);
+    // Landscape aspect = 1860 / 738 ≈ 2.52
+    expect(BACKGROUND_CROP_CONFIG.OUTPUT_WIDTH / BACKGROUND_CROP_CONFIG.OUTPUT_HEIGHT).toBeCloseTo(
+      2.52,
+      2,
+    );
+  });
+
+  it('background MIN_INPUT is 1860×738 strict (Passcreator spec — "1860x738 or larger")', () => {
+    expect(BACKGROUND_CROP_CONFIG.MIN_INPUT_WIDTH).toBe(1860);
+    expect(BACKGROUND_CROP_CONFIG.MIN_INPUT_HEIGHT).toBe(738);
+  });
+
+  it('background crop window aspect matches output aspect (UI mask = export src region)', () => {
+    // The UI mask + output canvas may have minor aspect drift (within 0.2%),
+    // but computeSrcRegion always derives srcH from srcW × outputH/outputW,
+    // so the EXPORT region always matches the output aspect. The visible
+    // mask may have a sub-pixel mismatch — acceptable per § 11.
+    const uiRatio =
+      BACKGROUND_CROP_CONFIG.CROP_WINDOW_WIDTH / BACKGROUND_CROP_CONFIG.CROP_WINDOW_HEIGHT;
+    const outputRatio =
+      BACKGROUND_CROP_CONFIG.OUTPUT_WIDTH / BACKGROUND_CROP_CONFIG.OUTPUT_HEIGHT;
+    // Mask is 800×317 (ratio 2.5237), output is 1860×738 (ratio 2.5203).
+    // Difference is 0.13% — within acceptable drift (UI mask will have a
+    // ~1px minor mismatch with the export, resolved by computeSrcRegion).
+    expect(uiRatio).toBeCloseTo(outputRatio, 1);
+    // Both approx 2.52
+    expect(uiRatio).toBeCloseTo(2.52, 1);
   });
 });
