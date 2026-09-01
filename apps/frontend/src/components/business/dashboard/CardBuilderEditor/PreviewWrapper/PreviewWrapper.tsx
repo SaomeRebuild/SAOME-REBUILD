@@ -16,6 +16,7 @@ export function PreviewWrapper({
   name,
   cardType,
   issuerLogo,
+  backgroundImage,
   backgroundColor,
   textColor,
   side = 'front',
@@ -33,6 +34,7 @@ export function PreviewWrapper({
             name={name}
             cardType={cardType}
             issuerLogo={issuerLogo}
+            backgroundImage={backgroundImage}
             backgroundColor={backgroundColor}
             textColor={textColor}
             side={side}
@@ -51,6 +53,7 @@ export function PreviewWrapper({
       name={name}
       cardType={cardType}
       issuerLogo={issuerLogo}
+      backgroundImage={backgroundImage}
       backgroundColor={backgroundColor}
       textColor={textColor}
       side={side}

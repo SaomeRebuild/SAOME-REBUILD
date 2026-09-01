@@ -17,6 +17,8 @@ export interface PreviewWrapperProps {
   cardType?: PassCardPreviewProps['cardType'];
   /** 發卡機構標誌 */
   issuerLogo?: string;
+  /** 卡片背景圖（可選，R2 URL）*/
+  backgroundImage?: string;
   /** 卡片背景色 */
   backgroundColor?: string;
   /** 卡片文字色 */

@@ -7,11 +7,11 @@
 import type { MediaAssetVariant } from '@saome/shared/constants/card-images';
 
 /**
- * Variants currently supported by MediaAssetUploader (logo + icon).
- * Excludes 'background' until the next BackgroundUploader plan lands.
- * See plan § 16 for why.
+ * All variants supported by MediaAssetUploader (logo + icon + background).
+ * Widened from the previous `Extract<MediaAssetVariant, 'logo' | 'icon'>` to include
+ * 'background' as part of the BackgroundUploader plan (L2 Standard, 2026-09-01).
  */
-export type SupportedMediaAssetVariant = Extract<MediaAssetVariant, 'logo' | 'icon'>;
+export type SupportedMediaAssetVariant = MediaAssetVariant;
 
 export interface MediaAssetUploaderProps {
   /** Template ID for the card being edited. */
