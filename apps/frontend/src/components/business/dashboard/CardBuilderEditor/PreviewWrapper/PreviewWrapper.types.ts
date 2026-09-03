@@ -9,6 +9,7 @@
 
 import type { PassCardPreviewProps } from '../CardPreview/PassCardPreview.types';
 import type { BarcodeType } from '@saome/shared/schemas/cardBuilder';
+import type { CardFieldKey } from '@saome/shared/constants/card-fields';
 
 export interface PreviewWrapperProps {
   /** 卡片名稱 */
@@ -31,4 +32,14 @@ export interface PreviewWrapperProps {
   barcodeType?: BarcodeType;
   /** 是否顯示手機框架 */
   showPhoneFrame?: boolean;
+  /**
+   * 左欄位選取的 field key（null = 顯示 placeholder）。
+   * 對應 templateSettings.leftField（DB 層）；傳遞給 PassCardPreview。
+   */
+  leftField?: CardFieldKey | null;
+  /**
+   * 右欄位選取的 field key（null = 顯示 placeholder）。
+   * 對應 templateSettings.rightField（DB 層）；傳遞給 PassCardPreview。
+   */
+  rightField?: CardFieldKey | null;
 }

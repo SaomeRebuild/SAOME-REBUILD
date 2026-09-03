@@ -31,6 +31,7 @@ const alias = [
   { find: /^@saome\/shared\/types$/, replacement: path.resolve(sharedRoot, 'types/index.ts') },
   { find: /^@saome\/shared\/constants\/role$/, replacement: path.resolve(sharedRoot, 'constants/role.ts') },
   { find: /^@saome\/shared\/constants\/card-images$/, replacement: path.resolve(sharedRoot, 'constants/card-images.ts') },
+  { find: /^@saome\/shared\/constants\/card-fields$/, replacement: path.resolve(sharedRoot, 'constants/card-fields.ts') },
   { find: /^@saome\/shared\/constants\/color-presets$/, replacement: path.resolve(sharedRoot, 'constants/color-presets.ts') },
   { find: /^@saome\/shared\/constants\/crop-interaction$/, replacement: path.resolve(sharedRoot, 'constants/crop-interaction.ts') },
   { find: /^@saome\/shared\/constants\/r2$/, replacement: path.resolve(sharedRoot, 'constants/r2.ts') },

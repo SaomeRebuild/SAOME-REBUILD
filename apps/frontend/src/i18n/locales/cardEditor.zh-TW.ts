@@ -101,6 +101,22 @@ export default {
       background: '背景色',
       text: '文字色',
     },
+    fieldsSection: {
+      title: '顯示欄位',
+      hint: '選擇要顯示在卡片正面的兩個欄位。之後會依 Step 1 選擇的卡片類型增減可用選項。',
+      leftField: '左欄位',
+      rightField: '右欄位',
+      placeholder: '請選擇',
+      disabledSuffix: '已選',
+      fields: {
+        phone: '電話',
+        email: 'E-mail',
+        memberLevel: '會員等級',
+        birthday: '生日',
+        visitCount: '拜訪次數',
+        memberName: '會員姓名',
+      },
+    },
   },
   step4: {
     title: '卡片資訊',

@@ -33,6 +33,22 @@ export type CardType =
   | 'gift_card';
 
 /**
+ * Card face field keys (Step 3 — 顯示欄位).
+ *
+ * Mirrors `cardFieldKeySchema` in packages/shared/schemas/card.ts and
+ * `CARD_FIELD_KEYS` in packages/shared/constants/card-fields.ts. This is
+ * the DB-layer interface (Rule 019 § 4.1, layer 3 of 4) so service param
+ * types and JSONB column contracts pick up the same value set.
+ */
+export type CardFieldKey =
+  | 'phone'
+  | 'email'
+  | 'memberLevel'
+  | 'birthday'
+  | 'visitCount'
+  | 'memberName';
+
+/**
  * Template settings — flat JSONB structure.
  *
  * Step 1: name, cardType
@@ -65,6 +81,16 @@ export interface TemplateSettings {
   textColor?: string;
   holderName?: string;
   cardSide?: 'front' | 'back';
+  /**
+   * Step 3 — 顯示欄位: left-slot display field key.
+   * Rule 019 § 4.1 layer 3 of 4 — keep in sync with shared `templateSettingsSchema.leftField`.
+   */
+  leftField?: CardFieldKey;
+  /**
+   * Step 3 — 顯示欄位: right-slot display field key.
+   * Rule 019 § 4.1 layer 3 of 4 — keep in sync with shared `templateSettingsSchema.rightField`.
+   */
+  rightField?: CardFieldKey;
   // Membership card extension
   isPaid?: boolean;
   [key: string]: unknown;

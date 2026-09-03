@@ -101,6 +101,22 @@ export default {
       background: 'Background',
       text: 'Text',
     },
+    fieldsSection: {
+      title: 'Display Fields',
+      hint: 'Choose two fields to display on the card face. Available options will change based on the card type selected in Step 1.',
+      leftField: 'Left Field',
+      rightField: 'Right Field',
+      placeholder: 'Select a field',
+      disabledSuffix: 'already selected',
+      fields: {
+        phone: 'Phone',
+        email: 'Email',
+        memberLevel: 'Member Level',
+        birthday: 'Birthday',
+        visitCount: 'Visit Count',
+        memberName: 'Member Name',
+      },
+    },
   },
   step4: {
     title: 'Card Info',

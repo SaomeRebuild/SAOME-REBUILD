@@ -17,6 +17,7 @@ export const PASS_ASPECT_RATIO = {
 import type { HTMLAttributes } from 'react';
 import type { CardType } from '@/components/business/dashboard/CardBuilderEditor/CardBuilderEditor.types';
 import type { BarcodeType } from '@saome/shared/schemas/cardBuilder';
+import type { CardFieldKey } from '@saome/shared/constants/card-fields';
 
 /** 卡片預覽 Props */
 export interface PassCardPreviewProps extends HTMLAttributes<HTMLDivElement> {
@@ -40,4 +41,16 @@ export interface PassCardPreviewProps extends HTMLAttributes<HTMLDivElement> {
   barcodeType?: BarcodeType;
   /** 緊湊模式（用於手機框架內，縮小字體和間距） */
   compact?: boolean;
+  /**
+   * 左欄位選取的 field key（null = 顯示 placeholder）
+   * 對應 templateSettings.leftField（DB 層）。當 null/undefined 時，body 顯示 placeholder。
+   * 對應 PassCreator secondaryFields[0]：label = fieldPreview.{key}.label, value = fieldPreview.{key}.value。
+   */
+  leftField?: CardFieldKey | null;
+  /**
+   * 右欄位選取的 field key（null = 顯示 placeholder）
+   * 對應 templateSettings.rightField（DB 層）。當 null/undefined 時，body 顯示 placeholder。
+   * 對應 PassCreator secondaryFields[1]：label = fieldPreview.{key}.label, value = fieldPreview.{key}.value。
+   */
+  rightField?: CardFieldKey | null;
 }

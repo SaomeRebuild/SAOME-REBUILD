@@ -22,6 +22,8 @@ export function PreviewWrapper({
   side = 'front',
   holderName,
   barcodeType,
+  leftField,
+  rightField,
   showPhoneFrame = true,
 }: PreviewWrapperProps) {
   // PhoneFrame (L1) wraps the card. The icon image preview lives in the
@@ -40,6 +42,8 @@ export function PreviewWrapper({
             side={side}
             holderName={holderName}
             barcodeType={barcodeType}
+            leftField={leftField}
+            rightField={rightField}
             compact={true}
           />
         </div>
@@ -59,6 +63,8 @@ export function PreviewWrapper({
       side={side}
       holderName={holderName}
       barcodeType={barcodeType}
+      leftField={leftField}
+      rightField={rightField}
     />
   );
 }

@@ -42,6 +42,9 @@ export function CardBuilderEditorPreview({
     backgroundImage,
     backgroundImageVersion,
     cardId,
+    // Step 3 — 顯示欄位（對應 templateSettings.leftField / rightField）
+    leftField,
+    rightField,
   } = useCardBuilderStore();
 
   // 組裝背景圖 URL（cache-busting via backgroundImageVersion）
@@ -73,6 +76,8 @@ export function CardBuilderEditorPreview({
             backgroundColor={backgroundColor}
             textColor={textColor}
             barcodeType={barcodeType}
+            leftField={leftField}
+            rightField={rightField}
             side={cardSide}
             showPhoneFrame={true}
           />

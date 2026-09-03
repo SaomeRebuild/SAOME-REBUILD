@@ -16,6 +16,7 @@ import {
   barcodeTypeSchema as sharedBarcodeTypeSchema,
   currencySchema as sharedCurrencySchema,
   templateStatusSchema as sharedTemplateStatusSchema,
+  cardFieldKeySchema as sharedCardFieldKeySchema,
 } from '@saome/shared/schemas/card';
 
 // Re-export for consumers of this module
@@ -27,6 +28,7 @@ export { currencySchema } from '@saome/shared/schemas/card';
 export type { Currency } from '@saome/shared/schemas/card';
 export { templateStatusSchema } from '@saome/shared/schemas/card';
 export type { TemplateStatus } from '@saome/shared/schemas/card';
+export { cardFieldKeySchema } from '@saome/shared/schemas/card';
 
 // ===== Template Settings (JSONB) =====
 
@@ -61,6 +63,11 @@ export const templateSettingsSchema = z.object({
   textColor: z.string().optional(),
   holderName: z.string().optional(),
   cardSide: z.enum(['front', 'back']).optional(),
+  // ===== Step 3 — 顯示欄位 (Rule 019 § 4.1, layer 2 of 4) =====
+  // Mirrors `shared/templateSettingsSchema.leftField / rightField`.
+  // Step 3 plan 2026-09-04: see packages/shared/schemas/card.ts for source.
+  leftField: sharedCardFieldKeySchema.optional(),
+  rightField: sharedCardFieldKeySchema.optional(),
   // Membership card extension
   isPaid: z.boolean().optional(),
 });

@@ -5,6 +5,7 @@
 import { create } from 'zustand';
 import type { CardType, EditorStep } from './CardBuilderEditor.types';
 import type { BarcodeType } from '@saome/shared/schemas/card';
+import type { CardFieldKey } from '@saome/shared/constants/card-fields';
 import { normalizeHex } from '@saome/shared/logic/color';
 
 /**
@@ -66,6 +67,16 @@ interface CardBuilderState {
   /** 貨幣選擇 */
   currency: 'TWD' | 'ZAR';
 
+  // ===== Step 3 — 顯示欄位 (left/right slots) =====
+  /**
+   * Step 3 plan 2026-09-04: two side-by-side native <select> dropdowns for
+   * card face fields. Both default to `null` (placeholder "請選擇" shown).
+   * Persisted to `template_settings.leftField / rightField` via the existing
+   * JSONB merge semantics (see apps/backend/.../db/templates.ts::updateTemplate).
+   */
+  leftField: CardFieldKey | null;
+  rightField: CardFieldKey | null;
+
   // ===== Membership Card Extension =====
   /** 會員卡是否收費（僅 membership_card 使用） */
   isPaid: boolean;
@@ -89,6 +100,14 @@ interface CardBuilderState {
   setPassValidDays: (passValidDays: number | null) => void;
   setExpiryDate: (expiryDate: string) => void;
   setCurrency: (currency: 'TWD' | 'ZAR') => void;
+  /**
+   * Set the left-slot display field. Pass `null` to clear (shows placeholder).
+   * `rightField` is NOT auto-cleared — dedup is enforced in the UI layer by
+   * disabling the matching option on the other select.
+   */
+  setLeftField: (field: CardFieldKey | null) => void;
+  /** Set the right-slot display field. See `setLeftField` for behavior. */
+  setRightField: (field: CardFieldKey | null) => void;
   setIsPaid: (isPaid: boolean) => void;
   /**
    * 從既有 template 的 settings 載入 store.
@@ -167,6 +186,10 @@ const initialState = {
   expiryDate: '',
   currency: 'TWD' as const,
 
+  // ===== Step 3 — 顯示欄位 =====
+  leftField: null,
+  rightField: null,
+
   // ===== Membership Card Extension =====
   isPaid: false,
 };
@@ -194,6 +217,8 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
   setPassValidDays: (passValidDays) => set({ passValidDays }),
   setExpiryDate: (expiryDate) => set({ expiryDate }),
   setCurrency: (currency) => set({ currency }),
+  setLeftField: (leftField) => set({ leftField }),
+  setRightField: (rightField) => set({ rightField }),
   setIsPaid: (isPaid) => set({ isPaid }),
 
   loadSettings: (settings) => {
@@ -245,6 +270,8 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
         passValidDays: resolved?.passValidDays !== undefined ? resolved.passValidDays as number | null : state.passValidDays,
         expiryDate: (resolved?.expiryDate ?? state.expiryDate) as string,
         currency: (resolved?.currency ?? state.currency) as 'TWD' | 'ZAR',
+        leftField: (resolved?.leftField ?? state.leftField) as CardFieldKey | null,
+        rightField: (resolved?.rightField ?? state.rightField) as CardFieldKey | null,
         isPaid: (resolved?.isPaid ?? state.isPaid) as boolean,
       };
     });

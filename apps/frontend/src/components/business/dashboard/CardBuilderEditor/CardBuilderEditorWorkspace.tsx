@@ -11,6 +11,7 @@ import { CardTypeSelector } from './CardTypeSelector';
 import { Step2CardSettings } from './Step2CardSettings';
 import { MediaAssetUploader } from './MediaAssetUploader';
 import { Step3CardColors } from './Step3CardColors';
+import { Step3CardFields } from './Step3CardFields';
 import { useCardBuilderStore } from './CardBuilderEditor.store';
 import { cardService } from '@/services/cardService';
 
@@ -100,17 +101,21 @@ export function CardBuilderEditorWorkspace({
       // just forward the current store values to onSave().
       // backgroundColor / textColor are stored with '#' prefix internally;
       // PassCreator contract is 6-char uppercase hex WITHOUT '#' (strip here).
+      // Step 3 fields selector (plan 2026-09-04): also persist leftField / rightField.
       if (step === 3 && cardId && onSave) {
         try {
           const { issuerLogo, iconImage, backgroundImage, backgroundColor, textColor } = useCardBuilderStore.getState();
+          const { leftField, rightField } = useCardBuilderStore.getState();
           await onSave(cardId, {
             issuerLogo: issuerLogo || undefined,
             iconImage: iconImage || undefined,
             backgroundImage: backgroundImage || undefined,
             backgroundColor: backgroundColor.replace('#', '').toUpperCase(),
             textColor: textColor.replace('#', '').toUpperCase(),
+            leftField: leftField ?? undefined,
+            rightField: rightField ?? undefined,
           });
-          console.log('[handleNext] Step 3 image keys + colors saved', { issuerLogo, iconImage, backgroundImage, backgroundColor, textColor });
+          console.log('[handleNext] Step 3 image keys + colors + fields saved', { issuerLogo, iconImage, backgroundImage, backgroundColor, textColor, leftField, rightField });
         } catch (err) {
           // Don't block step transition — let the user proceed and retry later.
           console.error('[handleNext] Step 3 onSave failed:', err);
@@ -290,6 +295,15 @@ export function CardBuilderEditorWorkspace({
               - 渲染兩顆並列按鈕（背景色 / 文字色）+ popover 調色盤 + hex 輸入框
               - 與 icon / background section 對稱,採 parent section header pattern */}
           <Step3CardColors />
+
+          {/* Fields 區塊（Step 3 Fields Selector plan 2026-09-04, plan id baffa936）
+              - 在 Colors section 之後,border-t 區隔
+              - 渲染兩個並排 native <select>（左欄位 / 右欄位）,
+                每個 6 個共用選項 + 對側已選 disabled
+              - 選擇 persist 到 store.leftField / rightField,
+                並於 handleNext step 3 區段寫進 template_settings
+              - 行為副作用（PassCardPreview 渲染等）留待後續計畫 */}
+          <Step3CardFields />
 
           {/* 上一步 / 下一步按鈕 */}
           <div className="flex items-center justify-between pt-2">

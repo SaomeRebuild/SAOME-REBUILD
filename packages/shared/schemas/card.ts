@@ -11,6 +11,7 @@
  */
 
 import { z } from 'zod';
+import { CARD_FIELD_KEYS } from '../constants/card-fields';
 
 // ===== Card Types =====
 
@@ -26,6 +27,22 @@ export const cardTypeSchema = z.enum([
 ]);
 
 export type CardType = z.infer<typeof cardTypeSchema>;
+
+// ===== Card Display Fields (Step 3 — "顯示欄位" selector) =====
+
+/**
+ * Card face fields that can be assigned to the left/right slots.
+ *
+ * The list is sourced from `@saome/shared/constants/card-fields` (CARD_FIELD_KEYS)
+ * so adding/removing a key only requires updating one constant. Both the
+ * frontend `<Step3CardFields>` selector and the backend `templateSettingsSchema`
+ * derive their enum from this single source.
+ *
+ * Card-type-dependent extensions (e.g. `pointBalance` for stamp_card) are
+ * deferred to a future plan; this enum ships with the six base fields shared
+ * by every card type (see step3_card_fields_selector_baffa936.plan.md).
+ */
+export const cardFieldKeySchema = z.enum([...CARD_FIELD_KEYS]);
 
 // ===== Barcode Types =====
 
@@ -66,8 +83,6 @@ export const templateSettingsSchema = z.object({
   passValidDays: z.number().int().positive().nullable().optional(),
   expiryDate: z.string().optional(),
   currency: currencySchema.optional(),
-  // Membership card extension
-  isPaid: z.boolean().optional(),
   // Step 3-4 (TBD)
   issuerLogo: z.string().optional(),
   /**
@@ -85,6 +100,16 @@ export const templateSettingsSchema = z.object({
   textColor: z.string().optional(),
   holderName: z.string().optional(),
   cardSide: z.enum(['front', 'back']).optional(),
+  // ===== Step 3 — 顯示欄位 (left/right slot fields) =====
+  // Step 3 plan 2026-09-04: two side-by-side native <select> dropdowns for
+  // the card face. The user picks one field per slot (left/right). Card-type-
+  // dependent additions/removals are deferred; current values are the six
+  // base fields shared by every card type (see CARD_FIELD_KEYS in
+  // packages/shared/constants/card-fields.ts).
+  leftField: cardFieldKeySchema.optional(),
+  rightField: cardFieldKeySchema.optional(),
+  // Membership card extension
+  isPaid: z.boolean().optional(),
 });
 
 export type TemplateSettings = z.infer<typeof templateSettingsSchema>;

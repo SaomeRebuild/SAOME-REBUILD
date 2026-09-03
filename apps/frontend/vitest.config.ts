@@ -35,6 +35,7 @@ const aliasArray: { find: string | RegExp; replacement: string }[] = [
   { find: '@saome/shared/types', replacement: resolve(sharedRoot, 'types/index.ts') },
   { find: '@saome/shared/constants/role', replacement: resolve(sharedRoot, 'constants/role.ts') },
   { find: '@saome/shared/constants/card-images', replacement: resolve(sharedRoot, 'constants/card-images.ts') },
+  { find: '@saome/shared/constants/card-fields', replacement: resolve(sharedRoot, 'constants/card-fields.ts') },
   { find: '@saome/shared/constants/color-presets', replacement: resolve(sharedRoot, 'constants/color-presets.ts') },
   { find: '@saome/shared/constants/crop-interaction', replacement: resolve(sharedRoot, 'constants/crop-interaction.ts') },
   { find: '@saome/shared/constants/r2', replacement: resolve(sharedRoot, 'constants/r2.ts') },

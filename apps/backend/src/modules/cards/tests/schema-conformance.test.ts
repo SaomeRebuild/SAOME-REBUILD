@@ -30,11 +30,27 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
     expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('backgroundImage');
   });
 
+  it('shared schema has the leftField field (Rule 019 § 4.1 — Step 3 fields selector 2026-09-04)', () => {
+    expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('leftField');
+  });
+
+  it('shared schema has the rightField field (Rule 019 § 4.1 — Step 3 fields selector 2026-09-04)', () => {
+    expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('rightField');
+  });
+
   it('local schema has the iconImage field (4-layer sync — Layer 2)', () => {
     expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('iconImage');
   });
 
   it('local schema has the backgroundImage field (4-layer sync — Layer 2)', () => {
     expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('backgroundImage');
+  });
+
+  it('local schema has the leftField field (4-layer sync — Layer 2)', () => {
+    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('leftField');
+  });
+
+  it('local schema has the rightField field (4-layer sync — Layer 2)', () => {
+    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('rightField');
   });
 });

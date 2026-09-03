@@ -211,4 +211,20 @@ describe('PassCardPreview', () => {
     expect(overlay).toBeInTheDocument();
     expect(overlay.style.backgroundColor).toBe('rgba(0, 0, 0, 0.35)');
   });
+
+  // ─── PassCreator Label/Value regression (2026-09-04 v2 plan) ───
+  it('renders fieldPreview.memberLevel.label when leftField="memberLevel"', () => {
+    render(<PassCardPreview name="測試卡片" leftField="memberLevel" />);
+    // Body renders 4 spans: left label + left value + right label + right value.
+    // leftField=memberLevel → left row reads "fieldPreview.memberLevel.label" / "fieldPreview.memberLevel.value".
+    expect(screen.getByText('fieldPreview.memberLevel.label')).toBeInTheDocument();
+    expect(screen.getByText('fieldPreview.memberLevel.value')).toBeInTheDocument();
+  });
+
+  it('renders fieldPreview.birthday.value when rightField="birthday"', () => {
+    render(<PassCardPreview name="測試卡片" rightField="birthday" />);
+    // rightField=birthday → right row reads "fieldPreview.birthday.label" / "fieldPreview.birthday.value".
+    expect(screen.getByText('fieldPreview.birthday.label')).toBeInTheDocument();
+    expect(screen.getByText('fieldPreview.birthday.value')).toBeInTheDocument();
+  });
 });

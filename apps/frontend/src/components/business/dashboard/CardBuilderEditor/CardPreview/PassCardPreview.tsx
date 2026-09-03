@@ -32,6 +32,8 @@ export function PassCardPreview({
   side = 'front',
   holderName,
   barcodeType,
+  leftField,
+  rightField,
   className,
   compact = false,
   ...props
@@ -82,7 +84,12 @@ export function PassCardPreview({
             />
 
             {/* Body */}
-            <PassCardPreviewBody textColor={textColor} compact={compact} />
+            <PassCardPreviewBody
+              textColor={textColor}
+              compact={compact}
+              leftField={leftField}
+              rightField={rightField}
+            />
 
             {/* Footer / Barcode */}
             <PassCardPreviewFooter
