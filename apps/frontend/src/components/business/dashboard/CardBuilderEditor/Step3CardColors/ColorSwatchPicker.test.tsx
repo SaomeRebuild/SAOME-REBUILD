@@ -791,6 +791,184 @@ describe('ColorSwatchPicker — desktop popover sizing (Option A: follow content
   });
 });
 
+describe('ColorSwatchPicker — desktop popover placement (tricky mid-band fix 2026-09-04)', () => {
+  /**
+   * Regression guard for the "Color Picker 開啟後 popover 被 viewport 底部截斷" bug
+   * that surfaced after Step3CardFields was added. The previous placement
+   * rule was:
+   *
+   *   placeBelow = spaceBelow >= ESTIMATE+16 || spaceBelow > spaceAbove
+   *
+   * which let the popover open BELOW the trigger even when spaceBelow was
+   * strictly less than the popover height (e.g. 440 < 476), as long as
+   * spaceBelow > spaceAbove. The new rule:
+   *
+   *   placeBelow = spaceBelow >= ESTIMATE+16
+   *
+   * — only place below if it ACTUALLY fits, otherwise flip above (and clamp
+   * top so the popover never extends past the viewport edge).
+   *
+   * jsdom has no layout, so we mock `getBoundingClientRect` on the trigger
+   * container to simulate three scroll/viewport scenarios and verify the
+   * placement math picks the correct side in each.
+   */
+  function stubTriggerRect(opts: {
+    rectTop: number;
+    rectBottom: number;
+    rectLeft?: number;
+    rectRight?: number;
+    viewportHeight: number;
+    viewportWidth?: number;
+  }) {
+    const containerRect = {
+      top: opts.rectTop,
+      bottom: opts.rectBottom,
+      left: opts.rectLeft ?? 50,
+      right: opts.rectRight ?? 330,
+      width: (opts.rectRight ?? 330) - (opts.rectLeft ?? 50),
+      height: opts.rectBottom - opts.rectTop,
+      x: opts.rectLeft ?? 50,
+      y: opts.rectTop,
+      toJSON() {
+        return {};
+      },
+    } as DOMRect;
+    const triggerRect = {
+      ...containerRect,
+      top: opts.rectTop,
+      bottom: opts.rectBottom,
+    } as DOMRect;
+    const origGetBCR = Element.prototype.getBoundingClientRect;
+    // Element.prototype.getBoundingClientRect is called for both the
+    // containerRef (outer) and the trigger button (inner) — return the same
+    // shape for both. The component only reads containerRef.
+    Element.prototype.getBoundingClientRect = vi.fn(function (this: Element) {
+      // The label and trigger button are siblings inside containerRef; return
+      // the container's rect for both calls (the positioning math only uses
+      // containerRef's rect.bottom / rect.top).
+      return this.classList?.contains('h-12')
+        ? triggerRect
+        : containerRect;
+    }) as typeof Element.prototype.getBoundingClientRect;
+
+    Object.defineProperty(window, 'innerHeight', {
+      configurable: true,
+      value: opts.viewportHeight,
+    });
+    if (opts.viewportWidth !== undefined) {
+      Object.defineProperty(window, 'innerWidth', {
+        configurable: true,
+        value: opts.viewportWidth,
+      });
+    }
+
+    return () => {
+      Element.prototype.getBoundingClientRect = origGetBCR;
+      Object.defineProperty(window, 'innerHeight', {
+        configurable: true,
+        value: 768,
+      });
+      if (opts.viewportWidth !== undefined) {
+        Object.defineProperty(window, 'innerWidth', {
+          configurable: true,
+          value: 1024,
+        });
+      }
+    };
+  }
+
+  async function openPickerAndGetDialogTop(): Promise<number> {
+    fireEvent.click(screen.getByRole('button', { name: /背景色/ }));
+    const dialog = await waitFor(() => screen.getByRole('dialog'));
+    const style = dialog.getAttribute('style') || '';
+    const match = style.match(/top:\s*(\d+)/);
+    if (!match) throw new Error(`popover has no top: ${style}`);
+    return Number(match[1]);
+  }
+
+  it('places popover BELOW trigger when there is enough room below (spaceBelow ≥ ESTIMATE+16)', async () => {
+    const restoreMM = stubMatchMedia('(max-width: 639px)', false);
+    // Trigger at y=200 in a 720px viewport → spaceBelow = 520 ≥ 476 (enough).
+    const restoreRect = stubTriggerRect({ rectTop: 100, rectBottom: 200, viewportHeight: 720 });
+    try {
+      render(
+        <ColorSwatchPicker
+          label="背景色"
+          value="#1A1A1A"
+          onChange={vi.fn()}
+          presets={COLOR_PRESETS}
+        />,
+      );
+      const top = await openPickerAndGetDialogTop();
+      // rect.bottom + 8 gap = 200 + 8 = 208
+      expect(top).toBe(208);
+    } finally {
+      restoreRect();
+      restoreMM();
+    }
+  });
+
+  it('flips popover ABOVE trigger when spaceBelow < ESTIMATE+16 even if spaceBelow > spaceAbove (tricky mid-band — the bug)', async () => {
+    const restoreMM = stubMatchMedia('(max-width: 639px)', false);
+    // Trigger at y=400 in 720px viewport:
+    //   spaceBelow = 720 - 400 = 320  (< 476, NOT enough for popover)
+    //   spaceAbove = 400                (above the trigger)
+    // Old buggy rule: 320 > 400 is FALSE → would correctly flip above.
+    // But old buggy rule was: spaceBelow >= 476 || spaceBelow > spaceAbove
+    //   → (320 >= 476) FALSE, (320 > 400) FALSE → flip above (correct in this case).
+    //
+    // The actual bug case: trigger at y=300 with spaceBelow=420 (just below 476)
+    // and spaceAbove=300 (below spaceBelow). Old rule fired placeBelow with
+    // insufficient room → bottom clipped.
+    const restoreRect = stubTriggerRect({ rectTop: 200, rectBottom: 300, viewportHeight: 720 });
+    try {
+      render(
+        <ColorSwatchPicker
+          label="背景色"
+          value="#1A1A1A"
+          onChange={vi.fn()}
+          presets={COLOR_PRESETS}
+        />,
+      );
+      const top = await openPickerAndGetDialogTop();
+      // Expected: flip above. top = rect.top - ESTIMATE - 8 = 200 - 460 - 8 = -268,
+      // clamped to Math.max(8, -268) = 8 (still fits within viewport).
+      //
+      // The KEY assertion is: the popover is NOT placed below at top=308,
+      // because that would extend from y=308 to y=768 — clipped by 720 viewport.
+      expect(top).not.toBe(308); // ← the buggy value (rect.bottom + 8)
+      expect(top).toBeLessThanOrEqual(720 - 460 - 8); // popover bottom ≤ viewport bottom
+    } finally {
+      restoreRect();
+      restoreMM();
+    }
+  });
+
+  it('clamps popover top so it never extends past the viewport bottom (neither side fits)', async () => {
+    const restoreMM = stubMatchMedia('(max-width: 639px)', false);
+    // Tiny viewport (500px tall) where neither above nor below has room.
+    // Trigger at y=240 → spaceBelow = 260, spaceAbove = 240 — both < 476.
+    const restoreRect = stubTriggerRect({ rectTop: 140, rectBottom: 240, viewportHeight: 500 });
+    try {
+      render(
+        <ColorSwatchPicker
+          label="背景色"
+          value="#1A1A1A"
+          onChange={vi.fn()}
+          presets={COLOR_PRESETS}
+        />,
+      );
+      const top = await openPickerAndGetDialogTop();
+      // Clamped to fit within viewport: max top = 500 - 460 - 16 = 24.
+      expect(top).toBeLessThanOrEqual(24);
+      expect(top).toBeGreaterThanOrEqual(8);
+    } finally {
+      restoreRect();
+      restoreMM();
+    }
+  });
+});
+
 describe('ColorSwatchPicker — desktop scroll listener (no hostile UX)', () => {
   it('scrolling OUTSIDE the desktop popover (page scroll) DOES close it and commit draft', async () => {
     const restore = stubMatchMedia('(max-width: 639px)', false);

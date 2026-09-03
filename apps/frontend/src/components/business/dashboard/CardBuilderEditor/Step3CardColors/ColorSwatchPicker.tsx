@@ -68,6 +68,17 @@ type PopoverPosition =
   | { mobile: false; top: number; left: number }
   | null;
 
+/**
+ * Maximum top value the popover can be placed at while still fully visible
+ * inside the viewport (with POPOVER_HEIGHT_ESTIMATE + 16 breathing room).
+ * Used to clamp the computed top when neither above nor below the trigger
+ * has enough room — rare on real desktop viewports but possible on split-
+ * screen or very short windows.
+ */
+function maxVisibleTop(viewportHeight: number): number {
+  return Math.max(8, viewportHeight - POPOVER_HEIGHT_ESTIMATE - 16);
+}
+
 function usePopoverPosition(open: boolean, containerRef: RefObject<HTMLElement | null>): PopoverPosition {
   const isMobile = useIsMobile(MOBILE_BREAKPOINT_PX);
   const [position, setPosition] = useState<PopoverPosition>(null);
@@ -85,11 +96,27 @@ function usePopoverPosition(open: boolean, containerRef: RefObject<HTMLElement |
     if (!container) return;
     const rect = container.getBoundingClientRect();
     const spaceBelow = window.innerHeight - rect.bottom;
-    const spaceAbove = rect.top;
-    const top =
-      spaceBelow >= POPOVER_HEIGHT_ESTIMATE + 16 || spaceBelow > spaceAbove
+    // Placement rule (fix 2026-09-04): place below ONLY when there's enough
+    // room for the full popover. The previous condition was
+    //   `spaceBelow >= ESTIMATE+16 || spaceBelow > spaceAbove`
+    // which let the popover open BELOW the trigger even when spaceBelow was
+    // strictly less than the popover height (e.g. 440 < 476), as long as
+    // spaceBelow > spaceAbove. That produced a bottom-clipped popover on
+    // viewports where the trigger sat in the middle-bottom band. The bug
+    // stayed dormant before Step3CardFields was added because the page was
+    // short enough that the trigger was usually near the top of viewport
+    // (lots of room below). After the new fields section, users scroll to
+    // see the new fields, pushing the trigger into the tricky mid-band
+    // where the old heuristic misfired.
+    const desiredTop =
+      spaceBelow >= POPOVER_HEIGHT_ESTIMATE + 16
         ? rect.bottom + 8
-        : Math.max(8, rect.top - POPOVER_HEIGHT_ESTIMATE - 8);
+        : rect.top - POPOVER_HEIGHT_ESTIMATE - 8;
+    // Clamp so popover never extends past viewport edge (handles the rare
+    // case where neither above nor below has enough room — popover gets
+    // pushed into whichever side has more space, possibly overlapping the
+    // trigger, but stays fully visible).
+    const top = Math.max(8, Math.min(desiredTop, maxVisibleTop(window.innerHeight)));
     const left = Math.min(rect.left, window.innerWidth - POPOVER_WIDTH - 8);
     setPosition({ mobile: false, top, left });
   }, [open, containerRef, isMobile]); // containerRef is a stable RefObject but oxlint requires it
