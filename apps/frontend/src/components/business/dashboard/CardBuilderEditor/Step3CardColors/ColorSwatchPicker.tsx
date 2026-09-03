@@ -35,7 +35,17 @@ import { ColorSwatchPalette } from './ColorSwatchPalette';
 import { validateColor } from '@saome/shared/logic/color';
 
 const POPOVER_WIDTH = 280;
-const POPOVER_HEIGHT_ESTIMATE = 420;
+/**
+ * Estimated popover height used by `usePopoverPosition` to decide whether
+ * to flip the popover above the trigger. Set to the natural content height
+ * of the desktop popover (HSL picker + 20-swatch palette + hex input + gaps
+ * + padding) so the flip-to-top math is accurate. With Option A (popover
+ * sizes to content, no scroll), the popover is always this tall — keeping
+ * this constant in sync with actual content height prevents the popover
+ * from being positioned just slightly below the viewport edge on short
+ * windows.
+ */
+const POPOVER_HEIGHT_ESTIMATE = 460;
 /** Tailwind `sm:` boundary — see Rule 014 (Breakpoint 規範). */
 const MOBILE_BREAKPOINT_PX = 640;
 /** Bottom-sheet max-height as a fraction of viewport (mobile = iOS sheet pattern).
@@ -272,24 +282,33 @@ export function ColorSwatchPicker({ label, value, onChange, presets }: ColorSwat
                 top: position.top,
                 left: position.left,
                 width: POPOVER_WIDTH,
-                // Viewport-aware max-height instead of the old fixed `420px`
-                // estimate. The desktop popover used to clip at 420px which
-                // forced a vertical scrollbar on most viewports, and the
-                // horizontal scrollbar leaked through because `overflow-y-auto`
-                // was on the outer flex container without `min-h-0` on the
-                // children. The fix mirrors the mobile sheet pattern: outer
-                // has overflow-hidden, inner scroll container has min-h-0 +
-                // flex-1 + overflow-y-auto + overflow-x-hidden.
-                maxHeight: 'calc(100vh - 32px)',
+                // Option A: NO maxHeight — popover sizes to natural content
+                // height (HSL picker + 20-swatch palette + hex input + gaps +
+                // padding ≈ 460px). The previous `max-height: calc(100vh -
+                // 32px)` + `flex-1 overflow-y-auto` inner produced a vertical
+                // scrollbar on every desktop viewport because `flex-1` claimed
+                // all available main-axis space up to outer's maxHeight, even
+                // when the content was only ~450px. That left ~400px of empty
+                // flex space overflowing into a visible scrollbar on the inner.
+                // With Option A, the popover grows to fit the content, no
+                // scrollbar appears, and the user sees the whole picker.
+                //
+                // Trade-off: on viewports shorter than the natural content
+                // height (~460px) the popover may extend below the viewport.
+                // In practice desktop viewports are ≥ 700px tall, so this is
+                // rare. Mobile (< 640px) is handled by the bottom-sheet
+                // variant (MobileColorSheet) which has its own scroll
+                // containment.
               }}
-              className="z-[9999] flex flex-col overflow-hidden rounded-lg border border-border bg-card p-3 shadow-[var(--shadow-lifted)]"
+              className="z-[9999] flex flex-col rounded-lg border border-border bg-card p-3 shadow-[var(--shadow-lifted)]"
             >
-              {/* Inner scroll container — `min-h-0` is critical on flex
-                  children so they can shrink below their content size and
-                  let the overflow-y-auto actually show a scrollbar.
-                  `overflow-x-hidden` suppresses the horizontal scrollbar
-                  that flex+overflow-y-auto can otherwise leak. */}
-              <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-y-auto overflow-x-hidden">
+              {/* Inner content area — plain flex column that sizes to its
+                  children's natural height. No `flex-1`, no `min-h-0`, no
+                  `overflow-y-auto`: the popover follows content height, no
+                  internal scroll. `min-w-0` is still required on flex children
+                  so their implicit `min-width: auto` (= intrinsic content
+                  min-width) cannot push them past the popover's 280px width. */}
+              <div className="flex min-w-0 flex-col gap-3">
                 <HslPickerSection value={draft} onChange={setDraft} />
 
                 <div className="min-w-0 border-t border-border pt-2">

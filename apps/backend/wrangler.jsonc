@@ -24,6 +24,7 @@
   "name": "saome-backend",
   "main": "src/index.ts",
   "compatibility_date": "2025-09-06",
+  "account_id": "b37054989122d58d65ad27681882b470",
   "compatibility_flags": ["nodejs_compat"],
   "hyperdrive": [
     {

@@ -95,6 +95,12 @@ export default {
       title: 'Card Background Image',
       hint: 'The background image appears in the card header area (1860×738 pixels) for visual brand identification',
     },
+    colorsSection: {
+      title: 'Card Colors',
+      hint: 'Set the card background and text colors (applied to the entire card). Pick from the preset palette or enter a custom hex code.',
+      background: 'Background',
+      text: 'Text',
+    },
   },
   step4: {
     title: 'Card Info',

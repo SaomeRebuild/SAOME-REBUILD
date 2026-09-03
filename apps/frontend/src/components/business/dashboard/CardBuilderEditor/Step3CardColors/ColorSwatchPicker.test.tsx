@@ -596,8 +596,8 @@ describe('ColorSwatchPicker — responsive bottom sheet (mobile)', () => {
   });
 });
 
-describe('ColorSwatchPicker — desktop popover sizing (no scrollbars)', () => {
-  it('outer popover uses overflow-hidden (not overflow-y-auto) so scroll lives on the inner container', async () => {
+describe('ColorSwatchPicker — desktop popover sizing (Option A: follow content height)', () => {
+  it('outer popover has no overflow-hidden — shadow renders unclipped, content not clipped by container', async () => {
     const restore = stubMatchMedia('(max-width: 639px)', false);
     try {
       render(
@@ -611,19 +611,20 @@ describe('ColorSwatchPicker — desktop popover sizing (no scrollbars)', () => {
       fireEvent.click(screen.getByRole('button', { name: /背景色/ }));
       const dialog = await waitFor(() => screen.getByRole('dialog'));
 
-      // Scroll must NOT live on the outer popover — that path produces visible
-      // scrollbars on both axes when content > maxHeight, plus horizontal
-      // scrollbar that "leaks" through flex overflow rules.
+      // Option A: popover sizes to content. No overflow-hidden on outer
+      // (would clip the shadow and any sub-pixel rounding artifacts).
+      expect(dialog.className).not.toMatch(/\boverflow-hidden\b/);
+      // No overflow-y-auto on outer either — the previous bug had `flex-1
+      // overflow-y-auto` on the INNER container, which still produced a
+      // scrollbar on every desktop viewport because flex-1 claimed all
+      // available main-axis space up to the outer's maxHeight.
       expect(dialog.className).not.toMatch(/\boverflow-y-auto\b/);
-      // Outer must clip inner scroll with overflow-hidden so scrollbars only
-      // appear inside the content area, not on the popover chrome.
-      expect(dialog.className).toMatch(/\boverflow-hidden\b/);
     } finally {
       restore();
     }
   });
 
-  it('inner content area has min-h-0 + flex-1 + overflow-y-auto + overflow-x-hidden so vertical scroll works and horizontal is suppressed', async () => {
+  it('inner content area is NOT a scroll container — no flex-1 / no min-h-0 / no overflow-y-auto (Option A)', async () => {
     const restore = stubMatchMedia('(max-width: 639px)', false);
     try {
       render(
@@ -637,24 +638,36 @@ describe('ColorSwatchPicker — desktop popover sizing (no scrollbars)', () => {
       fireEvent.click(screen.getByRole('button', { name: /背景色/ }));
       const dialog = await waitFor(() => screen.getByRole('dialog'));
 
-      // The scrollable container must be a flex child of the outer popover.
-      // `min-h-0` is critical: without it the flex item won't shrink below
-      // its content size, so overflow-y-auto never shows a scrollbar.
-      const innerScroll = dialog.querySelector(
-        '.flex.min-h-0.min-w-0.flex-1.overflow-y-auto.overflow-x-hidden',
+      // Option A: popover sizes to content. The inner container is a plain
+      // flex column that sizes to its children's natural height — no scroll,
+      // no min-h-0, no flex-1, no overflow.
+      //
+      // Why this matters: the previous design used `flex-1 overflow-y-auto`
+      // on the inner container with a fixed maxHeight on the outer. Because
+      // `flex-1` claims ALL available main-axis space (up to outer's maxHeight),
+      // the inner was always as tall as `calc(100vh - 32px - padding)` even
+      // when content was only ~450px. That left ~400px of empty flex space
+      // overflowing into a vertical scrollbar on the inner. Users saw a
+      // scrollable popover that "didn't follow content height".
+      const inner = dialog.querySelector(
+        'div.flex.min-w-0.flex-col.gap-3',
       ) as HTMLElement | null;
-      expect(innerScroll).toBeTruthy();
+      expect(inner).toBeTruthy();
+      expect(inner?.className).not.toMatch(/\bflex-1\b/);
+      expect(inner?.className).not.toMatch(/\bmin-h-0\b/);
+      expect(inner?.className).not.toMatch(/\boverflow-y-auto\b/);
+      expect(inner?.className).not.toMatch(/\boverflow-x-hidden\b/);
 
-      // All HSL / palette / hex sections must live inside the scroll container
-      // so they remain reachable on short viewports.
-      expect(innerScroll?.contains(screen.getByTestId('hsl-picker'))).toBe(true);
-      expect(innerScroll?.contains(screen.getByPlaceholderText('hexPlaceholder'))).toBe(true);
+      // All HSL / palette / hex sections must still live inside the inner
+      // container so they render in the right order.
+      expect(inner?.contains(screen.getByTestId('hsl-picker'))).toBe(true);
+      expect(inner?.contains(screen.getByPlaceholderText('hexPlaceholder'))).toBe(true);
     } finally {
       restore();
     }
   });
 
-  it('outer popover uses viewport-aware max-height (calc(100vh - N)) instead of fixed 420px', async () => {
+  it('outer popover has NO maxHeight — sizes to natural content height (Option A)', async () => {
     const restore = stubMatchMedia('(max-width: 639px)', false);
     try {
       render(
@@ -669,17 +682,51 @@ describe('ColorSwatchPicker — desktop popover sizing (no scrollbars)', () => {
       const dialog = await waitFor(() => screen.getByRole('dialog'));
 
       const style = dialog.getAttribute('style') || '';
-      // Must use viewport-relative max-height so the popover adapts to short
-      // viewports instead of clipping at the hardcoded 420px estimate.
-      expect(style).toMatch(/max-height:\s*calc\(100vh/);
-      // The old fixed-pixel estimate (420px) must be gone.
-      expect(style).not.toMatch(/max-height:\s*420px/);
+      // Option A: no maxHeight on outer. The popover grows to fit the
+      // content (HSL picker + 20-swatch palette + hex input ≈ 460px).
+      // The previous `max-height: calc(100vh - 32px)` + `flex-1 overflow-y-auto`
+      // inner produced a vertical scrollbar on every desktop viewport because
+      // flex-1 claimed all available main-axis space.
+      expect(style).not.toMatch(/max-height/);
+      expect(style).not.toMatch(/maxHeight/);
     } finally {
       restore();
     }
   });
 
-  it('desktop popover keeps trigger-anchored fixed positioning while still being scroll-contained', async () => {
+  it('desktop popover contents are all reachable without scroll — HSL + palette + hex all rendered', async () => {
+    const restore = stubMatchMedia('(max-width: 639px)', false);
+    try {
+      render(
+        <ColorSwatchPicker
+          label="背景色"
+          value="#1A1A1A"
+          onChange={vi.fn()}
+          presets={COLOR_PRESETS}
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: /背景色/ }));
+      const dialog = await waitFor(() => screen.getByRole('dialog'));
+
+      // Regression guard for the original bug report: "color picker popover
+      // 不跟內容高度走，可以上下滑動". After Option A all three sections
+      // are present in the DOM AND the popover has no scroll capability,
+      // so the user sees them in full without any vertical scrolling.
+      expect(screen.getByTestId('hsl-picker')).toBeInTheDocument();
+      // 20 presets rendered
+      expect(screen.getAllByRole('option')).toHaveLength(20);
+      expect(screen.getByPlaceholderText('hexPlaceholder')).toBeInTheDocument();
+
+      // No element with overflow-y-auto inside the popover — that's the
+      // direct repro of "popover can scroll vertically".
+      const scrollables = dialog.querySelectorAll('.overflow-y-auto');
+      expect(scrollables).toHaveLength(0);
+    } finally {
+      restore();
+    }
+  });
+
+  it('desktop popover keeps trigger-anchored fixed positioning (regression guard)', async () => {
     const restore = stubMatchMedia('(max-width: 639px)', false);
     try {
       render(
@@ -694,7 +741,7 @@ describe('ColorSwatchPicker — desktop popover sizing (no scrollbars)', () => {
       const dialog = await waitFor(() => screen.getByRole('dialog'));
 
       // Regression guard: positioning math (top/left from trigger rect) and
-      // POPOVER_WIDTH must be preserved across the layout refactor.
+      // POPOVER_WIDTH must be preserved across the Option A layout refactor.
       const style = dialog.getAttribute('style') || '';
       expect(style).toMatch(/top:\s*\d+/);
       expect(style).toMatch(/left:\s*\d+/);
@@ -745,42 +792,6 @@ describe('ColorSwatchPicker — desktop popover sizing (no scrollbars)', () => {
 });
 
 describe('ColorSwatchPicker — desktop scroll listener (no hostile UX)', () => {
-  it('scrolling INSIDE the desktop popover does NOT close it (browsing the picker must not dismiss)', async () => {
-    const restore = stubMatchMedia('(max-width: 639px)', false);
-    const onChange = vi.fn();
-    try {
-      render(
-        <div>
-          <ColorSwatchPicker
-            label="背景色"
-            value="#1A1A1A"
-            onChange={onChange}
-            presets={COLOR_PRESETS}
-          />
-          <button data-testid="outside">Outside</button>
-        </div>,
-      );
-      fireEvent.click(screen.getByRole('button', { name: /背景色/ }));
-      const dialog = await waitFor(() => screen.getByRole('dialog'));
-      const innerScroll = dialog.querySelector(
-        '.flex.min-h-0.flex-1.overflow-y-auto.overflow-x-hidden',
-      ) as HTMLElement;
-      expect(innerScroll).toBeTruthy();
-
-      // Scroll inside the popover (user browsing past HSL to reach hex input
-      // on a short viewport).
-      fireEvent.scroll(innerScroll);
-
-      // Popover must still be open — scrolling inside the popover is not a
-      // dismiss signal.
-      expect(screen.getByRole('dialog')).toBeInTheDocument();
-      // No commit from inner scroll.
-      expect(onChange).not.toHaveBeenCalled();
-    } finally {
-      restore();
-    }
-  });
-
   it('scrolling OUTSIDE the desktop popover (page scroll) DOES close it and commit draft', async () => {
     const restore = stubMatchMedia('(max-width: 639px)', false);
     const onChange = vi.fn();
@@ -804,6 +815,31 @@ describe('ColorSwatchPicker — desktop scroll listener (no hostile UX)', () => 
       fireEvent.scroll(window);
 
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    } finally {
+      restore();
+    }
+  });
+
+  it('Option A: popover has no inner scroll container, so there is nothing inside to scroll (regression guard)', async () => {
+    const restore = stubMatchMedia('(max-width: 639px)', false);
+    try {
+      render(
+        <ColorSwatchPicker
+          label="背景色"
+          value="#1A1A1A"
+          onChange={vi.fn()}
+          presets={COLOR_PRESETS}
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: /背景色/ }));
+      const dialog = await waitFor(() => screen.getByRole('dialog'));
+
+      // The inner content area is sized to content (no overflow-y-auto),
+      // so there is no inner scroll surface for the user to interact with.
+      // This is the desired state under Option A: popover = content height,
+      // no internal scrollbar, content fully visible.
+      const innerScrollables = dialog.querySelectorAll('.overflow-y-auto, .overflow-x-auto');
+      expect(innerScrollables).toHaveLength(0);
     } finally {
       restore();
     }

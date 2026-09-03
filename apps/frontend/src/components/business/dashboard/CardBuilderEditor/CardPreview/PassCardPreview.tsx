@@ -46,8 +46,13 @@ export function PassCardPreview({
       style={{ aspectRatio: '375 / 503' }}
       {...props}
     >
-      {/* 卡片本體 — 白色背景（背景圖與色塊由 PassCardPreviewStrip 內部處理） */}
-      <div className="relative flex h-full w-full flex-col bg-white">
+      {/* 卡片本體 — 套用 backgroundColor 到整個 card body（replaces bg-white）。
+          Strip 內部固定深灰黑色（不跟 color picker），所以 strip 與 body 不同色，
+          這是預期的 Apple Wallet hero strip 視覺。 */}
+      <div
+        className="relative flex h-full w-full flex-col"
+        style={backgroundColor ? { backgroundColor } : undefined}
+      >
         {side === 'back' ? (
           // ─── Back Side：完全清除正面殘留 UI ───
           <PassCardPreviewBack compact={compact} />
@@ -58,26 +63,34 @@ export function PassCardPreview({
               cardType={cardType}
               issuerLogo={issuerLogo}
               name={name}
-              compact={compact}
-            />
-
-            {/* Strip / Hero — 卡片名稱 + 預設 CreditCard 圖示
-                背景圖與背景色由 strip 內部渲染,透過 `position: relative`
-                容器約束在 h-[100px] / h-[120px] 的 strip 區塊內,
-                不會溢出到 header / body / footer */}
-            <PassCardPreviewStrip
-              name={name}
-              backgroundImage={backgroundImage}
-              backgroundColor={backgroundColor}
               textColor={textColor}
               compact={compact}
             />
 
+            {/* Strip / Hero — 卡片名稱 + 預設 CreditCard 圖示
+                Strip 內部固定深灰黑色背景（不跟 color picker）,
+                背景圖透過 `position: relative` + `absolute inset-0 object-cover`
+                約束在 h-[100px] / h-[120px] 的 strip 區塊內滿版,
+                不會溢出到 header / body / footer */}
+            <PassCardPreviewStrip
+              name={name}
+              backgroundImage={backgroundImage}
+              // Strip bg 永遠是深灰黑色，所以 text/icon 必須用淺色才看得見。
+              // 不直接用 card textColor，否則 picker 預設 #000000 會讓 strip 變成黑底黑字。
+              textColor="#ffffff"
+              compact={compact}
+            />
+
             {/* Body */}
-            <PassCardPreviewBody compact={compact} />
+            <PassCardPreviewBody textColor={textColor} compact={compact} />
 
             {/* Footer / Barcode */}
-            <PassCardPreviewFooter holderName={holderName} barcodeType={barcodeType} compact={compact} />
+            <PassCardPreviewFooter
+              holderName={holderName}
+              barcodeType={barcodeType}
+              backgroundColor={backgroundColor}
+              compact={compact}
+            />
           </>
         )}
       </div>

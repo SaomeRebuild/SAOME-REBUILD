@@ -31,8 +31,8 @@ export function TemplateCardPreview({
   cardType,
   issuerName,
   issuerLogo,
-  backgroundColor = '#1a1a1a',
-  textColor = '#ffffff',
+  backgroundColor = '#ffffff',
+  textColor = '#000000',
 }: TemplateCardPreviewProps) {
   const { t } = useTranslation('passCard');
 

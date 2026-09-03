@@ -95,6 +95,12 @@ export default {
       title: '卡片背景圖',
       hint: '背景圖會顯示在卡片頂部區域（1860×738 像素），用於視覺化品牌識別',
     },
+    colorsSection: {
+      title: '卡片顏色',
+      hint: '設定卡片背景色與文字色（套用到整張卡片），可從預設色票選擇或輸入自訂 hex 色碼',
+      background: '背景色',
+      text: '文字色',
+    },
   },
   step4: {
     title: '卡片資訊',

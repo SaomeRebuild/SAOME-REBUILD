@@ -7,6 +7,8 @@
 
 | 日期 | 主題 | 路徑 | 影響 / 後續 |
 |------|------|------|------|
+| 2026-09-03 | **Color Picker L2 Implementation（master DEV LOG）**：Step 3 Card Colors 完成（20 preset + HSL drag + hex input + mobile bottom sheet + desktop popover），5 commits（`85dd857` Round 1 + 本次 Round 2-5），26 個檔案變動（shared + L2 元件 + i18n + store + workspace + preview pipeline + template card），363/363 vitest 全綠。Cross-link 1 份 feedback + Rule 023/013 對齊 | DEV/09-2026/0903-color-picker-implementation.md | 給未來 trace 整條 Color picker 鏈的人 single entry point；Option A popover sizing 是 desktop color / emoji picker 的 SOP |
+| 2026-09-03 | **Color Picker Popover Option A Sizing**：`flex-1 + maxHeight` 組合陷阱導致 desktop popover 永遠有 vertical scrollbar；改 Option A「popover 跟內容高度走」：outer no maxHeight、inner plain flex column、`min-w-0` defensive。Mobile bottom sheet 仍走 capped + scroll（獨立 layout 不混用）。Figma / Sketch / Photoshop 慣例一致 | runs/improvements/feedback/20260903-color-picker-popover-option-a.md | 待 Rule 013 RWD 或新開 Rule 029 Form Controls 補「Popover Sizing Pattern」章節（Option A vs Option B 二選一表 + `flex-1 + maxHeight` 陷阱 + `min-w-0` universal 紀律 + Mobile bottom sheet 獨立 layout） |
 | 2026-09-01 | **BackgroundUploader L2 Implementation（master DEV LOG）**：3 commits（`efeff08` i18n / `09cd641` variant 重構 / `ffcaf28` pipeline），14 個檔案變動（含 store + workspace + preview + i18n + constants + hook + cropStage），321/321 vitest 全綠。Cross-link 3 份 feedback + 3 個 Rule 028 章節更新 | DEV/08-2026/0901-background-uploader-implementation.md | 給未來 trace 整條 BackgroundUploader 鏈的人 single entry point；Variant Config Bundle Pattern 是未來新 variant（membershipCard / avatar 等）的 SOP 範本 |
 | 2026-09-01 | **BackgroundUploader MIN_STAGE_WIDTH Floor**：LogoUploader 時代 stage width floor 巧合等於 `CROP_WINDOW_SIZE=200`，background `CROP_WINDOW_WIDTH=800` 直接套用導致 376px mobile viewport 撐不下、white crop frame 跑出容器；改 `MIN_STAGE_WIDTH=200` 為新 invariant | runs/improvements/feedback/20260901-background-uploader-min-stage-width-floor.md | Rule 028 § 12.1 Stage Width Floor（NEW）；SKILL `saome-image-upload` § Stage Height Invariant 加 width floor 段；magic number 沉澱成 invariant |
 | 2026-09-01 | **MediaAssetUploader Variant Config Bundle Pattern**：`MEDIA_ASSET_CONFIG[variant]` 5 維 bundle（i18nNamespace / cropConfig / settingsField / cardImageType / store action）+ 新 variant 8-step SOP checklist + union-vs-intersection 設計理由 + optional map 而非 required map 節奏考量 | runs/improvements/feedback/20260901-media-asset-variant-config-pattern.md | Rule 028 § 16 Variant Config Bundle Pattern（NEW）；新 variant 加入的標準化路徑，避免 inline 5 個三元鏈 |
@@ -104,6 +106,15 @@
 | 2026-09-01 | Rule 028 § 16 Variant Config Bundle Pattern（NEW）：`MEDIA_ASSET_CONFIG[variant]` 5 維 bundle + 新 variant 8-step SOP；union 而非 intersection；optional map 而非 required map；禁止 inline 三元鏈 | ✅ done (this commit) |
 | 2026-09-01 | SKILL `saome-image-upload` § Stage Height Invariant 補 width floor 段（cross-ref Rule 028 § 12.1）；新增 § Variant Config Bundle（cross-ref Rule 028 § 16） | ✅ done (this commit) |
 | 2026-09-01 | BackgroundUploader（1860×738 crop,rectangular 800×317 mask）L2 實作（master DEV LOG + 3 feedback + 3 rule 補章 + INDEX + SKILL sync）| ✅ done (this commit) |
+| 2026-09-03 | Color Picker（Step 3 Card Colors）L2 實作（master DEV LOG + 1 feedback + INDEX + 5 commits chain），Round 2-5（shared logic + workspace integration + preview pipeline + Option A popover sizing + cross viewport alignment）| ✅ done (this commit) |
+| 2026-09-03 | 待 Rule 013 RWD 或新開 Rule 029 Form Controls 補「Popover Sizing Pattern」章節：Option A vs Option B 二選一表 + `flex-1 + maxHeight` 陷阱 + `min-w-0` universal 紀律 + Mobile bottom sheet 獨立 layout（feedback #20260903-color-picker-popover-option-a 引用待寫） | ⏳ pending |
+| 2026-09-03 | MediaAssetUploader 主組件 340 行 > Rule 000 § A.2 100 行門檻——下一輪拆 sub-component | ⏳ pending（既有，8/31 起算）|
+| 2026-09-03 | `MediaAssetUploader.tsx` L241 / L364 的 `useEffect` / `useCallback` deps 缺 `MAX_SCALE` / `MIN_SCALE` — 加進 deps 修 lint warning | ⏳ pending |
+| 2026-09-03 | `ThemeProvider.tsx` + `TenantToolbar.tsx` + `CardTypeSelector.tsx` + `useAuth.tsx` 的 `react(only-export-components)` lint warning — 把 context/function 拆到獨立檔以支援 Fast Refresh | ⏳ pending |
+| 2026-09-03 | `MediaAssetUploader.touch-drag.test.tsx` 多個 `eslint(no-sparse-arrays)` warning — sparse array 是 test 內部 mock，預期結構，改用 explicit `undefined` 或 disable comment | ⏳ pending |
+| 2026-09-03 | `scripts/verify-i18n-keys.mjs:37` unused parameter `ns` warning — 改名 `_ns` 或刪除 | ⏳ pending |
+| 2026-09-03 | `unwrapCardSettings` 從 `CardBuilderEditor.store.ts`（frontend）與 `cardService.ts`（backend）抽出到 `packages/shared/logic/cardSettings.ts` 仍未完成 — 同 8/31 pending | ⏳ pending |
+| 2026-09-03 | `updateTemplate` 補 non-ASCII round-trip test 仍未完成 — 同 8/31 pending | ⏳ pending |
 
 ## 使用方式
 

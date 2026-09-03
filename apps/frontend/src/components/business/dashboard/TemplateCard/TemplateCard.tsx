@@ -12,8 +12,8 @@ import { PhoneFrame } from '@/components/ui/phone/PhoneFrame';
 export function TemplateCard({
   id,
   name,
-  backgroundColor = '#1a1a1a',
-  textColor = '#ffffff',
+  backgroundColor = '#ffffff',
+  textColor = '#000000',
   cardType,
   issuerName,
   issuerLogo,

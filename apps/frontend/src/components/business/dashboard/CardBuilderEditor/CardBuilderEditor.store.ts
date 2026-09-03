@@ -5,6 +5,20 @@
 import { create } from 'zustand';
 import type { CardType, EditorStep } from './CardBuilderEditor.types';
 import type { BarcodeType } from '@saome/shared/schemas/card';
+import { normalizeHex } from '@saome/shared/logic/color';
+
+/**
+ * Wrap raw 6-char hex (PassCreator format) into '#FFFFFF' for store internal use.
+ * Defensive: handles legacy / malformed values by falling back.
+ *
+ * @param raw - Value loaded from DB (e.g. 'FFFFFF' from PassCreator, or null/undefined)
+ * @param fallback - Store fallback value (current state) if normalization fails
+ */
+function normalizeLoadedColor(raw: unknown, fallback: string): string {
+  if (typeof raw !== 'string') return fallback;
+  const normalized = normalizeHex(raw);
+  return normalized ? `#${normalized}` : fallback;
+}
 
 interface CardBuilderState {
   /** Template ID（從後端建立，null = 新建模式） */
@@ -142,8 +156,8 @@ const initialState = {
   iconImageVersion: 0,
   backgroundImage: '',
   backgroundImageVersion: 0,
-  backgroundColor: '#1a1a1a',
-  textColor: '#ffffff',
+  backgroundColor: '#ffffff',
+  textColor: '#000000',
   holderName: '',
 
   // ===== Step 2 Base =====
@@ -223,8 +237,8 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
         backgroundImageVersion: loadBg && loadBg !== state.backgroundImage
           ? Date.now()
           : state.backgroundImageVersion,
-        backgroundColor: (resolved?.backgroundColor ?? state.backgroundColor) as string,
-        textColor: (resolved?.textColor ?? state.textColor) as string,
+        backgroundColor: normalizeLoadedColor(resolved?.backgroundColor, state.backgroundColor),
+        textColor: normalizeLoadedColor(resolved?.textColor, state.textColor),
         holderName: (resolved?.holderName ?? state.holderName) as string,
         barcodeType: (resolved?.barcodeType ?? state.barcodeType) as BarcodeType,
         storeName: (resolved?.storeName ?? state.storeName) as string,

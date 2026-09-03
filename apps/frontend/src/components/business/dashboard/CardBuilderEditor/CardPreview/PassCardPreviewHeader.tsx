@@ -12,10 +12,12 @@ interface PassCardPreviewHeaderProps {
   cardType?: string | null;
   issuerLogo?: string;
   name?: string;
+  /** Optional text color override (hex with #). When provided, applied to card name + card type badge. */
+  textColor?: string;
   compact?: boolean;
 }
 
-export function PassCardPreviewHeader({ cardType, issuerLogo, name, compact }: PassCardPreviewHeaderProps) {
+export function PassCardPreviewHeader({ cardType, issuerLogo, name, textColor, compact }: PassCardPreviewHeaderProps) {
   const { t } = useTranslation('passCard');
 
   // Build proxy URL: avoids relying on Windows DNS resolving saome-assets.pages.dev
@@ -41,14 +43,25 @@ export function PassCardPreviewHeader({ cardType, issuerLogo, name, compact }: P
           ) : (
             <Building2 size={compact ? 16 : 24} className="text-neutral-400" aria-hidden="true" />
           )}
-          <span className={compact ? 'text-xs font-bold leading-tight text-neutral-950' : 'text-sm font-bold text-neutral-950'}>
+          {/* Card name — textColor 套用範圍 #1 (header 名稱) */}
+          <span
+            className={compact ? 'text-xs font-bold leading-tight' : 'text-sm font-bold'}
+            style={textColor ? { color: textColor } : undefined}
+          >
             {name || t('defaultIssuerName')}
           </span>
         </div>
       </div>
 
-      {/* Pass 類型標籤 */}
-      <span className={compact ? 'rounded-full bg-neutral-100 px-1.5 py-0.5 text-[9px] font-medium leading-none text-neutral-700' : 'rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-700'}>
+      {/* Pass 類型標籤 — textColor 套用範圍 #2 (card type 標籤)
+          背景透明（2026-09-03 修正）：避免灰色色塊切斷卡片色彩統一性 */}
+      <span
+        className={compact
+          ? 'rounded-full px-1.5 py-0.5 text-[9px] font-medium leading-none'
+          : 'rounded-full px-2 py-0.5 text-xs font-medium'
+        }
+        style={textColor ? { color: textColor } : undefined}
+      >
         {cardType ?? t('defaultCardType')}
       </span>
     </div>
