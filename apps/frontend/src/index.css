@@ -30,6 +30,12 @@
   --color-foreground: #F8FAFC;
   --color-card: #1B1B30;
   --color-card-foreground: #F8FAFC;
+  /* Popover — slightly elevated above card so it reads as a floating surface
+     (added 2026-09-04 with StampIconPicker popover token work). Mirrors
+     --color-surface-raised for now since the design system doesn't yet
+     distinguish popover from raised surfaces visually. */
+  --color-popover: #252542;
+  --color-popover-foreground: #F8FAFC;
   --color-muted: #27273B;
   --color-muted-foreground: #94A3B8;
   --color-border: #2D2D4A;
@@ -66,6 +72,10 @@
   --color-foreground: #0F172A;
   --color-card: #FFFFFF;
   --color-card-foreground: #0F172A;
+  /* Popover — matches --color-surface-raised in light mode for now.
+     See dark-mode block for context. */
+  --color-popover: #F8FAFC;
+  --color-popover-foreground: #0F172A;
   --color-muted: #F1F5F9;
   --color-muted-foreground: #64748B;
   --color-border: #E2E8F0;

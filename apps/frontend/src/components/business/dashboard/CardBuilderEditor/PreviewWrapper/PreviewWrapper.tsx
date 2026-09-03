@@ -24,6 +24,8 @@ export function PreviewWrapper({
   barcodeType,
   leftField,
   rightField,
+  stampGridRows,
+  stampIconId,
   showPhoneFrame = true,
 }: PreviewWrapperProps) {
   // PhoneFrame (L1) wraps the card. The icon image preview lives in the
@@ -44,6 +46,8 @@ export function PreviewWrapper({
             barcodeType={barcodeType}
             leftField={leftField}
             rightField={rightField}
+            stampGridRows={stampGridRows}
+            stampIconId={stampIconId}
             compact={true}
           />
         </div>
@@ -65,6 +69,8 @@ export function PreviewWrapper({
       barcodeType={barcodeType}
       leftField={leftField}
       rightField={rightField}
+      stampGridRows={stampGridRows}
+      stampIconId={stampIconId}
     />
   );
 }

@@ -10,6 +10,7 @@
 import type { PassCardPreviewProps } from '../CardPreview/PassCardPreview.types';
 import type { BarcodeType } from '@saome/shared/schemas/cardBuilder';
 import type { CardFieldKey } from '@saome/shared/constants/card-fields';
+import type { StampGridRows } from '@/components/business/stampCard/StampGridPreview';
 
 export interface PreviewWrapperProps {
   /** 卡片名稱 */
@@ -42,4 +43,16 @@ export interface PreviewWrapperProps {
    * 對應 templateSettings.rightField（DB 層）；傳遞給 PassCardPreview。
    */
   rightField?: CardFieldKey | null;
+  /**
+   * 集點印章：行數（1..4）。對應 templateSettings.stampGridRows。
+   * 與 cardType + stampIconId 共同決定 strip 是否 render StampGridPreview。
+   * Stamp grid feature 2026-09-04。
+   */
+  stampGridRows?: StampGridRows;
+  /**
+   * 集點印章：icon manifest id（例如 'bell'）。對應 templateSettings.stampIconId。
+   * 空字串或 undefined 時，strip 維持既有 CreditCard icon + name 渲染。
+   * Stamp grid feature 2026-09-04。
+   */
+  stampIconId?: string;
 }

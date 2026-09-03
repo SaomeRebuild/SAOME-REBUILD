@@ -45,6 +45,9 @@ export function CardBuilderEditorPreview({
     // Step 3 — 顯示欄位（對應 templateSettings.leftField / rightField）
     leftField,
     rightField,
+    // Step 3 — 集點印章（對應 templateSettings.stampGridRows / stampIconId）
+    stampGridRows,
+    stampIconId,
   } = useCardBuilderStore();
 
   // 組裝背景圖 URL（cache-busting via backgroundImageVersion）
@@ -78,6 +81,8 @@ export function CardBuilderEditorPreview({
             barcodeType={barcodeType}
             leftField={leftField}
             rightField={rightField}
+            stampGridRows={stampGridRows}
+            stampIconId={stampIconId}
             side={cardSide}
             showPhoneFrame={true}
           />

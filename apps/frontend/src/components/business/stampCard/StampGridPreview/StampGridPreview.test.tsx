@@ -5,6 +5,13 @@
  * real PNGs to verify the grid logic). The cellSize formula has its own
  * unit tests in StampGridPreview.utils.test.ts; here we focus on render
  * shape (cell count, stamped vs unstamped, fallback).
+ *
+ * 2026-09-04 stamp correction additions:
+ *   - Lock down cell-size differences across 1..4 rows so a future
+ *     formula tweak can't silently flatten the grid.
+ *   - Lock down cell-size response to narrow strip widths so the strip
+ *     measurement plumbing (PassCardPreviewStrip → StampGridPreview)
+ *     stays effective.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -118,9 +125,54 @@ describe('StampGridPreview rendering', () => {
 });
 
 describe('StampGridPreview cell size data attribute', () => {
-  it('exposes the computed cellSize for tests / Storybook', () => {
+  it('exposes the computed cellSize for tests / Storybook (rows=4, h=120 → 23)', () => {
     render(<StampGridPreview iconId="bell" rows={4} stripHeight={120} />);
-    // Plan §3: rows=4, h=120 → 23
     expect(screen.getByTestId('stamp-grid-preview').getAttribute('data-cell-size')).toBe('23');
+  });
+
+  // 2026-09-04 stamp correction: cell size MUST scale with stripWidth so
+  // narrow cards (mobile bottom sheet, side-by-side previews) don't crop
+  // icons. PassCardPreviewStrip now forwards its measured width; this test
+  // confirms the cell-size formula actually responds to that input.
+  it('cell size shrinks when stripWidth is narrow', () => {
+    const { rerender } = render(
+      <StampGridPreview iconId="bell" rows={2} stripHeight={120} stripWidth={320} />,
+    );
+    const wideCellSize = Number(
+      screen.getByTestId('stamp-grid-preview').getAttribute('data-cell-size'),
+    );
+
+    rerender(
+      <StampGridPreview iconId="bell" rows={2} stripHeight={120} stripWidth={160} />,
+    );
+    const narrowCellSize = Number(
+      screen.getByTestId('stamp-grid-preview').getAttribute('data-cell-size'),
+    );
+
+    expect(narrowCellSize).toBeLessThan(wideCellSize);
+  });
+
+  // 2026-09-04 stamp correction: cell size MUST change across 1..4 rows
+  // (height-bound math kicks in for 3+ rows). If a future refactor makes
+  // the cell size independent of rows, the grid will visually collapse.
+  it('cell size changes as rows increase (1 < 4)', () => {
+    const { rerender } = render(
+      <StampGridPreview iconId="bell" rows={1} stripHeight={120} stripWidth={320} />,
+    );
+    const rows1CellSize = Number(
+      screen.getByTestId('stamp-grid-preview').getAttribute('data-cell-size'),
+    );
+
+    rerender(
+      <StampGridPreview iconId="bell" rows={4} stripHeight={120} stripWidth={320} />,
+    );
+    const rows4CellSize = Number(
+      screen.getByTestId('stamp-grid-preview').getAttribute('data-cell-size'),
+    );
+
+    expect(rows4CellSize).toBeLessThan(rows1CellSize);
+    // Sanity: both values are positive and reasonable
+    expect(rows1CellSize).toBeGreaterThan(0);
+    expect(rows4CellSize).toBeGreaterThan(0);
   });
 });

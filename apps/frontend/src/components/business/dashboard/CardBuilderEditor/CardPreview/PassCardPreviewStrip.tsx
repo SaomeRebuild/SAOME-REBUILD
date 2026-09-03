@@ -29,12 +29,22 @@
  *
  * `rgba(0,0,0,0.35)` overlay 永遠渲染，確保白字在 strip 區域可讀
  * （圖片之上額外暗化，避免彩色圖片破壞文字對比）。
+ *
+ * 寬度測量（2026-09-04 stamp correction）：
+ * - Strip 內部的 stamp grid 在不同 container 寬度下應等比縮放；之前只
+ *   傳 `stripHeight`，grid 因此 fallback 到 `DEFAULT_STRIP_WIDTH = 256`
+ *   的 cell size，可能在窄卡片（如手機 bottom sheet）低估寬度並裁切 icon。
+ * - 改用 `useLayoutEffect` + `ResizeObserver` 取得實際的 strip container
+ *   寬度，並傳給 StampGridPreview；SSR / 量測失敗時 fallback 到
+ *   DEFAULT_STRIP_WIDTH 以維持既有行為。
  */
 import { CreditCard } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useLayoutEffect, useRef, useState } from 'react';
 import {
   StampGridPreview,
   STRIP_INNER_PADDING,
+  DEFAULT_STRIP_WIDTH,
   type StampGridRows,
 } from '@/components/business/stampCard/StampGridPreview';
 import type { CardType } from '@saome/shared/schemas/card';
@@ -85,14 +95,37 @@ export function PassCardPreviewStrip({
   const overlayColor = 'rgba(0, 0, 0, 0.35)';
   const stripHeight = compact ? 100 : 120;
 
+  // Measure the actual rendered strip width so the stamp grid can scale to
+  // the available space (instead of guessing 256px). ResizeObserver keeps the
+  // measurement live when the parent layout changes (mobile bottom sheet,
+  // sidebar collapse, etc.). If ResizeObserver isn't available (very old
+  // browsers) we fall back to the initial measurement or DEFAULT_STRIP_WIDTH.
+  const stripRef = useRef<HTMLDivElement | null>(null);
+  const [stripWidth, setStripWidth] = useState<number>(DEFAULT_STRIP_WIDTH);
+  useLayoutEffect(() => {
+    const node = stripRef.current;
+    if (!node) return;
+    const update = () => {
+      const measured = node.getBoundingClientRect().width;
+      if (measured > 0) setStripWidth(measured);
+    };
+    update();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(update);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <div
+      ref={stripRef}
       className={
         compact
           ? 'relative mx-0 mt-2 flex h-[100px] overflow-hidden text-center'
           : 'relative mx-0 mt-4 flex h-[120px] overflow-hidden text-center'
       }
       style={{ backgroundColor: STRIP_BACKGROUND_COLOR }}
+      data-strip-width={stripWidth}
     >
       {/* 背景圖（覆蓋 strip 整個區域；因父容器有 overflow-hidden,
           不會溢出到 header / body） */}
@@ -123,6 +156,7 @@ export function PassCardPreviewStrip({
             iconId={stampIconId!}
             rows={stampGridRows!}
             stripHeight={stripHeight}
+            stripWidth={stripWidth}
           />
         ) : (
           <>
