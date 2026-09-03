@@ -93,6 +93,17 @@ export interface TemplateSettings {
   rightField?: CardFieldKey;
   // Membership card extension
   isPaid?: boolean;
+  /**
+   * Step 3 — Stamp grid: number of rows in the stamp grid (1..4).
+   * Mirrors `shared/templateSettingsSchema.stampGridRows` (Rule 019 § 4.1 layer 3 of 4).
+   * Used on stamp_card and multipass card types.
+   */
+  stampGridRows?: 1 | 2 | 3 | 4;
+  /**
+   * Step 3 — Stamp grid: icon manifest id (e.g. 'bell', 'fire').
+   * Mirrors `shared/templateSettingsSchema.stampIconId` (Rule 019 § 4.1 layer 3 of 4).
+   */
+  stampIconId?: string;
   [key: string]: unknown;
 }
 

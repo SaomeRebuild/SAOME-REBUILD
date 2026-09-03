@@ -321,3 +321,91 @@ describe('CardBuilderEditor.store — backgroundColor / textColor round-trip (St
     expect(useCardBuilderStore.getState().textColor).toBe('#000000');
   });
 });
+
+describe('CardBuilderEditor.store — stamp grid state (Stamp Grid feature 2026-09-04)', () => {
+  beforeEach(() => {
+    useCardBuilderStore.setState({
+      cardId: null,
+      name: '',
+      cardType: null,
+      step: 1,
+      completedSteps: new Set(),
+      cardSide: 'front',
+      issuerName: '',
+      issuerLogo: '',
+      issuerLogoVersion: 0,
+      iconImage: '',
+      iconImageVersion: 0,
+      backgroundImage: '',
+      backgroundImageVersion: 0,
+      backgroundColor: '#ffffff',
+      textColor: '#000000',
+      holderName: '',
+      barcodeType: 'qr_code',
+      storeName: '',
+      passValidDays: null,
+      expiryDate: '',
+      currency: 'TWD',
+      leftField: null,
+      rightField: null,
+      isPaid: false,
+      stampGridRows: 1,
+      stampIconId: '',
+    });
+  });
+
+  it('initial state: stampGridRows=1 (smallest grid), stampIconId="" (no icon)', () => {
+    const s = useCardBuilderStore.getState();
+    expect(s.stampGridRows).toBe(1);
+    expect(s.stampIconId).toBe('');
+  });
+
+  it('setStampGridRows updates rows (1, 2, 3, 4)', () => {
+    const { setStampGridRows } = useCardBuilderStore.getState();
+    setStampGridRows(2);
+    expect(useCardBuilderStore.getState().stampGridRows).toBe(2);
+    setStampGridRows(3);
+    expect(useCardBuilderStore.getState().stampGridRows).toBe(3);
+    setStampGridRows(4);
+    expect(useCardBuilderStore.getState().stampGridRows).toBe(4);
+    setStampGridRows(1);
+    expect(useCardBuilderStore.getState().stampGridRows).toBe(1);
+  });
+
+  it('setStampIconId updates icon id', () => {
+    useCardBuilderStore.getState().setStampIconId('bell');
+    expect(useCardBuilderStore.getState().stampIconId).toBe('bell');
+    useCardBuilderStore.getState().setStampIconId('fire');
+    expect(useCardBuilderStore.getState().stampIconId).toBe('fire');
+    useCardBuilderStore.getState().setStampIconId('');
+    expect(useCardBuilderStore.getState().stampIconId).toBe('');
+  });
+
+  it('loadSettings hydrates stampGridRows + stampIconId', () => {
+    useCardBuilderStore.getState().loadSettings({
+      stampGridRows: 3,
+      stampIconId: 'fire',
+    });
+    const s = useCardBuilderStore.getState();
+    expect(s.stampGridRows).toBe(3);
+    expect(s.stampIconId).toBe('fire');
+  });
+
+  it('loadSettings preserves current values when fields are absent', () => {
+    useCardBuilderStore.setState({ stampGridRows: 2, stampIconId: 'love' });
+    useCardBuilderStore.getState().loadSettings({ storeName: 'X' });
+    const s = useCardBuilderStore.getState();
+    expect(s.stampGridRows).toBe(2);
+    expect(s.stampIconId).toBe('love');
+    expect(s.storeName).toBe('X');
+  });
+
+  it('reset() returns stamp grid state to defaults', () => {
+    useCardBuilderStore.getState().setStampGridRows(4);
+    useCardBuilderStore.getState().setStampIconId('sun');
+    useCardBuilderStore.getState().reset();
+    const s = useCardBuilderStore.getState();
+    expect(s.stampGridRows).toBe(1);
+    expect(s.stampIconId).toBe('');
+  });
+});

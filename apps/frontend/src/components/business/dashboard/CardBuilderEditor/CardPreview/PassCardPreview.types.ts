@@ -18,6 +18,7 @@ import type { HTMLAttributes } from 'react';
 import type { CardType } from '@/components/business/dashboard/CardBuilderEditor/CardBuilderEditor.types';
 import type { BarcodeType } from '@saome/shared/schemas/cardBuilder';
 import type { CardFieldKey } from '@saome/shared/constants/card-fields';
+import type { StampGridRows } from '@/components/business/stampCard/StampGridPreview';
 
 /** 卡片預覽 Props */
 export interface PassCardPreviewProps extends HTMLAttributes<HTMLDivElement> {
@@ -53,4 +54,16 @@ export interface PassCardPreviewProps extends HTMLAttributes<HTMLDivElement> {
    * 對應 PassCreator secondaryFields[1]：label = fieldPreview.{key}.label, value = fieldPreview.{key}.value。
    */
   rightField?: CardFieldKey | null;
+  /**
+   * 集點印章：行數（1..4）。對應 templateSettings.stampGridRows。
+   * 與 cardType + stampIconId 共同決定 strip 是否 render StampGridPreview。
+   * Stamp grid feature 2026-09-04。
+   */
+  stampGridRows?: StampGridRows;
+  /**
+   * 集點印章：icon manifest id（例如 'bell'）。對應 templateSettings.stampIconId。
+   * 空字串或 undefined 時，strip 維持既有 CreditCard icon + name 渲染。
+   * Stamp grid feature 2026-09-04。
+   */
+  stampIconId?: string;
 }

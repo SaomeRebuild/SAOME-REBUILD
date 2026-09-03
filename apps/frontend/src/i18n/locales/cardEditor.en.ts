@@ -117,6 +117,30 @@ export default {
         memberName: 'Member Name',
       },
     },
+    // ===== Stamp grid — added 2026-09-04 =====
+    // Conditional section: shown only when cardType ∈ {stamp_card, multipass}.
+    stampSection: {
+      title: 'Stamp & Grid Size',
+      hint: 'Choose a stamp icon and the number of grid cells. This section is only visible when "Stamp Card" or "Multipass" is selected in Step 1.',
+      gridCount: {
+        label: 'Grid Rows',
+        rows: '{{rows}} rows',
+        cells: '{{count}} cells',
+      },
+      iconPicker: {
+        label: 'Stamp Icon',
+        trigger: 'Pick a stamp',
+        previewAlt: 'Stamp Preview',
+        closeAria: 'Close stamp picker',
+      },
+      icons: {
+        bell: 'Bell',
+        fire: 'Fire',
+        lightbulb: 'Lightbulb',
+        love: 'Heart',
+        sun: 'Sun',
+      },
+    },
   },
   step4: {
     title: 'Card Info',

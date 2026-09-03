@@ -34,6 +34,8 @@ export function PassCardPreview({
   barcodeType,
   leftField,
   rightField,
+  stampGridRows,
+  stampIconId,
   className,
   compact = false,
   ...props
@@ -81,6 +83,9 @@ export function PassCardPreview({
               // 不直接用 card textColor，否則 picker 預設 #000000 會讓 strip 變成黑底黑字。
               textColor="#ffffff"
               compact={compact}
+              cardType={cardType}
+              stampIconId={stampIconId}
+              stampGridRows={stampGridRows}
             />
 
             {/* Body */}

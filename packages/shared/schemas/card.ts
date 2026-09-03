@@ -110,6 +110,15 @@ export const templateSettingsSchema = z.object({
   rightField: cardFieldKeySchema.optional(),
   // Membership card extension
   isPaid: z.boolean().optional(),
+  // ===== Step 3 — Stamp grid (集點印章) =====
+  // Stamp grid feature (2026-09-04): rendered on `stamp_card` and `multipass`
+  // card types only. The grid is rows × 5 columns; `stampGridRows` constrains
+  // rows to 1..4. `stampIconId` references the icon manifest's id field
+  // (see apps/frontend/src/assets/icons/stamps/manifest.ts).
+  stampGridRows: z
+    .union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)])
+    .optional(),
+  stampIconId: z.string().optional(),
 });
 
 export type TemplateSettings = z.infer<typeof templateSettingsSchema>;

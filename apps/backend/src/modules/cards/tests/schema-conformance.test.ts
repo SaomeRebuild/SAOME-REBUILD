@@ -53,4 +53,20 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
   it('local schema has the rightField field (4-layer sync — Layer 2)', () => {
     expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('rightField');
   });
+
+  it('shared schema has the stampGridRows field (Rule 019 § 4.1 — Step 3 stamp grid 2026-09-04)', () => {
+    expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('stampGridRows');
+  });
+
+  it('shared schema has the stampIconId field (Rule 019 § 4.1 — Step 3 stamp grid 2026-09-04)', () => {
+    expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('stampIconId');
+  });
+
+  it('local schema has the stampGridRows field (4-layer sync — Layer 2)', () => {
+    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('stampGridRows');
+  });
+
+  it('local schema has the stampIconId field (4-layer sync — Layer 2)', () => {
+    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('stampIconId');
+  });
 });

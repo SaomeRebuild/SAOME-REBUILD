@@ -81,6 +81,25 @@ interface CardBuilderState {
   /** 會員卡是否收費（僅 membership_card 使用） */
   isPaid: boolean;
 
+  // ===== Step 3 — Stamp Grid (集點印章) =====
+  /**
+   * Number of rows in the stamp grid (1..4). Persisted to
+   * `template_settings.stampGridRows` via the JSONB merge semantics.
+   * Default `1` = smallest grid (1×5 cells).
+   *
+   * Only used on `stamp_card` and `multipass` card types; the Step3StampGrid
+   * editor section is hidden for other types (see CardBuilderEditorWorkspace).
+   */
+  stampGridRows: 1 | 2 | 3 | 4;
+  /**
+   * Stamp icon id (e.g. `'bell'`, `'fire'`) referencing the manifest at
+   * `apps/frontend/src/assets/icons/stamps/manifest.ts`. Persisted to
+   * `template_settings.stampIconId`. Empty string means "no icon selected"
+   * — the preview falls back to a placeholder cell, not the existing
+   * CreditCard icon + name.
+   */
+  stampIconId: string;
+
   // Actions
   setCardId: (cardId: string | null) => void;
   setName: (name: string) => void;
@@ -109,6 +128,15 @@ interface CardBuilderState {
   /** Set the right-slot display field. See `setLeftField` for behavior. */
   setRightField: (field: CardFieldKey | null) => void;
   setIsPaid: (isPaid: boolean) => void;
+  /**
+   * Set the number of stamp grid rows (1..4). Out-of-range values are
+   * rejected by the shared zod schema on save, but the setter accepts any
+   * number so the editor UI can use the underlying <select> without
+   * round-tripping through zod on every keystroke.
+   */
+  setStampGridRows: (rows: 1 | 2 | 3 | 4) => void;
+  /** Set the stamp icon id (manifest id). Empty string = no icon. */
+  setStampIconId: (iconId: string) => void;
   /**
    * 從既有 template 的 settings 載入 store.
    *
@@ -192,10 +220,23 @@ const initialState = {
 
   // ===== Membership Card Extension =====
   isPaid: false,
+
+  // ===== Step 3 — Stamp Grid =====
+  stampGridRows: 1 as 1 | 2 | 3 | 4,
+  stampIconId: '',
 };
 
+/**
+ * Type-annotated initial state. The bare object literal widens `stampGridRows: 1`
+ * to `number`; this explicit const preserves the union `1 | 2 | 3 | 4`.
+ */
+const typedInitialState: Pick<
+  CardBuilderState,
+  keyof typeof initialState
+> = initialState;
+
 export const useCardBuilderStore = create<CardBuilderState>((set) => ({
-  ...initialState,
+  ...typedInitialState,
 
   setCardId: (cardId) => set({ cardId }),
   setName: (name) => set({ name }),
@@ -220,6 +261,8 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
   setLeftField: (leftField) => set({ leftField }),
   setRightField: (rightField) => set({ rightField }),
   setIsPaid: (isPaid) => set({ isPaid }),
+  setStampGridRows: (stampGridRows) => set({ stampGridRows }),
+  setStampIconId: (stampIconId) => set({ stampIconId }),
 
   loadSettings: (settings) => {
     // Bug #8.5 defensive: settings may be object / JSON string / array-of-partials
@@ -273,9 +316,11 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
         leftField: (resolved?.leftField ?? state.leftField) as CardFieldKey | null,
         rightField: (resolved?.rightField ?? state.rightField) as CardFieldKey | null,
         isPaid: (resolved?.isPaid ?? state.isPaid) as boolean,
+        stampGridRows: (resolved?.stampGridRows ?? state.stampGridRows) as 1 | 2 | 3 | 4,
+        stampIconId: (resolved?.stampIconId ?? state.stampIconId) as string,
       };
     });
   },
 
-  reset: () => set({ ...initialState, isPaid: initialState.isPaid, issuerLogoVersion: 0, iconImageVersion: 0, backgroundImageVersion: 0 }),
+  reset: () => set({ ...typedInitialState, isPaid: typedInitialState.isPaid, issuerLogoVersion: 0, iconImageVersion: 0, backgroundImageVersion: 0 }),
 }));

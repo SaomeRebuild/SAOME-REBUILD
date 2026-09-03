@@ -117,6 +117,30 @@ export default {
         memberName: '會員姓名',
       },
     },
+    // ===== Stamp grid (集點印章) — added 2026-09-04 =====
+    // Conditional section: shown only when cardType ∈ {stamp_card, multipass}.
+    stampSection: {
+      title: '印章與格數',
+      hint: '選擇印章圖示與集點格數。本區塊僅在 Step 1 選擇「集點卡」或「多通卡」時顯示。',
+      gridCount: {
+        label: '集點格數',
+        rows: '{{rows}} 列',
+        cells: '{{count}} 格',
+      },
+      iconPicker: {
+        label: '印章圖示',
+        trigger: '選擇印章',
+        previewAlt: '印章預覽',
+        closeAria: '關閉印章選擇器',
+      },
+      icons: {
+        bell: '鈴鐺',
+        fire: '火焰',
+        lightbulb: '燈泡',
+        love: '愛心',
+        sun: '太陽',
+      },
+    },
   },
   step4: {
     title: '卡片資訊',

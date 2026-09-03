@@ -70,6 +70,13 @@ export const templateSettingsSchema = z.object({
   rightField: sharedCardFieldKeySchema.optional(),
   // Membership card extension
   isPaid: z.boolean().optional(),
+  // ===== Step 3 — Stamp grid (Rule 019 § 4.1, layer 2 of 4) =====
+  // Mirrors `shared/templateSettingsSchema.stampGridRows / stampIconId`.
+  // Stamp grid feature 2026-09-04: stamp_card + multipass only.
+  stampGridRows: z
+    .union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)])
+    .optional(),
+  stampIconId: z.string().optional(),
 });
 
 export type TemplateSettings = z.infer<typeof templateSettingsSchema>;

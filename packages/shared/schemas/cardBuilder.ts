@@ -27,9 +27,30 @@ export const baseCardSettingsSchema = z.object({
 // ===== Per-card Extensions（等待商業邏輯確認後填入）=====
 export const cardTypeExtensions = {
   // TODO: 根據商業邏輯填入每個卡種的專屬欄位
-  stamp_card: z.object({}),
+  stamp_card: z.object({
+    /**
+     * Stamp grid — rows × 5 columns. Mirrors
+     * `shared/templateSettingsSchema.stampGridRows` (Rule 019 § 4.1 layer 2).
+     * Stamp grid feature 2026-09-04.
+     */
+    stampGridRows: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).optional(),
+    /**
+     * Stamp icon manifest id. Mirrors `shared/templateSettingsSchema.stampIconId`.
+     */
+    stampIconId: z.string().optional(),
+  }),
   gift_card: z.object({}),
   membership_card: z.object({}),
+  /**
+   * Multi-pass card shares the stamp grid extension with stamp_card (both
+   * render the same `<StampGridPreview>` in the preview strip). Mirrors
+   * `shared/templateSettingsSchema.stampGridRows / stampIconId`.
+   * Stamp grid feature 2026-09-04.
+   */
+  multipass: z.object({
+    stampGridRows: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).optional(),
+    stampIconId: z.string().optional(),
+  }),
 } as const;
 
 export type CardType = keyof typeof cardTypeExtensions;

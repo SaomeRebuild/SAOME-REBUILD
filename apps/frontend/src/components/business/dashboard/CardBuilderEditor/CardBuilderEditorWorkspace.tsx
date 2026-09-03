@@ -12,6 +12,7 @@ import { Step2CardSettings } from './Step2CardSettings';
 import { MediaAssetUploader } from './MediaAssetUploader';
 import { Step3CardColors } from './Step3CardColors';
 import { Step3CardFields } from './Step3CardFields';
+import { Step3StampGrid } from './Step3StampGrid';
 import { useCardBuilderStore } from './CardBuilderEditor.store';
 import { cardService } from '@/services/cardService';
 
@@ -102,10 +103,11 @@ export function CardBuilderEditorWorkspace({
       // backgroundColor / textColor are stored with '#' prefix internally;
       // PassCreator contract is 6-char uppercase hex WITHOUT '#' (strip here).
       // Step 3 fields selector (plan 2026-09-04): also persist leftField / rightField.
+      // Stamp grid feature (2026-09-04): also persist stampGridRows / stampIconId.
       if (step === 3 && cardId && onSave) {
         try {
           const { issuerLogo, iconImage, backgroundImage, backgroundColor, textColor } = useCardBuilderStore.getState();
-          const { leftField, rightField } = useCardBuilderStore.getState();
+          const { leftField, rightField, stampGridRows, stampIconId } = useCardBuilderStore.getState();
           await onSave(cardId, {
             issuerLogo: issuerLogo || undefined,
             iconImage: iconImage || undefined,
@@ -114,8 +116,10 @@ export function CardBuilderEditorWorkspace({
             textColor: textColor.replace('#', '').toUpperCase(),
             leftField: leftField ?? undefined,
             rightField: rightField ?? undefined,
+            stampGridRows: cardType === 'stamp_card' || cardType === 'multipass' ? stampGridRows : undefined,
+            stampIconId: cardType === 'stamp_card' || cardType === 'multipass' ? (stampIconId || undefined) : undefined,
           });
-          console.log('[handleNext] Step 3 image keys + colors + fields saved', { issuerLogo, iconImage, backgroundImage, backgroundColor, textColor, leftField, rightField });
+          console.log('[handleNext] Step 3 image keys + colors + fields + stamp grid saved', { issuerLogo, iconImage, backgroundImage, backgroundColor, textColor, leftField, rightField, stampGridRows, stampIconId });
         } catch (err) {
           // Don't block step transition — let the user proceed and retry later.
           console.error('[handleNext] Step 3 onSave failed:', err);
@@ -304,6 +308,14 @@ export function CardBuilderEditorWorkspace({
                 並於 handleNext step 3 區段寫進 template_settings
               - 行為副作用（PassCardPreview 渲染等）留待後續計畫 */}
           <Step3CardFields />
+
+          {/* Stamp grid 區塊（Stamp Grid feature 2026-09-04）
+              - 條件渲染：僅在 cardType ∈ {stamp_card, multipass} 時顯示
+              - 提供集點格數（1×5 / 2×5 / 3×5 / 4×5）+ 印章圖示選擇
+              - 寫到 store.stampGridRows / store.stampIconId,
+                並於 handleNext step 3 區段寫進 template_settings
+              - PassCardPreviewStrip 在 isStampCard 分支 render StampGridPreview */}
+          {(cardType === 'stamp_card' || cardType === 'multipass') && <Step3StampGrid />}
 
           {/* 上一步 / 下一步按鈕 */}
           <div className="flex items-center justify-between pt-2">

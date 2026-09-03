@@ -2,9 +2,18 @@
  * PassCardPreviewStrip — 卡片正面 Strip / Hero 區塊
  * Apple Pass 風格：固定深灰黑色背景 + icon placeholder + 名稱
  *
- * The strip is a static placeholder (CreditCard icon) for the card name
- * region. The actual icon image preview lives in MediaAssetUploader/Preview
- * (128×128 panel in the editor workspace), not inside the card template.
+ * Two render modes (Plan 2 § 4):
+ *   1. Default: CreditCard icon + card name (Apple Wallet hero placeholder).
+ *   2. Stamp card: <StampGridPreview> inside a transparent padded container
+ *      (rows × 5 cols, first 3 cells stamped). Replaces the icon + name.
+ *
+ * Mode is selected by `cardType` + `stampIconId` + `stampGridRows`:
+ *   - `cardType === 'stamp_card' | 'multipass'`
+ *   - `stampIconId` is a non-empty string
+ *   - `stampGridRows` is one of 1..4
+ *
+ * The strip's outer chrome (background color / image / overlay) is shared
+ * across both modes — only the inner content layer branches.
  *
  * BACKGROUND IMAGE: This component owns the card background image.
  * The container has `position: relative` + `overflow-hidden` so the
@@ -23,6 +32,12 @@
  */
 import { CreditCard } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import {
+  StampGridPreview,
+  STRIP_INNER_PADDING,
+  type StampGridRows,
+} from '@/components/business/stampCard/StampGridPreview';
+import type { CardType } from '@saome/shared/schemas/card';
 
 interface PassCardPreviewStripProps {
   name?: string;
@@ -32,28 +47,50 @@ interface PassCardPreviewStripProps {
   textColor?: string;
   /** 緊湊模式 */
   compact?: boolean;
+  /**
+   * Card type. When set to `stamp_card` or `multipass` AND `stampIconId` is
+   * non-empty AND `stampGridRows` is defined, the strip renders the stamp
+   * grid instead of the default CreditCard icon + name.
+   */
+  cardType?: CardType | null;
+  /** Stamp icon id (manifest id, e.g. `'bell'`). Empty = no stamp grid. */
+  stampIconId?: string;
+  /** Number of stamp grid rows (1..4). Undefined = no stamp grid. */
+  stampGridRows?: StampGridRows;
 }
 
 /** Strip 固定背景色 — 永遠深灰黑色，不跟 color picker 改變 */
 const STRIP_BACKGROUND_COLOR = '#1f2937';
+
+/** Card types that render the stamp grid instead of the default hero. */
+function isStampCardType(cardType: CardType | null | undefined): boolean {
+  return cardType === 'stamp_card' || cardType === 'multipass';
+}
 
 export function PassCardPreviewStrip({
   name,
   backgroundImage,
   textColor = '#ffffff',
   compact,
+  cardType,
+  stampIconId,
+  stampGridRows,
 }: PassCardPreviewStripProps) {
   const { t } = useTranslation('passCard');
 
+  const showStampGrid =
+    isStampCardType(cardType) && Boolean(stampIconId) && Boolean(stampGridRows);
+
   // Dark semi-transparent overlay ensures text readability over any card background.
   const overlayColor = 'rgba(0, 0, 0, 0.35)';
+  const stripHeight = compact ? 100 : 120;
 
   return (
     <div
       className={
         compact
-          ? 'relative mx-0 mt-2 flex h-[100px] flex-col items-center justify-center gap-1 overflow-hidden text-center'
-          : 'relative mx-0 mt-4 flex h-[120px] flex-col items-center justify-center gap-2 overflow-hidden text-center'
+          ? 'relative mx-0 mt-2 flex h-[100px] overflow-hidden text-center'
+          : 'relative mx-0 mt-4 flex h-[120px] overflow-hidden text-center'
       }
       style={{ backgroundColor: STRIP_BACKGROUND_COLOR }}
     >
@@ -75,20 +112,41 @@ export function PassCardPreviewStrip({
         aria-hidden="true"
       />
 
-      {/* 卡片圖示 placeholder（icon 預覽在 MediaAssetUploader 面板，不在卡片內） */}
-      <CreditCard
-        className={compact ? 'relative h-6 w-6' : 'relative h-12 w-12'}
-        style={{ color: textColor }}
-        aria-hidden="true"
-      />
-
-      {/* 卡片名稱 */}
-      <span
-        className={compact ? 'relative text-xs font-semibold leading-tight' : 'relative text-lg font-semibold'}
-        style={{ color: textColor }}
+      {/* 內層內容：透明、置中、padding 8px — 兩種 render mode 共用 */}
+      <div
+        className="relative flex h-full w-full items-center justify-center"
+        style={{ padding: STRIP_INNER_PADDING }}
+        data-testid="strip-content"
       >
-        {name || t('defaultName')}
-      </span>
+        {showStampGrid ? (
+          <StampGridPreview
+            iconId={stampIconId!}
+            rows={stampGridRows!}
+            stripHeight={stripHeight}
+          />
+        ) : (
+          <>
+            {/* 卡片圖示 placeholder（icon 預覽在 MediaAssetUploader 面板，不在卡片內） */}
+            <CreditCard
+              className={compact ? 'relative h-6 w-6' : 'relative h-12 w-12'}
+              style={{ color: textColor }}
+              aria-hidden="true"
+            />
+
+            {/* 卡片名稱 */}
+            <span
+              className={
+                compact
+                  ? 'relative ml-2 text-xs font-semibold leading-tight'
+                  : 'relative ml-3 text-lg font-semibold'
+              }
+              style={{ color: textColor }}
+            >
+              {name || t('defaultName')}
+            </span>
+          </>
+        )}
+      </div>
     </div>
   );
 }
