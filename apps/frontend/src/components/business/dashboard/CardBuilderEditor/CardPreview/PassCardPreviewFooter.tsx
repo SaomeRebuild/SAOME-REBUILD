@@ -8,18 +8,23 @@ import type { BarcodeType } from '@saome/shared/schemas/cardBuilder';
 interface PassCardPreviewFooterProps {
   holderName?: string;
   barcodeType?: BarcodeType;
+  /** 卡片背景色（套用到 footer 背景） */
+  backgroundColor?: string;
   compact?: boolean;
 }
 
 /** 示範用條碼值 */
 const DEMO_BARCODE_VALUE = '4938591027384';
 
-export function PassCardPreviewFooter({ holderName, barcodeType, compact }: PassCardPreviewFooterProps) {
+export function PassCardPreviewFooter({ holderName, barcodeType, backgroundColor, compact }: PassCardPreviewFooterProps) {
   const imgSrc = barcodeType ? BARCODE_IMAGES[barcodeType] : BARCODE_IMAGES.qr_code;
   const isPdf417 = barcodeType === 'pdf_417';
 
   return (
-    <div className={compact ? 'flex flex-1 flex-col items-center justify-end gap-0 self-stretch border-t border-neutral-200 bg-neutral-50 p-2 pt-1' : 'flex flex-col items-center justify-center gap-3 border-t border-neutral-200 bg-neutral-50 p-4'}>
+    <div
+      className="flex w-full flex-col items-center justify-center self-stretch border-t border-neutral-200 p-4"
+      style={backgroundColor ? { backgroundColor } : undefined}
+    >
       {/* Barcode image */}
       <img
         src={imgSrc}

@@ -31,8 +31,8 @@ describe('CardBuilderEditor.store — loadSettings cache-busting fix', () => {
       iconImageVersion: 0,
       backgroundImage: '',
       backgroundImageVersion: 0,
-      backgroundColor: '#1a1a1a',
-      textColor: '#ffffff',
+      backgroundColor: '#ffffff',
+      textColor: '#000000',
       holderName: '',
       barcodeType: 'qr_code',
       storeName: '',
@@ -137,8 +137,8 @@ describe('loadSettings — defensive parsing (Bug #8.5 / 2026-08-31)', () => {
       iconImageVersion: 0,
       backgroundImage: '',
       backgroundImageVersion: 0,
-      backgroundColor: '#1a1a1a',
-      textColor: '#ffffff',
+      backgroundColor: '#ffffff',
+      textColor: '#000000',
       holderName: '',
       barcodeType: 'qr_code',
       storeName: '',
@@ -215,7 +215,7 @@ describe('CardBuilderEditor.store — backgroundImage state (BackgroundUploader 
       issuerName: '', issuerLogo: '', issuerLogoVersion: 0,
       iconImage: '', iconImageVersion: 0,
       backgroundImage: '', backgroundImageVersion: 0,
-      backgroundColor: '#1a1a1a', textColor: '#ffffff', holderName: '',
+      backgroundColor: '#ffffff', textColor: '#000000', holderName: '',
       barcodeType: 'qr_code', storeName: '', passValidDays: null,
       expiryDate: '', currency: 'TWD', isPaid: false,
     });
@@ -270,5 +270,54 @@ describe('CardBuilderEditor.store — backgroundImage state (BackgroundUploader 
     expect(state.backgroundImageVersion).toBeGreaterThan(0);
     expect(state.issuerLogoVersion).toBeGreaterThan(0);
     expect(state.iconImageVersion).toBeGreaterThan(0);
+  });
+});
+
+describe('CardBuilderEditor.store — backgroundColor / textColor round-trip (Step 3 Color Picker 2026-09-03)', () => {
+  beforeEach(() => {
+    useCardBuilderStore.setState({
+      cardId: null, name: '', cardType: null, step: 1,
+      completedSteps: new Set(), cardSide: 'front',
+      issuerName: '', issuerLogo: '', issuerLogoVersion: 0,
+      iconImage: '', iconImageVersion: 0,
+      backgroundImage: '', backgroundImageVersion: 0,
+      backgroundColor: '#ffffff', textColor: '#000000', holderName: '',
+      barcodeType: 'qr_code', storeName: '', passValidDays: null,
+      expiryDate: '', currency: 'TWD', isPaid: false,
+    });
+  });
+
+  it('normalizes raw PassCreator hex (6-char uppercase, no #) into store internal format with #', () => {
+    // DB stores 'F97316' (PassCreator format). Store must wrap to '#F97316'.
+    useCardBuilderStore.getState().loadSettings({ backgroundColor: 'F97316' });
+    expect(useCardBuilderStore.getState().backgroundColor).toBe('#F97316');
+  });
+
+  it('uppercases + wraps textColor from raw PassCreator format', () => {
+    useCardBuilderStore.getState().loadSettings({ textColor: 'ffffff' });
+    expect(useCardBuilderStore.getState().textColor).toBe('#FFFFFF');
+  });
+
+  it('falls back to current state value when loaded color is invalid', () => {
+    useCardBuilderStore.setState({ backgroundColor: '#ABCDEF' });
+    useCardBuilderStore.getState().loadSettings({ backgroundColor: 'not-a-color' });
+    // Invalid input → fallback to previous state value
+    expect(useCardBuilderStore.getState().backgroundColor).toBe('#ABCDEF');
+  });
+
+  it('handles both colors together in a single loadSettings call', () => {
+    useCardBuilderStore.getState().loadSettings({
+      backgroundColor: '22C55E',
+      textColor: '0F172A',
+    });
+    expect(useCardBuilderStore.getState().backgroundColor).toBe('#22C55E');
+    expect(useCardBuilderStore.getState().textColor).toBe('#0F172A');
+  });
+
+  it('falls back to default when raw is null/undefined (no existing state)', () => {
+    // Already cleared by beforeEach — defaults are #ffffff / #000000
+    useCardBuilderStore.getState().loadSettings({});
+    expect(useCardBuilderStore.getState().backgroundColor).toBe('#ffffff');
+    expect(useCardBuilderStore.getState().textColor).toBe('#000000');
   });
 });

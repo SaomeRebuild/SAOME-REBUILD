@@ -33,6 +33,8 @@ import iconUploadZhTW from './locales/iconUpload.zh-TW';
 import iconUploadEn from './locales/iconUpload.en';
 import backgroundUploadZhTW from './locales/backgroundUpload.zh-TW';
 import backgroundUploadEn from './locales/backgroundUpload.en';
+import colorPickerZhTW from './locales/colorPicker.zh-TW';
+import colorPickerEn from './locales/colorPicker.en';
 
 const resources = {
   'zh-TW': {
@@ -52,6 +54,7 @@ const resources = {
     logoUpload: logoUploadZhTW,
     iconUpload: iconUploadZhTW,
     backgroundUpload: backgroundUploadZhTW,
+    colorPicker: colorPickerZhTW,
   },
   en: {
     auth: authEn,
@@ -70,6 +73,7 @@ const resources = {
     logoUpload: logoUploadEn,
     iconUpload: iconUploadEn,
     backgroundUpload: backgroundUploadEn,
+    colorPicker: colorPickerEn,
   },
 };
 

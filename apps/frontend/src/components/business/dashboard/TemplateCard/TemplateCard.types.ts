@@ -5,9 +5,9 @@ export interface TemplateCardProps {
   id: string;
   /** Optional display name for the template. */
   name?: string;
-  /** Card background color. Defaults to #1a1a1a. */
+  /** Card background color. Defaults to #FFFFFF. */
   backgroundColor?: string;
-  /** Card text color. Defaults to #ffffff. */
+  /** Card text color. Defaults to #000000. */
   textColor?: string;
   /** Card type (determines body layout). */
   cardType?: CardType;

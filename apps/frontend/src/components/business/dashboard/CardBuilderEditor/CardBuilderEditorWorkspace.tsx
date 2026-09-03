@@ -10,6 +10,7 @@ import type { CardType, EditorStep } from './CardBuilderEditor.types';
 import { CardTypeSelector } from './CardTypeSelector';
 import { Step2CardSettings } from './Step2CardSettings';
 import { MediaAssetUploader } from './MediaAssetUploader';
+import { Step3CardColors } from './Step3CardColors';
 import { useCardBuilderStore } from './CardBuilderEditor.store';
 import { cardService } from '@/services/cardService';
 
@@ -94,18 +95,22 @@ export function CardBuilderEditorWorkspace({
           console.error('[handleNext] onSave failed:', err);
         }
       }
-      // Step 3: persist logo + icon + background R2 keys (Phase 8 of IconUploader plan 2026-08-31 + BackgroundUploader plan 2026-09-01).
+      // Step 3: persist logo + icon + background R2 keys + colors (Phase 8 of IconUploader plan 2026-08-31 + BackgroundUploader plan 2026-09-01 + Step 3 color picker 2026-09-03).
       // The MediaAssetUploader has already updated the store on upload, so we
       // just forward the current store values to onSave().
+      // backgroundColor / textColor are stored with '#' prefix internally;
+      // PassCreator contract is 6-char uppercase hex WITHOUT '#' (strip here).
       if (step === 3 && cardId && onSave) {
         try {
-          const { issuerLogo, iconImage, backgroundImage } = useCardBuilderStore.getState();
+          const { issuerLogo, iconImage, backgroundImage, backgroundColor, textColor } = useCardBuilderStore.getState();
           await onSave(cardId, {
             issuerLogo: issuerLogo || undefined,
             iconImage: iconImage || undefined,
             backgroundImage: backgroundImage || undefined,
+            backgroundColor: backgroundColor.replace('#', '').toUpperCase(),
+            textColor: textColor.replace('#', '').toUpperCase(),
           });
-          console.log('[handleNext] Step 3 image keys saved', { issuerLogo, iconImage, backgroundImage });
+          console.log('[handleNext] Step 3 image keys + colors saved', { issuerLogo, iconImage, backgroundImage, backgroundColor, textColor });
         } catch (err) {
           // Don't block step transition — let the user proceed and retry later.
           console.error('[handleNext] Step 3 onSave failed:', err);
@@ -279,6 +284,12 @@ export function CardBuilderEditorWorkspace({
               }}
             />
           </section>
+
+          {/* Colors 區塊（Step 3 Color Picker plan 2026-09-03）
+              - 在 Background section 之後,border-t 區隔
+              - 渲染兩顆並列按鈕（背景色 / 文字色）+ popover 調色盤 + hex 輸入框
+              - 與 icon / background section 對稱,採 parent section header pattern */}
+          <Step3CardColors />
 
           {/* 上一步 / 下一步按鈕 */}
           <div className="flex items-center justify-between pt-2">
