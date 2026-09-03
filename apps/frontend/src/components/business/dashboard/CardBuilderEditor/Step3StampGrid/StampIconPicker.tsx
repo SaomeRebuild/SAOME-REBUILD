@@ -70,9 +70,23 @@ export function StampIconPicker() {
   useClickOutside<HTMLDivElement>(close, triggerRef as React.RefObject<HTMLElement | null>);
   useEscapeKey(close);
 
-  const currentIcon = stampIconId ? getStampIcon(stampIconId) : undefined;
-  const currentLabel = stampIconId
-    ? t(`step3.stampSection.icons.${stampIconId}`, { defaultValue: stampIconId })
+  // Visual fallback: when nothing is selected yet, show the first manifest
+  // icon in the trigger so the user immediately sees "a stamp" instead of
+  // a neutral gray box. The fallback also kicks in if the store holds an
+  // icon id that no longer exists in the manifest (e.g. the icon file was
+  // removed in a later release) so the trigger never crashes. This is
+  // display-only — the store stays `stampIconId: ''` until the user
+  // explicitly picks.
+  const fallbackIcon = STAMP_ICONS[0];
+  const currentIcon = stampIconId
+    ? (getStampIcon(stampIconId) ?? fallbackIcon)
+    : fallbackIcon;
+  // Label: when committed, show the i18n name of the selected icon; when
+  // nothing is committed yet, show the i18n name of the fallback (so the
+  // trigger reads e.g. "鈴鐺" instead of the generic "Choose stamp").
+  const labelIconId = currentIcon?.id ?? '';
+  const currentLabel = labelIconId
+    ? t(`step3.stampSection.icons.${labelIconId}`, { defaultValue: labelIconId })
     : t('step3.stampSection.iconPicker.trigger');
 
   return (
@@ -85,6 +99,11 @@ export function StampIconPicker() {
         type="button"
         aria-haspopup="dialog"
         aria-expanded={open}
+        // aria-label is the picker purpose (so screen readers hear
+        // "印章圖示, button" instead of the current icon name). The visible
+        // label inside the button shows the currently-selected icon (or the
+        // default fallback) for sighted users.
+        aria-label={t('step3.stampSection.iconPicker.label')}
         onClick={() => setOpen((v) => !v)}
         className={
           'flex h-10 w-full max-w-sm items-center gap-3 rounded-md border border-input ' +

@@ -103,6 +103,30 @@ describe('Step3StampGrid — StampIconPicker', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
+  it('shows the first manifest icon as a visual fallback in the trigger when nothing is selected', () => {
+    // Default state: stampIconId = ''. The trigger should still render a
+    // stamp icon (the first one in the manifest) so the user sees "a
+    // stamp" instead of a neutral gray placeholder. The store stays at
+    // '' until the user explicitly picks an icon.
+    render(<Step3StampGrid />);
+    const trigger = screen.getByRole('button', { name: /印章|Stamp/ });
+    const triggerImg = trigger.querySelector('img');
+    expect(triggerImg).not.toBeNull();
+    expect(triggerImg?.getAttribute('src')).toBe('/stamped/bell.png');
+  });
+
+  it('falls back to the visual default when stampIconId does not match any manifest entry', () => {
+    // Defensive: if the store somehow holds an id that no longer exists
+    // (e.g. icon file removed in a later release), the trigger should
+    // gracefully fall back to the first manifest icon rather than crash.
+    useCardBuilderStore.setState({ stampIconId: 'does-not-exist' });
+    render(<Step3StampGrid />);
+    const trigger = screen.getByRole('button', { name: /印章|Stamp/ });
+    const triggerImg = trigger.querySelector('img');
+    expect(triggerImg).not.toBeNull();
+    expect(triggerImg?.getAttribute('src')).toBe('/stamped/bell.png');
+  });
+
   it('opens the popover when the trigger button is clicked', async () => {
     render(<Step3StampGrid />);
     const trigger = screen.getByRole('button', { name: /印章|Stamp/ });
