@@ -15,7 +15,7 @@ export const updateCardRoute = new Hono<HonoEnv>()
   .use('*', requireAuth)
   .put('/:id', async (c) => {
     const user = getAuthenticatedUser(c);
-    const sql = getDb(c.env.HYPERDRIVE);
+    const sql = await getDb(c.env.HYPERDRIVE);
     const templateId = c.req.param('id');
 
     // Get tenant ID for the authenticated user

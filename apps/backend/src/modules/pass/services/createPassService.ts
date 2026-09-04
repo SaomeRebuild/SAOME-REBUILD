@@ -25,7 +25,7 @@ export async function createPassService(
     });
   }
 
-  const db = getDb(env.HYPERDRIVE);
+  const db = await getDb(env.HYPERDRIVE);
   
   // Check if tenant already has a pass
   const existing = await findPassByTenantId(db, parsed.data.tenantId);
@@ -72,7 +72,7 @@ export async function getPassStatusService(
   env: Env,
   tenantId: string
 ): Promise<GetPassStatusResult> {
-  const db = getDb(env.HYPERDRIVE);
+  const db = await getDb(env.HYPERDRIVE);
 
   // Lazy update: advance billing cycle if needed (for paid users)
   await advanceBillingCycle(db, tenantId);

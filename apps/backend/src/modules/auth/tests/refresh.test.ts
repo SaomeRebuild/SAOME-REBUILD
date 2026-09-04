@@ -14,7 +14,7 @@ import { Hono } from 'hono';
 import type { HonoEnv } from '@/shared/types/bindings';
 
 vi.mock('@/shared/db/client', () => ({
-  getDb: vi.fn().mockReturnValue({}),
+  getDb: vi.fn().mockResolvedValue({}),
 }));
 
 vi.mock('@/shared/lib/jwt', () => ({

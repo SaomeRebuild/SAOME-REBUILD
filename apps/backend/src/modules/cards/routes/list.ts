@@ -14,7 +14,7 @@ export const listCardsRoute = new Hono<HonoEnv>()
   .use('*', requireAuth)
   .get('/', async (c) => {
     const user = getAuthenticatedUser(c);
-    const sql = getDb(c.env.HYPERDRIVE);
+    const sql = await getDb(c.env.HYPERDRIVE);
 
     // Get tenant ID for the authenticated user
     const tenant = await findTenantByOwnerId(sql, user.id);

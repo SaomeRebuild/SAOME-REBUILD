@@ -53,7 +53,7 @@ export const requireAuth: MiddlewareHandler<HonoEnv> = async (c, next) => {
   } catch {
     throw new AuthError('auth.error.invalidToken', 'Invalid or expired token');
   }
-  const sql = getDb(c.env.HYPERDRIVE);
+  const sql = await getDb(c.env.HYPERDRIVE);
   const userRow = await findUserById(sql, payload.sub);
   if (!userRow) {
     throw new AuthError('auth.error.userNotFound', 'User not found');

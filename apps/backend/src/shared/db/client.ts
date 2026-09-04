@@ -6,17 +6,23 @@
  *
  * Why this layer exists:
  *   - Centralizes the Hyperdrive binding unwrap (`connectionString`)
- *   - Ensures every module uses the SAME pool
+ *   - Creates a fresh pool per request to avoid Cloudflare Workers I/O isolation
+ *     violations that occur when sharing pool objects via globalThis across requests
  *   - Provides a single seam to mock in vitest (`getDb(env)` is the only public API)
+ *
+ * Workers I/O isolation note:
+ *   Workers do not support sharing I/O objects (sockets, streams, Response bodies)
+ *   across concurrent request handlers. A pool created in one request's context
+ *   must NOT be used in another request. Each getDb() call creates a fresh pool.
  *
  * Usage in modules:
  *   import { getDb } from '@/shared/db/client';
- *   const sql = getDb(c.env.HYPERDRIVE);
+ *   const sql = await getDb(c.env.HYPERDRIVE);  // ← MUST AWAIT
  *   const user = await sql<UserRow>`SELECT * FROM users WHERE id = ${id}`;
  *
  * Vitest mocking:
  *   vi.mock('@/shared/db/client', () => ({
- *     getDb: vi.fn().mockReturnValue(mockSql),
+ *     getDb: vi.fn().mockResolvedValue(mockSql),
  *   }));
  */
 
@@ -28,24 +34,57 @@ import postgres from 'postgres';
  */
 export type Sql = ReturnType<typeof postgres>;
 
+// Vitest: override getDb with a mock Sql via this module-level variable.
+let _testSql: Sql | undefined;
+
+/**
+ * Set the mock Sql for vitest.
+ * Tests call this in beforeEach / vi.mock setup.
+ */
+export function setTestSql(sql: Sql): void {
+  _testSql = sql;
+}
+
 /**
  * Get a Postgres.js client bound to the given Hyperdrive instance.
  *
- * Hyperdrive provides a `connectionString` that wraps the underlying
- * Postgres pool. In production, this string looks like:
- *   postgres://...@...hyperdrive-pool:5432/postgres
+ * Creates a FRESH pool per call (no global cache) to satisfy Cloudflare
+ * Workers I/O isolation requirements. Each request gets its own pool.
+ *
+ * On first call per request, this issues an eager warmup ping (SELECT 1) to
+ * force the TCP handshake before any business logic runs. This eliminates the
+ * cold-start "first query fails in ~27ms" pattern where postgres.js deferred
+ * the handshake to the first real query and it raced the request context.
  *
  * @param hyperdrive - The Hyperdrive binding from `env.HYPERDRIVE`
- * @returns A `sql` template literal tag for running parameterized queries
+ * @returns A `sql` template literal tag, guaranteed to have an open connection
  */
-export function getDb(hyperdrive: { connectionString: string }): Sql {
-  return postgres(hyperdrive.connectionString, {
-    // Disable prepare statements; Hyperdrive uses prepared statements at the
-    // edge so we don't need them in postgres.js.
+export async function getDb(hyperdrive: { connectionString: string }): Promise<Sql> {
+  // Vitest: return the injected mock sql.
+  if (_testSql) return _testSql;
+
+  const connStr = hyperdrive.connectionString;
+  if (!connStr) {
+    throw new Error('[getDb] Hyperdrive connectionString is empty — still initializing?');
+  }
+
+  const sql = postgres(connStr, {
     prepare: false,
-    // Hyperdrive caps concurrent connections; let postgres.js queue.
     max: 10,
-    // Workerd-friendly: keep idle connections short.
     idle_timeout: 20,
+    connect_timeout: 10,
   });
+
+  // Eager warmup: force the TCP handshake before returning the sql instance.
+  // This adds ~200-500ms to the first request but prevents cold-start 500s
+  // where postgres.js deferred the handshake to the first real query.
+  try {
+    await sql.unsafe('SELECT 1');
+    console.log('[getDb] pool warmup OK');
+  } catch (err) {
+    console.error('[getDb] pool warmup FAILED:', err);
+    throw err;
+  }
+
+  return sql;
 }

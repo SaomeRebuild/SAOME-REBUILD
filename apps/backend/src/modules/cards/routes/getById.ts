@@ -14,7 +14,7 @@ export const getCardRoute = new Hono<HonoEnv>()
   .use('*', requireAuth)
   .get('/:id', async (c) => {
     const user = getAuthenticatedUser(c);
-    const sql = getDb(c.env.HYPERDRIVE);
+    const sql = await getDb(c.env.HYPERDRIVE);
     const templateId = c.req.param('id');
 
     console.log('[getCard] fetching template:', templateId, 'for user:', user.id);

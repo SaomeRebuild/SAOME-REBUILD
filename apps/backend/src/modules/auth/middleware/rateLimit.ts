@@ -29,7 +29,7 @@ export const rateLimitMiddleware: MiddlewareHandler<HonoEnv> = async (c, next) =
     await next();
     return;
   }
-  const sql = getDb(c.env.HYPERDRIVE);
+  const sql = await getDb(c.env.HYPERDRIVE);
   const fails = await countRecentFailures(sql, email, LOCKOUT_WINDOW_SECONDS);
   if (fails >= LOCKOUT_THRESHOLD) {
     throw new RateLimitError(

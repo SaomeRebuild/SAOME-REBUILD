@@ -12,7 +12,7 @@ import type { Env } from '@/shared/types/bindings';
 export const billingCycleCronRoute = new Hono<HonoEnv>();
 
 billingCycleCronRoute.get('/', async (c) => {
-  const db = getDb(c.env.HYPERDRIVE);
+  const db = await getDb(c.env.HYPERDRIVE);
   const now = new Date();
 
   // Advance billing cycles for all eligible paid users

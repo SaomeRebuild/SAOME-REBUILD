@@ -28,7 +28,7 @@ export const getImageRoute = new Hono<HonoEnv>()
   .use('*', requireAuth)
   .get('/:id/image/:type', async (c) => {
     const user = getAuthenticatedUser(c);
-    const sql = getDb(c.env.HYPERDRIVE);
+    const sql = await getDb(c.env.HYPERDRIVE);
     const { id: templateId, type: imageType } = c.req.param();
 
     // Validate params

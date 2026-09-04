@@ -46,7 +46,7 @@ export const refreshRoute = new Hono<HonoEnv>().post('/', async (c) => {
   if (!token) {
     throw new AuthError('auth.error.missingRefreshToken', 'Missing refresh cookie or Authorization header');
   }
-  const sql = getDb(c.env.HYPERDRIVE);
+  const sql = await getDb(c.env.HYPERDRIVE);
   const jwtSecret = (c.env as { JWT_SECRET?: string }).JWT_SECRET ?? 'dev-insecure-secret';
   const ttlRaw = c.env.ACCESS_TOKEN_TTL;
   const ttl = ttlRaw ? Number(ttlRaw) : 900;

@@ -19,7 +19,7 @@ export async function insertLoginAttempt(
   params: { userId: string | null; emailAttempted: string; success: boolean }
 ): Promise<LoginAttemptsRow> {
   const rows = await sql<LoginAttemptsRow[]>`
-    INSERT INTO login_attempts (user_id, email_attempted, success)
+    INSERT INTO public.login_attempts (user_id, email_attempted, success)
     VALUES (${params.userId}, ${params.emailAttempted}, ${params.success})
     RETURNING id, user_id, email_attempted, success, attempted_at
   `;

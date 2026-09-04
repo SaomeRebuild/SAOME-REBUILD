@@ -35,6 +35,14 @@ export function buildErrorResponse(c: Context<HonoEnv>, error: unknown): Respons
   );
 }
 
-export const errorHandler = (err: Error, c: Context<HonoEnv>) => buildErrorResponse(c, err);
+export const errorHandler = (err: Error, c: Context<HonoEnv>) => {
+  // Log for observability — console goes to wrangler stdout → backend.log
+  const requestId = (c.get as (k: string) => string | undefined)(REQUEST_ID_KEY) ?? 'unknown';
+  console.error(`[errorHandler] requestId=${requestId} error=${err?.constructor?.name} message=${err?.message ?? String(err)}`);
+  if (err?.stack) {
+    console.error(`[errorHandler] stack:\n${err.stack.split('\n').slice(0, 5).join('\n')}`);
+  }
+  return buildErrorResponse(c, err);
+};
 
 export { SaomeError, ServerError };

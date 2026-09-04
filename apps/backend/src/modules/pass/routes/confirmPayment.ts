@@ -20,7 +20,7 @@ export const confirmPaymentRoute = new Hono<HonoEnv>();
  */
 confirmPaymentRoute.post('/', async (c) => {
   const body = confirmPaymentRequestSchema.parse(await c.req.json());
-  const db = getDb(c.env.HYPERDRIVE);
+  const db = await getDb(c.env.HYPERDRIVE);
 
   const pass = await setPaidAt(db, body.tenantId);
   if (!pass) {

@@ -15,7 +15,7 @@ export const getLatestDraftRoute = new Hono<HonoEnv>()
   .use('*', requireAuth)
   .get('/drafts', async (c) => {
     const user = getAuthenticatedUser(c);
-    const sql = getDb(c.env.HYPERDRIVE);
+    const sql = await getDb(c.env.HYPERDRIVE);
 
     const tenant = await findTenantByOwnerId(sql, user.id);
     if (!tenant) {

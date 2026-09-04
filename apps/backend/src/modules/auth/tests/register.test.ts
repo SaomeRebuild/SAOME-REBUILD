@@ -17,7 +17,7 @@ import type { HonoEnv } from '@/shared/types/bindings';
 
 // Mock DB layer
 vi.mock('@/shared/db/client', () => ({
-  getDb: vi.fn().mockReturnValue({
+  getDb: vi.fn().mockResolvedValue({
     begin: vi.fn().mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => cb({})),
   }),
 }));
