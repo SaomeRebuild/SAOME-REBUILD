@@ -77,6 +77,26 @@ export const templateSettingsSchema = z.object({
     .union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)])
     .optional(),
   stampIconId: z.string().optional(),
+  // ===== Step 4 — 卡片資訊 (Rule 019 § 4.1, layer 2 of 4) =====
+  // Mirrors `shared/templateSettingsSchema.description / backFields / links`.
+  // Step 4 plan 2026-09-04: see packages/shared/schemas/card.ts for source.
+  description: z.string().max(200).optional(),
+  backFields: z
+    .array(
+      z.object({
+        label: z.string().max(40),
+        value: z.string().max(80),
+      }),
+    )
+    .optional(),
+  links: z
+    .array(
+      z.object({
+        label: z.string().max(40),
+        value: z.string().max(2048),
+      }),
+    )
+    .optional(),
 });
 
 export type TemplateSettings = z.infer<typeof templateSettingsSchema>;
