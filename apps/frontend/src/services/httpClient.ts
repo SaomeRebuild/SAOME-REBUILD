@@ -40,15 +40,21 @@ export class SaomeApiError extends Error {
 export interface HttpClientOptions {
   baseUrl?: string;
   fetchImpl?: typeof fetch;
+  /** Request timeout in ms. Defaults to 15 seconds. */
+  timeoutMs?: number;
 }
+
+const DEFAULT_TIMEOUT_MS = 15_000;
 
 export class HttpClient {
   private baseUrl: string;
   private fetchImpl: typeof fetch;
+  private timeoutMs: number;
 
   constructor(opts: HttpClientOptions = {}) {
     this.baseUrl = opts.baseUrl ?? api.baseUrl;
     this.fetchImpl = opts.fetchImpl ?? fetch.bind(globalThis);
+    this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   }
 
   async request<T>(
@@ -74,6 +80,7 @@ export class HttpClient {
       headers: reqHeaders,
       body: body === undefined ? undefined : JSON.stringify(body),
       credentials: 'include',
+      signal: AbortSignal.timeout(this.timeoutMs),
     });
 
     if (res.status === 401 && retryOn401 && path !== api.paths.refresh) {
@@ -149,6 +156,7 @@ export class HttpClient {
             Authorization: `Bearer ${refreshToken}`,
           },
           credentials: 'include',
+          signal: AbortSignal.timeout(this.timeoutMs),
         });
         if (!res.ok) return null;
         const body = await res.json();
@@ -165,6 +173,7 @@ export class HttpClient {
         method: 'POST',
         headers: { Accept: 'application/json' },
         credentials: 'include',
+        signal: AbortSignal.timeout(this.timeoutMs),
       });
       if (!res.ok) return null;
       const body = await res.json();
