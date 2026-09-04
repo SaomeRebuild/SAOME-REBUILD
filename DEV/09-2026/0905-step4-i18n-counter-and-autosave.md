@@ -137,3 +137,11 @@ backend / shared 的 7 個失敗為 pre-existing（`sql.json` mock 缺失、`mob
 - `isStep4Valid()` 的「通過才儲存」邏輯保留（Apple EULA 要求至少一個 backField value 非空）；autosave 對 partial 資料會 PUT 但 preview 仍正常顯示
 - 未來 L3 Heavy：把儲存狀態指示（unsaved / saving / saved）加進 UI，讓使用者看得到進度
 - 既有 `Step4CardInfo.test.tsx` 對 raw key 沒抓到的盲點已用檔案掃描測試（`Step4CardInfo.i18n.test.ts`）補上 —— 該測試讀 locale 檔而非 mock `t()`
+
+---
+
+## Sync 狀態
+
+- **狀態**：✅ 已推送至 `main`
+- **查 SHA**：`git log --oneline -1`（最新 commit 即本筆）
+- **Push 時 GitHub 警告**：6 個 dependabot vulnerabilities（pre-existing，與本次變更無關）
