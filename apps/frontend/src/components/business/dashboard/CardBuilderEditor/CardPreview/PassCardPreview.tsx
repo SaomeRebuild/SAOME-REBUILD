@@ -36,6 +36,9 @@ export function PassCardPreview({
   rightField,
   stampGridRows,
   stampIconId,
+  description,
+  backFields,
+  links,
   className,
   compact = false,
   ...props
@@ -45,9 +48,13 @@ export function PassCardPreview({
       className={cn(
         'relative w-full overflow-hidden rounded-[12px] border border-neutral-200 bg-white shadow-[0_4px_16px_rgba(0,0,0,0.15)]',
         'dark:border-neutral-700 dark:shadow-[0_4px_16px_rgba(0,0,0,0.5)]',
+        // Back side (2026-09-05): fill PhoneFrame content area instead of
+        // a single 375:503 card aspect-ratio. The PhoneFrame's own
+        // overflow-y-auto handles vertical scrolling when content overflows.
+        side === 'back' && 'h-full',
         className
       )}
-      style={{ aspectRatio: '375 / 503' }}
+      style={side === 'back' ? undefined : { aspectRatio: '375 / 503' }}
       {...props}
     >
       {/* 卡片本體 — 套用 backgroundColor 到整個 card body（replaces bg-white）。
@@ -59,7 +66,14 @@ export function PassCardPreview({
       >
         {side === 'back' ? (
           // ─── Back Side：完全清除正面殘留 UI ───
-          <PassCardPreviewBack compact={compact} />
+          // Step 4 card-info (2026-09-04): pass description / backFields /
+          // links through so Section 1 / 4 / 5 reflect the live editor state.
+          <PassCardPreviewBack
+            compact={compact}
+            description={description}
+            backFields={backFields}
+            links={links}
+          />
         ) : (
           // ─── Front Side ───
           <>

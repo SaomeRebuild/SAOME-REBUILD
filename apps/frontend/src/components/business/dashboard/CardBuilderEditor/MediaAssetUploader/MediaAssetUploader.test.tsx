@@ -715,3 +715,133 @@ describe('MediaAssetUploader (background variant)', () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// § 修 1 regression (2026-09-05): single-key PUT after image upload.
+//
+// Previously handleApplyCrop did:
+//   safeSettings = unwrapCardSettings(currentTemplate.settings)
+//   cardService.update(templateId, { settings: { ...safeSettings, [config.settingsField]: key } })
+//
+// If `getById` returned a partial / corrupted response (Bug #8.5), the
+// spread silently handed the response's keys to the backend's JSONB `||`
+// merge, which OVERWRITES any left-side key the response happens to have
+// — wiping description / backFields / links / colors / etc.
+//
+// Backend JSONB `||` semantics: right operand wins on duplicate keys but
+// PRESERVES left-side keys not mentioned in the right operand. So sending
+// just `{ [config.settingsField]: key }` is safe and surgical.
+//
+// This test reproduces the failure mode by mocking getById to return only
+// storeName (no description / backFields / links / etc.) — exactly the
+// shape a corrupted DB row would produce.
+// ---------------------------------------------------------------------------
+
+describe('MediaAssetUploader — single-key PUT regression (2026-09-05)', () => {
+  let originalFetch: typeof fetch;
+  // Fake HTMLImageElement that satisfies the `if (!img)` guard inside
+  // handleApplyCrop. In real usage, `useImageCrop.loadImage()` sets this ref
+  // once the underlying <img> fires its `onLoad`. In tests we mock the
+  // hook, so the ref stays null unless we explicitly seed it.
+  const FAKE_IMG = {
+    complete: true,
+    naturalWidth: 800,
+    naturalHeight: 600,
+  } as unknown as HTMLImageElement;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(useImageCrop).mockReturnValue(
+      mockImageCropReturn({
+        hasImage: true,
+        imageRef: { current: FAKE_IMG },
+      }),
+    );
+    originalFetch = globalThis.fetch;
+    // Mock fetch so the R2 PUT step inside handleApplyCrop resolves as success.
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+    } as Response);
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  async function driveApplyFlow() {
+    const { container } = render(
+      <MediaAssetUploader variant="logo" templateId="test-id" onUploaded={vi.fn()} />,
+    );
+    // Enter cropping state by firing file change.
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(['x'], 'logo.png', { type: 'image/png' });
+    Object.defineProperty(input, 'files', { value: [file], configurable: true });
+    fireEvent.change(input);
+    // Wait for cropping UI to render (Apply button appears).
+    await waitFor(() => {
+      expect(screen.getByText(/套用裁切/i)).toBeInTheDocument();
+    });
+    // Click Apply — triggers handleApplyCrop → fetch (R2) → getById → update.
+    fireEvent.click(screen.getByText(/套用裁切/i));
+  }
+
+  it('does NOT spread partial/corrupted getById response into the update payload', async () => {
+    // Mock getById to return a PARTIAL settings object — only storeName.
+    // If the buggy spread path fires, this gets clobbered into the update
+    // payload as `{ issuerLogo: '...', storeName: 'X' }` and the backend
+    // JSONB `||` would then keep `storeName: 'X'` (effectively a no-op)
+    // — but the bug exposes itself as "settings contains keys from the
+    // GET response that shouldn't have been sent at all".
+    const cardService = await import('@/services/cardService');
+    vi.mocked(cardService.cardService.getById).mockResolvedValue({
+      id: 'test-id',
+      settings: {
+        storeName: 'X',
+        // ⚠️ step 4 absent — simulates Bug #8.5 corrupted state
+      },
+    } as never);
+
+    const updateSpy = vi.spyOn(cardService.cardService, 'update');
+
+    await driveApplyFlow();
+
+    await waitFor(() => expect(updateSpy).toHaveBeenCalled(), { timeout: 5000 });
+
+    const payload = updateSpy.mock.calls[0]![1] as {
+      settings?: Record<string, unknown>;
+    };
+    // Update should ONLY carry the variant's settingsField key.
+    expect(payload.settings).toEqual({ issuerLogo: expect.any(String) });
+    // Buggy behavior would have spread `storeName: 'X'` into the payload.
+    expect(payload.settings).not.toHaveProperty('storeName');
+    expect(payload.settings).not.toHaveProperty('description');
+    expect(payload.settings).not.toHaveProperty('backFields');
+    expect(payload.settings).not.toHaveProperty('links');
+    // updateSpy.mock.calls[0]! — non-null assertion (we asserted toHaveBeenCalled above)
+    const args = updateSpy.mock.calls[0]!;
+    expect(args[0]).toBe('test-id');
+  });
+
+  it('still updates the variant field correctly (sanity)', async () => {
+    // Sanity: even though we no longer spread, the variant field IS in the payload.
+    const cardService = await import('@/services/cardService');
+    vi.mocked(cardService.cardService.getById).mockResolvedValue({
+      id: 'test-id',
+      settings: {},
+    } as never);
+
+    const updateSpy = vi.spyOn(cardService.cardService, 'update');
+
+    await driveApplyFlow();
+
+    await waitFor(() => expect(updateSpy).toHaveBeenCalled(), { timeout: 5000 });
+
+    const payload = updateSpy.mock.calls[0]![1] as {
+      settings?: Record<string, unknown>;
+    };
+    // issuerLogo MUST be present — the whole point of the upload.
+    expect(payload.settings?.issuerLogo).toEqual(expect.any(String));
+  });
+});

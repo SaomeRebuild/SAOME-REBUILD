@@ -38,7 +38,7 @@ import {
 import { cardService } from '@/services/cardService';
 import { api } from '@/config/api';
 import { getAccessToken } from '@/services/authStore';
-import { useCardBuilderStore, unwrapCardSettings } from '../CardBuilderEditor.store';
+import { useCardBuilderStore } from '../CardBuilderEditor.store';
 import { MEDIA_ASSET_CONFIG } from '@saome/shared/constants/card-images';
 import type {
   MediaAssetUploaderProps,
@@ -327,12 +327,24 @@ export function MediaAssetUploader({
         );
       }
 
-      const currentTemplate = await cardService.getById(templateId);
-      // Bug #8.5 defensive: use the shared unwrapCardSettings helper so we
-      // handle object / JSON string / array-of-partials uniformly with the store.
-      const safeSettings: Record<string, unknown> = unwrapCardSettings(currentTemplate.settings);
+      // Defensive single-key PUT (2026-09-05):
+      // previously we did
+      //   safeSettings = unwrapCardSettings(currentTemplate.settings)
+      //   cardService.update(templateId, { settings: { ...safeSettings, [config.settingsField]: key } })
+      // but that spread hands the GET response's keys to the backend's JSONB
+      // `||` merge, which OVERWRITES any left-side key the response happens
+      // to have. If `getById` returns a partial / corrupted response
+      // (Bug #8.5), the spread silently wipes description / backFields /
+      // links / colors etc.
+      //
+      // Backend JSONB `||` semantics (verified at
+      // apps/backend/.../db/templates.ts::updateTemplate, line ~232):
+      // right operand wins on duplicate keys, but left-side keys NOT
+      // mentioned in the right operand are PRESERVED. So sending
+      //   { settings: { issuerLogo: 'new-key' } }
+      // only overwrites `issuerLogo` and keeps every other field intact.
       await cardService.update(templateId, {
-        settings: { ...safeSettings, [config.settingsField]: key },
+        settings: { [config.settingsField]: key },
       });
 
       // Variant-specific store setter
