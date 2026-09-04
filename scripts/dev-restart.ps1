@@ -259,11 +259,11 @@ if ($HealthOnly) {
         }
     }
 
-    foreach ($pid in ($pidsToKill | Select-Object -Unique)) {
-        Write-Summary "taskkill /PID $pid /F"
-        & taskkill /PID $pid /F 2>&1 | Out-Null
+    foreach ($targetPid in ($pidsToKill | Select-Object -Unique)) {
+        Write-Summary "taskkill /PID $targetPid /F"
+        & taskkill /PID $targetPid /F 2>&1 | Out-Null
         if ($LASTEXITCODE -ne 0) {
-            Write-Summary "taskkill PID $pid failed (exit $LASTEXITCODE); will try wrangler.exe fallback" -ForegroundColor Yellow
+            Write-Summary "taskkill PID $targetPid failed (exit $LASTEXITCODE); will try wrangler.exe fallback" -ForegroundColor Yellow
         }
     }
     if ($pidsToKill.Count -gt 0) {
@@ -287,8 +287,8 @@ if ($HealthOnly) {
         } else {
             foreach ($d in $dirs) {
                 $isLive = $false
-                foreach ($pid in $livePids) {
-                    if ($pid -gt 0) { $isLive = $true; break }
+                foreach ($targetPid in $livePids) {
+                    if ($targetPid -gt 0) { $isLive = $true; break }
                 }
                 if ($isLive -and $d.LastWriteTime -gt (Get-Date).AddHours(-$TmpMaxAgeHours)) {
                     Write-Summary "kept $($d.Name) (recent + wrangler/node still alive)"
