@@ -119,6 +119,36 @@ export const templateSettingsSchema = z.object({
     .union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)])
     .optional(),
   stampIconId: z.string().optional(),
+  // ===== Step 4 — 卡片資訊 (2026-09-04) =====
+  // Description shown in PassCardPreviewBack Section 1. Required by UI but
+  // left optional here so zod doesn't reject empty drafts mid-edit; the UI
+  // enforces DESCRIPTION_MAX_LENGTH + non-empty via isStep4Valid().
+  description: z.string().max(200).optional(),
+  // Back fields shown in PassCardPreviewBack Section 4. Flat array of
+  // { label, value } pairs; PassKit convention is one Label + Value per row.
+  // Length min/max is enforced by UI store (BACK_FIELDS_MIN/MAX), not zod,
+  // to keep schema focused on per-field validity (Rule 019 § 4.1).
+  backFields: z
+    .array(
+      z.object({
+        label: z.string().max(40),
+        value: z.string().max(80),
+      }),
+    )
+    .optional(),
+  // Links shown in PassCardPreviewBack Section 5. PassKit's `links` field is
+  // a separate dedicated render area distinct from `backFields`; they are
+  // not interchangeable. URL validation is performed by shared/logic/links.ts
+  // in the UI layer; zod only enforces max length per field (URLs can be
+  // long — 2048 is the PassKit limit per pass field).
+  links: z
+    .array(
+      z.object({
+        label: z.string().max(40),
+        value: z.string().max(2048),
+      }),
+    )
+    .optional(),
 });
 
 export type TemplateSettings = z.infer<typeof templateSettingsSchema>;

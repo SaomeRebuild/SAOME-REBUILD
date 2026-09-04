@@ -11,3 +11,4 @@ export * from './pass';
 export * from './auth';
 export * from './imageCrop';
 export * from './color';
+export * from './links';
