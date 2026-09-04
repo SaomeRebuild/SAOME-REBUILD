@@ -104,6 +104,25 @@ export interface TemplateSettings {
    * Mirrors `shared/templateSettingsSchema.stampIconId` (Rule 019 § 4.1 layer 3 of 4).
    */
   stampIconId?: string;
+  // ===== Step 4 — 卡片資訊 (Rule 019 § 4.1, layer 3 of 4) =====
+  // Mirrors `shared/templateSettingsSchema.description / backFields / links`.
+  // Step 4 plan 2026-09-04: see packages/shared/schemas/card.ts for source.
+  /**
+   * Card description (PassCardPreviewBack Section 1). Max 200 chars per
+   * shared schema.
+   */
+  description?: string;
+  /**
+   * Back fields shown as label/value rows (PassCardPreviewBack Section 4).
+   * PassKit convention is one Label + Value per row.
+   */
+  backFields?: Array<{ label: string; value: string }>;
+  /**
+   * Dedicated link fields (PassCardPreviewBack Section 5). PassKit separates
+   * `links` from `backFields` — they render in distinct UI areas. URL
+   * validation lives in shared/logic/links.ts (UI-layer).
+   */
+  links?: Array<{ label: string; value: string }>;
   [key: string]: unknown;
 }
 
