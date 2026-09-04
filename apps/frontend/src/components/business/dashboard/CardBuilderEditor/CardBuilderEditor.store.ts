@@ -6,7 +6,21 @@ import { create } from 'zustand';
 import type { CardType, EditorStep } from './CardBuilderEditor.types';
 import type { BarcodeType } from '@saome/shared/schemas/card';
 import type { CardFieldKey } from '@saome/shared/constants/card-fields';
+import {
+  BACK_FIELDS_MAX,
+  LINKS_MAX,
+} from '@saome/shared/constants/card-back-fields';
 import { normalizeHex } from '@saome/shared/logic/color';
+
+/**
+ * A single { label, value } pair used by both Step 4 back fields and Step 4
+ * links. Lives in shared scope is overkill for now (only consumed by this
+ * store); define inline.
+ */
+export interface LabelValuePair {
+  label: string;
+  value: string;
+}
 
 /**
  * Wrap raw 6-char hex (PassCreator format) into '#FFFFFF' for store internal use.
@@ -100,6 +114,30 @@ interface CardBuilderState {
    */
   stampIconId: string;
 
+  // ===== Step 4 — 卡片資訊 (2026-09-04) =====
+  /**
+   * Card description (PassCardPreviewBack Section 1). Max 200 chars per
+   * `shared/constants/card-back-fields.DESCRIPTION_MAX_LENGTH`. Required by
+   * UI but the store allows empty so drafts can be edited mid-flight; the
+   * workspace `isStep4Valid()` blocks "Next" when blank.
+   */
+  description: string;
+  /**
+   * Back fields (PassCardPreviewBack Section 4). Flat array of {label, value}
+   * pairs. Always ≥ 1 row (`removeBackField` refills an empty row to enforce
+   * the BACK_FIELDS_MIN=1 constraint). Capped at BACK_FIELDS_MAX=10 rows;
+   * `addBackField` is a no-op at the cap.
+   */
+  backFields: LabelValuePair[];
+  /**
+   * Dedicated links (PassCardPreviewBack Section 5). Flat array of
+   * {label, value} pairs where `value` is a URL. **Optional** — empty array
+   * is the initial state. Capped at LINKS_MAX=4; `addLink` is a no-op at
+   * the cap. Unlike backFields, `removeLink` does NOT auto-refill — the
+   * user can delete all rows because links are optional.
+   */
+  links: LabelValuePair[];
+
   // Actions
   setCardId: (cardId: string | null) => void;
   setName: (name: string) => void;
@@ -137,6 +175,39 @@ interface CardBuilderState {
   setStampGridRows: (rows: 1 | 2 | 3 | 4) => void;
   /** Set the stamp icon id (manifest id). Empty string = no icon. */
   setStampIconId: (iconId: string) => void;
+  // ===== Step 4 setters =====
+  /** Set the card description (max DESCRIPTION_MAX_LENGTH=200 enforced at zod save). */
+  setDescription: (description: string) => void;
+  /** Update one back-field row's label. */
+  setBackFieldsLabel: (idx: number, label: string) => void;
+  /** Update one back-field row's value. */
+  setBackFieldsValue: (idx: number, value: string) => void;
+  /**
+   * Append one empty back-field row. No-op when `backFields.length` is
+   * already at BACK_FIELDS_MAX — the UI button is also disabled at the cap
+   * for double-belt-and-suspenders behavior.
+   */
+  addBackField: () => void;
+  /**
+   * Remove the row at `idx`. If the array would drop below BACK_FIELDS_MIN=1,
+   * refills an empty row in place — keeps the UI always showing at least one
+   * editable row.
+   */
+  removeBackField: (idx: number) => void;
+  /** Update one link row's label. */
+  setLinksLabel: (idx: number, label: string) => void;
+  /** Update one link row's value. */
+  setLinksValue: (idx: number, value: string) => void;
+  /**
+   * Append one empty link row. No-op when `links.length` is already at
+   * LINKS_MAX=4 — the UI button is also disabled at the cap.
+   */
+  addLink: () => void;
+  /**
+   * Remove the link row at `idx`. Does NOT refill — links are optional,
+   * the user is allowed to delete all rows.
+   */
+  removeLink: (idx: number) => void;
   /**
    * 從既有 template 的 settings 載入 store.
    *
@@ -189,6 +260,42 @@ export function unwrapCardSettings(raw: unknown): Record<string, unknown> {
   return {};
 }
 
+/**
+ * Defensive parser for arrays of `{ label, value }` pairs (Step 4 back
+ * fields & links). Returns the cleaned array on success, `fallback` when
+ * the input is missing or malformed.
+ *
+ * Truncates to `maxLen` so a corrupted DB row with > 10 back fields
+ * cannot blow up the UI editor. Each entry is coerced to `{ label: string,
+ * value: string }`; any non-object entry is replaced with an empty pair.
+ */
+function sanitizeLabelValueArray(
+  raw: unknown,
+  current: LabelValuePair[],
+  maxLen: number,
+  fallback: LabelValuePair[],
+): LabelValuePair[] {
+  if (!Array.isArray(raw)) return fallback;
+  const trimmed: LabelValuePair[] = [];
+  for (const entry of raw.slice(0, maxLen)) {
+    if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+      const obj = entry as Record<string, unknown>;
+      trimmed.push({
+        label: typeof obj.label === 'string' ? obj.label : '',
+        value: typeof obj.value === 'string' ? obj.value : '',
+      });
+    } else {
+      trimmed.push({ label: '', value: '' });
+    }
+  }
+  // Honor `current` only when the cleaned array is empty AND `current`
+  // already had rows — i.e. don't wipe user-typed-but-unsaved data on a
+  // re-load that happens to omit the field. For our two callers this is
+  // moot (current always starts with at least the initial state row), but
+  // it documents the intent.
+  return trimmed.length > 0 ? trimmed : (current.length > 0 ? current : fallback);
+}
+
 const initialState = {
   cardId: null,
   name: '',
@@ -224,6 +331,15 @@ const initialState = {
   // ===== Step 3 — Stamp Grid =====
   stampGridRows: 1 as 1 | 2 | 3 | 4,
   stampIconId: '',
+
+  // ===== Step 4 — 卡片資訊 =====
+  description: '',
+  // Back fields: always ≥ 1 row (BACK_FIELDS_MIN=1 enforced by UI). Initial
+  // state seeds one empty row so the first-render UI already shows an
+  // editable input.
+  backFields: [{ label: '', value: '' }],
+  // Links: optional — empty initial array. UI shows "新增連結" button at first render.
+  links: [],
 };
 
 /**
@@ -263,6 +379,61 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
   setIsPaid: (isPaid) => set({ isPaid }),
   setStampGridRows: (stampGridRows) => set({ stampGridRows }),
   setStampIconId: (stampIconId) => set({ stampIconId }),
+
+  // ===== Step 4 setters =====
+  setDescription: (description) => set({ description }),
+  setBackFieldsLabel: (idx, label) =>
+    set((state) => ({
+      backFields: state.backFields.map((row, i) =>
+        i === idx ? { ...row, label } : row,
+      ),
+    })),
+  setBackFieldsValue: (idx, value) =>
+    set((state) => ({
+      backFields: state.backFields.map((row, i) =>
+        i === idx ? { ...row, value } : row,
+      ),
+    })),
+  addBackField: () =>
+    set((state) => {
+      if (state.backFields.length >= BACK_FIELDS_MAX) return {};
+      return {
+        backFields: [...state.backFields, { label: '', value: '' }],
+      };
+    }),
+  removeBackField: (idx) =>
+    set((state) => {
+      const next = state.backFields.filter((_, i) => i !== idx);
+      // BACK_FIELDS_MIN=1 — refill an empty row if the user just emptied
+      // the array, so the editor stays usable (Apple EULA requires contact
+      // info, so the user can never truly have 0 rows).
+      if (next.length === 0) {
+        return { backFields: [{ label: '', value: '' }] };
+      }
+      return { backFields: next };
+    }),
+  setLinksLabel: (idx, label) =>
+    set((state) => ({
+      links: state.links.map((row, i) =>
+        i === idx ? { ...row, label } : row,
+      ),
+    })),
+  setLinksValue: (idx, value) =>
+    set((state) => ({
+      links: state.links.map((row, i) =>
+        i === idx ? { ...row, value } : row,
+      ),
+    })),
+  addLink: () =>
+    set((state) => {
+      if (state.links.length >= LINKS_MAX) return {};
+      return { links: [...state.links, { label: '', value: '' }] };
+    }),
+  removeLink: (idx) =>
+    set((state) => ({
+      // No auto-refill — links are optional, user can delete all rows.
+      links: state.links.filter((_, i) => i !== idx),
+    })),
 
   loadSettings: (settings) => {
     // Bug #8.5 defensive: settings may be object / JSON string / array-of-partials
@@ -318,6 +489,26 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
         isPaid: (resolved?.isPaid ?? state.isPaid) as boolean,
         stampGridRows: (resolved?.stampGridRows ?? state.stampGridRows) as 1 | 2 | 3 | 4,
         stampIconId: (resolved?.stampIconId ?? state.stampIconId) as string,
+        // ===== Step 4 (2026-09-04) =====
+        // Description: string or undefined. Use ?? '' so loading an absent
+        // description leaves a stale string behind only when one was already
+        // typed — matches the semantics of other fields.
+        description: (resolved?.description ?? state.description) as string,
+        // backFields: array of {label, value}. Sanitize to plain pairs; if
+        // the DB row had a malformed shape (e.g. legacy corruption) we fall
+        // back to one empty row to keep the UI usable.
+        backFields: sanitizeLabelValueArray(
+          resolved?.backFields,
+          state.backFields,
+          BACK_FIELDS_MAX,
+          /* fallbackWhenInvalid */ [{ label: '', value: '' }],
+        ),
+        links: sanitizeLabelValueArray(
+          resolved?.links,
+          state.links,
+          LINKS_MAX,
+          /* fallbackWhenInvalid */ [],
+        ),
       };
     });
   },

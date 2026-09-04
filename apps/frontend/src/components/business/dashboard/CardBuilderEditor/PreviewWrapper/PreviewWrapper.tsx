@@ -26,6 +26,9 @@ export function PreviewWrapper({
   rightField,
   stampGridRows,
   stampIconId,
+  description,
+  backFields,
+  links,
   showPhoneFrame = true,
 }: PreviewWrapperProps) {
   // PhoneFrame (L1) wraps the card. The icon image preview lives in the
@@ -48,6 +51,9 @@ export function PreviewWrapper({
             rightField={rightField}
             stampGridRows={stampGridRows}
             stampIconId={stampIconId}
+            description={description}
+            backFields={backFields}
+            links={links}
             compact={true}
           />
         </div>
@@ -71,6 +77,9 @@ export function PreviewWrapper({
       rightField={rightField}
       stampGridRows={stampGridRows}
       stampIconId={stampIconId}
+      description={description}
+      backFields={backFields}
+      links={links}
     />
   );
 }

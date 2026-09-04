@@ -33,6 +33,19 @@ export function MobilePreviewPanel({
     setMounted(true);
   }, []);
 
+  // Keep the editor behind the bottom sheet fixed while the preview is open.
+  // This prevents touch scrolling from moving the underlying page on mobile.
+  useEffect(() => {
+    if (!isExpanded) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isExpanded]);
+
   if (!mounted) return null;
 
   return (
@@ -58,10 +71,19 @@ export function MobilePreviewPanel({
 
       {/* Bottom Sheet — 使用 Portal 渲染到 document.body */}
       {isExpanded && createPortal(
-        <div className="fixed inset-0 z-[9999] flex flex-col justify-end">
-          {/* 遮罩層 */}
+        <div
+          className="fixed left-0 top-0 z-[9999] flex h-[100dvh] w-full flex-col justify-end overflow-hidden overscroll-none"
+          role="dialog"
+          aria-modal="true"
+          aria-label={t('preview.title')}
+        >
+          {/* Full-viewport backdrop captures interaction and never scrolls. */}
           <div
-            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            className="
+              absolute left-0 top-0 z-0 h-[100dvh] w-full touch-none overflow-hidden
+              overflow-y-hidden bg-black/50 backdrop-blur-sm
+              [scrollbar-width:none] [&::-webkit-scrollbar]:hidden
+            "
             onClick={() => setIsExpanded(false)}
             aria-hidden="true"
           />
@@ -93,8 +115,7 @@ export function MobilePreviewPanel({
               </h3>
             </div>
 
-            {/* 預覽內容 — 可滾動 */}
-            <div className="flex-1 overflow-y-auto p-4">
+            <div className="flex-1 touch-pan-y overflow-y-auto overscroll-contain p-4">
               <div className="flex min-h-[calc(100%-2rem)] flex-col items-center justify-start gap-4 pt-2">
                 <CardBuilderEditorPreview
                   cardSide={cardSide}

@@ -409,3 +409,243 @@ describe('CardBuilderEditor.store — stamp grid state (Stamp Grid feature 2026-
     expect(s.stampIconId).toBe('');
   });
 });
+
+describe('CardBuilderEditor.store — Step 4 card-info state (2026-09-04)', () => {
+  beforeEach(() => {
+    useCardBuilderStore.setState({
+      cardId: null,
+      name: '',
+      cardType: null,
+      step: 1,
+      completedSteps: new Set(),
+      cardSide: 'front',
+      issuerName: '',
+      issuerLogo: '',
+      issuerLogoVersion: 0,
+      iconImage: '',
+      iconImageVersion: 0,
+      backgroundImage: '',
+      backgroundImageVersion: 0,
+      backgroundColor: '#ffffff',
+      textColor: '#000000',
+      holderName: '',
+      barcodeType: 'qr_code',
+      storeName: '',
+      passValidDays: null,
+      expiryDate: '',
+      currency: 'TWD',
+      leftField: null,
+      rightField: null,
+      isPaid: false,
+      stampGridRows: 1,
+      stampIconId: '',
+      description: '',
+      backFields: [{ label: '', value: '' }],
+      links: [],
+    });
+  });
+
+  it('initial state: description="" + backFields=[{empty}] + links=[]', () => {
+    const s = useCardBuilderStore.getState();
+    expect(s.description).toBe('');
+    expect(s.backFields).toEqual([{ label: '', value: '' }]);
+    expect(s.links).toEqual([]);
+  });
+
+  it('setDescription updates the description string', () => {
+    useCardBuilderStore.getState().setDescription('Hello world');
+    expect(useCardBuilderStore.getState().description).toBe('Hello world');
+  });
+
+  it('setBackFieldsLabel updates only the targeted row label', () => {
+    useCardBuilderStore.setState({
+      backFields: [
+        { label: '', value: '' },
+        { label: '', value: '' },
+      ],
+    });
+    useCardBuilderStore.getState().setBackFieldsLabel(1, 'Phone');
+    const s = useCardBuilderStore.getState();
+    expect(s.backFields[0]).toEqual({ label: '', value: '' });
+    expect(s.backFields[1]).toEqual({ label: 'Phone', value: '' });
+  });
+
+  it('setBackFieldsValue updates only the targeted row value', () => {
+    useCardBuilderStore.setState({
+      backFields: [
+        { label: 'Email', value: '' },
+        { label: 'Phone', value: '' },
+      ],
+    });
+    useCardBuilderStore.getState().setBackFieldsValue(0, 'a@b.com');
+    const s = useCardBuilderStore.getState();
+    expect(s.backFields[0]).toEqual({ label: 'Email', value: 'a@b.com' });
+    expect(s.backFields[1]).toEqual({ label: 'Phone', value: '' });
+  });
+
+  it('addBackField appends an empty row up to BACK_FIELDS_MAX=10', () => {
+    for (let i = 0; i < 9; i++) {
+      useCardBuilderStore.getState().addBackField();
+    }
+    expect(useCardBuilderStore.getState().backFields).toHaveLength(10);
+    // 11th add is a no-op
+    useCardBuilderStore.getState().addBackField();
+    expect(useCardBuilderStore.getState().backFields).toHaveLength(10);
+  });
+
+  it('removeBackField splices the row but refills an empty row at 0 (BACK_FIELDS_MIN=1)', () => {
+    useCardBuilderStore.setState({
+      backFields: [
+        { label: 'Email', value: 'a@b.com' },
+        { label: 'Phone', value: '+1234' },
+      ],
+    });
+    useCardBuilderStore.getState().removeBackField(0);
+    expect(useCardBuilderStore.getState().backFields).toEqual([
+      { label: 'Phone', value: '+1234' },
+    ]);
+
+    // Remove the last remaining row → should refill with empty row, NOT collapse to []
+    useCardBuilderStore.getState().removeBackField(0);
+    expect(useCardBuilderStore.getState().backFields).toEqual([
+      { label: '', value: '' },
+    ]);
+  });
+
+  it('setLinksLabel updates only the targeted row label', () => {
+    useCardBuilderStore.setState({
+      links: [
+        { label: '', value: 'https://x.com' },
+        { label: '', value: 'tel:+1234' },
+      ],
+    });
+    useCardBuilderStore.getState().setLinksLabel(0, 'Website');
+    const s = useCardBuilderStore.getState();
+    expect(s.links[0]).toEqual({ label: 'Website', value: 'https://x.com' });
+    expect(s.links[1]).toEqual({ label: '', value: 'tel:+1234' });
+  });
+
+  it('setLinksValue updates only the targeted row value', () => {
+    useCardBuilderStore.setState({
+      links: [
+        { label: 'Web', value: '' },
+        { label: 'Phone', value: '' },
+      ],
+    });
+    useCardBuilderStore.getState().setLinksValue(1, 'tel:+1234');
+    const s = useCardBuilderStore.getState();
+    expect(s.links[0]).toEqual({ label: 'Web', value: '' });
+    expect(s.links[1]).toEqual({ label: 'Phone', value: 'tel:+1234' });
+  });
+
+  it('addLink appends an empty row up to LINKS_MAX=4 (optional section)', () => {
+    for (let i = 0; i < 4; i++) {
+      useCardBuilderStore.getState().addLink();
+    }
+    expect(useCardBuilderStore.getState().links).toHaveLength(4);
+    // 5th add is a no-op
+    useCardBuilderStore.getState().addLink();
+    expect(useCardBuilderStore.getState().links).toHaveLength(4);
+  });
+
+  it('removeLink splices the row and does NOT refill (links are optional)', () => {
+    useCardBuilderStore.setState({
+      links: [
+        { label: 'Web', value: 'https://x.com' },
+        { label: 'Phone', value: 'tel:+1234' },
+      ],
+    });
+    useCardBuilderStore.getState().removeLink(0);
+    expect(useCardBuilderStore.getState().links).toEqual([
+      { label: 'Phone', value: 'tel:+1234' },
+    ]);
+
+    // Remove the last row → empty array is allowed (no auto-refill)
+    useCardBuilderStore.getState().removeLink(0);
+    expect(useCardBuilderStore.getState().links).toEqual([]);
+  });
+
+  it('loadSettings hydrates description / backFields / links', () => {
+    useCardBuilderStore.getState().loadSettings({
+      description: 'My description',
+      backFields: [
+        { label: 'Email', value: 'a@b.com' },
+        { label: 'Phone', value: '+1234' },
+      ],
+      links: [
+        { label: 'Web', value: 'https://x.com' },
+      ],
+    });
+    const s = useCardBuilderStore.getState();
+    expect(s.description).toBe('My description');
+    expect(s.backFields).toEqual([
+      { label: 'Email', value: 'a@b.com' },
+      { label: 'Phone', value: '+1234' },
+    ]);
+    expect(s.links).toEqual([
+      { label: 'Web', value: 'https://x.com' },
+    ]);
+  });
+
+  it('loadSettings truncates backFields to BACK_FIELDS_MAX (10)', () => {
+    const tooMany = Array.from({ length: 15 }, (_, i) => ({
+      label: `L${i}`,
+      value: `V${i}`,
+    }));
+    useCardBuilderStore.getState().loadSettings({ backFields: tooMany });
+    expect(useCardBuilderStore.getState().backFields).toHaveLength(10);
+  });
+
+  it('loadSettings truncates links to LINKS_MAX (4)', () => {
+    const tooMany = Array.from({ length: 8 }, (_, i) => ({
+      label: `L${i}`,
+      value: `V${i}`,
+    }));
+    useCardBuilderStore.getState().loadSettings({ links: tooMany });
+    expect(useCardBuilderStore.getState().links).toHaveLength(4);
+  });
+
+  it('loadSettings falls back to a single empty backFields row when input is malformed', () => {
+    useCardBuilderStore.getState().loadSettings({
+      backFields: 'not an array' as unknown as never,
+    });
+    expect(useCardBuilderStore.getState().backFields).toEqual([
+      { label: '', value: '' },
+    ]);
+  });
+
+  it('loadSettings falls back to empty links array when input is malformed', () => {
+    useCardBuilderStore.getState().loadSettings({
+      links: { not: 'an array' } as unknown as never,
+    });
+    expect(useCardBuilderStore.getState().links).toEqual([]);
+  });
+
+  it('loadSettings coerces non-string label/value entries to empty strings', () => {
+    useCardBuilderStore.getState().loadSettings({
+      backFields: [
+        { label: 123 as unknown as string, value: null as unknown as string },
+        { label: 'X', value: 'Y' },
+      ],
+    });
+    const s = useCardBuilderStore.getState();
+    expect(s.backFields[0]).toEqual({ label: '', value: '' });
+    expect(s.backFields[1]).toEqual({ label: 'X', value: 'Y' });
+  });
+
+  it('reset() returns Step 4 state to defaults', () => {
+    useCardBuilderStore.getState().setDescription('Hello');
+    useCardBuilderStore.setState({
+      backFields: [
+        { label: 'Email', value: 'a@b.com' },
+        { label: 'Phone', value: '+1234' },
+      ],
+      links: [{ label: 'Web', value: 'https://x.com' }],
+    });
+    useCardBuilderStore.getState().reset();
+    const s = useCardBuilderStore.getState();
+    expect(s.description).toBe('');
+    expect(s.backFields).toEqual([{ label: '', value: '' }]);
+    expect(s.links).toEqual([]);
+  });
+});

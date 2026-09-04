@@ -69,6 +69,13 @@ export function CardBuilderEditor({
       cardService.getById(templateId)
         .then((template) => {
           loadSettings(template.settings);
+          // 修 3 (2026-09-05): mark the Step 4 autosave effect as settled
+          // — loadSettings has just hydrated the store, so any subsequent
+          // snapshot diff is a real user edit (or a hydration-induced
+          // re-render, but both are fine to persist). Without this, edits
+          // BEFORE loadSettings completes would race against the fetch
+          // and clobber DB with partial data.
+          step4LoadSettledRef.current = true;
           // cardType 存在 DB card_type 欄位（不在 settings JSONB），需要獨立設定
           if (template.cardType) {
             setCardType(template.cardType);
@@ -145,17 +152,61 @@ export function CardBuilderEditor({
   const backFields = useCardBuilderStore((s) => s.backFields);
   const links = useCardBuilderStore((s) => s.links);
 
+  // Bug-fix 2026-09-05 (round 2 — 修 3): even with the baseline-arm
+  // pattern below, user edits BEFORE `loadSettings` completes would
+  // schedule a timer (the snapshot diff against the empty baseline is
+  // "real" to the effect) and that timer would PUT empty-or-partial
+  // data over the DB. Solution: a `step4LoadSettledRef` is flipped to
+  // true inside the outer URL-watching effect's `.then(loadSettings)`
+  // callback. While settled=false, autosave refuses to schedule a
+  // timer — preventing the DB-clobber race.
+  const step4BaselineArmedRef = useRef(false);
+  const step4LoadSettledRef = useRef(false);
+
+  // Reset the "baseline armed" + "load settled" flags whenever cardId
+  // changes — a new template session is starting.
+  useEffect(() => {
+    step4BaselineArmedRef.current = false;
+    step4LoadSettledRef.current = false;
+    lastStep4SnapshotRef.current = '';
+  }, [cardId]);
+
   useEffect(() => {
     if (!cardId) return;
 
-    // Skip the very first effect run on mount — we only want to save when the
-    // user has actually changed something. The first run's snapshot becomes
-    // the baseline; subsequent changes diff against it.
     const snapshot = JSON.stringify({
       description,
       backFields,
       links,
     });
+
+    // First run after cardId is set / changed: just note the current snapshot
+    // as the baseline. We do NOT schedule a timer — the current values may
+    // be `reset()` defaults (description='', backFields=[{empty}], links=[])
+    // if `loadSettings` hasn't completed yet. The subsequent re-run that
+    // loadSettings triggers (with real values) will diff against this
+    // baseline and legitimately schedule a save.
+    if (!step4BaselineArmedRef.current) {
+      step4BaselineArmedRef.current = true;
+      lastStep4SnapshotRef.current = snapshot;
+      return;
+    }
+
+    // 修 3 (2026-09-05): while `loadSettings` hasn't completed, refuse
+    // to schedule a timer. The user's edits to the empty default
+    // snapshot are real to them but NOT yet "real data" — we can't
+    // trust them as autosave inputs because they would clobber whatever
+    // loadSettings is about to hydrate from DB. The outer URL-watching
+    // effect's `.then(loadSettings)` callback flips
+    // `step4LoadSettledRef.current = true` once hydration is done.
+    if (!step4LoadSettledRef.current) {
+      // Keep baseline in sync with whatever the store currently shows so
+      // the first diff after settle doesn't false-positive on the
+      // cumulative change since first run.
+      lastStep4SnapshotRef.current = snapshot;
+      return;
+    }
+
     if (snapshot === lastStep4SnapshotRef.current) return;
     lastStep4SnapshotRef.current = snapshot;
 

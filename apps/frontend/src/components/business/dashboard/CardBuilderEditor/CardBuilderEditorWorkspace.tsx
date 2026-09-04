@@ -3,7 +3,7 @@
  * 根據 step 顯示不同的操作面板內容
  */
 
-import { useEffect, type HTMLAttributes } from 'react';
+import { type HTMLAttributes } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { CardType, EditorStep } from './CardBuilderEditor.types';
@@ -13,8 +13,12 @@ import { MediaAssetUploader } from './MediaAssetUploader';
 import { Step3CardColors } from './Step3CardColors';
 import { Step3CardFields } from './Step3CardFields';
 import { Step3StampGrid } from './Step3StampGrid';
+import { Step4CardInfo } from './Step4CardInfo';
 import { useCardBuilderStore } from './CardBuilderEditor.store';
-import { cardService } from '@/services/cardService';
+import {
+  DESCRIPTION_MAX_LENGTH,
+  BACK_FIELDS_MIN,
+} from '@saome/shared/constants/card-back-fields';
 
 interface CardBuilderEditorWorkspaceProps extends HTMLAttributes<HTMLDivElement> {
   step: EditorStep;
@@ -48,37 +52,52 @@ export function CardBuilderEditorWorkspace({
     };
   }
 
-  /** Load existing template settings when cardId is provided (edit mode) */
-  useEffect(() => {
-    if (!cardId) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const template = await cardService.getById(cardId);
-        if (cancelled) return;
-        console.log('[CardBuilderEditorWorkspace] loaded template:', template);
-        useCardBuilderStore.getState().loadSettings(template.settings);
-        if (template.cardType && template.cardType !== cardType) {
-          onCardTypeChange(template.cardType);
-        }
-      } catch (err) {
-        console.error('[CardBuilderEditorWorkspace] failed to load template:', err);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [cardId]); // eslint-disable-line react-hooks/exhaustive-deps
+  /**
+   * Load existing template settings when cardId is provided (edit mode)
+   *
+   * Removed 2026-09-05 (修 2 of three-fix plan): the outer
+   * CardBuilderEditor's useEffect already calls cardService.getById and
+   * loadSettings on mount. Keeping this duplicate fetch caused
+   * `loadSettings` to run TWICE on mount, which interplayed badly with
+   * the Step 4 autosave baseline-seeding logic (see
+   * DEV/09-2026/0905-step4-autosave-slow-network-baseline.md).
+   *
+   * cardType sync is handled by the outer effect via setCardType:
+   *   if (template.cardType) setCardType(template.cardType)
+   * If a parent component passes a cardType prop that diverges from the
+   * store, it owns that flow (CardTypeSelector writes through directly).
+   *
+   * `useEffect` is still imported for any future workspace-local effects.
+   */
 
   function isStep2Valid() {
     const { storeName, issuerName } = getStep2Values();
     return Boolean(storeName.trim() && issuerName.trim());
   }
 
+  /**
+   * Step 4 validation (Rule 019 + Apple EULA 2026-09-04):
+   *   - `description` is required and ≤ DESCRIPTION_MAX_LENGTH.
+   *   - `backFields` must contain ≥ BACK_FIELDS_MIN rows, every value non-empty.
+   *   - `links` is OPTIONAL — invalid format does NOT block "Next". The
+   *     LinkRow still shows the destructive border + i18n error inline so
+   *     the user can spot the issue and fix it without losing progress.
+   */
+  function isStep4Valid() {
+    const { description, backFields } = useCardBuilderStore.getState();
+    return (
+      description.trim().length > 0 &&
+      description.length <= DESCRIPTION_MAX_LENGTH &&
+      backFields.length >= BACK_FIELDS_MIN &&
+      backFields.every((f) => f.value.trim().length > 0)
+    );
+  }
+
   async function handleNext() {
     console.log('[handleNext] step:', step, 'cardId:', cardId);
     if (step < 8) {
       if (step === 2 && !isStep2Valid()) return;
+      if (step === 4 && !isStep4Valid()) return;
       if (step === 2 && cardId && onSave) {
         try {
           const { storeName, issuerName, issuerLogo } = useCardBuilderStore.getState();
@@ -123,6 +142,33 @@ export function CardBuilderEditorWorkspace({
         } catch (err) {
           // Don't block step transition — let the user proceed and retry later.
           console.error('[handleNext] Step 3 onSave failed:', err);
+        }
+      }
+      // Step 4: persist description + back fields + links (Step 4 card-info plan 2026-09-04).
+      // - description: string (may be empty but the UI blocks Next when empty)
+      // - backFields: array of { label, value } (UI always keeps ≥ 1 row)
+      // - links: array of { label, value }, empty array allowed
+      // Empty rows (label='' AND value='') are forwarded to the backend; the
+      // backend zod schema accepts them (max-length validation only),
+      // and the preview filters them out at render time.
+      if (step === 4 && cardId && onSave) {
+        try {
+          const { description, backFields, links } = useCardBuilderStore.getState();
+          await onSave(cardId, {
+            description,
+            backFields: backFields.map((f) => ({
+              label: f.label,
+              value: f.value,
+            })),
+            links: links.map((l) => ({
+              label: l.label,
+              value: l.value,
+            })),
+          });
+          console.log('[handleNext] Step 4 card-info saved', { description, backFields, links });
+        } catch (err) {
+          // Don't block step transition — let the user proceed and retry later.
+          console.error('[handleNext] Step 4 onSave failed:', err);
         }
       }
       onStepChange((step + 1) as EditorStep);
@@ -351,17 +397,15 @@ export function CardBuilderEditorWorkspace({
         </section>
       )}
 
-      {/* Step 4: 卡片資訊（預留） */}
+      {/* Step 4: 卡片資訊 — Description + Back fields + Links (2026-09-04) */}
       {step === 4 && (
-        <section className="flex flex-col items-center justify-center gap-4 py-12">
-          <p className="text-muted-foreground">
+        <section className="flex min-w-0 flex-col gap-6">
+          <h2 className="text-lg font-semibold text-foreground">
             {t('step4.title')}
-          </p>
-          <p className="text-sm text-muted-foreground/60">
-            {t('comingSoon')}
-          </p>
+          </h2>
+          <Step4CardInfo showValidation={!isStep4Valid()} />
           {/* 上一步 / 下一步按鈕 */}
-          <div className="flex items-center gap-4 pt-4">
+          <div className="flex items-center justify-between pt-2">
             <button
               type="button"
               onClick={handlePrev}
@@ -379,12 +423,14 @@ export function CardBuilderEditorWorkspace({
             <button
               type="button"
               onClick={handleNext}
+              disabled={!isStep4Valid()}
               className="
                 flex items-center gap-2 rounded-lg bg-primary px-6 py-2.5
                 text-sm font-semibold text-on-primary
                 transition-all duration-150
                 hover:scale-[1.02] hover:shadow-[var(--shadow-glow)]
                 active:scale-[0.98]
+                disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100
               "
             >
               {t('step1.next')}

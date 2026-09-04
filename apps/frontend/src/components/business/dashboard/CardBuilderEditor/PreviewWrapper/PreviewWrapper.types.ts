@@ -55,4 +55,19 @@ export interface PreviewWrapperProps {
    * Stamp grid feature 2026-09-04。
    */
   stampIconId?: string;
+  /**
+   * 卡片描述（背面 Section 1）。對應 templateSettings.description。
+   * Step 4 card-info 2026-09-04。
+   */
+  description?: string;
+  /**
+   * 背面欄位（背面 Section 4）。對應 templateSettings.backFields。
+   * Step 4 card-info 2026-09-04。
+   */
+  backFields?: ReadonlyArray<{ label: string; value: string }>;
+  /**
+   * 專屬連結（背面 Section 5）。對應 templateSettings.links。
+   * Step 4 card-info 2026-09-04。
+   */
+  links?: ReadonlyArray<{ label: string; value: string }>;
 }

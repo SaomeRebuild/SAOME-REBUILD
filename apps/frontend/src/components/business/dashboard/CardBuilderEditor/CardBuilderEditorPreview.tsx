@@ -48,6 +48,10 @@ export function CardBuilderEditorPreview({
     // Step 3 — 集點印章（對應 templateSettings.stampGridRows / stampIconId）
     stampGridRows,
     stampIconId,
+    // Step 4 — 卡片資訊（對應 templateSettings.description / backFields / links）
+    description,
+    backFields,
+    links,
   } = useCardBuilderStore();
 
   // 組裝背景圖 URL（cache-busting via backgroundImageVersion）
@@ -83,6 +87,9 @@ export function CardBuilderEditorPreview({
             rightField={rightField}
             stampGridRows={stampGridRows}
             stampIconId={stampIconId}
+            description={description}
+            backFields={backFields}
+            links={links}
             side={cardSide}
             showPhoneFrame={true}
           />
