@@ -144,6 +144,39 @@ export default {
   },
   step4: {
     title: '卡片資訊',
+    description: {
+      title: '卡片描述',
+      hint: '輸入卡片描述，最多 200 字。',
+      required: '卡片描述為必填欄位',
+      counter: '{{count}} / 200',
+    },
+    backFields: {
+      title: '背面欄位',
+      hint: '依據 Apple 終端使用者授權協議，每張 Wallet 票卡皆須包含聯絡資訊。請填寫電子郵件地址或電話號碼，以便持卡人聯繫您。',
+      addField: '新增欄位',
+      removeField: '移除',
+      labelPlaceholder: '標籤（選填）',
+      valuePlaceholder: '內容（必填）',
+      required: '每一組的內容為必填',
+      minOne: '至少需要一組背面欄位',
+      maxReached: '最多 10 組背面欄位',
+      counter: '{{count}} / 10',
+      labelLabel: '標籤',
+      valueLabel: '內容',
+    },
+    links: {
+      title: '連結',
+      hint: 'Pass 最多可加入 4 個連結，這些連結會顯示在 Apple Wallet 與 Google Wallet 中。你也可以改在「背面欄位」中使用 HTML 連結取代專屬連結欄位。',
+      addLink: '新增連結',
+      removeLink: '移除',
+      labelPlaceholder: '連結名稱（選填）',
+      valuePlaceholder: 'https://example.com',
+      labelLabel: '名稱',
+      valueLabel: '網址',
+      counter: '{{count}} / 4',
+      maxReached: '最多 4 個連結',
+      invalidUrl: '網址格式不正確',
+    },
   },
   // Step 5: 地理位置
   step5: {
@@ -184,6 +217,8 @@ export default {
       allowNotifications: '允許通知',
       removePass: '移除票卡',
       termsOrLinks: '條文或連結',
+      linksTitle: '連結',
+      linksEmpty: '（尚未加入連結）',
     },
   },
 };

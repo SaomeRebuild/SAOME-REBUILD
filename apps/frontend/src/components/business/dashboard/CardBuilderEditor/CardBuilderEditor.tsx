@@ -121,6 +121,68 @@ export function CardBuilderEditor({
   }, [cardId, name]);
 
   // ============================================================
+  // Auto-save: Step 4 fields (description / backFields / links) → debounced PUT.
+  //
+  // Bug observed 2026-09-05: Step 4 edits did not persist unless the user
+  // clicked "下一步" AND isStep4Valid() returned true. In-progress typing
+  // was lost on reload / step navigation. Auto-save keeps the draft alive
+  // even when the user fills only one of the three sub-fields.
+  //
+  // JSON.stringify snapshot guard (lastStep4SnapshotRef):
+  //   - Zustand selectors return a fresh array reference on every render,
+  //     so depending on `backFields` / `links` directly would cause the
+  //     effect to fire on every render of any consumer.
+  //   - The snapshot guard skips the PUT when the serialized payload hasn't
+  //     changed since the last attempt — keeps DB writes to "real edits".
+  // ============================================================
+  const step4SaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastStep4SnapshotRef = useRef<string>('');
+
+  // Pull Step 4 state from the store (will rerun the effect on store change).
+  // We select individual fields so Zustand's referential equality can short-
+  // circuit the re-render when nothing changed.
+  const description = useCardBuilderStore((s) => s.description);
+  const backFields = useCardBuilderStore((s) => s.backFields);
+  const links = useCardBuilderStore((s) => s.links);
+
+  useEffect(() => {
+    if (!cardId) return;
+
+    // Skip the very first effect run on mount — we only want to save when the
+    // user has actually changed something. The first run's snapshot becomes
+    // the baseline; subsequent changes diff against it.
+    const snapshot = JSON.stringify({
+      description,
+      backFields,
+      links,
+    });
+    if (snapshot === lastStep4SnapshotRef.current) return;
+    lastStep4SnapshotRef.current = snapshot;
+
+    if (step4SaveTimerRef.current) clearTimeout(step4SaveTimerRef.current);
+    step4SaveTimerRef.current = setTimeout(() => {
+      // Read the latest values from the store at fire time so we don't
+      // capture a stale closure.
+      const s = useCardBuilderStore.getState();
+      cardService
+        .update(cardId, {
+          settings: {
+            description: s.description,
+            backFields: s.backFields,
+            links: s.links,
+          },
+        })
+        .catch((err) => {
+          console.warn('[CardBuilderEditor] Step 4 auto-save failed:', err);
+        });
+    }, 1000);
+
+    return () => {
+      if (step4SaveTimerRef.current) clearTimeout(step4SaveTimerRef.current);
+    };
+  }, [cardId, description, backFields, links]);
+
+  // ============================================================
   // Auto-save keep-alive: touch TTL every 5 minutes
   // ============================================================
   const touchTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);

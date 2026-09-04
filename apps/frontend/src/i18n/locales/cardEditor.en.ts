@@ -144,6 +144,39 @@ export default {
   },
   step4: {
     title: 'Card Info',
+    description: {
+      title: 'Card Description',
+      hint: 'Enter a card description, up to 200 characters.',
+      required: 'Card description is required',
+      counter: '{{count}} / 200',
+    },
+    backFields: {
+      title: 'Back Fields',
+      hint: 'According to the Apple EULA, every Wallet pass must include contact data. Please specify either an Email address or a phone number that can be used to contact you.',
+      addField: 'Add Field',
+      removeField: 'Remove',
+      labelPlaceholder: 'Label (optional)',
+      valuePlaceholder: 'Value (required)',
+      required: 'Each row value is required',
+      minOne: 'At least one back field is required',
+      maxReached: 'Maximum 10 back fields',
+      counter: '{{count}} / 10',
+      labelLabel: 'Label',
+      valueLabel: 'Value',
+    },
+    links: {
+      title: 'Links',
+      hint: 'Up to 4 links can be added to a pass. These links will be shown in Apple Wallet and Google Wallet passes. You can also use HTML links anywhere in your back fields instead of using these dedicated link fields!',
+      addLink: 'Add Link',
+      removeLink: 'Remove',
+      labelPlaceholder: 'Link name (optional)',
+      valuePlaceholder: 'https://example.com',
+      labelLabel: 'Name',
+      valueLabel: 'URL',
+      counter: '{{count}} / 4',
+      maxReached: 'Maximum 4 links',
+      invalidUrl: 'Invalid URL format',
+    },
   },
   // Step 5: Geolocation
   step5: {
@@ -184,6 +217,8 @@ export default {
       allowNotifications: 'Allow Notifications',
       removePass: 'Remove Pass',
       termsOrLinks: 'Terms or Links',
+      linksTitle: 'Links',
+      linksEmpty: '(No links yet)',
     },
   },
 };
