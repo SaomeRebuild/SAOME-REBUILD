@@ -1,0 +1,246 @@
+---
+description: 長 timer（≥1s debounce）+ async fetch 的 race 是 silent data corruption 雷區 — 必走 baseline-armed + slow-network regression test SOP
+alwaysApply: true
+---
+
+# 長 timer + async fetch 是雷區（MANDATORY）
+
+> 觸發：寫任何 useEffect 內含 `setTimeout(fn, ms)` 或 `setInterval(fn, ms)`，
+> 且 `ms >= 1000`，且 fn 內讀取由 async fetch 來源的 store 值。
+
+## 背景
+
+2026-09-05 Step 4 autosave 慢網路洗 DB 事故（DEV/09-2026/0905-step4-autosave-slow-network-baseline.md）：
+
+```typescript
+// ❌ 看似合理的 1s debounce autosave，實際會洗 DB
+useEffect(() => {
+  if (!cardId) return;
+  const snapshot = JSON.stringify({ description, backFields, links });
+  if (snapshot === lastSnapshotRef.current) return;
+  lastSnapshotRef.current = snapshot;
+  step4SaveTimerRef.current = setTimeout(() => {
+    cardService.update(cardId, { settings: { description, backFields, links } });
+  }, 1000);   // ← 1s 看起來很短
+}, [cardId, description, backFields, links]);
+```
+
+時序（getById 慢於 debounce）：
+
+```
+T = 0:     mount → reset() → setCardId(xxx) → effect 跑
+           snapshot 是 empty defaults ('description', 'backFields', 'links')
+           schedule timer T1 = T+1000ms
+T = 1100:  T1 fire → PUT { description:'', backFields:[{empty}], links:[] }
+           ← 帶 empty defaults 寫進 DB（後端 JSONB merge silent overwrite）
+T = 1500:  getById resolve → loadSettings → store 變成真實資料
+           effect re-run → schedule T2 = T+2500ms（PUT 真實資料，但 T1 已經出去）
+```
+
+### 為什麼 1s「看起來很短」其實不夠
+
+| 情境 | getById resolve 時間 |
+|---|---|
+| 本地開發（localhost）| < 50ms |
+| Cloudflare edge cache hit | < 200ms |
+| Cloudflare edge cache miss + warm Hyperdrive | 300-700ms |
+| Cloudflare edge cache miss + cold Hyperdrive（worker idle > 60s）| 1000-3000ms |
+| Mobile 4G + cold Worker | 1500-5000ms |
+| Mobile 3G + cross-region | 3000-10000ms |
+
+只要「debounce ≥ fetch resolve 時間」這個不等式成立，bug 就會重現。1s debounce 在 production 已經是高風險，2-3s debounce 一定壞。
+
+## 鐵律
+
+### 1. baseline-armed 是長 timer 的必要條件（see Rule 030）
+
+**沒有 baselineArmedRef 的長 timer effect → P0 violation**。
+
+```typescript
+// ✅ 必走 baseline-armed pattern
+const baselineArmedRef = useRef(false);
+const lastSnapshotRef = useRef('');
+
+useEffect(() => {
+  if (!cardId) return;
+  const snapshot = JSON.stringify({ description, backFields, links });
+
+  // 第一次 run：純粹 seed baseline，不排 timer
+  if (!baselineArmedRef.current) {
+    baselineArmedRef.current = true;
+    lastSnapshotRef.current = snapshot;
+    return;
+  }
+
+  if (snapshot === lastSnapshotRef.current) return;
+  lastSnapshotRef.current = snapshot;
+
+  if (timerRef.current) clearTimeout(timerRef.current);
+  timerRef.current = setTimeout(() => {
+    // 讀最新值，不 capture stale closure
+    const s = useStore.getState();
+    cardService.update(cardId, { settings: { description: s.description, ... } });
+  }, 1000);
+}, [cardId, description, backFields, links]);
+```
+
+### 2. fetch 還沒完成前不能 schedule timer（雙重保險）
+
+```typescript
+const loadSettledRef = useRef(false);
+
+// outer effect：fetch → loadSettings → flip settled
+useEffect(() => {
+  if (!cardId) return;
+  reset();
+  setCardId(cardId);
+  loadSettledRef.current = false;
+  cardService.getById(cardId).then(template => {
+    loadSettings(template.settings);
+    loadSettledRef.current = true;
+  });
+}, [cardId]);
+
+// inner effect：long-timer PUT，只在 settled 後才允許 schedule
+useEffect(() => {
+  if (!cardId) return;
+  if (!baselineArmedRef.current) { /* seed */ return; }
+  if (!loadSettledRef.current) { /* hold */ return; }
+  // ... schedule timer ...
+}, [cardId, ...]);
+```
+
+### 3. Timer fire 時讀 store.getState()，不 capture 閉包變數
+
+```typescript
+// ❌ 閉包陷阱：timer fire 時拿到的 description 是 effect 跑當下的值
+useEffect(() => {
+  timerRef.current = setTimeout(() => {
+    cardService.update(cardId, { settings: { description, backFields, links } });
+    //                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    //                                       這些是 effect 跑時的閉包變數
+    //                                       不是 timer fire 時的 store 值
+  }, 1000);
+}, [cardId, description, backFields, links]);
+
+// ✅ 讀 store.getState() 拿最新值
+useEffect(() => {
+  timerRef.current = setTimeout(() => {
+    const s = useStore.getState();
+    cardService.update(cardId, { settings: { description: s.description, backFields: s.backFields, links: s.links } });
+  }, 1000);
+}, [cardId]);   // 注意：deps 只放 sessionKey，不放 store value（避免 effect 一直 re-run 重新 schedule）
+```
+
+### 4. Cleanup 必清 timer
+
+```typescript
+useEffect(() => {
+  if (timerRef.current) clearTimeout(timerRef.current);
+  timerRef.current = setTimeout(() => { /* ... */ }, 1000);
+
+  return () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+}, [...]);
+```
+
+Cleanup 漏寫 → component unmount 時 timer 仍跑 → 「setState on unmounted component」warning + memory leak。
+
+### 5. setInterval 也適用同樣 SOP
+
+```typescript
+// touch keep-alive
+useEffect(() => {
+  if (!cardId) return;
+
+  const tick = () => {
+    cardService.touch(cardId).catch(err => console.warn('[touch] failed:', err));
+  };
+
+  tick();   // 立即 fire 一次
+
+  intervalRef.current = setInterval(tick, 5 * 60 * 1000);  // 5min
+
+  return () => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  };
+}, [cardId]);
+```
+
+`setInterval` 不會被 effect re-run cancel — 必須在 cleanup 顯式清。
+
+## Conformance test — slow-network regression test（MANDATORY）
+
+**任何 `setTimeout >= 1000ms` 的 autosave / debounce effect 必須有這條 test**：
+
+```typescript
+it('does NOT autosave before async fetch resolves (regression — 2026-09-05)', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+
+  vi.mocked(cardService.getById).mockImplementationOnce(
+    () => new Promise(resolve => setTimeout(() => resolve({
+      id: 'test-template-id',
+      settings: FULL_SETTINGS,
+    }), 1500)),
+  );
+
+  renderWithRouter();
+
+  await act(async () => { vi.advanceTimersByTime(1100); });
+
+  // 關鍵斷言：debounce 已經過、但 fetch 還沒回 → 沒有 PUT
+  expect(updateSpy).not.toHaveBeenCalled();
+
+  // 等 fetch resolve
+  await act(async () => { vi.advanceTimersByTime(500); });
+  // 第二次 debounce cycle 才允許 PUT（帶真實資料）
+  await act(async () => { vi.advanceTimersByTime(1100); });
+
+  // 真正的 PUT 帶真實資料出去
+  expect(updateSpy).toHaveBeenCalledWith(cardId, expect.objectContaining({
+    settings: expect.objectContaining({
+      description: FULL_SETTINGS.description,
+      backFields: FULL_SETTINGS.backFields,
+      links: FULL_SETTINGS.links,
+    }),
+  }));
+});
+```
+
+沒這條 test → 不可 ship。
+
+## 何時算「長 timer」
+
+| ms | 風險 | 處理 |
+|----|------|------|
+| < 100 | 低 — fetch 幾乎一定先 resolve | 直接寫，視為「短 timer」 |
+| 100-500 | 中 — production edge cache miss 可能比這慢 | 仍建議 baseline-armed，但不強制 regression test |
+| 500-1000 | 高 — cloudflare cold start 偶爾會撞到 | baseline-armed **必須**，regression test 建議 |
+| **≥ 1000** | **雷區** — mobile / cold worker 一定撞 | baseline-armed + slow-network regression test **MANDATORY** |
+
+## 觸發關鍵字
+
+「debounce」、「autosave」、「setTimeout」、「setInterval」、「race condition」、「stale closure」、「fetch + write」、「async save」**必須**引用本 rule。
+
+「slow-network」、「cold start」、「edge cache miss」、「getById > debounce」→ 必引 § Conformance test。
+
+## 與其他 rule 的關係
+
+- `030-effect-first-run-not-trustworthy.mdc` — baseline-armed pattern 完整規範
+- `028-image-uploader-pattern.mdc` § 2 — settings merge 守前端寫入端
+- `032-backend-jsonb-merge-silent-killer.mdc` — 為什麼 empty PUT 會洗 DB（後端防衛）
+- `006-verification.mdc` — 完工驗證清單必含 regression test
+- `011-dev.mdc` — feedback 在實作當下 commit
+
+## 參照
+
+- `DEV/09-2026/0905-step4-autosave-slow-network-baseline.md` — 完整事故 trace
+- `apps/frontend/src/components/business/dashboard/CardBuilderEditor/CardBuilderEditor.tsx` line 175-225 — Step 4 autosave reference implementation
+- `apps/frontend/src/components/business/dashboard/CardBuilderEditor/CardBuilderEditor.autosave.test.tsx` — 7 個 conformance test

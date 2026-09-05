@@ -1,0 +1,201 @@
+---
+description: React useEffect 的第一次 run 在 async fetch-driven store hydration 情境下不可信 — 第一次必須只做 baseline seeding，不做事。
+alwaysApply: true
+---
+
+# Effect 第一次 run 不可信 SOP（MANDATORY）
+
+> 觸發：寫任何 React `useEffect`，且該 effect：
+>
+> 1. 依賴外部資源（Zustand / TanStack Query / context）的 store 值
+> 2. 該 store 值由 `async fetch` 取得（`useEffect` → `setXxx()` → `fetch().then(setXxx)`）
+> 3. effect 內有副作用（PUT / dispatch / setTimeout 等）
+
+## 背景
+
+2026-09-05 Step 4 autosave 慢網路洗 DB 事故（DEV/09-2026/0905-step4-autosave-slow-network-baseline.md）：
+
+`CardBuilderEditor` 在 mount 時跑 `reset()` 把 store 清空，然後 `setCardId(templateId)` 觸發 Step 4 autosave effect 立刻 schedule 一個 1s 後的 PUT。此時 store 還是 empty，PUT 帶 `description=''`、`backFields=[{empty}]`、`links=[]`。後端 JSONB `||` merge silent overwrite 把真實資料洗空。
+
+關鍵時序（getById 慢於 debounce 時）：
+
+```
+T = 0:    mount → reset() → setCardId(xxx) → autosave 第一次 run → schedule T1 = 1100ms
+T = 1100: T1 帶 empty defaults PUT 進 DB（loadSettings 還沒 resolve）
+T = 1500: getById 終於 resolve → loadSettings 把 store 寫成真實值
+T = 1500+: effect 再 run 一次（store 變了）→ 但 T1 已經出去、DB 已經被洗
+```
+
+`isDirty` / `formState.dirty` 不是守門員；`useEffect` 的「第一次 run」也不是 trustworthy source-of-truth，因為它跑在 fetch 完成之前。
+
+## 鐵律
+
+### Baseline-Armed Flag（MANDATORY）
+
+任何上述情境的 effect，**必須** 配一個 baseline-armed ref，守住第一次 run：
+
+```typescript
+const baselineArmedRef = useRef(false);
+const lastSnapshotRef = useRef('');
+
+// Reset on session boundary (cardId 變動 = 新 session)
+useEffect(() => {
+  baselineArmedRef.current = false;
+  lastSnapshotRef.current = '';
+}, [sessionKey]);   // 例如 cardId、userId、templateId
+
+useEffect(() => {
+  if (!sessionKey) return;       // 沒有 session = 不做事
+
+  const snapshot = JSON.stringify(currentStoreValue);
+
+  // 第一次 run：純粹 seed baseline，不排 timer、不 dispatch、不 PUT
+  if (!baselineArmedRef.current) {
+    baselineArmedRef.current = true;
+    lastSnapshotRef.current = snapshot;
+    return;
+  }
+
+  // 後續 run：依 baseline diff 做事
+  if (snapshot === lastSnapshotRef.current) return;
+  lastSnapshotRef.current = snapshot;
+  // ... 排 timer / dispatch / PUT ...
+}, [sessionKey, currentStoreValue]);
+```
+
+### 為什麼第一次 run 必須是 no-op
+
+第一次 run 的 store 值是 `reset()` 後的 **default state**（e.g. `description=''`、`backFields=[{empty}]`、`links=[]`），不是使用者資料。如果立刻 schedule timer 並在 timer fire 時拿當下的 store 值 PUT，會把 empty defaults 寫進 DB —— 即使之後 `loadSettings` 已經把 store 改成真實值，timer 早就被 cancel 不掉（cancel 是在 effect re-run 時發生，但 timer 已經 fire 過了）。
+
+### 為什麼這不是「加 early return」就能解
+
+常見的錯誤修法：
+
+```typescript
+// ❌ 仍會 schedule 一次 timer，只是後面 cancel
+useEffect(() => {
+  if (!cardId) return;
+  if (description === '' && backFields.length === 1 && backFields[0].value === '') return;
+  // ^ 這只是「empty defaults 時不做」，但 schedule timer 的程式碼還是會跑
+  scheduleTimer();
+}, [cardId, description, backFields, links]);
+```
+
+問題：
+1. effect re-run 時（如使用者打一個字）— 不再是 empty，但 `loadSettings` 還沒完成 → schedule 一個帶半空資料的 PUT
+2. `loadSettings` resolve 後 effect 再 run — schedule 又一個 PUT，舊 timer 被 cancel 但新 timer 帶的是完整真實值（其實是好的）
+3. 但若 `loadSettings` 慢於 debounce（getById > 1s） — 舊 timer fire，帶 empty PUT 出去
+
+baselineArmedRef 守「**第一次 run 純粹 seed baseline，不排 timer**」，這是物理上保證「就算 fetch 慢，effect 第一次 run 也不會出去寫東西」。
+
+### 配套：`loadSettledRef` 雙重保險
+
+baseline-armed 只保證「第一次 run 不做事」。但「使用者第一次輸入」也算「baseline 後的 run」，這時 loadSettings 可能還沒完成，schedule 出去的 PUT 會帶 stale 資料。解法是再加一層：
+
+```typescript
+const baselineArmedRef = useRef(false);
+const loadSettledRef = useRef(false);
+
+// 監聽 URL → fetch → loadSettings 完成後 flip settled
+useEffect(() => {
+  if (!cardId) return;
+  reset();             // store 清空
+  setCardId(cardId);
+  loadSettledRef.current = false;   // 重置
+  cardService.getById(cardId).then(template => {
+    loadSettings(template.settings);
+    loadSettledRef.current = true;  // settle 後才允許 schedule
+  });
+}, [cardId]);
+
+useEffect(() => {
+  if (!cardId) return;
+  if (!baselineArmedRef.current) {
+    baselineArmedRef.current = true;
+    lastSnapshotRef.current = JSON.stringify(currentStoreValue);
+    return;
+  }
+  // 修 3：loadSettings 還沒完成 → 不 schedule，避免半空 PUT
+  if (!loadSettledRef.current) {
+    lastSnapshotRef.current = JSON.stringify(currentStoreValue);
+    return;
+  }
+  // ... 真正 schedule PUT ...
+}, [cardId, currentStoreValue]);
+```
+
+兩層 ref 的分工：
+- `baselineArmedRef` — 保證「effect 第一次 run 不做事」
+- `loadSettledRef` — 保證「fetch 還沒完成前，使用者輸入不觸發 PUT」
+
+### 為什麼 snapshot diff 是必要的
+
+即使有 baselineArmedRef，effect re-run 還是要靠 `lastSnapshotRef` 做 diff：
+
+```typescript
+if (snapshot === lastSnapshotRef.current) return;  // 沒有變化 → 不做事
+```
+
+理由：Zustand selector 每次回傳新 array reference（即使內容相同），所以 effect deps 變動會 re-run；沒 snapshot diff 就會 schedule 一個沒有實質變化的 PUT（浪費 DB write、浪費 Hyperdrive connection、可能在 wrangler log 看到大量無意義的 PUT 200）。
+
+### 為什麼是 JSON.stringify snapshot 而不是 shallow compare
+
+Zustand array / object 是 reference-equal，每次 selector 拿到的都是新 reference。shallow compare 看到 reference 不同就會 false-positive。`JSON.stringify` 是 deep-equality 的廉價近似（nested array / object 都涵蓋），對 autosave 這種「結構化資料寫回」場景剛好。
+
+禁止：
+- ❌ 用 `===` 或 `Object.is` 比 array / object（reference 不穩）
+- ❌ 用 `lodash.isEqual`（多 80KB bundle）
+- ❌ 用 structured cloning（效能太重）
+
+`JSON.stringify` + snapshot ref 是 minimum-footprint 的解。
+
+## Conformance test（MANDATORY — 任何此類 effect 必須加）
+
+```typescript
+it('does NOT autosave empty defaults when getById resolves slowly (regression — 2026-09-05)', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+
+  // 模擬 getById 延遲 1500ms（cloudflare edge / mobile 4G / cold worker）
+  vi.mocked(cardService.getById).mockImplementationOnce(
+    () => new Promise(resolve => setTimeout(() => resolve({
+      id: 'test-template-id',
+      settings: FULL_SETTINGS,
+    }), 1500)),
+  );
+
+  renderWithRouter();
+
+  // 推進 1.1s — 比 debounce（1s）稍長，但 fetch 還沒 resolve
+  await act(async () => { vi.advanceTimersByTime(1100); });
+
+  // 驗證：沒有任何 PUT 帶 empty defaults 出去
+  const emptyPayloads = updateCalls.filter(u => {
+    const s = (u.payload as { settings?: Record<string, unknown> })?.settings ?? {};
+    return s.description === '' && /* ... empty defaults pattern ... */;
+  });
+  expect(emptyPayloads).toHaveLength(0);
+});
+```
+
+沒有這條 regression test 的 effect → **不可 ship**。
+
+## 觸發關鍵字
+
+出現「autosave」、「debounce」、「effect 第一次 run」、「reset store」、「loadSettings」、「useEffect + setTimeout」、「PUT 後台資料」時**必須**引用本 rule。
+
+「slow-network regression test」、「baseline-armed pattern」、「fetch race」、「stale store data」→ 必引本 rule。
+
+## 與其他 rule 的關係
+
+- `028-image-uploader-pattern.mdc` § 2 Settings merge — 後端合併端
+- `031-long-timer-async-fetch.mdc` — 這個 rule 的姊妹篇：timer 為什麼是雷區
+- `032-backend-jsonb-merge-silent-killer.mdc` — 為什麼 empty PUT 會洗 DB（後端防衛）
+- `.cursor/rules/006-verification.mdc` — 完工驗證清單必含 regression test
+- `.cursor/rules/011-dev.mdc` — feedback 在實作當下 commit
+
+## 參照
+
+- `DEV/09-2026/0905-step4-autosave-slow-network-baseline.md` — 完整事故 trace
+- `runs/improvements/feedback/20260905-step4-autosave-slow-network-baseline.md`（待寫）
+- `apps/frontend/src/components/business/dashboard/CardBuilderEditor/CardBuilderEditor.tsx` line 113-150（name auto-save）與 line 175-225（Step 4 autosave）— reference implementation
+- `apps/frontend/src/components/business/dashboard/CardBuilderEditor/CardBuilderEditor.autosave.test.tsx` — 7 個 conformance test 範本

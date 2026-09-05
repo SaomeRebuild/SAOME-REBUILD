@@ -1,0 +1,212 @@
+---
+description: 後端 JSONB merge（`settings || $new_settings` 或 `JSONB_SET`）對 empty 值 silent overwrite，不 throw — 前端必須在寫之前保證資料有效性
+alwaysApply: true
+---
+
+# 後端 JSONB merge 是 silent killer（MANDATORY）
+
+> 觸發：寫任何後端 UPDATE / INSERT 涉及 jsonb column（`settings`、`metadata`、`config` 等），
+> 且 merge 邏輯用 PostgreSQL `||` operator 或 `jsonb_set()`。
+
+## 背景
+
+2026-09-05 Step 4 autosave 慢網路洗 DB 事故（DEV/09-2026/0905-step4-autosave-slow-network-baseline.md）：
+
+前端因 effect race 寫出 `settings = { description:'', backFields:[{empty}], links:[] }`，
+後端跑 `UPDATE templates SET settings = settings || $1::jsonb`，
+PostgreSQL `||` operator 把每個 top-level key **用 incoming value 覆蓋 DB value**：
+
+```sql
+-- DB existing:
+{ description: '真實描述', backFields: [...5 rows...], links: [...1 row...] }
+
+-- incoming (因為前端 race):
+{ description: '', backFields: [{label:'', value:''}], links: [] }
+
+-- result (silent overwrite, no error):
+{ description: '', backFields: [{label:'', value:''}], links: [] }
+--                                          ↑ DB 真實資料被洗成 empty，沒有 5 rows
+```
+
+**`||` operator 對每個 key 獨立 merge**：nested object 的「鍵存在但 value 是 empty」會把整個 value 覆寫掉，**不 throw、不 warning、不 trigger constraint**。PostgreSQL 把 jsonb 視為 opaque blob，**不知道 `[]` 是「空陣列」還是「使用者刪光了」**，只知道「這個 key 有值」。
+
+## 鐵律
+
+### 1. 後端必須 validate incoming jsonb（MANDATORY — schema-level rejection）
+
+任何 merge 寫入前，**必跑 zod parse + reject**，禁止直接把 `req.body.settings` 透傳給 SQL：
+
+```typescript
+// ✅ 正確：zod 拒絕 description=''（min(1)）就 400 回去，不會洗 DB
+const TemplateSettingsSchema = z.object({
+  description: z.string().min(1, 'validation.descriptionEmpty'),
+  backFields: z.array(z.object({
+    label: z.string().min(1, 'validation.labelEmpty'),
+    value: z.string().min(1, 'validation.valueEmpty'),
+  })).min(1, 'validation.backFieldsEmpty'),
+  links: z.array(z.object({
+    label: z.string().min(1),
+    value: z.string().url('validation.urlInvalid'),
+  })).default([]),
+});
+
+await sql`
+  UPDATE templates
+     SET settings = settings || ${sql.json(TemplateSettingsSchema.parse(input.settings))}
+   WHERE id = ${id}
+`;
+```
+
+```typescript
+// ❌ 危險：直接透傳
+await sql`
+  UPDATE templates
+     SET settings = settings || ${sql.json(input.settings as any)}
+   WHERE id = ${id}
+`;
+// input.settings.description = '' → DB 默默被洗
+```
+
+### 2. 前端必須在 PUT 之前做 client-side validation（MANDATORY — UX + 防護）
+
+```typescript
+// 前端：autosave timer fire 之前，validate snapshot 是否 valid
+useEffect(() => {
+  if (!baselineArmedRef.current) return;
+  if (!loadSettledRef.current) return;
+
+  const snapshot = JSON.stringify({ description, backFields, links });
+  if (snapshot === lastSnapshotRef.current) return;
+  lastSnapshotRef.current = snapshot;
+
+  // 修 4：client-side validate before scheduling PUT
+  const parsed = TemplateSettingsSchema.safeParse({ description, backFields, links });
+  if (!parsed.success) {
+    console.warn('[CardBuilderEditor] autosave blocked — invalid state:', parsed.error.issues);
+    return;   // 不 schedule PUT，讓使用者修正
+  }
+
+  scheduleTimer(() => cardService.update(cardId, { settings: parsed.data }));
+}, [cardId, description, backFields, links]);
+```
+
+好處：
+- 不會 PUT 出去的內容被後端 reject → 沒有 400 在 console
+- 使用者看到 UI 指示（required field 未填）就會修正
+- slow-network race 帶 empty data 出去也不會洗 DB（前端就擋掉了）
+
+### 3. 後端使用 `sql.json()` 注入（MANDATORY — workerd pitfall）
+
+詳見 Rule 027 § workerd `JSON.stringify` pitfall — workerd runtime 對 non-ASCII 字串破壞成 `\uFFFD`。
+**禁止** 手動 `${JSON.stringify(x)}::jsonb`：
+
+```typescript
+// ✅ 正確
+sql`settings = settings || ${sql.json(input.settings)}`
+
+// ❌ 危險（workerd 破壞 non-ASCII）
+sql`settings = settings || ${JSON.stringify(input.settings)}::jsonb`
+```
+
+### 4. application 層 merge vs DB 層 merge 的取捨
+
+| 層級 | 行為 | 風險 |
+|------|------|------|
+| **application 層 fetch → merge → write** | 完全控制 merge 邏輯（e.g. 只 merge 有值的 key）| 多 1 次 DB read，但可控 |
+| **DB 層 `\|\|` operator merge** | 簡潔、atomic | silent overwriter — empty value 蓋 real value |
+
+SAOME 兩個都用：
+- `updateTemplate` 用 DB 層 `||`（性能優先，前端負責 validate）
+- 任何「前端 partial update」必須走前端 schema validation（防 empty silent overwrite）
+
+### 5. Trigger / constraint 必須擋掉 DB-level invalid state
+
+```sql
+-- 用 PG CHECK constraint 或 trigger 拒絕全空 settings
+ALTER TABLE templates
+  ADD CONSTRAINT settings_not_empty
+  CHECK (
+    settings ? 'description'  -- 必須至少有 description key
+    AND (
+      settings->>'description' != ''
+      OR jsonb_array_length(settings->'backFields') > 0
+      OR jsonb_array_length(settings->'links') > 0
+    )
+  );
+```
+
+但 trigger / CHECK 是**最後防線**，不是主守門員：
+- 沒在 application 層 validate 就 trigger 拒絕 → 給使用者 500 → UX 差
+- trigger + check 在 production 行為可能跟 dev 不一致（hyperdrive / 同源 migration chain）
+- 前端 + 後端 application 層 validation 必須先擋，trigger / check 只是「如果有人 bypass 也要 fail」
+
+### 6. Conformance test — silent overwrite regression（MANDATORY）
+
+```typescript
+// apps/backend/src/modules/cards/tests/updateTemplate.silent-overwrite.test.ts
+it('rejects empty description before writing (regression — 2026-09-05)', async () => {
+  const malicious = {
+    description: '',                    // ← empty value
+    backFields: [{ label: '', value: '' }],   // ← empty row
+    links: [],
+  };
+
+  // 後端 zod 必須在 merge 之前 400 回去
+  await expect(updateTemplate(sql, id, { settings: malicious }))
+    .rejects.toThrow(ValidationError);
+
+  // DB 不應該被洗掉 — 讀回來確認 description 還是原本的
+  const row = await findTemplateById(sql, id);
+  expect(row!.settings.description).not.toBe('');
+});
+
+it('rejects backFields rows with empty label or value', async () => {
+  const malicious = {
+    description: 'OK',
+    backFields: [{ label: '', value: 'real value' }],
+    links: [],
+  };
+  await expect(updateTemplate(sql, id, { settings: malicious }))
+    .rejects.toThrow(ValidationError);
+});
+
+it('rejects empty backFields array (require at least one row)', async () => {
+  const malicious = { description: 'OK', backFields: [], links: [] };
+  await expect(updateTemplate(sql, id, { settings: malicious }))
+    .rejects.toThrow(ValidationError);
+});
+```
+
+沒這幾條 conformance test → 不可 ship merge 邏輯。
+
+## 禁止
+
+- ❌ 把 `req.body.settings` 直接透傳給 SQL `${sql.json(input.settings)}` 沒先過 zod
+- ❌ 前端 autosave timer 不 validate 就 PUT（即使後端會 reject，也浪費 RTT + 製造 400 noise）
+- ❌ 用 `${JSON.stringify(x)}::jsonb`（workerd pitfall，詳見 Rule 027）
+- ❌ 依賴 DB CHECK constraint / trigger 作為主守門員（應該是 application 層先擋）
+- ❌ 寫 `OR REPLACE` 或 `REPLACE INTO` 而非 merge（會洗掉其他欄位）
+
+## 觸發關鍵字
+
+「merge settings」、「jsonb ||」、「JSONB_SET」、「settings ||」、「updateTemplate」、「patch metadata」、「silent overwrite」、「empty 寫 DB」**必須**引用本 rule。
+
+「|| operator 對 empty 的行為」、「nested jsonb merge」、「前端無 validate 就 PUT」、「workerd JSON.stringify」→ 必引 § 1 / § 2 / § 3。
+
+## 與其他 rule 的關係
+
+- `027-postgres-dynamic-query-pattern.mdc` § workerd JSON.stringify pitfall — 同 pitfall 不同層面
+- `028-image-uploader-pattern.mdc` § 2 Settings merge — 前端 fetch → merge → write 端
+- `030-effect-first-run-not-trustworthy.mdc` — 為什麼會有空 PUT 出去（前端沒守好）
+- `031-long-timer-async-fetch.mdc` — 長 timer 為什麼會帶 stale data（timer race）
+- `019-schema-contract-drift.mdc` § 4.1 Backend Request Schema — zod schema 是契約
+- `006-verification.mdc` — 完工驗證清單必含 conformance test
+
+## 參照
+
+- `DEV/09-2026/0905-step4-autosave-slow-network-baseline.md` — 完整事故 trace
+- `runs/improvements/feedback/20260905-step4-autosave-slow-network-baseline.md`（待寫）
+- `apps/backend/src/modules/cards/db/templates.ts::updateTemplate` — DB 層 merge 實作範例（line ~232 area）
+- `apps/backend/src/modules/cards/db/templates.ts::insertTemplate` — INSERT 端對齊範例
+- `apps/backend/src/modules/cards/schemas/request.ts::TemplateSettingsSchema` — 後端 zod schema
+- `apps/frontend/src/components/business/dashboard/CardBuilderEditor/CardBuilderEditor.tsx` — 前端 client-side validation 範例（待補）
