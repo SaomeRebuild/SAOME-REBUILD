@@ -1,5 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { BrowserRouter } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import './i18n';
 import './index.css';
@@ -21,13 +22,25 @@ import i18n from 'i18next';
  * a function` and the entire React tree never mounted.
  */
 function renderApp() {
+  // Provider order matters:
+  //   ThemeProvider     — no router dep
+  //   BrowserRouter     — provides Router context (useNavigate, useLocation, <Routes>)
+  //   AuthProvider      — useAuth() calls useNavigate() in logout, MUST be inside Router
+  //   App               — owns <Routes> via <AppRoutes/>; uses useLocation (ScrollToTop)
+  //
+  // Why BrowserRouter wraps AuthProvider (not the other way around):
+  //   useNavigate throws "may be used only in the context of a <Router>"
+  //   if the calling component is OUTSIDE the Router context. So AuthProvider
+  //   must be a DESCENDANT of BrowserRouter, not an ancestor.
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
       <ThemeProvider>
-        <AuthProvider>
-          <Toaster richColors position="bottom-right" />
-          <App />
-        </AuthProvider>
+        <BrowserRouter>
+          <AuthProvider>
+            <Toaster richColors position="bottom-right" />
+            <App />
+          </AuthProvider>
+        </BrowserRouter>
       </ThemeProvider>
     </StrictMode>,
   );

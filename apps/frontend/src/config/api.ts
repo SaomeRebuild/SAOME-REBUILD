@@ -10,6 +10,8 @@ export const api = {
     register: '/api/auth/register',
     login: '/api/auth/login',
     refresh: '/api/auth/refresh',
+    /** B4 (2026-09-05): POST /api/auth/logout — clears HttpOnly saome_refresh cookie. */
+    logout: '/api/auth/logout',
     me: '/api/auth/me',
     // Cards module
     cards: '/api/cards',

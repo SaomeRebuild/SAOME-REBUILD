@@ -14,6 +14,12 @@
  *   exact origin back. Our `resolveAllowedOrigin` does that, supporting:
  *     - exact match in ALLOWED_ORIGINS
  *     - match via ALLOWED_ORIGIN_PATTERNS (host glob like `*.workers.dev`)
+ *
+ *   B2 (2026-09-05): the middleware now uses a **wrap-after-next** shape —
+ *   we await `next()` first and then set CORS headers on `c.res`, which by
+ *   then is the FINAL response object. This defends against the failure
+ *   mode where route handlers return `new Response(...)` and drop headers
+ *   that were set before `await next()`.
  */
 
 import type { Context, MiddlewareHandler } from 'hono';
@@ -79,6 +85,40 @@ export function resolveAllowedOrigin(
 export const corsMiddleware: MiddlewareHandler<HonoEnv> = async (c, next) => {
   const origin = c.req.header('Origin');
   const allowed = resolveAllowedOrigin(origin, c.env);
+
+  // Preflight short-circuit: handled before await next() because OPTIONS
+  // doesn't delegate to a route handler. Build a fresh 204 with CORS
+  // headers inline.
+  if (c.req.method === 'OPTIONS') {
+    if (!allowed) {
+      // Out of scope for B2: 204 with no CORS headers is sufficient — the
+      // browser treats it as a CORS rejection. We deliberately do NOT
+      // upgrade this to 403 to keep the user's request scope minimal.
+      return new Response(null, { status: 204 });
+    }
+    const headers = new Headers({
+      'Access-Control-Allow-Origin': allowed,
+      Vary: 'Origin',
+      'Access-Control-Allow-Credentials': 'true',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Request-Id',
+      'Access-Control-Expose-Headers': 'X-Request-Id',
+      'Access-Control-Max-Age': '86400',
+    });
+    return new Response(null, { status: 204, headers });
+  }
+
+  // Non-OPTIONS: await the route handler FIRST, then set CORS headers on
+  // `c.res` (which by now is the FINAL response object). This is the
+  // defensive wrap-after-next shape that survives handlers that return
+  // a fresh `new Response(...)` (where pre-await header assignments
+  // could be discarded). Real Cloudflare Workers + certain Hono
+  // response handlers (streaming, error.onError, etc.) DO lose headers
+  // when they're set before await next(); vitest happens to not exercise
+  // that path so tests pass either way, but the production-safe pattern
+  // is wrap-after-next.
+  await next();
+
   if (allowed) {
     c.res.headers.set('Access-Control-Allow-Origin', allowed);
     c.res.headers.set('Vary', 'Origin');
@@ -91,17 +131,9 @@ export const corsMiddleware: MiddlewareHandler<HonoEnv> = async (c, next) => {
       'Access-Control-Allow-Headers',
       'Content-Type, Authorization, X-Request-Id',
     );
-    c.res.headers.set('Access-Control-Allow-Expose-Headers', 'X-Request-Id');
+    c.res.headers.set('Access-Control-Expose-Headers', 'X-Request-Id');
     c.res.headers.set('Access-Control-Max-Age', '86400');
   }
-  // Preflight
-  if (c.req.method === 'OPTIONS') {
-    return new Response(null, {
-      status: 204,
-      headers: c.res.headers,
-    });
-  }
-  await next();
 };
 
 export function applyCorsHeaders(c: Context<HonoEnv>, response: Response): Response {

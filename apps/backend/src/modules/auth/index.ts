@@ -15,6 +15,7 @@ import { registerRoute } from './routes/register';
 import { loginRoute } from './routes/login';
 import { refreshRoute } from './routes/refresh';
 import { meRoute } from './routes/me';
+import { logoutRoute } from './routes/logout';
 import { rateLimitMiddleware } from './middleware/rateLimit';
 
 /**
@@ -28,6 +29,7 @@ export const authModule = new Hono<HonoEnv>()
   .route('/register', registerRoute)
   .route('/login', loginRoute)
   .route('/refresh', refreshRoute)
+  .route('/logout', logoutRoute)
   .route('/me', meRoute);
 
 // Default export for `app.route('/api/auth', authModule)`

@@ -32,6 +32,7 @@ import { authModule } from '@/modules/auth';
 import { passModule } from '@/modules/pass';
 import { billingCycleCronRoute } from '@/modules/pass/routes/billingCycleCron';
 import { cardsModule } from '@/modules/cards';
+import { healthModule } from '@/modules/health';
 
 /**
  * Default export — Worker entry point.
@@ -53,6 +54,7 @@ app.get('/health', (c) => c.json({ ok: true }));
 app.route('/api/auth', authModule);
 app.route('/api/pass', passModule);
 app.route('/api/cron/billing-cycle', billingCycleCronRoute);
+app.route('/api/cron', healthModule);
 app.route('/api/cards', cardsModule);
 
 export default app;

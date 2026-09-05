@@ -9,6 +9,11 @@
  * accessToken) so the AuthProvider can recover the session on page reload
  * without a second `/api/auth/me` call. The /me endpoint still exists for
  * callers that already have an access token in memory.
+ *
+ * B4 (2026-09-05): `logout()` is now async and hits the server
+ * (`POST /api/auth/logout`) so the HttpOnly `saome_refresh` cookie gets
+ * cleared server-side. If the server call fails (e.g. network glitch), we
+ * still clear local tokens — logout UX is non-blocking and idempotent.
  */
 
 import { httpClient } from './httpClient';
@@ -77,9 +82,35 @@ export const authService = {
     return httpClient.get<MeResponse>(api.paths.me);
   },
 
-  /** Local-only logout: drop all tokens. Server cookie is cleared by the browser. */
-  logout(): void {
-    setAccessToken(null);
-    setRefreshToken(null);
+  /**
+   * Logout — call the server so the HttpOnly `saome_refresh` cookie is
+   * cleared, then clear local tokens.
+   *
+   * Why this matters (B4): previously logout was local-only. The 30-day
+   * HttpOnly cookie survived logout and the next 401 + tryRefresh() silently
+   * re-logged the user in. This route clears the cookie server-side via
+   * `Set-Cookie: saome_refresh=; Max-Age=0`.
+   *
+   * The route is idempotent on the server (see `routes/logout.ts`), so a
+   * double-click logout is safe. On the client, local tokens are cleared
+   * unconditionally — even when the server call fails — so the user
+   * always ends up signed out locally.
+   */
+  async logout(): Promise<{ loggedOut: true }> {
+    try {
+      const result = await httpClient.post<{ loggedOut: true }>(api.paths.logout);
+      setAccessToken(null);
+      setRefreshToken(null);
+      return result;
+    } catch {
+      // Server-side cookie-clear failed (network, server error, etc.).
+      // Still clear local tokens — the user is signed out either way from
+      // this client's perspective. The remaining HttpOnly cookie will be
+      // naturally overwritten on the next login (and cleared on the next
+      // explicit logout attempt that succeeds).
+      setAccessToken(null);
+      setRefreshToken(null);
+      throw new Error('logout-server-unreachable');
+    }
   },
 };

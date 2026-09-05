@@ -4,6 +4,10 @@ export default {
     openMenu: '打開選單',
     closeMenu: '關閉選單',
     logout: '登出',
+    /** B4 (2026-09-05): toast shown if /api/auth/logout request fails.
+     *  Logout UX is non-blocking — the client still clears local tokens
+     *  even when the server-side cookie-clear fails. */
+    logoutError: '登出通知伺服器失敗，但已在本機清除您的登入狀態。',
     nav: {
       dashboard: '儀表板',
       members: '會員管理',

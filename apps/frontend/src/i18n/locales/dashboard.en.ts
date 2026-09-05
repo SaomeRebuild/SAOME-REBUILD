@@ -4,6 +4,10 @@ export default {
     openMenu: 'Open menu',
     closeMenu: 'Close menu',
     logout: 'Sign out',
+    /** B4 (2026-09-05): toast shown if /api/auth/logout request fails.
+     *  Logout UX is non-blocking — the client still clears local tokens
+     *  even when the server-side cookie-clear fails. */
+    logoutError: 'Could not notify the server, but you are signed out locally.',
     nav: {
       dashboard: 'Dashboard',
       members: 'Members',

@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { Routes, Route, useLocation } from 'react-router-dom';
 import { useEffect } from 'react';
 import { MarketingShell } from '@/components/layout/MarketingShell';
 import { DashboardShell } from '@/components/layout/DashboardShell';
@@ -108,11 +108,15 @@ function AppRoutes() {
 }
 
 function App() {
+  // BrowserRouter lives in main.tsx so AuthProvider (which calls
+  // useNavigate from useAuth.tsx for logout) renders inside the
+  // Router context. Putting it here previously caused the entire
+  // tree to unmount on logout — see runs/feedback/20260905-*.
   return (
-    <BrowserRouter>
+    <>
       <ScrollToTop />
       <AppRoutes />
-    </BrowserRouter>
+    </>
   );
 }
 

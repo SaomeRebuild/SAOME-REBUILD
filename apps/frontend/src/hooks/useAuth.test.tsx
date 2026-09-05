@@ -8,12 +8,20 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, waitFor, act } from '@testing-library/react';
+import { render, waitFor, act, renderHook } from '@testing-library/react';
+import type { ReactNode } from 'react';
+import { MemoryRouter } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/hooks/useAuth';
 import { authService } from '@/services/authService';
 import type { AuthSessionWithTenant } from '@saome/shared/types/auth';
 
-// ── Mock helpers ──────────────────────────────────────────────────────────────
+/** B4 (2026-09-05): useAuth.logout now uses useNavigate, so AuthProvider
+ *  must render inside a Router context. Wrap existing tests with MemoryRouter. */
+function renderWithRouter(ui: ReactNode) {
+  return render(<MemoryRouter>{ui}</MemoryRouter>);
+}
+
+// ???? Mock helpers ????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
 
 vi.mock('@/services/authService', () => ({
   authService: {
@@ -55,7 +63,7 @@ function setupRefreshMock() {
   return { getCallCount: () => callCount };
 }
 
-// ── Test components ────────────────────────────────────────────────────────────
+// ???? Test components ????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
 
 function CaptureToken() {
   const { state } = useAuth();
@@ -69,7 +77,7 @@ function CaptureToken() {
   );
 }
 
-// ── Tests ────────────────────────────────────────────────────────────────────
+// ???? Tests ????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
 
 describe('AuthProvider session persistence', () => {
   beforeEach(() => {
@@ -93,7 +101,7 @@ describe('AuthProvider session persistence', () => {
       tenant: null,
     });
 
-    render(
+    renderWithRouter(
       <AuthProvider>
         <CaptureToken />
       </AuthProvider>,
@@ -110,7 +118,7 @@ describe('AuthProvider session persistence', () => {
     const { getCallCount } = setupRefreshMock();
 
     // First mount
-    render(
+    renderWithRouter(
       <AuthProvider>
         <CaptureToken />
       </AuthProvider>,
@@ -121,7 +129,7 @@ describe('AuthProvider session persistence', () => {
       expect(authService.refresh).toHaveBeenCalled();
     });
 
-    // Fast-forward 7 hours — proactive refresh should have triggered
+    // Fast-forward 7 hours ??proactive refresh should have triggered
     await act(async () => {
       await vi.advanceTimersByTimeAsync(7 * 60 * 60 * 1000); // 7 hours
     });
@@ -144,7 +152,7 @@ describe('AuthProvider session persistence', () => {
       tenant: null,
     });
 
-    const { rerender } = render(
+    const { rerender } = renderWithRouter(
       <AuthProvider>
         <CaptureToken />
       </AuthProvider>,
@@ -157,9 +165,11 @@ describe('AuthProvider session persistence', () => {
 
     // Simulate page navigation / component re-mount (App re-mounts AuthProvider)
     rerender(
-      <AuthProvider>
-        <CaptureToken />
-      </AuthProvider>,
+      <MemoryRouter>
+        <AuthProvider>
+          <CaptureToken />
+        </AuthProvider>
+      </MemoryRouter>,
     );
 
     // Session should be recovered without login (refresh cookie still valid)
@@ -171,7 +181,7 @@ describe('AuthProvider session persistence', () => {
   it('sets new accessToken in state after proactive refresh', async () => {
     setupRefreshMock();
 
-    render(
+    renderWithRouter(
       <AuthProvider>
         <CaptureToken />
       </AuthProvider>,
@@ -182,4 +192,85 @@ describe('AuthProvider session persistence', () => {
       expect(document.querySelector('[data-testid="access-token"]')?.textContent).toBe(newAccessToken);
     });
   });
+
+  // ???? B4 (2026-09-05) logout tests ????????????????????????????????????????????????????????????????????????????????????????
+
+  it('logout() calls authService.logout and clears state', async () => {
+    // Seed a session first via refresh-on-mount
+    vi.mocked(authService.refresh).mockResolvedValue({
+      user: adminSession.user,
+      tenant: null,
+      accessToken: adminSession.accessToken,
+      expiresIn: 28800,
+    });
+    vi.mocked(authService.me).mockResolvedValue({
+      user: adminSession.user,
+      tenant: null,
+    });
+    vi.mocked(authService.logout).mockResolvedValue({ loggedOut: true });
+
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <MemoryRouter>
+        <AuthProvider>{children}</AuthProvider>
+      </MemoryRouter>
+    );
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    // Wait for the seeded session to land
+    await waitFor(() => {
+      expect(result.current.state.user?.email).toBe('admin@saome.org');
+    });
+
+    // Trigger logout
+    await act(async () => {
+      await result.current.logout();
+    });
+
+    // Server logout called once
+    expect(authService.logout).toHaveBeenCalledTimes(1);
+
+    // State cleared
+    expect(result.current.state.user).toBeNull();
+    expect(result.current.state.accessToken).toBeNull();
+    expect(result.current.state.tenant).toBeNull();
+    expect(result.current.isAuthenticated).toBe(false);
+  });
+
+  it('logout() still clears state when authService.logout throws (network failure)', async () => {
+    vi.mocked(authService.refresh).mockResolvedValue({
+      user: adminSession.user,
+      tenant: null,
+      accessToken: adminSession.accessToken,
+      expiresIn: 28800,
+    });
+    vi.mocked(authService.me).mockResolvedValue({
+      user: adminSession.user,
+      tenant: null,
+    });
+    // Server logout fails
+    vi.mocked(authService.logout).mockRejectedValue(new Error('logout-server-unreachable'));
+
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <MemoryRouter>
+        <AuthProvider>{children}</AuthProvider>
+      </MemoryRouter>
+    );
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.state.user?.email).toBe('admin@saome.org');
+    });
+
+    // Should NOT throw ??useAuth.logout's try/catch swallows the error
+    await act(async () => {
+      await result.current.logout();
+    });
+
+    // State still cleared despite server failure
+    expect(result.current.state.user).toBeNull();
+    expect(result.current.isAuthenticated).toBe(false);
+  });
 });
+

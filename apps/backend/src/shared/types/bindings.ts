@@ -57,6 +57,13 @@ export interface Env {
    *  Used by generate-upload-url.ts to construct the publicUrl returned to the frontend.
    *  Set via wrangler.jsonc vars.R2_PUBLIC_URL. */
   R2_PUBLIC_URL?: string;
+
+  /**
+   * B3 (2026-09-05): Backend's own public URL. Used by the warmup cron
+   * (`/api/cron/warmup`) to do an internal fetch to `/health` so Hyperdrive
+   * pool stays warm. Set via wrangler.jsonc vars.SAOME_BACKEND_URL.
+   */
+  SAOME_BACKEND_URL?: string;
 }
 
 /**

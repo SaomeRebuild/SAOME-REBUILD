@@ -163,7 +163,13 @@ export function DashboardHeader({ navItems = [], className }: DashboardHeaderPro
               {isAuthenticated && (
                 <button
                   type="button"
-                  onClick={() => { logout(); setIsMobileMenuOpen(false); }}
+                  // B4 (2026-09-05): close the drawer FIRST (instant feedback)
+                  // then await logout so navigation ordering is deterministic.
+                  // Per Auth flow 鐵律 #3 — reverse-direction AuthGuard symmetry.
+                  onClick={async () => {
+                    setIsMobileMenuOpen(false);
+                    await logout();
+                  }}
                   className="flex items-center gap-3 rounded-md px-4 py-3 text-base font-medium transition-colors text-[var(--color-foreground)] hover:bg-[var(--color-muted)]"
                   data-testid="mobile-logout-btn"
                 >

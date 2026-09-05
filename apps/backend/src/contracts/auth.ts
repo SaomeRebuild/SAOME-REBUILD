@@ -82,6 +82,18 @@ export interface MeResponseDto {
 }
 
 /**
+ * B4 (2026-09-05): response shape of POST /api/auth/logout.
+ *
+ * Always returned regardless of whether the caller had a refresh credential
+ * (the route is idempotent). The browser-side fix lives in the
+ * `Set-Cookie: saome_refresh=; Max-Age=0` header on the response, not in
+ * this body. See `runs/decisions/2026-09-05-auth-logout-revocation-strategy.md`.
+ */
+export interface LogoutResponseDto {
+  loggedOut: true;
+}
+
+/**
  * Standard error response shape (all endpoints use this on failure).
  */
 export interface ErrorResponseDto {

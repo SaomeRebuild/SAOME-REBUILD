@@ -46,6 +46,13 @@ export const meResponseDtoSchema = z.object({
   tenant: tenantDtoSchema.nullable(),
 });
 
+/** B4 (2026-09-05): logout response. Mirrors `LogoutResponseDto` in
+ *  `src/contracts/auth.ts`. The route is idempotent and always returns
+ *  `{ loggedOut: true }` — see `runs/decisions/2026-09-05-auth-logout-revocation-strategy.md`. */
+export const logoutResponseDtoSchema = z.object({
+  loggedOut: z.literal(true),
+});
+
 export const errorResponseDtoSchema = z.object({
   error: z.object({
     code: z.string(),
@@ -69,4 +76,5 @@ export type PassDto = z.infer<typeof passDtoSchema>;
 export type AuthSessionDto = z.infer<typeof authSessionDtoSchema>;
 export type RefreshResponseDto = z.infer<typeof refreshResponseDtoSchema>;
 export type MeResponseDto = z.infer<typeof meResponseDtoSchema>;
+export type LogoutResponseDtoZ = z.infer<typeof logoutResponseDtoSchema>;
 export type ErrorResponseDto = z.infer<typeof errorResponseDtoSchema>;

@@ -1,9 +1,15 @@
 /**
  * AuthProvider — supplies auth state via context.
+ *
+ * B4 (2026-09-05): `logout()` is now async and routes the user to `/login`
+ * after server-side cookie-clear + local store cleanup. This satisfies the
+ * Auth flow 鐵律 #2 (SPA 必走 client-side redirect) and provides the
+ * reverse-direction symmetry to `useAuthRedirect` (鐵律 #3).
  */
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { authService } from '@/services/authService';
 import type { AuthUser, AuthTenant, Role, PassInfo } from '@saome/shared/types/auth';
 import type { RegistrationPayload, LoginCredentials } from '@saome/shared/schemas/auth';
@@ -139,10 +145,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return tenant!;
   }, []);
 
-  const logout = useCallback(() => {
-    authService.logout();
+  // B4 (2026-09-05): logout now calls server + navigates to /login.
+  // Wrapped in useCallback so the function reference is stable for
+  // downstream consumers (DashboardHeaderActions's <button onClick>).
+  const navigate = useNavigate();
+  const logout = useCallback(async () => {
+    try {
+      await authService.logout();
+    } catch {
+      // Server call failed — local tokens were still cleared by
+      // authService.logout's catch handler. We still navigate so the
+      // user lands on /login. (UX symmetry with the success path.)
+    }
     setStateRaw({ user: null, tenant: null, accessToken: null, expiresAt: null, pass: null, loading: false });
-  }, []);
+    navigate('/login', { replace: true });
+  }, [navigate]);
 
   const refresh = useCallback(async () => {
     const refreshed = await authService.refresh();

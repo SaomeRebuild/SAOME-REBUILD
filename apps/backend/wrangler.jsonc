@@ -43,7 +43,11 @@
     "REFRESH_TOKEN_TTL": "2592000",
     "ALLOWED_ORIGINS": "http://localhost:5173,http://localhost:8788,https://saome-frontend.pages.dev,https://saome-admin.pages.dev,https://josh1989213.workers.dev,https://saome-backend.josh1989213.workers.dev,https://app.saome.org,https://admin.saome.org,https://saome.org",
     "ALLOWED_ORIGIN_PATTERNS": "*.josh1989213.workers.dev,*.saome-frontend.pages.dev,*.saome-admin.pages.dev,*.app.saome.org,*.admin.saome.org,*.saome.org",
-    "R2_PUBLIC_URL": "https://saome-backend.josh1989213.workers.dev"
+    "R2_PUBLIC_URL": "https://saome-backend.josh1989213.workers.dev",
+    "SAOME_BACKEND_URL": "https://saome-backend.josh1989213.workers.dev"
+  },
+  "triggers": {
+    "crons": ["*/5 * * * *"]
   },
   "observability": {
     "enabled": true

@@ -46,6 +46,18 @@ export interface HttpClientOptions {
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 
+/** HTTP statuses that are transient gateway/worker/proxy failures — safe to retry. */
+const RETRYABLE_5XX = new Set([502, 503, 504]);
+
+/**
+ * Maximum number of retries for retryable 5xx. `4 total attempts = 1 initial + 3 retries`.
+ * After this many attempts we surface the error to the caller.
+ */
+const MAX_5XX_RETRIES = 3;
+
+/** Base backoff delay in ms. Subsequent retries double this: 250 → 500 → 1000. */
+const RETRY_BASE_DELAY_MS = 250;
+
 export class HttpClient {
   private baseUrl: string;
   private fetchImpl: typeof fetch;
@@ -61,6 +73,27 @@ export class HttpClient {
     method: string,
     path: string,
     init?: { body?: unknown; headers?: Record<string, string>; retryOn401?: boolean },
+  ): Promise<T> {
+    return this.requestWithRetry<T>(method, path, init, 0);
+  }
+
+  /**
+   * Internal retry-aware request implementation.
+   *
+   * Retry policy:
+   *   - 502 / 503 / 504 → exponential backoff (250ms × 2^attempt), max 3 retries
+   *   - 401 → handled by `tryRefresh()` flow (see existing path below), NOT 5xx retry
+   *   - 4xx (other), 429, 500 → no retry; surface immediately
+   *
+   * The retry loop is intentionally separated from the 401 refresh path so the
+   * two retry mechanisms don't fight each other (401 triggers refresh+replay;
+   * 5xx triggers backoff+replay with the same body).
+   */
+  private async requestWithRetry<T>(
+    method: string,
+    path: string,
+    init: { body?: unknown; headers?: Record<string, string>; retryOn401?: boolean } | undefined,
+    attempt: number,
   ): Promise<T> {
     const { body, headers, retryOn401 = true } = init ?? {};
     const url = `${this.baseUrl}${path}`;
@@ -83,13 +116,26 @@ export class HttpClient {
       signal: AbortSignal.timeout(this.timeoutMs),
     });
 
+    // 5xx retry path — exponential backoff, capped at MAX_5XX_RETRIES attempts.
+    // 401 is intentionally NOT routed here: it has its own tryRefresh() flow
+    // below, and mixing the two retry mechanisms would let 401 spam the
+    // refresh endpoint 4× in a row.
+    if (RETRYABLE_5XX.has(res.status) && attempt < MAX_5XX_RETRIES) {
+      const delayMs = RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
+      console.warn(
+        `[httpClient] ${res.status} on ${method} ${path} — retrying in ${delayMs}ms (attempt ${attempt + 1}/${MAX_5XX_RETRIES})`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      return this.requestWithRetry<T>(method, path, init, attempt + 1);
+    }
+
     if (res.status === 401 && retryOn401 && path !== api.paths.refresh) {
       console.debug('[httpClient] 401! Attempting refresh to get new token...');
       const newToken = await this.tryRefresh();
       console.debug('[httpClient] tryRefresh result:', newToken ? 'got token (' + newToken.slice(0, 20) + '...)' : 'FAILED — no token');
       if (newToken) {
         setAccessToken(newToken);
-        return this.request<T>(method, path, { ...init, retryOn401: false });
+        return this.requestWithRetry<T>(method, path, { ...init, retryOn401: false }, attempt);
       }
     }
 
