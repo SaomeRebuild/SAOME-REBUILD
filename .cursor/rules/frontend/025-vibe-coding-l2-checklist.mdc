@@ -82,8 +82,10 @@ alwaysApply: true
 | 3 | 確認成功 | 回傳 `[]` 而非錯誤；若 "column already exists" 表示 migration 已 apply，可安全繼續 |
 | 4 | 填 commit footer | `Migration: XXX applied via saome_supabase MCP` |
 | 5 | 若 MCP fail | **不要** commit workaround；等 MCP reconnected 再 apply |
+| 6 | **Append registry entry** | 在 `supabase/migrations/.applied-migrations.json` 加 `{filename, applied_at, applied_by, via}` 條目。詳見 `.cursor/rules/035-migration-apply-pipeline.mdc` |
+| 7 | **跑 CI gate** | `npm run check:migrations --workspace=apps/backend` 必須通過（`prebuild` hook 自動跑） |
 
-詳見 `runs/improvements/feedback/20260822-migration-apply-pipeline.md`。
+詳見 `runs/improvements/feedback/20260822-migration-apply-pipeline.md` + `.cursor/rules/035-migration-apply-pipeline.mdc`（Rule 035，MANDATORY CI gate）。
 
 ---
 
@@ -96,6 +98,8 @@ alwaysApply: true
 
 - `.cursor/rules/frontend/023-shared-package.mdc` — i18n namespace 規範（含元件化原則）
 - `.cursor/rules/019-schema-contract-drift.mdc` — DB ↔ schema drift 鐵律
+- `.cursor/rules/035-migration-apply-pipeline.mdc` — **Rule 035 migration apply pipeline**（CI gate）
 - `runs/improvements/feedback/20260816-vibe-coding-workflow-optimization.md` — 背景事故記錄
 - `runs/improvements/feedback/20260822-migration-apply-pipeline.md` — Migration 未 apply 導致 production 500 事故
+- `apps/backend/scripts/check-migrations-applied.cjs` — CI gate script
 - `apps/frontend/scripts/verify-i18n-keys.mjs` — i18n smoke test script

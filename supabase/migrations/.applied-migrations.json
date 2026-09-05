@@ -1,0 +1,20 @@
+{
+  "_comment": "Migration apply registry. See apps/backend/scripts/check-migrations-applied.cjs and .cursor/rules/035-migration-apply-pipeline.mdc. Add new entries whenever saome_supabase MCP apply_migration succeeds. Each entry records the migration filename + applied_at timestamp + applied_by author + via mechanism.",
+  "_format_version": 1,
+  "applied": [
+    { "filename": "20260727_init_saome_schema.sql", "applied_at": "2026-07-27", "applied_by": "saome-bootstrap", "via": "manual-supabase-dashboard", "notes": "Initial schema bootstrap before MCP setup." },
+    { "filename": "20260820214501_init_templates.sql", "applied_at": "2026-08-21", "applied_by": "CardBuilder-init", "via": "saome_supabase-mcp" },
+    { "filename": "20260821000001_006_add_templates_expires_at.sql", "applied_at": "2026-08-21", "applied_by": "CardBuilder-ttl", "via": "saome_supabase-mcp" },
+    { "filename": "20260821000002_007_nullable_card_type.sql", "applied_at": "2026-08-21", "applied_by": "CardBuilder-cardType-nullable", "via": "saome_supabase-mcp" },
+    { "filename": "20260823000001_008_fix_corrupted_settings_jsonb_array.sql", "applied_at": "2026-08-31", "applied_by": "CardBuilder-data-recovery", "via": "saome_supabase-mcp", "notes": "Round 1 of data-recovery chain (Bug #8 defensive unwrap)." },
+    { "filename": "20260823000002_009_fix_settings_string_to_object.sql", "applied_at": "2026-08-31", "applied_by": "CardBuilder-data-recovery", "via": "saome_supabase-mcp", "notes": "Round 2 of data-recovery chain." },
+    { "filename": "20260831000001_010_fix_all_corrupted_settings_arrays.sql", "applied_at": "2026-08-31", "applied_by": "CardBuilder-data-recovery", "via": "saome_supabase-mcp" },
+    { "filename": "20260831000002_011_fix_all_settings_strings_to_objects.sql", "applied_at": "2026-08-31", "applied_by": "CardBuilder-data-recovery", "via": "saome_supabase-mcp" },
+    { "filename": "20260831000003_012_merge_all_array_elements.sql", "applied_at": "2026-08-31", "applied_by": "CardBuilder-data-recovery", "via": "saome_supabase-mcp" },
+    { "filename": "20260831000004_013_recover_iconImage_for_card_2ca4b46c.sql", "applied_at": "2026-08-31", "applied_by": "CardBuilder-icon-recovery", "via": "saome_supabase-mcp" },
+    { "filename": "20260831000004_013_trigger_reject_non_object_settings.sql", "applied_at": "2026-08-31", "applied_by": "CardBuilder-trigger-guard", "via": "saome_supabase-mcp", "notes": "DB-level last-line-of-defense for non-object settings (works together with app-layer Bug #8 unwrap)." },
+    { "filename": "20260831000005_014_reapply_merge_with_iconImage.sql", "applied_at": "2026-08-31", "applied_by": "CardBuilder-iconImage-reapply", "via": "saome_supabase-mcp" },
+    { "filename": "20260905000001_015_init_revoked_tokens.sql", "applied_at": "2026-09-05", "applied_by": "auth-logout-phase-2.2", "via": "saome_supabase-mcp", "notes": "Phase 2.2 of auth-logout-batch. Schema reserved for option B/C; option A is currently active." },
+    { "filename": "20260905000002_016_pgcron_cleanup_revoked_tokens.sql", "applied_at": "2026-09-05", "applied_by": "auth-logout-phase-2.2", "via": "saome_supabase-mcp", "notes": "Hourly pg_cron job to purge expired entries from revoked_tokens. Currently has no production traffic (option A is active) but is wired for option B flip-over." }
+  ]
+}

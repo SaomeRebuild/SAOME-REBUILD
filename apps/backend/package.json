@@ -13,6 +13,8 @@
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest run --coverage",
+    "check:migrations": "node scripts/check-migrations-applied.cjs",
+    "prebuild": "npm run check:migrations",
     "r2:apply-cors": "wrangler r2 bucket cors set saome --file r2-cors.json",
     "r2:list-cors": "wrangler r2 bucket cors list saome"
   },

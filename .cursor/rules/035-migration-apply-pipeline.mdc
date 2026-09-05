@@ -1,0 +1,163 @@
+---
+description: Migration apply pipeline — 任何新增 supabase/migrations/*.sql 必須立刻 apply 並登記，避免 PR 帶未 apply 的 DDL 上 production
+alwaysApply: true
+---
+
+# Migration Apply Pipeline（MANDATORY）
+
+> 觸發：寫任何 `supabase/migrations/<file>.sql`、add / modify / delete。
+
+## 背景
+
+2026-08-22 CardBuilder 草稿 TTL + pg_cron 事故：
+
+| 階段 | 狀態 |
+|---|---|
+| Agent 寫好 `20260821000001_006_add_templates_expires_at.sql` | ✅ file committed |
+| Agent **沒有**呼叫 `saome_supabase::apply_migration` | ❌ drift 起點 |
+| CI 全綠、typecheck 全綠、vitest 全綠 | ⚠️ 沒人 catch missing column |
+| Production deploy 上去，第一個 PUT `/api/cards/{id}` 打 500 | 💥 |
+
+完整 trace：`runs/improvements/feedback/20260822-migration-apply-pipeline.md`。
+
+## 鐵律（強制）
+
+### 1. 任何 `supabase/migrations/*.sql` 新增/修改 — 三步驟完成
+
+| # | 動作 | 備註 |
+|---|------|------|
+| 1 | 寫好 SQL 檔 | follow naming convention `YYYYMMDD[_HHMMSS]_NNN_<name>.sql` |
+| 2 | **立刻**呼叫 `saome_supabase::apply_migration` | 不要先 commit 再 apply，要套「apply 先、commit 在後」 |
+| 3 | `apply_migration` 回 success 後，**立刻** append 進 `.applied-migrations.json` | 不准 commit 前忘了登記 |
+
+腳本：`apps/backend/scripts/check-migrations-applied.cjs`（MANDATORY 在 `prebuild` 跑）。
+
+### 2. `.applied-migrations.json` 是 contract
+
+每個 `.sql` file 必須有對應 entry：
+
+```jsonc
+// supabase/migrations/.applied-migrations.json
+{
+  "_comment": "...",
+  "_format_version": 1,
+  "applied": [
+    {
+      "filename": "20260905000001_015_init_revoked_tokens.sql",
+      "applied_at": "2026-09-05",
+      "applied_by": "auth-logout-phase-2.2",
+      "via": "saome_supabase-mcp",
+      "notes": "optional — what problem this solved"
+    }
+  ]
+}
+```
+
+| 必填欄位 | type | 說明 |
+|---|---|---|
+| `filename` | string | 必須跟 `supabase/migrations/<file>.sql` 完全對應（case-sensitive） |
+| `applied_at` | string YYYY-MM-DD | 套 migration 的日期（不是 commit 日期） |
+| `applied_by` | string | 工作 stream / feature 名稱（例：`CardBuilder-data-recovery`） |
+| `via` | string | `saome_supabase-mcp` / `manual-supabase-dashboard` / `manual-psql` |
+| `notes` | string? | optional — 這條 migration 解了什麼問題 |
+
+### 3. CI gate — `apps/backend/scripts/check-migrations-applied.cjs`
+
+CI 必跑：
+
+```yaml
+# .github/workflows/deploy.yml — 已建議加進 typecheck 同層
+- run: npm run check:migrations --workspace=apps/backend
+```
+
+腳本行為：
+
+| 情境 | exit code | 訊息 |
+|---|---|---|
+| 每個 `.sql` 都有 registry entry | 0 | `OK: 14 migrations registered as applied.` |
+| 有 `.sql` 但 registry 缺 | 1 | `FAIL: 1 migration file(s) have NO registry entry` |
+| registry 引用了不存在的 `.sql` | 1 | `FAIL: 1 registry entry(ies) reference a missing file` |
+| registry 檔案不存在或壞 JSON | 2 | `FAIL: registry file missing / not valid JSON` |
+| `.sql` 沒 `^\d{8}` prefix | 1 | `FAIL: migrations with non-conforming filenames` |
+| 同名 file（case-insensitive） | 1 | `FAIL: duplicate migration filenames detected` |
+
+### 4. MCP timeout / 失敗的處理
+
+| 情境 | 行動 |
+|---|---|
+| `apply_migration` 成功 | 立刻 append registry entry；commit SQL + registry update 同 PR |
+| `apply_migration` timeout | **不要** commit SQL 檔 — 等 MCP reconnected 再 apply |
+| `apply_migration` 回 "column already exists" | 表示已被別的 stream apply 過 — append registry entry，`notes` 標 `reapplied-already-exists` |
+| `apply_migration` DB 回 error | 修 SQL 再 retry；**不要**改 committed 但未 apply 的 SQL |
+
+### 5. 撤回 migration 的 protocol
+
+| 動作 | 必做 |
+|---|---|
+| 刪除 `.sql` 檔 | 同 PR 從 `.applied-migrations.json` 移除 entry（避免 orphan 警告） |
+| 修改 committed 但未 apply 的 `.sql` | 直接覆寫原檔，不必新編號 |
+| 修補已 apply 的 `.sql`（bug fix） | 新建 `YYYYMMDD_HHMMSS_<seq>_<fix-name>.sql`，**不可**改舊檔（production 已套舊版） |
+
+### 6. Naming convention（MANDATORY — 腳本會擋）
+
+```
+YYYYMMDD[_HHMMSS]_NNN_<name>.sql
+```
+
+| Pattern | 範例 |
+|---|---|
+| Bootstrap（無 sequence） | `20260727_init_saome_schema.sql` |
+| 編號遷移 | `20260821000001_006_add_templates_expires_at.sql` |
+| 含 timestamp 解碰撞 | `20260831000004_013_trigger_reject_non_object_settings.sql` |
+
+不準的命名：
+
+| ❌ | 原因 |
+|---|---|
+| `add_email.sql` | 沒日期前綴，沒時間順序，無法 reorder |
+| `2026-09-05_init_x.sql` | 用 dash 而非 YYYYMMDD number |
+| `m_001_x.sql` | 沒日期前綴 |
+| `001_x.sql` 同檔名重複 | 會被 case-insensitive FS 當 dup |
+
+### 7. 跟 Decision Log / Rule 019 的關係
+
+| 規則 | 角色 |
+|---|---|
+| `019-schema-contract-drift.mdc` | DB ↔ schema ↔ backend request 四層同步（schema 層）|
+| `035-migration-apply-pipeline.mdc`（本檔）| DB schema 變更 **必須 apply 才不會 production 500**（deploy 層）|
+| `001-methodology.mdc` § Decision Log | 「新增 DB column migration」「新增 DB table」是 P0 架構改動，必進 `runs/decisions/` |
+
+### 8. 同 PR 帶齊四件事
+
+新增 `supabase/migrations/<file>.sql` 的 PR，**必帶**：
+
+```
+[apps/.../db/<table>.ts]      # INSERT/UPDATE 參數列
+[apps/.../schemas/request.ts] # backend request schema (Rule 019 §4.1 第四層)
+[apps/.../services/...]       # service signature 參數
+[.applied-migrations.json]    # 套完 MCP 後 append entry
+[vitest conformance test]     # 新欄位讀得到
+```
+
+任一缺 → follow-up drift 風險。
+
+## 觸發關鍵字
+
+出現「migration」、「新增欄位」、「SQL 變更」、「`saome_supabase::apply_migration`」、「DDL」、「新增 DB table」、「修改 schema」必引本 rule。
+
+「migration apply pipeline」、「`check-migrations-applied.cjs`」、「`.applied-migrations.json`」、「migrations 沒 apply」、「production 500」→ 必引 § 1-4 + § 8。
+
+## 與其他 rule 關係
+
+- `019-schema-contract-drift.mdc` — schema 層同步
+- `frontend/025-vibe-coding-l2-checklist.mdc` § 5 — agent SOP（apply_migration 必跑，commit footer 必填）
+- `001-methodology.mdc` § Decision Log — 任何 DB migration 是 P0 架構改動
+- `saome-github-deploy/SKILL.md` — deploy 前必跑 `npm run check:migrations`
+
+## 參照
+
+- `runs/improvements/feedback/20260822-migration-apply-pipeline.md` — 原事故 trace
+- `apps/backend/scripts/check-migrations-applied.cjs` — CI gate
+- `supabase/migrations/.applied-migrations.json` — registry（必填後 commit）
+- `frontend/025-vibe-coding-l2-checklist.mdc` § 5 — agent SOP cross-ref
+- `.github/workflows/deploy.yml` — 建議加 `check:migrations` job

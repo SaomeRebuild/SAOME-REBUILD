@@ -17,6 +17,7 @@ jobs:
       backend: ${{ steps.filter.outputs.backend }}
       shared: ${{ steps.filter.outputs.shared }}
       docs_public: ${{ steps.filter.outputs.docs_public }}
+      migrations: ${{ steps.filter.outputs.migrations }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v2
@@ -34,6 +35,8 @@ jobs:
               - 'packages/shared/**'
             docs_public:
               - 'docs/public/**'
+            migrations:
+              - 'supabase/migrations/**'
 
   # ============================================================
   # 第二階段：CI（typecheck / lint / unit-test）
@@ -82,3 +85,21 @@ jobs:
           cache-dependency-path: 'package-lock.json'
       - run: npm ci
       - run: npm test --workspace=apps/frontend
+
+  migrations:
+    needs: changes
+    if: needs.changes.outputs.migrations == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'package-lock.json'
+      - run: npm ci
+      # Phase 5.13 — Rule 035 migration apply pipeline: every local
+      # supabase/migrations/*.sql must be in .applied-migrations.json.
+      # Catches the 2026-08-22 production 500 incident where the agent
+      # shipped a migration file but never applied it to the live DB.
+      - run: npm run check:migrations --workspace=apps/backend
