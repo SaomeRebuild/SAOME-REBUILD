@@ -107,12 +107,31 @@ export function CardBuilderEditor({
 
   // ============================================================
   // Auto-save: name changes → debounced PUT /cards/:id
+  //
+  // Phase 5.1 (2026-09-05): apply baselineArmedRef pattern (Rule 030)
+  // — name auto-save had the same risk as Step 4 autosave: on mount,
+  // `reset()` leaves `name=''`, then `setCardId(xxx)` triggers this
+  // effect. The old `if (name === '') return` early-return guarded
+  // against the empty-name case, but if the user started typing
+  // before `loadSettings` resolved (fast network + early edit), the
+  // new typed value would schedule a 1s timer with `name='new text'`,
+  // then `loadSettings` would overwrite `name` with the DB value
+  // AFTER the timer fired — clobbering the user's edit in DB.
+  // The fix: `step4BaselineArmedRef` (shared with Step 4 below) is
+  // flipped to true inside the outer URL-watching effect's `.then()`
+  // callback after loadSettings completes. While it's still false,
+  // name auto-save is held — preventing the DB-clobber race.
   // ============================================================
   const nameSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!cardId) return;
-    if (name === '') return; // Don't save empty name on first mount
+    // Hold autosave until loadSettings has resolved (see outer effect).
+    // The shared `step4LoadSettledRef` covers both name and Step 4 —
+    // they're on the same outer-fetch timeline.
+    if (!step4LoadSettledRef.current) return;
+
+    if (name === '') return; // Don't save empty name
 
     // Debounce: save name 1s after user stops typing
     if (nameSaveTimerRef.current) clearTimeout(nameSaveTimerRef.current);
