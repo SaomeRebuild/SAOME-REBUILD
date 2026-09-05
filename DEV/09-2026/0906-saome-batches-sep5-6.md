@@ -195,6 +195,7 @@ Session C 是「tech debt batch」典型案例：
 | Phase 5.7 unwrapCardSettings shared | — | `runs/.../20260906-phase5.7-unwrap-card-settings-shared.md`（本次）| Rule 023 shared validation |
 | Phase 5.13 Migration apply pipeline | — | `runs/.../20260906-phase5.13-migration-pipeline.md`（本次）| Rule 035 |
 | Phase 5.14 / 5.15 Rule 016 / 034 | — | — | Rule 016 § 9 + Rule 034 |
+| Step 5 Passcreator API alignment | `DEV/09-2026/0906-step5-completion-master.md` | `runs/.../20260906-phase5.14-step5-passcreator-alignment.md` + `runs/.../20260906-step5-passcreator-api-data-backfill.md` | Rule 019 / Rule 035 |
 | Phase 5.16 i18n audit | — | `runs/.../20260906-phase5.16-i18n-audit.md`（本次）| — |
 | Rule 030 / 031 / 032 sediment | — | `runs/.../20260906-rule-sediment-030-031-032.md`（本次）| — |
 | BackgroundUploader L2 | `DEV/08-2026/0901-background-uploader-implementation.md` | 3 feedbacks in INDEX | Rule 028 § 11.1 / 12.1 / 16 |

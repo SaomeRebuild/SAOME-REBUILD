@@ -141,7 +141,7 @@
 | 2026-09-03 | `MediaAssetUploader.touch-drag.test.tsx` 多個 `eslint(no-sparse-arrays)` warning — sparse array 是 test 內部 mock，預期結構，改用 explicit `undefined` 或 disable comment | ⏳ pending |
 | 2026-09-03 | `scripts/verify-i18n-keys.mjs:37` unused parameter `ns` warning — 改名 `_ns` 或刪除 | ⏳ pending |
 | 2026-09-03 | `unwrapCardSettings` 從 `CardBuilderEditor.store.ts`（frontend）與 `cardService.ts`（backend）抽出到 `packages/shared/logic/cardSettings.ts` 仍未完成 — 同 8/31 pending | ⏳ pending |
-| 2026-09-03 | `updateTemplate` 補 non-ASCII round-trip test 仍未完成 — 同 8/31 pending | ⏳ pending |
+| 2026-09-06 | Step 5 Passcreator API alignment + `locationsDisabled` toggle（4 層 schema sync + migration 017 backfill + autosave slow-network regression + i18n cross-locale parity）| ✅ done (DEV `0906-step5-completion-master.md` + 2 feedbacks) |
 
 ## 使用方式
 
