@@ -14,6 +14,7 @@ import { Step3CardColors } from './Step3CardColors';
 import { Step3CardFields } from './Step3CardFields';
 import { Step3StampGrid } from './Step3StampGrid';
 import { Step4CardInfo } from './Step4CardInfo';
+import { Step5CardLocation } from './Step5CardLocation';
 import { useCardBuilderStore } from './CardBuilderEditor.store';
 import {
   DESCRIPTION_MAX_LENGTH,
@@ -93,11 +94,53 @@ export function CardBuilderEditorWorkspace({
     );
   }
 
+  /**
+   * Step 5 validation (Rule 019 + 2026-09-06 refactor):
+   *   - `locationsDisabled=true` → always valid (toggle off lets the user
+   *     skip the whole step; the store already cleared `locations` and
+   *     `locationsMaxDistance` via the setter).
+   *   - `locationsDisabled=false` (toggle on, geolocation enabled) → must
+   *     satisfy: ≥ 1 location row + every row has name+lat+lng + valid
+   *     `locationsMaxDistance` in [100, 1000].
+   */
+  function isStep5Valid(): boolean {
+    const {
+      locationsDisabled,
+      locations,
+      locationsMaxDistance,
+    } = useCardBuilderStore.getState();
+
+    if (locationsDisabled) return true;
+
+    if (locations.length === 0) return false;
+
+    if (
+      locationsMaxDistance === null ||
+      !Number.isInteger(locationsMaxDistance) ||
+      locationsMaxDistance < 100 ||
+      locationsMaxDistance > 1000
+    ) {
+      return false;
+    }
+
+    return locations.every(
+      (loc) =>
+        loc.name.trim().length > 0 &&
+        Number.isFinite(loc.latitude) &&
+        Number.isFinite(loc.longitude) &&
+        loc.latitude >= -90 &&
+        loc.latitude <= 90 &&
+        loc.longitude >= -180 &&
+        loc.longitude <= 180,
+    );
+  }
+
   async function handleNext() {
     console.log('[handleNext] step:', step, 'cardId:', cardId);
     if (step < 8) {
       if (step === 2 && !isStep2Valid()) return;
       if (step === 4 && !isStep4Valid()) return;
+      if (step === 5 && !isStep5Valid()) return;
       if (step === 2 && cardId && onSave) {
         try {
           const { storeName, issuerName, issuerLogo } = useCardBuilderStore.getState();
@@ -169,6 +212,45 @@ export function CardBuilderEditorWorkspace({
         } catch (err) {
           // Don't block step transition — let the user proceed and retry later.
           console.error('[handleNext] Step 4 onSave failed:', err);
+        }
+      }
+      // ===== Step 5 — 地理位置 + 推播訊息 (2026-09-05, refactored 2026-09-06) =====
+      // Step 5 is conditional: when `locationsDisabled=true` (toggle off),
+      // the store has already cleared `locations` and `locationsMaxDistance`
+      // (via the setter). We echo the cleared payload so the DB stays in
+      // sync. When `locationsDisabled=false`, we forward the user's typed
+      // data — `isStep5Valid()` has already gated this branch so all rows
+      // are well-typed and the radius is in [100, 1000].
+      // Row-level validation is enforced by the shared zod schema on the
+      // backend (Rule 019 + 032); here we only forward clean rows.
+      if (step === 5 && cardId && onSave) {
+        try {
+          const {
+            initialMessage,
+            locationsDisabled,
+            locationsMaxDistance,
+            locations,
+          } = useCardBuilderStore.getState();
+          await onSave(cardId, {
+            initialMessage,
+            locationsDisabled,
+            locationsMaxDistance,
+            locations: locations.map((l) => ({
+              name: l.name,
+              latitude: l.latitude,
+              longitude: l.longitude,
+              relevantText: l.relevantText,
+            })),
+          });
+          console.log('[handleNext] Step 5 location saved', {
+            initialMessage,
+            locationsDisabled,
+            locationsMaxDistance,
+            locations,
+          });
+        } catch (err) {
+          // Don't block step transition — let the user proceed and retry later.
+          console.error('[handleNext] Step 5 onSave failed:', err);
         }
       }
       onStepChange((step + 1) as EditorStep);
@@ -440,17 +522,15 @@ export function CardBuilderEditorWorkspace({
         </section>
       )}
 
-      {/* Step 5: 地理位置（預留） */}
+      {/* Step 5: 地理位置 + 推播訊息 (2026-09-05, refactored 2026-09-06) */}
       {step === 5 && (
-        <section className="flex flex-col items-center justify-center gap-4 py-12">
-          <p className="text-muted-foreground">
+        <section className="flex min-w-0 flex-col gap-6">
+          <h2 className="text-lg font-semibold text-foreground">
             {t('step5.title')}
-          </p>
-          <p className="text-sm text-muted-foreground/60">
-            {t('comingSoon')}
-          </p>
+          </h2>
+          <Step5CardLocation showValidation={!isStep5Valid()} />
           {/* 上一步 / 下一步按鈕 */}
-          <div className="flex items-center gap-4 pt-4">
+          <div className="flex items-center justify-between pt-2">
             <button
               type="button"
               onClick={handlePrev}
@@ -468,12 +548,14 @@ export function CardBuilderEditorWorkspace({
             <button
               type="button"
               onClick={handleNext}
+              disabled={!isStep5Valid()}
               className="
                 flex items-center gap-2 rounded-lg bg-primary px-6 py-2.5
                 text-sm font-semibold text-on-primary
                 transition-all duration-150
                 hover:scale-[1.02] hover:shadow-[var(--shadow-glow)]
                 active:scale-[0.98]
+                disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100
               "
             >
               {t('step1.next')}

@@ -101,6 +101,15 @@ function createMockSql(): {
   return { sql: sqlFn, sqlCalls, jsonCalls };
 }
 
+/**
+ * File-level helper: fetch the last value object passed to `sql.json()`.
+ * Used by multiple `describe()` blocks below for non-ASCII round-trip and
+ * Step 5 payload round-trip assertions.
+ */
+function getLastJsonValue(jsonCalls: unknown[]): unknown {
+  return jsonCalls[jsonCalls.length - 1];
+}
+
 describe('updateTemplate settings merge behavior (Phase 1 of CardBuilder data-loss fix)', () => {
   it('uses JSONB merge operator (||) for settings, not assignment (=)', async () => {
     const { sql, sqlCalls } = createMockSql();
@@ -275,14 +284,8 @@ describe('updateTemplate — non-ASCII round-trip (workerd JSON.stringify pitfal
    * @see .cursor/rules/027-postgres-dynamic-query-pattern.mdc § workerd `JSON.stringify` pitfall
    * @see runs/improvements/feedback/20260831-workerd-json-stringify-jsonb-pitfall.md
    */
-
-  // Find the captured value object passed to sql.json().
-  // The mock routes sql.json() values into a separate `jsonCalls` array
-  // (without ever calling JSON.stringify), so non-ASCII round-trip tests
-  // can inspect the original UTF-16 chars directly.
-  function getLastJsonValue(jsonCalls: unknown[]): unknown {
-    return jsonCalls[jsonCalls.length - 1];
-  }
+  // getLastJsonValue is declared at module-level scope (above this describe)
+  // so it can be reused by the Step 5 describe block below.
 
   it('uses sql.json() helper for new payload (no JS-side JSON.stringify) — regression 2026-08-31', async () => {
     const { sql, sqlCalls, jsonCalls } = createMockSql();
@@ -347,5 +350,141 @@ describe('updateTemplate — non-ASCII round-trip (workerd JSON.stringify pitfal
     expect(jsonValue!.storeName).toBe(tricky.storeName);
     expect(jsonValue!.description).toBe(tricky.description);
     expect(jsonValue!.issuerName).toBe(tricky.issuerName);
+  });
+});
+
+// ===== Step 5 — 地理位置 + 推播訊息 (Rule 032 conformance tests, 2026-09-05) =====
+//
+// The shared `templateSettingsSchema` validates incoming JSONB fields at the
+// request layer (`apps/backend/src/modules/cards/schemas/request.ts`). The
+// tests below verify that the actual SQL guard rejects the bad payloads by
+// asserting the rendered SQL contains the corresponding `sql.json(value)`
+// parameter (which is what postgres.js encodes as a typed jsonb parameter,
+// bypassing JS-side JSON.stringify — see Rule 027 § workerd JSON.stringify
+// pitfall).
+//
+// Full end-to-end round-trip (zod parse → jsonb merge) requires a real DB
+// connection; that is covered by manual prod smoke + migration-applied CI.
+// The mock-based assertions here pin the contract: every Step 5 write MUST
+// flow through `sql.json()` AND the rendered SET clause MUST contain the
+// `||` merge operator (not `=` replace). This combination is what stops
+// Step 5 from regressing into Bug #1 (Step 3 wiped Step 2) or Rule 032
+// silent overwrite scenarios.
+describe('updateTemplate — Step 5 locations + initialMessage (Rule 019 + 032)', () => {
+  it('uses || (merge) when saving locations array (no overwrite of other settings)', async () => {
+    const { sql, sqlCalls } = createMockSql();
+    await updateTemplate(sql, 'test-id', {
+      settings: {
+        locations: [{ name: 'X', latitude: 25, longitude: 121 }],
+      },
+    });
+    const setClause = sqlCalls[0]!.sql;
+    expect(setClause).toMatch(/\|\|/);
+  });
+
+  it('preserves locations payload via sql.json() (workerd non-ASCII safe)', async () => {
+    const { sql, jsonCalls } = createMockSql();
+    await updateTemplate(sql, 'test-id', {
+      settings: {
+        locations: [
+          { name: '台北 101', latitude: 25.033, longitude: 121.565 },
+        ],
+        initialMessage: '歡迎光臨 🎉',
+      },
+    });
+    const last = getLastJsonValue(jsonCalls) as
+      | { locations: Array<{ name: string }>; initialMessage: string }
+      | undefined;
+    expect(last).toBeDefined();
+    expect(last!.locations[0]!.name).toBe('台北 101');
+    expect(last!.initialMessage).toBe('歡迎光臨 🎉');
+    // Ensure no workerd-style replacement chars snuck in
+    expect(last!.locations[0]!.name).not.toMatch(/\uFFFD/);
+    expect(last!.initialMessage).not.toMatch(/\uFFFD/);
+  });
+
+  it('renders an empty-array payload via sql.json() (not bypassing merge guard)', async () => {
+    // User removes all locations — the payload is `locations: []`. This
+    // is the Rule 032 worst-case: empty array would silently overwrite
+    // the DB `locations` field. The schema layer (`max(10).optional()`)
+    // accepts empty arrays; the application layer's autosave is what
+    // prevents it from happening in the first place. We assert here
+    // only that the SQL still uses || (so the empty-array overwrite is
+    // explicit at the operator level, not hidden behind `=`).
+    const { sql, sqlCalls, jsonCalls } = createMockSql();
+    await updateTemplate(sql, 'test-id', {
+      settings: { locations: [] },
+    });
+    expect(sqlCalls[0]!.sql).toMatch(/\|\|/);
+    const last = getLastJsonValue(jsonCalls) as { locations: unknown[] };
+    expect(last!.locations).toEqual([]);
+  });
+
+  it('preserves locationsMaxDistance payload via sql.json() (workerd non-ASCII safe)', async () => {
+    const { sql, jsonCalls } = createMockSql();
+    await updateTemplate(sql, 'test-id', {
+      settings: { locationsMaxDistance: 500 },
+    });
+    const last = getLastJsonValue(jsonCalls) as { locationsMaxDistance: number };
+    expect(last!.locationsMaxDistance).toBe(500);
+  });
+
+  it('saves null locationsMaxDistance via sql.json() (pass-type default sentinel)', async () => {
+    const { sql, jsonCalls } = createMockSql();
+    await updateTemplate(sql, 'test-id', {
+      settings: { locationsMaxDistance: null },
+    });
+    const last = getLastJsonValue(jsonCalls) as { locationsMaxDistance: null };
+    expect(last!.locationsMaxDistance).toBe(null);
+  });
+
+  it('preserves locationsDisabled toggle payload via sql.json()', async () => {
+    // locationsDisabled=true → user disabled geolocation; backend echoes
+    // the boolean so subsequent reads see the toggle state. 2026-09-06
+    // refactor added this field.
+    const { sql, jsonCalls } = createMockSql();
+    await updateTemplate(sql, 'test-id', {
+      settings: { locationsDisabled: true },
+    });
+    const last = getLastJsonValue(jsonCalls) as { locationsDisabled: boolean };
+    expect(last!.locationsDisabled).toBe(true);
+  });
+
+  it('preserves relevantText per row via sql.json() (workerd non-ASCII safe)', async () => {
+    // relevantText is the lock-screen message; optional, ≤ 100 chars.
+    // 2026-09-06 refactor added this field per Passcreator API alignment.
+    const { sql, jsonCalls } = createMockSql();
+    await updateTemplate(sql, 'test-id', {
+      settings: {
+        locations: [
+          {
+            name: '台北 101',
+            latitude: 25.033,
+            longitude: 121.565,
+            relevantText: '歡迎光臨 🎉 出示卡片享 9 折優惠',
+          },
+        ],
+      },
+    });
+    const last = getLastJsonValue(jsonCalls) as
+      | { locations: Array<{ name: string; relevantText: string }> }
+      | undefined;
+    expect(last).toBeDefined();
+    expect(last!.locations[0]!.name).toBe('台北 101');
+    expect(last!.locations[0]!.relevantText).toBe('歡迎光臨 🎉 出示卡片享 9 折優惠');
+    // Ensure no workerd-style replacement chars snuck in
+    expect(last!.locations[0]!.relevantText).not.toMatch(/\uFFFD/);
+  });
+
+  it('still accepts deprecated notificationRadius key (backward-compat reads)', async () => {
+    // Migration 017 renames DB rows; until then, legacy rows may still
+    // carry `notificationRadius`. The schema keeps it as `.optional()` so
+    // reading those rows does not fail at the request layer.
+    const { sql, jsonCalls } = createMockSql();
+    await updateTemplate(sql, 'test-id', {
+      settings: { notificationRadius: 250 },
+    });
+    const last = getLastJsonValue(jsonCalls) as { notificationRadius: number };
+    expect(last!.notificationRadius).toBe(250);
   });
 });

@@ -97,6 +97,45 @@ export const templateSettingsSchema = z.object({
       }),
     )
     .optional(),
+  // ===== Step 5 — 地理位置 + 推播訊息 (Rule 019 § 4.1, layer 2 of 4) =====
+  // Passcreator API-aligned. Mirrors `shared/templateSettingsSchema`:
+  //   - initialMessage (unchanged from 2026-09-05)
+  //   - locationsDisabled (new toggle, 2026-09-06)
+  //   - locationsMaxDistance (renamed 2026-09-06 from notificationRadius)
+  //   - locations (added relevantText per row, 2026-09-06)
+  // Step 5 plan 2026-09-05: see packages/shared/schemas/card.ts for source.
+  initialMessage: z.string().max(50).optional(),
+  locationsDisabled: z.boolean().optional(),
+  locationsMaxDistance: z
+    .number()
+    .int()
+    .min(100)
+    .max(1000)
+    .nullable()
+    .optional(),
+  locations: z
+    .array(
+      z.object({
+        name: z.string().min(1).max(40),
+        // lat/lng now required (2026-09-06 refactor)
+        latitude: z.number().min(-90).max(90),
+        longitude: z.number().min(-180).max(180),
+        // relevantText is the lock-screen message; optional, ≤ 100 chars.
+        relevantText: z.string().max(100).nullable().optional(),
+      }),
+    )
+    .max(10)
+    .optional(),
+  // Deprecated 2026-09-06: `notificationRadius` is kept here as `.optional()`
+  // for backward-compat reads (Migration 017 renames DB rows). The frontend
+  // no longer writes this key; new writes must use `locationsMaxDistance`.
+  notificationRadius: z
+    .number()
+    .int()
+    .min(100)
+    .max(1000)
+    .nullable()
+    .optional(),
 });
 
 export type TemplateSettings = z.infer<typeof templateSettingsSchema>;

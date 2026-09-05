@@ -76,6 +76,10 @@ export function CardBuilderEditor({
           // BEFORE loadSettings completes would race against the fetch
           // and clobber DB with partial data.
           step4LoadSettledRef.current = true;
+          // Step 5 (2026-09-05) shares the same outer-fetch timeline as
+          // Step 4 — one loadSettings hydrates both. Flip the settled
+          // flag for Step 5 at the same time.
+          step5LoadSettledRef.current = true;
           // cardType 存在 DB card_type 欄位（不在 settings JSONB），需要獨立設定
           if (template.cardType) {
             setCardType(template.cardType);
@@ -251,6 +255,99 @@ export function CardBuilderEditor({
       if (step4SaveTimerRef.current) clearTimeout(step4SaveTimerRef.current);
     };
   }, [cardId, description, backFields, links]);
+
+  // ============================================================
+  // Step 5 — 地理位置 + 推播訊息 autosave (2026-09-05)
+  // ============================================================
+  // Mirrors the Step 4 autosave pattern verbatim: baseline-armed ref +
+  // loadSettled ref + JSON.stringify snapshot diff. Step 5 has NO required
+  // fields so we save as soon as anything is non-default (description or
+  // any location row). The baseline-arm + loadSettled guards are the
+  // same logic as Step 4 — without them, an effect that fires before
+  // loadSettings resolves would PUT empty defaults into DB (Rule 032
+  // silent overwrite).
+  const step5SaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastStep5SnapshotRef = useRef<string>('');
+
+  const initialMessage = useCardBuilderStore((s) => s.initialMessage);
+  const locationsDisabled = useCardBuilderStore((s) => s.locationsDisabled);
+  const locationsMaxDistance = useCardBuilderStore((s) => s.locationsMaxDistance);
+  const locations = useCardBuilderStore((s) => s.locations);
+
+  const step5BaselineArmedRef = useRef(false);
+  const step5LoadSettledRef = useRef(false);
+
+  // Reset on session boundary (cardId change = new template session).
+  useEffect(() => {
+    step5BaselineArmedRef.current = false;
+    step5LoadSettledRef.current = false;
+    lastStep5SnapshotRef.current = '';
+  }, [cardId]);
+
+  useEffect(() => {
+    if (!cardId) return;
+
+    const snapshot = JSON.stringify({
+      initialMessage,
+      locationsDisabled,
+      locationsMaxDistance,
+      locations,
+    });
+
+    // First run: seed the baseline. Don't schedule a timer — the store
+    // still holds empty defaults at this point.
+    if (!step5BaselineArmedRef.current) {
+      step5BaselineArmedRef.current = true;
+      lastStep5SnapshotRef.current = snapshot;
+      return;
+    }
+
+    // If loadSettings hasn't completed yet, hold the timer. Any user edits
+    // before loadSettings settles are pre-baseline — saving them would
+    // race against the upcoming hydration.
+    if (!step5LoadSettledRef.current) {
+      lastStep5SnapshotRef.current = snapshot;
+      return;
+    }
+
+    if (snapshot === lastStep5SnapshotRef.current) return;
+    lastStep5SnapshotRef.current = snapshot;
+
+    if (step5SaveTimerRef.current) clearTimeout(step5SaveTimerRef.current);
+    step5SaveTimerRef.current = setTimeout(() => {
+      // Read the latest values from the store at fire time so we don't
+      // capture a stale closure.
+      const s = useCardBuilderStore.getState();
+      // 2026-09-06 refactor: when `locationsDisabled=true` the store has
+      // already cleared `locations` + `locationsMaxDistance` (via the
+      // `setLocationsDisabled(true)` setter). Echo them as-is so the DB
+      // keeps no stale data.
+      cardService
+        .update(cardId, {
+          settings: {
+            initialMessage: s.initialMessage,
+            locationsDisabled: s.locationsDisabled,
+            locationsMaxDistance: s.locationsMaxDistance,
+            locations: s.locations.map((l) => ({
+              name: l.name,
+              latitude: l.latitude,
+              longitude: l.longitude,
+              relevantText: l.relevantText,
+            })),
+          },
+        })
+        .catch((err) => {
+          console.warn('[CardBuilderEditor] Step 5 auto-save failed:', err);
+        });
+    }, 1000);
+
+    return () => {
+      if (step5SaveTimerRef.current) {
+        clearTimeout(step5SaveTimerRef.current);
+        step5SaveTimerRef.current = null;
+      }
+    };
+  }, [cardId, initialMessage, locationsDisabled, locationsMaxDistance, locations]);
 
   // ============================================================
   // Auto-save keep-alive: touch TTL every 5 minutes

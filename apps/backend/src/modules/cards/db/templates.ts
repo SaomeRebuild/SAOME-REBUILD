@@ -123,6 +123,52 @@ export interface TemplateSettings {
    * validation lives in shared/logic/links.ts (UI-layer).
    */
   links?: Array<{ label: string; value: string }>;
+  // ===== Step 5 — 地理位置 + 推播訊息 (Rule 019 § 4.1, layer 3 of 4) =====
+  // Mirrors `shared/templateSettingsSchema.initialMessage / locations`.
+  // Step 5 plan 2026-09-05: see packages/shared/schemas/card.ts for source.
+  /**
+   * Push-notification body shown after the user downloads the pass
+   * (Passcreator "Initial message"). Max 50 chars per INITIAL_MESSAGE_MAX_LENGTH.
+   */
+  initialMessage?: string;
+  /**
+   * Geolocation toggle (Passcreator API field). When `true` the pass
+   * does NOT trigger geolocation-based notifications; Step 5 in the
+   * CardBuilder editor can be skipped. Default `false` (geolocation
+   * enabled). Added 2026-09-06.
+   */
+  locationsDisabled?: boolean;
+  /**
+   * Geolocation triggers for the pass. Each entry maps to one Apple Wallet
+   * pkpass `relevantLocations` row (Passcreator API-aligned). Capped at 10
+   * (LOCATIONS_MAX). Per-row shape (2026-09-06 refactor):
+   *   - `name` (user-facing label)
+   *   - `latitude` / `longitude` (REQUIRED — previously optional)
+   *   - `relevantText` (optional lock-screen message; ≤ 100 chars)
+   */
+  locations?: Array<{
+    name: string;
+    latitude: number;
+    longitude: number;
+    relevantText?: string | null;
+  }>;
+  // ===== Step 5 — Locations max distance (Rule 019 § 4.1, layer 3 of 4) =====
+  // Mirrors `shared/templateSettingsSchema.locationsMaxDistance`.
+  // Step 5 plan 2026-09-06 rename: was `notificationRadius`; renamed to
+  // align with the Passcreator API field name.
+  /**
+   * Locations max distance in meters — pass-level setting (Passcreator
+   * `locationsMaxDistance`). Bounded to [100, 1000] per Apple Wallet /
+   * PassKit spec. `null` (= field absent) signals PassKit to use the
+   * pass-type default (event/boarding → up to 1000 m; coupon/store/
+   * membership → up to 100 m). User-explicit values are stored as
+   * integers.
+   */
+  locationsMaxDistance?: number | null;
+  // DEPRECATED 2026-09-06: kept for backward-compat reads from DB rows
+  // that pre-date Migration 017 (rename notificationRadius → locationsMaxDistance).
+  // Frontend no longer writes this key. New writes use `locationsMaxDistance`.
+  notificationRadius?: number | null;
   [key: string]: unknown;
 }
 

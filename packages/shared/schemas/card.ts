@@ -149,6 +149,62 @@ export const templateSettingsSchema = z.object({
       }),
     )
     .optional(),
+  // ===== Step 5 — 地理位置 + 推播訊息 (2026-09-05, refactored 2026-09-06) =====
+  // Passcreator API-aligned fields:
+  //   - `locationsDisabled`: boolean toggle. Passcreator uses this to
+  //     decide whether geolocation is enabled at all. When `true` the
+  //     editor collapses Step 5 and clears locations + locationsMaxDistance.
+  //   - `initialMessage`: push-notification body (optional).
+  //   - `locationsMaxDistance`: pass-level notification radius in meters
+  //     (renamed 2026-09-06 from `notificationRadius` to align with Passcreator).
+  //     `null` means "use pass-type default" (Apple Wallet decides based
+  //     on card type).
+  //   - `locations`: array of { name, latitude, longitude, relevantText }
+  //     (added relevantText 2026-09-06; lat/lng are now REQUIRED).
+  initialMessage: z.string().max(50).optional(),
+  locationsDisabled: z.boolean().optional(),
+  locationsMaxDistance: z
+    .number()
+    .int()
+    .min(100)
+    .max(1000)
+    .nullable()
+    .optional(),
+  locations: z
+    .array(
+      z.object({
+        // Per-row `name` is required (user-facing label). Length cap of 40
+        // matches LOCATION_NAME_MAX_LENGTH in
+        // shared/constants/card-back-fields.ts.
+        name: z.string().min(1).max(40),
+        // lat / lng are now REQUIRED (2026-09-06 refactor). Previously
+        // optional because the editor allowed empty rows; the Step 5
+        // toggle + `validateAllLocations({requireMinOne: true})` now
+        // enforces non-null values at the schema layer.
+        latitude: z.number().min(-90).max(90),
+        longitude: z.number().min(-180).max(180),
+        // relevantText is the lock-screen message shown when the user
+        // arrives at this location (Apple Wallet pkpass `relevantText`).
+        // Optional, ≤ 100 chars, null when not set.
+        relevantText: z.string().max(100).nullable().optional(),
+      }),
+    )
+    .max(10)
+    .optional(),
+  // ===== Step 5 — Locations max distance (2026-09-06 rename) =====
+  // DEPRECATED 2026-09-06: kept as `.optional()` for backward-compat reads
+  // (Migration 017 renames DB rows from `notificationRadius` →
+  // `locationsMaxDistance`). New writes should use `locationsMaxDistance`.
+  // The backend silently accepts incoming `notificationRadius` but does
+  // not echo it back; frontend `loadSettings` falls back to
+  // `notificationRadius` if `locationsMaxDistance` is missing (defensive).
+  notificationRadius: z
+    .number()
+    .int()
+    .min(100)
+    .max(1000)
+    .nullable()
+    .optional(),
 });
 
 export type TemplateSettings = z.infer<typeof templateSettingsSchema>;

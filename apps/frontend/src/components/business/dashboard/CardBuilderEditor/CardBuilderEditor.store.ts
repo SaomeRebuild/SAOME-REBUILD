@@ -9,7 +9,18 @@ import type { CardFieldKey } from '@saome/shared/constants/card-fields';
 import {
   BACK_FIELDS_MAX,
   LINKS_MAX,
+  LOCATIONS_MAX,
+  INITIAL_MESSAGE_MAX_LENGTH,
+  LOCATION_NAME_MAX_LENGTH,
+  LATITUDE_MIN,
+  LATITUDE_MAX,
+  LONGITUDE_MIN,
+  LONGITUDE_MAX,
+  RELEVANT_TEXT_MAX_LENGTH,
+  LOCATIONS_MAX_DISTANCE_MIN,
+  LOCATIONS_MAX_DISTANCE_MAX,
 } from '@saome/shared/constants/card-back-fields';
+import type { LocationInput } from '@saome/shared/logic/locations';
 import { normalizeHex } from '@saome/shared/logic/color';
 import { unwrapCardSettings } from '@saome/shared/logic/cardSettings';
 
@@ -139,6 +150,57 @@ interface CardBuilderState {
    */
   links: LabelValuePair[];
 
+  // ===== Step 5 — 地理位置 + 推播訊息 (2026-09-05, refactored 2026-09-06) =====
+  /**
+   * Push-notification body shown after the user downloads the pass
+   * (Passcreator "Initial message"). Max INITIAL_MESSAGE_MAX_LENGTH=50 chars;
+   * `setInitialMessage` truncates at the cap. Stored as a top-level string;
+   * zod schema enforces max-length on the backend side as well.
+   */
+  initialMessage: string;
+  /**
+   * Pass-level toggle controlling whether geolocation push-notifications are
+   * enabled for this pass (Passcreator API `locationsDisabled` field).
+   *
+   *   - `false` (default): geolocation enabled — at least 1 location row +
+   *     locationsMaxDistance required to advance past Step 5.
+   *   - `true`: geolocation disabled — Step 5 collapses to a single toggle
+   *     + helper text; `setLocationsDisabled(true)` ALSO clears `locations`
+   *     and `locationsMaxDistance` to keep DB clean (no stale data).
+   *
+   * 2026-09-06 refactor: renamed from no toggle (Step 5 was always
+   * skippable) → boolean toggle.
+   */
+  locationsDisabled: boolean;
+  /**
+   * Pass-level notification radius in meters (Passcreator
+   * `locationsMaxDistance` field). Per Apple Wallet / PassKit spec: must be
+   * an integer in [LOCATIONS_MAX_DISTANCE_MIN=100, LOCATIONS_MAX_DISTANCE_MAX=1000].
+   * `null` means "use pass-type default" (Apple Wallet decides based on
+   * the card type; event/boarding → up to 1000 m, coupon/store/membership
+   * → up to 100 m). The setter clamps to [100, 1000] and coerces
+   * non-integer to integers (Round to nearest). `null` is always valid
+   * (user clears the field → restore pass-type default).
+   *
+   * 2026-09-06 rename: was `notificationRadius`. Renamed to align with
+   * Passcreator API field name.
+   */
+  locationsMaxDistance: number | null;
+  /**
+   * Geolocation triggers for the pass (Step 5 — Locations). Array of
+   * {name, latitude, longitude, relevantText}. **Optional** when
+   * `locationsDisabled=true` (whole Step 5 skipped). When enabled, at
+   * least 1 row is required (enforced by `isStep5Valid()` +
+   * `validateAllLocations({requireMinOne: true})`).
+   *
+   * Capped at LOCATIONS_MAX=10; `addLocation` is a no-op at the cap.
+   * `removeLocation` does NOT auto-refill (matches `removeLink` semantics —
+   * locations are optional when disabled). 2026-09-06 refactor: row shape
+   * gained `relevantText` (≤ RELEVANT_TEXT_MAX_LENGTH=100 chars, optional);
+   * lat/lng are now REQUIRED when the row exists.
+   */
+  locations: LocationInput[];
+
   // Actions
   setCardId: (cardId: string | null) => void;
   setName: (name: string) => void;
@@ -209,6 +271,57 @@ interface CardBuilderState {
    * the user is allowed to delete all rows.
    */
   removeLink: (idx: number) => void;
+  // ===== Step 5 setters (2026-09-05, refactored 2026-09-06) =====
+  /**
+   * Set the push-notification initial message. Truncates at
+   * INITIAL_MESSAGE_MAX_LENGTH so the user cannot type past the cap.
+   */
+  setInitialMessage: (message: string) => void;
+  /**
+   * Toggle the geolocation-push-notification feature. When transitioning
+   * from enabled (false) → disabled (true), the setter ALSO clears
+   * `locations` and `locationsMaxDistance` so the DB has no stale data
+   * (per user spec 2026-09-06: "勾選時清空 locations + locationsMaxDistance").
+   *
+   * Going disabled → enabled does NOT auto-populate fields — the user
+   * must add at least 1 location row + set `locationsMaxDistance` before
+   * the workspace `isStep5Valid()` lets them advance.
+   */
+  setLocationsDisabled: (disabled: boolean) => void;
+  /**
+   * Set the locations max distance. Clamps to [100, 1000] (integer). Pass
+   * `null` to clear → use pass-type default. `null` is always valid.
+   *
+   * 2026-09-06 rename: was `setNotificationRadius`.
+   */
+  setLocationsMaxDistance: (radius: number | null) => void;
+  /** Update one location row's `name` (max LOCATION_NAME_MAX_LENGTH chars). */
+  setLocationName: (idx: number, name: string) => void;
+  /**
+   * Update one location row's `latitude`. NaN / out-of-range values are
+   * accepted here so the user can type freely; the shared zod schema on
+   * save is the authoritative gate.
+   */
+  setLocationLatitude: (idx: number, latitude: number) => void;
+  /** Update one location row's `longitude`. */
+  setLocationLongitude: (idx: number, longitude: number) => void;
+  /**
+   * Update one location row's `relevantText` (lock-screen message).
+   * 2026-09-06 added this field; max RELEVANT_TEXT_MAX_LENGTH=100 chars.
+   * `null` clears the field.
+   */
+  setLocationRelevantText: (idx: number, relevantText: string | null) => void;
+  /**
+   * Append one empty location row. No-op when `locations.length` is
+   * already at LOCATIONS_MAX=10 — the UI button is also disabled at the cap.
+   */
+  addLocation: () => void;
+  /**
+   * Remove the location row at `idx`. Does NOT refill — locations are
+   * optional when `locationsDisabled=true`. When `locationsDisabled=false`
+   * the workspace enforces "≥ 1 row" via `isStep5Valid()` instead.
+   */
+  removeLocation: (idx: number) => void;
   /**
    * 從既有 template 的 settings 載入 store.
    *
@@ -271,6 +384,73 @@ function sanitizeLabelValueArray(
   return trimmed.length > 0 ? trimmed : (current.length > 0 ? current : fallback);
 }
 
+/**
+ * Defensive parser for the Step 5 `locations` array (Rule 019 + Rule 032).
+ *
+ * - Truncates to `LOCATIONS_MAX` so a corrupted DB row with > 10 entries
+ *   cannot blow up the UI editor.
+ * - Each entry is coerced to `{name, latitude, longitude, relevantText}`.
+ *   Numeric fields are validated against the shared constants' bounds;
+ *   out-of-range values are dropped (the row is skipped, treating it as if
+ *   the user just hadn't typed them yet — falls back to `NaN` for
+ *   incomplete paste handling).
+ * - `name` falls back to '' (user-typing default).
+ * - `relevantText` falls back to `null` (no custom lock-screen message).
+ *
+ * Rule 032 rationale: a malicious or corrupted DB row with bad lat/lng
+ * MUST NOT propagate to the editor — otherwise the next autosave PUT
+ * would clobber the DB with the same bad values. Sanitizing at load-time
+ * pins the defensive contract; the store only ever holds well-typed data.
+ */
+function sanitizeLocations(
+  raw: unknown,
+  current: LocationInput[],
+): LocationInput[] {
+  if (!Array.isArray(raw)) return current;
+  const trimmed: LocationInput[] = [];
+  for (const entry of raw.slice(0, LOCATIONS_MAX)) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+    const obj = entry as Record<string, unknown>;
+    const name =
+      typeof obj.name === 'string' ? obj.name.slice(0, LOCATION_NAME_MAX_LENGTH) : '';
+    const lat = typeof obj.latitude === 'number' ? obj.latitude : Number.NaN;
+    const lng = typeof obj.longitude === 'number' ? obj.longitude : Number.NaN;
+    // relevantText: nullable string, ≤ RELEVANT_TEXT_MAX_LENGTH chars.
+    // Anything non-string (number, object, etc.) is coerced to null.
+    const rawText = obj.relevantText;
+    let relevantText: string | null = null;
+    if (typeof rawText === 'string') {
+      relevantText = rawText.slice(0, RELEVANT_TEXT_MAX_LENGTH);
+    } else if (rawText === null) {
+      relevantText = null;
+    }
+    // Reject lat/lng outside WGS84 bounds — defensive against corruption.
+    if (
+      !Number.isFinite(lat) ||
+      lat < LATITUDE_MIN ||
+      lat > LATITUDE_MAX ||
+      !Number.isFinite(lng) ||
+      lng < LONGITUDE_MIN ||
+      lng > LONGITUDE_MAX
+    ) {
+      // Skip the row entirely; the rest of the array survives. This avoids
+      // showing the user a half-edited location they can't fix easily.
+      continue;
+    }
+    trimmed.push({ name, latitude: lat, longitude: lng, relevantText });
+  }
+  return trimmed;
+}
+
+/**
+ * Defensive parser for the Step 5 `initialMessage` string. Coerces
+ * anything non-string to '' and truncates at the cap.
+ */
+function sanitizeInitialMessage(raw: unknown, fallback: string): string {
+  if (typeof raw !== 'string') return fallback;
+  return raw.slice(0, INITIAL_MESSAGE_MAX_LENGTH);
+}
+
 const initialState = {
   cardId: null,
   name: '',
@@ -315,6 +495,19 @@ const initialState = {
   backFields: [{ label: '', value: '' }],
   // Links: optional — empty initial array. UI shows "新增連結" button at first render.
   links: [],
+  // ===== Step 5 — 地理位置 + 推播訊息 (2026-09-05, refactored 2026-09-06) =====
+  initialMessage: '',
+  // Locations disabled toggle: default false (geolocation enabled).
+  // When true, the Step 5 editor collapses and the user can advance
+  // past Step 5 without filling any fields.
+  locationsDisabled: false,
+  // Locations max distance: null = use pass-type default (Apple Wallet
+  // decides based on card type). 2026-09-06 rename from notificationRadius.
+  locationsMaxDistance: null,
+  // Locations: optional — empty initial array. UI shows "新增地點" button
+  // at first render; addLocation appends, removeLocation deletes (no refill).
+  // Each row shape: {name, latitude, longitude, relevantText}.
+  locations: [],
 };
 
 /**
@@ -410,6 +603,89 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
       links: state.links.filter((_, i) => i !== idx),
     })),
 
+  // ===== Step 5 setters (2026-09-05, refactored 2026-09-06) =====
+  setInitialMessage: (message) =>
+    set({
+      initialMessage: message.slice(0, INITIAL_MESSAGE_MAX_LENGTH),
+    }),
+  setLocationsDisabled: (disabled) => {
+    // Toggling to true (disabled) → clear locations + locationsMaxDistance
+    // so DB has no stale data (per user spec 2026-09-06).
+    if (disabled === true) {
+      set({
+        locationsDisabled: true,
+        locations: [],
+        locationsMaxDistance: null,
+      });
+      return;
+    }
+    set({ locationsDisabled: false });
+  },
+  setLocationsMaxDistance: (radius) => {
+    // null is always valid: means "use pass-type default".
+    if (radius === null) { set({ locationsMaxDistance: null }); return; }
+    // Clamp integer to [100, 1000].
+    const clamped = Math.round(Number(radius));
+    if (!Number.isFinite(clamped)) { set({ locationsMaxDistance: null }); return; }
+    set({
+      locationsMaxDistance: Math.max(
+        LOCATIONS_MAX_DISTANCE_MIN,
+        Math.min(LOCATIONS_MAX_DISTANCE_MAX, clamped),
+      ),
+    });
+  },
+  setLocationName: (idx, name) =>
+    set((state) => ({
+      locations: state.locations.map((row, i) =>
+        i === idx ? { ...row, name: name.slice(0, LOCATION_NAME_MAX_LENGTH) } : row,
+      ),
+    })),
+  setLocationLatitude: (idx, latitude) =>
+    set((state) => ({
+      locations: state.locations.map((row, i) =>
+        i === idx ? { ...row, latitude } : row,
+      ),
+    })),
+  setLocationLongitude: (idx, longitude) =>
+    set((state) => ({
+      locations: state.locations.map((row, i) =>
+        i === idx ? { ...row, longitude } : row,
+      ),
+    })),
+  setLocationRelevantText: (idx, relevantText) =>
+    set((state) => ({
+      locations: state.locations.map((row, i) => {
+        if (i !== idx) return row;
+        if (relevantText === null) return { ...row, relevantText: null };
+        return {
+          ...row,
+          relevantText: relevantText.slice(0, RELEVANT_TEXT_MAX_LENGTH),
+        };
+      }),
+    })),
+  addLocation: () =>
+    set((state) => {
+      if (state.locations.length >= LOCATIONS_MAX) return {};
+      // Push a fully-typed empty row. lat/lng default to NaN so the
+      // `validateLocation` later flags them as invalid; UI shows the
+      // red border on the relevant field once `showValidation` flips.
+      // 2026-09-06 refactor: row shape now includes `relevantText`.
+      const row: LocationInput = {
+        name: '',
+        latitude: Number.NaN,
+        longitude: Number.NaN,
+        relevantText: null,
+      };
+      return { locations: [...state.locations, row] };
+    }),
+  removeLocation: (idx) =>
+    set((state) => ({
+      // No auto-refill — locations are optional when locationsDisabled=true.
+      // When locationsDisabled=false, workspace isStep5Valid() enforces
+      // ≥ 1 row instead (the user sees a red "add at least 1" message).
+      locations: state.locations.filter((_, i) => i !== idx),
+    })),
+
   loadSettings: (settings) => {
     // Bug #8.5 defensive: settings may be object / JSON string / array-of-partials
     // (legacy corruption). unwrapCardSettings handles all cases.
@@ -484,6 +760,34 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
           LINKS_MAX,
           /* fallbackWhenInvalid */ [],
         ),
+        // ===== Step 5 (2026-09-05, refactored 2026-09-06) =====
+        initialMessage: sanitizeInitialMessage(resolved?.initialMessage, state.initialMessage),
+        // locationsDisabled toggle: boolean. Defensive — coerce non-boolean
+        // (string/number from corrupted DB) to the default `false`.
+        locationsDisabled: (() => {
+          const v = resolved?.locationsDisabled;
+          if (typeof v === 'boolean') return v;
+          return state.locationsDisabled;
+        })(),
+        // Locations max distance: null or integer in [100, 1000].
+        // Anything else (string, NaN, out-of-range) is coerced to null
+        // (use pass-type default). Backward-compat fallback: if
+        // `locationsMaxDistance` is missing but legacy `notificationRadius`
+        // is present (pre-Migration 017 rows), use that.
+        locationsMaxDistance: (() => {
+          const direct = resolved?.locationsMaxDistance;
+          const legacy = resolved?.notificationRadius;
+          const raw = direct !== undefined ? direct : legacy;
+          if (raw === null) return null;
+          if (typeof raw !== 'number') return state.locationsMaxDistance;
+          const n = Math.round(raw);
+          if (!Number.isFinite(n)) return state.locationsMaxDistance;
+          return Math.max(
+            LOCATIONS_MAX_DISTANCE_MIN,
+            Math.min(LOCATIONS_MAX_DISTANCE_MAX, n),
+          );
+        })(),
+        locations: sanitizeLocations(resolved?.locations, state.locations),
       };
     });
   },
