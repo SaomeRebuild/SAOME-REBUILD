@@ -80,7 +80,7 @@
 | 2026-08-16 | 加 `scripts/verify-i18n-keys.mjs` i18n smoke test | ✅ done |
 | 2026-08-16 | 普查 `cardBuilder`、`cardEditor` namespace（確認無需拆分） | ✅ done |
 | 2026-08-16 | 加 `025-vibe-coding-l2-checklist.mdc` rule | ✅ done |
-| 2026-08-16 | 普查 `auth`、`landing`、`legal`、`passNotification`、`theme` 的 cross-locale drift | ⏳ pending |
+| 2026-08-16 | 普查 `auth`、`landing`、`legal`、`passNotification`、`theme` 的 cross-locale drift | ✅ done（commit `95e3cf6` — auth 補 7 keys、landing 補 2 keys、legal 清掉 empty placeholder、verify-i18n 升級為 hard-fail CI gate）|
 | 2026-08-17 | `016-config-and-tsconfig-discipline.mdc` 補第 8 surface：CI cache `cache-dependency-path` 綁定 `package-lock.json` | ⏳ pending |
 | 2026-08-17 | `025-vibe-coding-l2-checklist.mdc` 或新建 `026-ci-workflow-checklist.mdc`：加 CI workflow 修改 checklist（新增 dep 前確認 cache key） | ⏳ pending |
 | 2026-08-21 | `saome-github-deploy` skill 補充：部署後端前，確認 `wrangler secret list` 所有 secrets 已正確設定 | ⏳ pending |
