@@ -18,6 +18,7 @@ import { verifyToken, signAccessToken, signRefreshToken } from '@/shared/lib/jwt
 import { findUserById } from '../db/users';
 import { findTenantByOwnerId } from '../db/tenants';
 import { getPassStatus, advanceBillingCycle } from '@/modules/pass/db/passes';
+import { isTokenRevoked } from '../db/revokedTokens';
 
 const ACCESS_TOKEN_TTL_DEFAULT = 900;
 
@@ -32,6 +33,14 @@ export async function refreshService(
     payload = await verifyToken(refreshToken, jwtSecret);
   } catch {
     throw new AuthError('auth.error.invalidRefreshToken', 'Invalid or expired refresh token');
+  }
+
+  // Phase 2.2 (2026-09-05): server-side revocation check. A token that
+  // was explicitly revoked (e.g. on logout) is rejected here, before we
+  // even look up the user. Cached in-process so refresh storms don't
+  // pile up DB hits.
+  if (await isTokenRevoked(sql, payload.jti)) {
+    throw new AuthError('auth.error.tokenRevoked', 'Refresh token has been revoked');
   }
 
   const user = await findUserById(sql, payload.sub);

@@ -173,3 +173,146 @@ describe('HttpClient — 5xx retry behavior', () => {
     });
   });
 });
+
+/**
+ * Phase 2.3 (2026-09-05): tryRefresh() now wraps its refresh attempt in
+ * `withRefreshMutex` so concurrent 401 callers share the same in-flight
+ * request instead of each spawning a separate POST /api/auth/refresh.
+ *
+ * Critical invariant under test:
+ *   - Two concurrent tryRefresh() calls (e.g. tab A + tab B both hit 401)
+ *     produce exactly ONE POST /api/auth/refresh network call.
+ *   - Both callers receive the same result (success or null).
+ *   - The mutex doesn't leak across calls — after the first refresh settles,
+ *     a third caller can start a fresh request.
+ *
+ * These tests use `authService.refresh` indirectly via httpClient; the
+ * mutex is shared across both call sites (authStore module-level state).
+ */
+describe('HttpClient — tryRefresh mutex sharing', () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    fetchMock = vi.fn();
+    authStore.setAccessToken(null);
+    authStore.setRefreshToken('valid-refresh');
+    // Clear any in-flight mutex from a previous test
+    await new Promise((r) => setTimeout(r, 0));
+  });
+
+  afterEach(() => {
+    authStore.setAccessToken(null);
+    authStore.setRefreshToken(null);
+    vi.clearAllMocks();
+  });
+
+  function buildClient() {
+    return new HttpClient({
+      baseUrl: 'http://test.local',
+      fetchImpl: fetchMock as unknown as typeof fetch,
+      timeoutMs: 1000,
+    });
+  }
+
+  function mockRefreshResponse(accessToken: string | null, status = 200) {
+    return new Response(JSON.stringify({ accessToken }), {
+      status,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  it('two concurrent 401s trigger only ONE POST /refresh (mutex shared)', async () => {
+    // First 401 call → tryRefresh, second 401 call → tryRefresh,
+    // but they MUST share the same in-flight fetch.
+    // We mock: 401 (call 1, original), 401 (call 2, original),
+    //          refresh-success (single call), 200 (call 1 retry),
+    //          200 (call 2 retry).
+    fetchMock
+      .mockResolvedValueOnce(new Response('{"message":"unauthorized"}', { status: 401 }))
+      .mockResolvedValueOnce(new Response('{"message":"unauthorized"}', { status: 401 }))
+      .mockResolvedValueOnce(mockRefreshResponse('refreshed-token'))
+      .mockResolvedValueOnce(new Response('{"ok":true}', { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response('{"ok":true}', { status: 200, headers: { 'Content-Type': 'application/json' } }));
+
+    const client = buildClient();
+    const [r1, r2] = await Promise.all([
+      client.get<{ ok: boolean }>('/api/cards/a'),
+      client.get<{ ok: boolean }>('/api/cards/b'),
+    ]);
+
+    expect(r1).toEqual({ ok: true });
+    expect(r2).toEqual({ ok: true });
+
+    // 5 calls total: 2 original 401s + 1 shared refresh + 2 retries
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+
+    // Specifically: only ONE call to /api/auth/refresh
+    const refreshCalls = fetchMock.mock.calls.filter((call) => {
+      const url = call[0] as string;
+      return url.includes('/api/auth/refresh');
+    });
+    expect(refreshCalls).toHaveLength(1);
+  });
+
+  it('mutex is released after refresh settles — next caller starts fresh request', async () => {
+    // First pair: 401 → mutex → shared refresh → success
+    fetchMock
+      .mockResolvedValueOnce(new Response('{"message":"unauthorized"}', { status: 401 }))
+      .mockResolvedValueOnce(mockRefreshResponse('token-1'))
+      .mockResolvedValueOnce(new Response('{"ok":true}', { status: 200, headers: { 'Content-Type': 'application/json' } }));
+
+    const client = buildClient();
+    await client.get('/api/cards/first');
+
+    // Second pair (after first settled): 401 → mutex → NEW refresh
+    fetchMock
+      .mockResolvedValueOnce(new Response('{"message":"unauthorized"}', { status: 401 }))
+      .mockResolvedValueOnce(mockRefreshResponse('token-2'))
+      .mockResolvedValueOnce(new Response('{"ok":true}', { status: 200, headers: { 'Content-Type': 'application/json' } }));
+
+    await client.get('/api/cards/second');
+
+    // 6 calls total (3 per pair × 2 pairs)
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+
+    // Exactly TWO calls to /api/auth/refresh (one per pair)
+    const refreshCalls = fetchMock.mock.calls.filter((call) => {
+      const url = call[0] as string;
+      return url.includes('/api/auth/refresh');
+    });
+    expect(refreshCalls).toHaveLength(2);
+  });
+
+  it('when shared refresh fails (returns null), both 401 callers surface SaomeApiError', async () => {
+    // 401 + 401 → shared refresh that returns 401 (refresh fails) → both callers throw
+    fetchMock
+      .mockResolvedValueOnce(new Response('{"message":"unauthorized"}', { status: 401 }))
+      .mockResolvedValueOnce(new Response('{"message":"unauthorized"}', { status: 401 }))
+      .mockResolvedValueOnce(new Response('{"message":"refresh failed"}', { status: 401 }));
+
+    const client = buildClient();
+    const results = await Promise.allSettled([
+      client.get('/api/cards/a'),
+      client.get('/api/cards/b'),
+    ]);
+
+    // Both callers rejected (mutex didn't save them — refresh genuinely failed)
+    expect(results[0].status).toBe('rejected');
+    expect(results[1].status).toBe('rejected');
+    if (results[0].status === 'rejected') {
+      expect(results[0].reason).toBeInstanceOf(SaomeApiError);
+    }
+    if (results[1].status === 'rejected') {
+      expect(results[1].reason).toBeInstanceOf(SaomeApiError);
+    }
+
+    // 3 calls: 2 originals + 1 shared refresh
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+
+    const refreshCalls = fetchMock.mock.calls.filter((call) => {
+      const url = call[0] as string;
+      return url.includes('/api/auth/refresh');
+    });
+    expect(refreshCalls).toHaveLength(1);
+  });
+});

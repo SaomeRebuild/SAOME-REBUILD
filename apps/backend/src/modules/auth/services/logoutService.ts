@@ -1,5 +1,5 @@
 /**
- * Logout service — stateless cookie-clear helper.
+ * Logout service — cookie-clear helper + (Phase 2.2) optional revocation.
  *
  * @module modules/auth/services/logoutService
  *
@@ -12,23 +12,28 @@
  *     browser drops the HttpOnly cookie.
  *   - The client clears its own sessionStorage tokens.
  *   - Any existing access token will expire naturally within its TTL
- *     (default 8h; see follow-up to shorten to 1h).
+ *     (default 1h, see wrangler.jsonc ACCESS_TOKEN_TTL).
+ *
+ * Phase 2.2 (2026-09-05) wires option B: when a refresh token is presented
+ * (cookie or Bearer), we additionally INSERT its `jti` into
+ * `public.revoked_tokens` so any access tokens already issued under that
+ * jti lineage get rejected at verify time. Cookie clearing stays as the
+ * primary path — revocation is the defense-in-depth backstop.
  *
  * This service only computes the cookie-clear header attribute strings.
- * The route assembles the final `Set-Cookie` value.
- *
- * Future paths (post-MVP):
- *   - Option B: insert `jti` into `public.revoked_tokens` so the next
- *     `verifyToken()` rejects it before TTL.
- *   - Option C: write to a Cloudflare KV binding with TTL.
+ * The route assembles the final `Set-Cookie` value and may call
+ * `revokeRefreshToken` for the optional DB-side revocation.
  */
 
+import type { Sql } from '@/shared/db/client';
 import type { HonoEnv } from '@/shared/types/bindings';
 import {
   refreshCookieDomain,
   refreshCookieSecure,
   refreshCookieSameSite,
 } from '@/shared/lib/cookieDomain';
+import { revokeToken } from '../db/revokedTokens';
+import { verifyToken } from '@/shared/lib/jwt';
 
 export interface LogoutCookieAttrs {
   /** Whether the request had any refresh credential (cookie or Bearer). */
@@ -79,6 +84,38 @@ export function buildLogoutSetCookie(attrs: LogoutCookieAttrs): string {
   // the browser defensively clears any stale cookie it might still hold.
   // The route decides whether to attach this header.
   return `saome_refresh=; HttpOnly${secure}${sameSite}; Path=/api/auth${domain}; Max-Age=0`;
+}
+
+/**
+ * Phase 2.2 (2026-09-05): revoke a refresh token's jti in
+ * `public.revoked_tokens`. Defensive — never throws; failures are logged
+ * but do not block the logout response (cookie-clear is the primary path).
+ *
+ * @param sql         Postgres.js client
+ * @param refreshToken The raw refresh token JWT (cookie or Bearer value)
+ * @param jwtSecret   Server JWT secret used for verifyToken()
+ * @returns           true if revocation succeeded, false on any error
+ */
+export async function revokeRefreshToken(
+  sql: Sql,
+  refreshToken: string,
+  jwtSecret: string,
+): Promise<boolean> {
+  try {
+    const payload = await verifyToken(refreshToken, jwtSecret);
+    // expires_at on the revocation row = when the token would have
+    // expired naturally. The pg_cron cleanup job deletes rows past this
+    // point so the table stays bounded.
+    const expiresAt = new Date(payload.exp * 1000);
+    await revokeToken(sql, payload.jti, expiresAt, 'logout');
+    return true;
+  } catch (err) {
+    console.warn(
+      '[logoutService.revokeRefreshToken] verify failed; skipping DB revocation:',
+      err instanceof Error ? err.message : String(err),
+    );
+    return false;
+  }
 }
 
 /**

@@ -67,7 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           user: session.user,
           tenant: session.tenant ?? null,
           accessToken: session.accessToken,
-          expiresAt: Date.now() + (session.expiresIn ?? 28800) * 1000,
+          expiresAt: Date.now() + (session.expiresIn ?? 3600) * 1000,
           pass: session.pass ?? null,
           loading: false,
         });
@@ -81,13 +81,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // Proactive refresh: fire ~1 hour before token expires to avoid silent expiry.
+  // Proactive refresh: fire ~30 min before token expires to avoid silent expiry.
   // Also acts as a keep-alive ping so the session stays alive across page navigations.
+  //
+  // B4 follow-up (2026-09-05): ACCESS_TOKEN_TTL is now 3600s (1h) instead of
+  // 28800s (8h), so the refresh window shortens proportionally.
   useEffect(() => {
     if (!state.expiresAt || state.loading) return;
 
-    const MS_BEFORE_EXPIRY_TO_REFRESH = 60 * 60 * 1000; // 1 hour
-    const INTERVAL_MS = 60 * 60 * 1000; // refresh every hour
+    const MS_BEFORE_EXPIRY_TO_REFRESH = 30 * 60 * 1000; // 30 min before expiry
+    const INTERVAL_MS = 30 * 60 * 1000; // refresh every 30 min as a keep-alive floor
 
     function scheduleNext() {
       const now = Date.now();
@@ -100,7 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setStateRaw((s) => ({
             ...s,
             accessToken: refreshed.accessToken,
-            expiresAt: Date.now() + (refreshed.expiresIn ?? 28800) * 1000,
+            expiresAt: Date.now() + (refreshed.expiresIn ?? 3600) * 1000,
             pass: refreshed.pass ?? s.pass, // update pass if returned
           }));
         } catch {
@@ -125,7 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user: session.user,
       tenant: session.tenant ?? null,
       accessToken: session.accessToken,
-      expiresAt: Date.now() + (session.expiresIn ?? 28800) * 1000,
+      expiresAt: Date.now() + (session.expiresIn ?? 3600) * 1000,
       pass: session.pass ?? null,
       loading: false,
     });
@@ -138,7 +141,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user: session.user,
       tenant,
       accessToken: session.accessToken,
-      expiresAt: Date.now() + (session.expiresIn ?? 28800) * 1000,
+      expiresAt: Date.now() + (session.expiresIn ?? 3600) * 1000,
       pass: session.pass ?? null,
       loading: false,
     });
@@ -166,7 +169,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStateRaw((s) => ({
       ...s,
       accessToken: refreshed.accessToken,
-      expiresAt: Date.now() + (refreshed.expiresIn ?? 28800) * 1000,
+      expiresAt: Date.now() + (refreshed.expiresIn ?? 3600) * 1000,
       pass: refreshed.pass ?? s.pass,
     }));
   }, []);

@@ -12,6 +12,7 @@ import { verifyToken } from '@/shared/lib/jwt';
 import { AuthError, ForbiddenError } from '@/shared/lib/saomeError';
 import { findUserById } from '@/modules/auth/db/users';
 import { getDb } from '@/shared/db/client';
+import { isTokenRevoked } from '@/modules/auth/db/revokedTokens';
 
 export interface AuthenticatedUser {
   id: string;
@@ -53,7 +54,14 @@ export const requireAuth: MiddlewareHandler<HonoEnv> = async (c, next) => {
   } catch {
     throw new AuthError('auth.error.invalidToken', 'Invalid or expired token');
   }
+
+  // Phase 2.2 (2026-09-05): check server-side revocation list. Cached
+  // in-process (5s) so this is one DB hit per cold start, then free.
   const sql = await getDb(c.env.HYPERDRIVE);
+  if (await isTokenRevoked(sql, payload.jti)) {
+    throw new AuthError('auth.error.tokenRevoked', 'Token has been revoked');
+  }
+
   const userRow = await findUserById(sql, payload.sub);
   if (!userRow) {
     throw new AuthError('auth.error.userNotFound', 'User not found');

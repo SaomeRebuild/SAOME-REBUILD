@@ -81,6 +81,7 @@ export function DashboardHeader({ navItems = [], className }: DashboardHeaderPro
               style={{ color: 'var(--color-muted-foreground)' }}
               onClick={() => setIsMobileMenuOpen(true)}
               aria-label={t('dashboardHeader.openMenu')}
+              data-testid="mobile-menu-open-btn"
             >
               <Menu size={22} />
             </button>

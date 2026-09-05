@@ -37,7 +37,7 @@ const adminSession: AuthSessionWithTenant = {
   user: { id: 'admin-id', email: 'admin@saome.org', role: 'admin' },
   tenant: null,
   accessToken: 'access-token-original',
-  expiresIn: 28800, // 8 hours
+  expiresIn: 3600, // 1 hour — matches ACCESS_TOKEN_TTL env (B4 follow-up 2026-09-05)
   refreshToken: 'refresh-token-original',
 };
 
@@ -49,11 +49,12 @@ function setupRefreshMock() {
     callCount++;
     // Bug-7 follow-up: refresh() now returns the full AuthSessionWithTenant
     // (user + tenant + accessToken), not just {accessToken, expiresIn}.
+    // B4 follow-up (2026-09-05): TTL is 3600s (1h), not 28800s (8h).
     return Promise.resolve({
       user: adminSession.user,
       tenant: null,
       accessToken: newAccessToken,
-      expiresIn: 28800,
+      expiresIn: 3600,
     });
   });
   vi.mocked(authService.me).mockResolvedValue({
@@ -94,7 +95,7 @@ describe('AuthProvider session persistence', () => {
       user: adminSession.user,
       tenant: null,
       accessToken: adminSession.accessToken,
-      expiresIn: adminSession.expiresIn ?? 28800,
+      expiresIn: adminSession.expiresIn ?? 3600,
     });
     vi.mocked(authService.me).mockResolvedValue({
       user: adminSession.user,
@@ -114,7 +115,11 @@ describe('AuthProvider session persistence', () => {
     });
   });
 
-  it('proactively refreshes access token before 8h expiry', async () => {
+  it('proactively refreshes access token before 1h expiry', async () => {
+    // B4 follow-up (2026-09-05): ACCESS_TOKEN_TTL is 3600s (1h) now, with a
+    // 30-min proactive refresh window. Fast-forwarding 50 minutes should
+    // comfortably cover both the 30-min mark and the 30-min keep-alive
+    // interval (whichever fires first).
     const { getCallCount } = setupRefreshMock();
 
     // First mount
@@ -129,13 +134,14 @@ describe('AuthProvider session persistence', () => {
       expect(authService.refresh).toHaveBeenCalled();
     });
 
-    // Fast-forward 7 hours ??proactive refresh should have triggered
+    // Fast-forward 50 minutes — proactive refresh should have triggered.
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(7 * 60 * 60 * 1000); // 7 hours
+      await vi.advanceTimersByTimeAsync(50 * 60 * 1000); // 50 minutes
     });
 
-    // After 7 hours the proactive refresh should have fired
-    // We expect at least 2 calls: initial mount + 1 proactive refresh
+    // After 50 minutes the proactive refresh should have fired
+    // (30-min mark from initial mount + 30-min keep-alive at minute 60).
+    // We expect at least 2 calls: initial mount + 1 proactive refresh.
     expect(getCallCount()).toBeGreaterThanOrEqual(2);
   });
 
@@ -145,7 +151,7 @@ describe('AuthProvider session persistence', () => {
       user: adminSession.user,
       tenant: null,
       accessToken: adminSession.accessToken,
-      expiresIn: 28800,
+      expiresIn: 3600,
     });
     vi.mocked(authService.me).mockResolvedValue({
       user: adminSession.user,
@@ -201,7 +207,7 @@ describe('AuthProvider session persistence', () => {
       user: adminSession.user,
       tenant: null,
       accessToken: adminSession.accessToken,
-      expiresIn: 28800,
+      expiresIn: 3600,
     });
     vi.mocked(authService.me).mockResolvedValue({
       user: adminSession.user,
@@ -242,7 +248,7 @@ describe('AuthProvider session persistence', () => {
       user: adminSession.user,
       tenant: null,
       accessToken: adminSession.accessToken,
-      expiresIn: 28800,
+      expiresIn: 3600,
     });
     vi.mocked(authService.me).mockResolvedValue({
       user: adminSession.user,

@@ -39,11 +39,11 @@ interface MeResponse {
  */
 function syncTokens(session: { accessToken?: string | null; refreshToken?: string | null }) {
   if (session.accessToken) {
-    console.debug('[authService.syncTokens] setting accessToken:', session.accessToken.slice(0, 20) + '...');
+    if (import.meta.env.DEV) console.debug('[authService.syncTokens] setting accessToken:', session.accessToken.slice(0, 20) + '...');
     setAccessToken(session.accessToken);
   }
   if (session.refreshToken) {
-    console.debug('[authService.syncTokens] setting refreshToken:', session.refreshToken.slice(0, 20) + '...');
+    if (import.meta.env.DEV) console.debug('[authService.syncTokens] setting refreshToken:', session.refreshToken.slice(0, 20) + '...');
     setRefreshToken(session.refreshToken);
   }
 }

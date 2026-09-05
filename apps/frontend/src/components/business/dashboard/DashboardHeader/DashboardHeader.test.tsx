@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { BrowserRouter } from 'react-router-dom';
 import { DashboardHeader } from './DashboardHeader';
@@ -7,10 +8,11 @@ import * as useThemeModule from '@/hooks/useTheme';
 import type { AuthState } from '@/hooks/useAuth';
 
 // Stable mocks
+const logoutMock = vi.fn();
 vi.spyOn(useAuthModule, 'useAuth').mockReturnValue({
   state: { user: { id: 'user-1', email: 'test@saome.org', role: 'tenant' }, loading: false } as unknown as AuthState,
   isAuthenticated: true,
-  logout: vi.fn(),
+  logout: logoutMock,
   checkSession: vi.fn(),
 } as unknown as ReturnType<typeof useAuthModule.useAuth>);
 
@@ -26,6 +28,7 @@ const renderWithRouter = (ui: React.ReactElement) =>
 describe('DashboardHeader', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    logoutMock.mockClear();
   });
 
   it('renders the SAOME logo text', () => {
@@ -60,5 +63,32 @@ describe('DashboardHeader', () => {
     renderWithRouter(<DashboardHeader navItems={[]} />);
     // No nav element rendered for empty nav
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+  });
+
+  // B4-3 (2026-09-05): mobile logout guard — the drawer MUST close before
+  // logout() is awaited so navigation ordering is deterministic and the user
+  // sees immediate feedback. Previously, if setIsMobileMenuOpen were set after
+  // await logout(), the drawer would stay open during the server call and
+  // navigation.
+  it('mobile logout button: calls logout and drawer closes immediately', async () => {
+    const user = userEvent.setup();
+    renderWithRouter(<DashboardHeader />);
+
+    // Open mobile menu (hamburger button — only visible below lg breakpoint)
+    const hamburger = screen.getByTestId('mobile-menu-open-btn');
+    await user.click(hamburger);
+
+    // Mobile logout button should be visible in drawer
+    const mobileLogoutBtn = screen.getByTestId('mobile-logout-btn');
+    expect(mobileLogoutBtn).toBeVisible();
+
+    // Click logout — drawer should close BEFORE logout() await resolves
+    await user.click(mobileLogoutBtn);
+
+    // logout() was called (server call is async, so just verify call happened)
+    expect(logoutMock).toHaveBeenCalledTimes(1);
+
+    // Drawer is gone (mobile menu closed immediately)
+    expect(screen.queryByTestId('mobile-logout-btn')).not.toBeInTheDocument();
   });
 });

@@ -25,15 +25,25 @@ import type { HonoEnv } from '@/shared/types/bindings';
 export const warmupCronRoute = new Hono<HonoEnv>();
 
 warmupCronRoute.get('/', async (c) => {
-  const baseUrl =
-    c.env.SAOME_BACKEND_URL ?? 'https://saome-backend.josh1989213.workers.dev';
+  // Phase 3.4 (2026-09-05): SAOME_BACKEND_URL is now asserted, not optional-fallback.
+  // wrangler.jsonc vars.SAOME_BACKEND_URL must be set. If unset (e.g. old
+  // deploy before this fix), the cron logs a warning and still executes with
+  // the hard-coded fallback so the pool stays warm rather than hard-failing.
+  const baseUrl = c.env.SAOME_BACKEND_URL;
+  if (!baseUrl) {
+    console.warn(
+      '[warmupCron] SAOME_BACKEND_URL not set in env — using hard-coded fallback. ' +
+      'Set vars.SAOME_BACKEND_URL in wrangler.jsonc to silence this warning.',
+    );
+  }
+  const targetUrl = baseUrl ?? 'https://saome-backend.josh1989213.workers.dev';
 
   const startedAt = Date.now();
   let upstreamStatus: number | null = null;
   let upstreamError: string | null = null;
 
   try {
-    const res = await fetch(`${baseUrl}/health`, {
+    const res = await fetch(`${targetUrl}/health`, {
       method: 'GET',
       // Cloudflare Workers → Workers loopback is cheap; no need for auth
       headers: { Accept: 'application/json' },

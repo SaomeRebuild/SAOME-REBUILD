@@ -10,7 +10,12 @@
 
 import { api } from '@/config/api';
 import { limits } from '@/config/limits';
-import { getAccessToken, setAccessToken, getRefreshToken } from './authStore';
+import {
+  getAccessToken,
+  setAccessToken,
+  getRefreshToken,
+  withRefreshMutex,
+} from './authStore';
 import { ROUTES } from '@/config/routes';
 
 export class SaomeApiError extends Error {
@@ -100,7 +105,9 @@ export class HttpClient {
 
     // Attach Bearer token if available (set by AuthProvider on login/refresh)
     const token = getAccessToken();
-    console.debug('[httpClient] token from authStore:', token ? 'present (' + token.slice(0, 20) + '...)' : 'NULL — this is why 401!');
+    if (import.meta.env.DEV) {
+      console.debug('[httpClient] token from authStore:', token ? 'present (' + token.slice(0, 20) + '...)' : 'NULL — this is why 401!');
+    }
     const reqHeaders: Record<string, string> = {
       Accept: 'application/json',
       ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
@@ -122,17 +129,21 @@ export class HttpClient {
     // refresh endpoint 4× in a row.
     if (RETRYABLE_5XX.has(res.status) && attempt < MAX_5XX_RETRIES) {
       const delayMs = RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
-      console.warn(
-        `[httpClient] ${res.status} on ${method} ${path} — retrying in ${delayMs}ms (attempt ${attempt + 1}/${MAX_5XX_RETRIES})`,
-      );
+      if (import.meta.env.DEV) {
+        console.warn(
+          `[httpClient] ${res.status} on ${method} ${path} — retrying in ${delayMs}ms (attempt ${attempt + 1}/${MAX_5XX_RETRIES})`,
+        );
+      }
       await new Promise((resolve) => setTimeout(resolve, delayMs));
       return this.requestWithRetry<T>(method, path, init, attempt + 1);
     }
 
     if (res.status === 401 && retryOn401 && path !== api.paths.refresh) {
-      console.debug('[httpClient] 401! Attempting refresh to get new token...');
+      if (import.meta.env.DEV) console.debug('[httpClient] 401! Attempting refresh to get new token...');
       const newToken = await this.tryRefresh();
-      console.debug('[httpClient] tryRefresh result:', newToken ? 'got token (' + newToken.slice(0, 20) + '...)' : 'FAILED — no token');
+      if (import.meta.env.DEV) {
+        console.debug('[httpClient] tryRefresh result:', newToken ? 'got token (' + newToken.slice(0, 20) + '...)' : 'FAILED — no token');
+      }
       if (newToken) {
         setAccessToken(newToken);
         return this.requestWithRetry<T>(method, path, { ...init, retryOn401: false }, attempt);
@@ -183,6 +194,15 @@ export class HttpClient {
    *      Domain=saome-backend.* cookies on cross-origin requests.
    *   2. Fall back to sending the HttpOnly cookie via credentials: 'include'.
    *
+   * Mutex (Phase 2.3, 2026-09-05): wraps the refresh attempt in
+   * `withRefreshMutex` so concurrent 401 callers share the SAME in-flight
+   * request. Before this fix:
+   *   - Tab A: 401 → tryRefresh → POST /refresh starts
+   *   - Tab B: 401 → tryRefresh → POST /refresh starts (second fetch)
+   *   Both tabs then write their own accessToken to authStore, with the
+   *   later write winning (race). Sharing the mutex makes the second
+   *   caller wait for the first caller's result, eliminating the race.
+   *
    * NOTE: This does NOT call setAccessToken. The caller (httpClient.request's
    * 401 branch) sets the token after a successful retry. We intentionally avoid
    * writing to authStore here so that a concurrent authService.refresh() keeps
@@ -190,19 +210,41 @@ export class HttpClient {
    */
   private async tryRefresh(): Promise<string | null> {
     const refreshToken = getRefreshToken();
+    const baseUrl = this.baseUrl;
+    const refreshPath = api.paths.refresh;
+    const fetchImpl = this.fetchImpl;
+    const timeoutMs = this.timeoutMs;
 
-    // Primary: send refresh token as Authorization: Bearer (cross-origin safe)
-    if (refreshToken) {
-      console.debug('[httpClient.tryRefresh] using Authorization: Bearer (cross-origin)');
+    return withRefreshMutex(async () => {
+      // Primary: send refresh token as Authorization: Bearer (cross-origin safe)
+      if (refreshToken) {
+        if (import.meta.env.DEV) console.debug('[httpClient.tryRefresh] using Authorization: Bearer (cross-origin)');
+        try {
+          const res = await fetchImpl(`${baseUrl}${refreshPath}`, {
+            method: 'POST',
+            headers: {
+              Accept: 'application/json',
+              Authorization: `Bearer ${refreshToken}`,
+            },
+            credentials: 'include',
+            signal: AbortSignal.timeout(timeoutMs),
+          });
+          if (!res.ok) return null;
+          const body = await res.json();
+          return body.accessToken ?? null;
+        } catch {
+          return null;
+        }
+      }
+
+      // Fallback: rely on HttpOnly cookie (same-origin only)
+      if (import.meta.env.DEV) console.debug('[httpClient.tryRefresh] no sessionStorage token, using cookie fallback');
       try {
-        const res = await this.fetchImpl(`${this.baseUrl}${api.paths.refresh}`, {
+        const res = await fetchImpl(`${baseUrl}${refreshPath}`, {
           method: 'POST',
-          headers: {
-            Accept: 'application/json',
-            Authorization: `Bearer ${refreshToken}`,
-          },
+          headers: { Accept: 'application/json' },
           credentials: 'include',
-          signal: AbortSignal.timeout(this.timeoutMs),
+          signal: AbortSignal.timeout(timeoutMs),
         });
         if (!res.ok) return null;
         const body = await res.json();
@@ -210,23 +252,7 @@ export class HttpClient {
       } catch {
         return null;
       }
-    }
-
-    // Fallback: rely on HttpOnly cookie (same-origin only)
-    console.debug('[httpClient.tryRefresh] no sessionStorage token, using cookie fallback');
-    try {
-      const res = await this.fetchImpl(`${this.baseUrl}${api.paths.refresh}`, {
-        method: 'POST',
-        headers: { Accept: 'application/json' },
-        credentials: 'include',
-        signal: AbortSignal.timeout(this.timeoutMs),
-      });
-      if (!res.ok) return null;
-      const body = await res.json();
-      return body.accessToken ?? null;
-    } catch {
-      return null;
-    }
+    });
   }
 
   get<T>(path: string) {
