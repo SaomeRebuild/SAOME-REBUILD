@@ -533,3 +533,129 @@ describe('CardBuilderEditor — Step 4 autosave (2026-09-05)', () => {
     expect(lastPayload.settings?.description).toBe('real edit after load');
   });
 });
+
+// ===== Step 5 — 地理位置 + 推播訊息 autosave (2026-09-05) =====
+describe('CardBuilderEditor — Step 5 autosave (2026-09-05)', () => {
+  it('autosaves initialMessage after the user pauses typing for 1s', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderWithRouter();
+    // Flush microtasks so loadSettings resolves before user edits.
+    await flushLoadSettings();
+
+    act(() => {
+      useCardBuilderStore.getState().setInitialMessage('歡迎光臨');
+    });
+
+    // No PUT yet — within the 1s debounce window.
+    expect(updateCalls).toHaveLength(0);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1100);
+    });
+
+    await waitFor(() => expect(updateCalls.length).toBeGreaterThanOrEqual(1));
+    const payload = updateCalls[updateCalls.length - 1]!.payload as {
+      settings?: { initialMessage?: string };
+    };
+    expect(payload.settings?.initialMessage).toBe('歡迎光臨');
+  });
+
+  it('autosaves when a location row is added and lat/lng filled', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderWithRouter();
+    await flushLoadSettings();
+
+    act(() => {
+      useCardBuilderStore.getState().addLocation();
+    });
+    act(() => {
+      useCardBuilderStore
+        .getState()
+        .setLocationName(0, '台北 101');
+    });
+    act(() => {
+      useCardBuilderStore
+        .getState()
+        .setLocationLatitude(0, 25.033);
+      useCardBuilderStore
+        .getState()
+        .setLocationLongitude(0, 121.565);
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(1100);
+    });
+
+    await waitFor(() => expect(updateCalls.length).toBeGreaterThanOrEqual(1));
+    const payload = updateCalls[updateCalls.length - 1]!.payload as {
+      settings?: {
+        locations?: Array<{
+          name: string;
+          latitude: number;
+          longitude: number;
+        }>;
+      };
+    };
+    expect(payload.settings?.locations?.[0]?.name).toBe('台北 101');
+    expect(payload.settings?.locations?.[0]?.latitude).toBe(25.033);
+    expect(payload.settings?.locations?.[0]?.longitude).toBe(121.565);
+  });
+
+  it('does NOT autosave empty defaults before async fetch resolves — Step 5 (regression 2026-09-05)', async () => {
+    // Mirrors Step 4 修 3 regression — slow-network scenario where
+    // fetch is slower than debounce. Without baseline-arm + loadSettled,
+    // the Step 5 autosave effect would PUT empty defaults into DB and
+    // (via Rule 032 silent overwrite) clobber any real locations data.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    // Slow fetch (3s) — well past the 1s autosave debounce.
+    const cardService = await import('@/services/cardService');
+    vi.mocked(cardService.cardService.getById).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          setTimeout(
+            () =>
+              resolve({
+                id: 'test-template-id',
+                settings: {
+                  ...FULL_SETTINGS,
+                  initialMessage: '既有推播訊息',
+                  locations: [{ name: '既有地點', latitude: 25, longitude: 121 }],
+                },
+                cardType: 'membership_card',
+                name: 'Test Card',
+              } as unknown as Awaited<
+                ReturnType<typeof cardService.cardService.getById>
+              >),
+            3000,
+          );
+        }),
+    );
+
+    renderWithRouter();
+
+    // User types IMMEDIATELY after mount — before fetch resolves.
+    act(() => {
+      useCardBuilderStore.getState().setInitialMessage('mid-typing');
+    });
+
+    // Drive past the 1s autosave debounce. The fix ensures NO PUT fires
+    // because loadSettings hasn't settled the store yet.
+    await act(async () => {
+      vi.advanceTimersByTime(1100);
+    });
+
+    const callsBeforeSettle = updateCalls.length;
+    expect(callsBeforeSettle).toBe(0);
+
+    // Now let fetch resolve and verify the store hydrates correctly.
+    await act(async () => {
+      vi.advanceTimersByTime(2000); // total ~3100ms — past the 3000ms fetch
+    });
+
+    await waitFor(() => {
+      const s = useCardBuilderStore.getState();
+      expect(s.initialMessage).toBe('既有推播訊息');
+    });
+  });
+});

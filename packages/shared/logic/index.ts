@@ -13,3 +13,4 @@ export * from './imageCrop';
 export * from './color';
 export * from './links';
 export * from './cardSettings';
+export * from './locations';
