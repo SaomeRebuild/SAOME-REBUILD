@@ -74,7 +74,6 @@ export default {
     s1: 'Acceptance of Terms',
     s1p1: 'By accessing or using SAOME services, you agree to be bound by these Terms.',
     s1p2: 'If you do not agree to these Terms, please do not use our services.',
-    s1p3: '',
     s2: 'Description of Services',
     s2p1: 'SAOME provides digital membership card services.',
     s2p2: 'We reserve the right to modify, suspend, or discontinue the Services at any time.',

@@ -141,5 +141,8 @@ export default {
     terms: '服務條款',
     gdpr: '資料處理協議',
     securePayments: '安全支付',
+    // Phase 5.16 cross-locale drift fix (2026-09-05):
+    slogan: '更多回頭的客戶 = 更高的營收',
+    features: '功能',
   },
 };

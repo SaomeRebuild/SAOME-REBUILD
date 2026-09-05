@@ -18,6 +18,17 @@ export default {
     forgotPassword: '忘記密碼？',
     invalidCredentials: '電子信箱或密碼錯誤',
     networkError: '網路連線異常，請稍後再試',
+    // Phase 5.16 cross-locale drift fix (2026-09-05):
+    accountEmailHint: '用於登入與會員通知',
+    passwordHint: '至少 8 個字元，包含英文字母與數字',
+    confirmPasswordMismatch: '兩次輸入的密碼不一致',
+    error: {
+      invalidCredentials: '電子信箱或密碼錯誤',
+      tooManyAttempts: '嘗試次數過多，請稍後再試',
+      email: '請輸入有效的電子信箱',
+      required: '此欄位為必填',
+      unknown: '登入失敗，請稍後再試',
+    },
   },
   validation: {
     required: '此欄位為必填',
@@ -53,6 +64,9 @@ export default {
     addressHint: '（選填）',
     taxId: '統一編號',
     taxIdHint: '若無統編請填 0',
+    // Phase 5.16 cross-locale drift fix (2026-09-05):
+    step1Title: '步驟一：商店資訊',
+    step2Title: '步驟二：帳戶資訊',
     name: '公司 / 店家名稱',
     nameHint: '這會顯示在您的會員卡上',
     invoiceAddress: '發票寄送地址',
