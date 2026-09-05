@@ -7,9 +7,9 @@ alwaysApply: true
 
 > 觸發：新增/修改 `vite.config.ts`、`vitest.config.ts`、`tsconfig*.json`、`package.json`、`package-lock.json`、`.gitignore`、`.github/workflows/*.yml`
 
-## 7 個 surface 必須同步
+## 9 個 surface 必須同步
 
-SAOME 是 monorepo + workspaces，下列 7 個地方**任一不一致**會導致 CI 與 IDE 行為分裂：
+SAOME 是 monorepo + workspaces，下列 9 個地方**任一不一致**會導致 CI 與 IDE 行為分裂：
 
 | # | 檔案 | 影響 |
 |---|------|------|
@@ -21,10 +21,11 @@ SAOME 是 monorepo + workspaces，下列 7 個地方**任一不一致**會導致
 | 6 | `apps/*/tsconfig.node.json` 的 `include` | IDE 看到哪些檔案 |
 | 7 | `.gitignore` 的 lockfile pattern | CI 是否能找到 lockfile |
 | 8 | `package-lock.json` 內 platform binding 條目完整性 | 必須 lockfile 內含全部目標平台的 binding metadata（npm 11.3.0+ 行為；11.0–11.2 有 pruning bug 需明確傳入 `--include=optional` 才有 metadata） |
+| 9 | `.github/workflows/*.yml` 的 `cache-dependency-path` | GitHub Actions `actions/setup-node@v4` 的 `cache: 'npm'` 必須綁定 `package-lock.json` 路徑，否則 cache key miss → 每次 `npm ci` 都 full reinstall |
 
 ## 變更前的強制檢查
 
-任何時候要改這 7 個檔案的**任一個**，**必須**先跑：
+任何時候要改這 9 個檔案的**任一個**，**必須**先跑：
 
 ```bash
 # 確認既有 lockfile 是否被 git 追蹤
@@ -35,9 +36,12 @@ grep -E "(vite|vitest|jest|playwright)\.config" apps/*/tsconfig*.json
 
 # 確認既有 alias 在哪些 config
 grep -rn "@saome/shared" apps/*/*.config.ts apps/*/tsconfig*.json
+
+# 確認 CI workflow 的 cache-dependency-path 是否綁定正確 lockfile 路徑
+grep -E "cache-dependency-path" .github/workflows/*.yml
 ```
 
-然後**逐項**對照上面 7 個 surface 是否需要同步更新。
+然後**逐項**對照上面 9 個 surface 是否需要同步更新。
 
 ## vitest alias 順序（Vite 8.x 鐵律）
 
@@ -79,6 +83,46 @@ const alias = [
 | `.gitignore` pattern | 用 `apps/*/package-lock.json` 與 `packages/*/package-lock.json`，**不要**用全域 `package-lock.json` |
 
 CI workflow 必須在 **workspace root** 跑 `npm ci`，子工作區用 `npm run <script> --workspace=<name>`。
+
+## CI cache 設定（surface 9）
+
+GitHub Actions `actions/setup-node@v4` 的 `cache: 'npm'` 必須綁定 `cache-dependency-path`：
+
+```yaml
+# ✅ 正確：cache key 用 package-lock.json hash
+- uses: actions/setup-node@v4
+  with:
+    node-version: '20'
+    cache: 'npm'
+    cache-dependency-path: 'package-lock.json'  # ← workspace root lockfile
+
+# ❌ 錯誤：沒設 cache-dependency-path → cache key miss → 每次 npm ci full reinstall
+- uses: actions/setup-node@v4
+  with:
+    node-version: '20'
+    cache: 'npm'
+    # 預設找 root package-lock.json，但 monorepo 必須明確指定
+```
+
+### 為什麼 surface 9 重要
+
+| 沒設 surface 9 的後果 | 影響 |
+|---|---|
+| `cache: 'npm'` 沒綁定路徑 → cache key 用 `runner.os + node-version`（無 hash）| 同一 OS + node 跨 PR 共用 cache → lockfile 變了但 cache 沒 invalidate → 跑 stale deps |
+| 路徑寫錯（如 `apps/frontend/package-lock.json` 而 workspace 是 root-only lockfile）| cache key = hash(non-existent-file) = 每次都 miss → cache 完全失效，浪費 CI 時間時間 |
+
+### 多 lockfile 場景（SAOME 暫時不用）
+
+SAOME 目前是「root-only lockfile」結構（npm 10 hoist），單一 `cache-dependency-path: 'package-lock.json'` 即可。
+
+未來若改用 pnpm 或每個 workspace 各自 lockfile，必須**每個 lockfile 都加進** `cache-dependency-path`（支援 multi-line YAML）：
+
+```yaml
+cache-dependency-path: |
+  package-lock.json
+  apps/frontend/package-lock.json
+  packages/shared/package-lock.json
+```
 
 ## 觸發關鍵字
 
