@@ -1,0 +1,156 @@
+---
+description: 修改 .github/workflows/*.yml 前必跑 cache key / runner / secret / workspace root 4 條檢查 — 新增 dep 必須同步更新 cache key。
+alwaysApply: true
+---
+
+# CI Workflow 修改 Checklist（MANDATORY）
+
+> 觸發：修改、新增 `.github/workflows/*.yml` 任一檔案,或新增 CI step / job。
+
+## 為什麼這條 rule 存在
+
+2026-08-17 Cross-platform native binding 缺失事故（Rule 015 觸發）：
+- GitHub Actions `Cannot find module '@oxlint/binding-linux-x64-gnu'`
+- 根因：`package-lock.json` 缺 Linux binding metadata（Windows 開發端 npm 11.0–11.2 pruning bug）
+- 修復：`npm install --include=optional` 重生成 lockfile
+
+衍生觀察：CI workflow 改檔的「隱性 coupling」很多：
+- `cache-dependency-path` 是否仍指向有效的 lockfile
+- 新增 dep 後是否需要 bump Node 版本
+- 新增 secret 是否要 update repo settings
+- 新增 step 是否破壞既有 job 的 workspace root 假設
+
+這條 rule 把「CI workflow 改檔」的所有隱性 coupling 列成 checklist。
+
+## 鐵律 — 4 條必查
+
+### 1. Cache key 檢查（surface 9）
+
+新增 dep / 改 `package.json` 後：
+
+```bash
+# 確認 CI workflow 的 cache-dependency-path 仍綁對 lockfile
+grep -E "cache-dependency-path" .github/workflows/*.yml
+```
+
+| 情境 | 行動 |
+|---|---|
+| Workflow 有 `cache: 'npm'` 但沒 `cache-dependency-path` | **補上** `cache-dependency-path: 'package-lock.json'`（見 Rule 016 § 9） |
+| 路徑寫錯（如指向 monorepo 內不存在的 lockfile） | 改回 workspace root `package-lock.json` |
+| 新增 dep 跨平台 binding | 重生成 lockfile（`npm install --include=optional`），詳見 Rule 015 |
+
+### 2. Node 版本檢查
+
+新增 dep 對 Node 版本有要求時（如 Node 22+ 才能跑某套件）：
+
+```yaml
+# ✅ 確認 node-version 與 dep 要求對齊
+- uses: actions/setup-node@v4
+  with:
+    node-version: '20'  # 跟 apps/*/package.json 的 engines 對齊
+```
+
+| 情境 | 行動 |
+|---|---|
+| 新 dep 要求 Node ≥ 22 | bump `node-version: '22'`、同步檢查本地 `.nvmrc` |
+| 新 dep 對 OS 有要求（如 native binding）| 加 `runs-on:` 矩陣（ubuntu / windows / macos）|
+| 新 dep 需要 system package（如 libpq）| 加 `apt-get install` step |
+
+### 3. Secret / environment 檢查
+
+新增 CI step 引用 secret / env 時：
+
+```yaml
+# ✅ secret 必須透過 GitHub repo settings 設定,不能在 workflow 內 hard-code
+- name: Deploy to Cloudflare
+  env:
+    CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  run: npx wrangler deploy
+```
+
+| 情境 | 行動 |
+|---|---|
+| 新 secret（如 `CLOUDFLARE_API_TOKEN`）| 確認已在 repo Settings → Secrets 設定；PR from fork 不會拿到 secret（需用 `pull_request_target` 配環境限制）|
+| 新 environment（如 `production` / `staging`）| 確認已建 environment 且 approval rules 設定 |
+| 新 `vars.*`（非 secret 的 env）| 用 `${{ vars.MY_VAR }}`，需在 repo Settings → Variables 設定 |
+
+### 4. Workspace root 假設檢查
+
+SAOME 是 monorepo：
+
+```yaml
+# ✅ CI step 必須在 workspace root 跑 npm ci（不是 apps/frontend/）
+- name: Install dependencies
+  working-directory: ${{ github.workspace }}  # 預設即 root
+  run: npm ci
+
+# 子工作區 script 透過 --workspace
+- run: npm run typecheck --workspace=apps/frontend
+```
+
+| 情境 | 行動 |
+|---|---|
+| 加 `working-directory:` 改到子目錄 | 確認 `npm ci` 仍跑在 root（子目錄無 lockfile）|
+| 用 `cd apps/frontend && npm ci` | **禁止** — 子目錄 npm ci 會重新生成 lockfile，破壞 monorepo 一致性 |
+| 用 `actions/setup-node` 後直接 `npm ci` | 確認 `package-lock.json` 在 cwd（預設 root）|
+
+## 修改 workflow 前 SOP
+
+```bash
+# 1. 看現有 workflow 結構
+ls -la .github/workflows/
+
+# 2. 確認 cache key 配置
+grep -E "cache-dependency-path|cache:" .github/workflows/*.yml
+
+# 3. 確認 Node 版本與 dep 一致
+grep -E "node-version|engines" .github/workflows/*.yml apps/*/package.json
+
+# 4. 確認 secret 引用清單
+grep -E "secrets\.|vars\." .github/workflows/*.yml
+
+# 5. 確認 working-directory 與 monorepo 結構一致
+grep -E "working-directory|cd apps" .github/workflows/*.yml
+```
+
+## 必加測試
+
+修改 CI workflow 後,本地驗證（如果可重現的話）：
+
+```bash
+# 用 act 模擬 GitHub Actions（optional）
+brew install act
+act -j typecheck --dryrun
+
+# 或本地手動跑相同 script sequence
+npm ci
+npm run typecheck --workspace=apps/frontend
+```
+
+CI push 後必查：
+
+1. ✅ 所有 job 綠色
+2. ✅ Cache 命中（從 Actions log 看 `Cache hit` / `Cache miss`）
+3. ✅ 沒出現 native binding missing 錯誤（`Cannot find module '@*/binding-linux-x64-gnu'`）
+4. ✅ Secret 沒暴露在 log（搜 log 看有沒有 accidental echo）
+
+## 禁止
+
+| ❌ 禁止 | 為什麼 |
+|---|---|
+| ❌ 改 workflow 沒跑 cache key check | stale cache → 跨 PR 共用舊 deps |
+| ❌ 改 workflow 沒驗證 Node 版本對齊 | native binding 找不到 |
+| ❌ hard-code secret 在 workflow 檔 | secret 進 git history |
+| ❌ 用 `cd apps/frontend && npm ci` | 子目錄無 lockfile,會重新生成 → 破壞 monorepo 一致性 |
+| ❌ 跳過 cache-dependency-path 直接 `cache: 'npm'` | cache 失效或 stale cache(見 Rule 016 § 9) |
+
+## 觸發關鍵字
+
+「CI」、「workflow」、「GitHub Actions」、「actions/setup-node」、「cache key」、「cache-dependency-path」、「secret」、「environment」、「.github/workflows」、「runner」、「binding missing」**必須**引用本 rule。
+
+## 參照
+
+- `.cursor/rules/016-config-and-tsconfig-discipline.mdc` § 9 CI cache 設定 — cache-dependency-path 詳細規範
+- `.cursor/rules/015-cloudflare-pages-deploy.mdc` — Cloudflare Pages 部署 + lockfile 跨平台 binding 修復
+- `runs/improvements/feedback/20260727-cloudflare-pages-deploy.md` — Phase 2 binding 缺失事故
+- `.github/workflows/deploy.yml` — SAOME CI workflow 範本
