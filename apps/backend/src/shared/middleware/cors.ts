@@ -22,7 +22,7 @@
  *   that were set before `await next()`.
  */
 
-import type { Context, MiddlewareHandler } from 'hono';
+import type { MiddlewareHandler } from 'hono';
 import type { HonoEnv } from '@/shared/types/bindings';
 
 /**
@@ -136,13 +136,25 @@ export const corsMiddleware: MiddlewareHandler<HonoEnv> = async (c, next) => {
   }
 };
 
-export function applyCorsHeaders(c: Context<HonoEnv>, response: Response): Response {
-  const origin = c.req.header('Origin');
-  const allowed = resolveAllowedOrigin(origin, c.env);
-  if (allowed) {
-    response.headers.set('Access-Control-Allow-Origin', allowed);
-    response.headers.set('Vary', 'Origin');
-    response.headers.set('Access-Control-Allow-Credentials', 'true');
-  }
-  return response;
-}
+/**
+ * CORS response-header helper — used by errorHandler.ts so onError-emitted
+ * responses (which bypass corsMiddleware's wrap-after-next path) still
+ * carry CORS headers.
+ *
+ * Why this lives in errorHandler.ts and not here:
+ *   - corsMiddleware uses `wrap-after-next` (sets headers on `c.res` AFTER
+ *     `await next()`) for the normal response path.
+ *   - But `app.onError()` runs as a SIBLING of the middleware chain — when
+ *     a route handler throws, control transfers to onError, NOT to the
+ *     middleware's wrap-after-next block (the throw exits the middleware
+ *     function before it can set headers on the new response).
+ *   - So onError-built responses need their own CORS-header injection.
+ *     This helper is the single seam for that injection.
+ *
+ * Phase 3.3 (2026-09-05): this helper moved from cors.ts into
+ * errorHandler.ts as a private function. cors.ts no longer exports any
+ * response-decoration helper — it only owns the middleware itself.
+ * If a future caller needs the same logic, copy the pattern from
+ * errorHandler.ts (or pull it back out into shared/middleware/ if a
+ * second consumer appears).
+ */

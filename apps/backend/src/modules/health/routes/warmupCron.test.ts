@@ -1,10 +1,13 @@
 /**
  * Tests for the warmup cron route.
  *
- * Critical invariant: the route MUST NOT throw if `SAOME_BACKEND_URL` is
- * unset (it falls back to the production URL). It also MUST catch and
- * surface upstream fetch errors gracefully — a warmup failure should
- * never crash the cron worker.
+ * Critical invariants:
+ *   - SAOME_BACKEND_URL is REQUIRED (Phase 3.2, 2026-09-05). The prior
+ *     "fall back to hard-coded production URL" behavior was removed
+ *     because it hid config drift — the cron must fail loudly when the
+ *     var is missing rather than silently ping a foreign URL.
+ *   - The route MUST catch and surface upstream fetch errors gracefully
+ *     — a warmup failure should never crash the cron worker.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -15,6 +18,8 @@ import type { HonoEnv } from '@/shared/types/bindings';
 const testEnv: HonoEnv['Bindings'] = {
   HYPERDRIVE: {} as unknown as HonoEnv['Bindings']['HYPERDRIVE'],
   JWT_SECRET: 'test',
+  // Phase 3.2: SAOME_BACKEND_URL is now required; the test env must provide it.
+  SAOME_BACKEND_URL: 'https://saome-backend.josh1989213.workers.dev',
 } as unknown as HonoEnv['Bindings'];
 
 function buildApp(env: Partial<HonoEnv['Bindings']> = {}) {
@@ -35,7 +40,7 @@ describe('warmupCronRoute', () => {
     vi.restoreAllMocks();
   });
 
-  it('uses production default when SAOME_BACKEND_URL is unset', async () => {
+  it('pings SAOME_BACKEND_URL/health when configured', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response('ok', { status: 200 }));
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
@@ -49,7 +54,7 @@ describe('warmupCronRoute', () => {
     expect(res.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const url = fetchMock.mock.calls[0][0] as string;
-    expect(url).toContain('saome-backend.josh1989213.workers.dev/health');
+    expect(url).toBe('https://saome-backend.josh1989213.workers.dev/health');
   });
 
   it('uses SAOME_BACKEND_URL override when configured', async () => {

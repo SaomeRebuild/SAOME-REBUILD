@@ -62,8 +62,16 @@ export interface Env {
    * B3 (2026-09-05): Backend's own public URL. Used by the warmup cron
    * (`/api/cron/warmup`) to do an internal fetch to `/health` so Hyperdrive
    * pool stays warm. Set via wrangler.jsonc vars.SAOME_BACKEND_URL.
+   *
+   * Phase 3.2 (2026-09-05): promoted from `?:` to required. The warmup
+   * cron used to fall back to a hard-coded production URL when this was
+   * unset, but that hides config drift — if someone deploys without
+   * `vars.SAOME_BACKEND_URL`, the cron silently pings a foreign URL.
+   * Required forces the deploy step to set it explicitly. Both dev
+   * (wrangler dev reads vars from wrangler.jsonc) and prod
+   * (`wrangler deploy` reads vars) provide it.
    */
-  SAOME_BACKEND_URL?: string;
+  SAOME_BACKEND_URL: string;
 }
 
 /**
