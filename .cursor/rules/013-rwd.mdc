@@ -46,6 +46,16 @@ alwaysApply: true
 - tablet: 70% 寬度
 - desktop: 50% 寬度（含遮罩）
 
+## Desktop Popover / Dropdown Placement
+
+> Trigger-anchored overlay（popover / dropdown / select / combobox / menu）的 sizing + placement 鐵律 — 見 `.cursor/rules/033-popover-sizing-pattern.mdc`。
+
+關鍵摘要：
+- **Option A sizing**：popover 跟內容自然高走（**禁止** outer `maxHeight` + inner `flex-1 overflow-y-auto` 組合）
+- **嚴格空間檢查**：翻轉判斷用 `spaceBelow >= EST+16` 而非 `spaceBelow > spaceAbove`
+- **maxVisibleTop clamp**：翻轉後 `Math.max(8, Math.min(desiredTop, viewportHeight - EST - 16))`
+- **mock-rect test**：必覆蓋 3 種 viewport 情境（normal / mid-band / narrow）
+
 ## Navigation
 
 - mobile: hamburger / bottom tab

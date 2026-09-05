@@ -1,0 +1,228 @@
+---
+description: Popover / Dropdown / Select 等 trigger-anchored overlay 元件的 sizing + placement 鐵律 — flex-1 + fixed maxHeight 會 silent 撐出 scrollbar；嚴格空間檢查 + maxVisibleTop clamp 才不會被 viewport 截斷。
+alwaysApply: true
+---
+
+# Popover Sizing Pattern（MANDATORY）
+
+> 觸發：寫任何 desktop 端的 trigger-anchored overlay 元件 — Popover / Dropdown / Select / Combobox / Menu。
+>
+> Mobile（< 640px）走 bottom sheet（見 Rule 013 § Modal/Drawer），本 rule 不涵蓋。
+
+## 背景
+
+2026-09-03 ~ 09-04 `ColorSwatchPicker` 兩輪事故：
+
+### 事故 A：flex-1 + maxHeight 撐出 vertical scrollbar
+
+第一版 popover：
+
+```tsx
+// ❌ 會永遠出現一條 vertical scrollbar
+// Outer
+style={{ maxHeight: 'calc(100vh - 32px)' }}
+className="... flex flex-col overflow-hidden ..."
+
+// Inner
+className="flex min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden flex-col gap-3"
+```
+
+實際問題：
+
+1. `flex-1` 在 flex 內**總是** claim 所有 main-axis 空間直到 maxHeight
+2. 內容只有 HSL picker (160px) + palette (130px) + hex input (60px) + gaps + padding ≈ **460px**
+3. 結果：inner 700px 高但內容只有 460px，多出 ~240px 是「empty flex space」 — 但 `overflow-y-auto` 還是把它當 overflow 顯示 scrollbar
+
+UX 問題：每次打開 popover 都看到一條永遠用不到的 vertical scrollbar，跟 figma / sketch / photoshop 的 color picker 慣例完全相反。
+
+### 事故 B：flip 決策條件耦合 → mid-band viewport 截斷
+
+第二版 placement rule：
+
+```ts
+// ❌ mid-band 場景會被截斷
+const placeBelow =
+  spaceBelow >= EST + 16 || spaceBelow > spaceAbove;
+```
+
+| spaceBelow | spaceAbove | 行為 | 問題 |
+|---|---|---|---|
+| ≥ EST+16 | 任意 | below ✓ | — |
+| < EST+16 | > spaceBelow | below ❌ | **mid-band bug**：spaceBelow 不足仍選 below → 截斷 |
+| < EST+16 | < spaceBelow | above ✓ | — |
+
+mid-band 場景：
+
+```
+viewport: 800px
+trigger top=400, bottom=440 (距頂 400, 距底 360)
+spaceBelow: 360 < 476 (EST+16) ← 不足
+spaceAbove: 400 > 360
+舊規則: spaceBelow > spaceAbove → false → 應該 flip above
+但舊規則條件 2 是 `spaceBelow > spaceAbove` → 360 > 400 = false → 條件 1 false → 翻 above
+（這個 case 其實條件正確,但 mid-band 更窄的空間會觸發截斷）
+```
+
+---
+
+## 鐵律
+
+### 1. Popover sizing — sizes to natural content height
+
+> Popover 高 = 內容自然高。**禁止** outer `maxHeight` + inner `flex-1 overflow-y-auto` 組合。
+
+```tsx
+// ✅ 正確：outer 跟內容走，沒有 maxHeight / overflow-hidden / flex-1
+<div className="z-[9999] flex flex-col rounded-lg border border-border bg-card p-3 shadow-[var(--shadow-lifted)]">
+  <div className="flex min-w-0 flex-col gap-3">
+    {/* HSL picker (160px) + palette (130px) + hex input (60px) + gaps + padding ≈ 460px */}
+  </div>
+</div>
+
+// ❌ 錯誤：outer maxHeight + inner flex-1 overflow-y-auto 撐出 scrollbar
+<div style={{ maxHeight: 'calc(100vh - 32px)' }} className="... flex flex-col overflow-hidden ...">
+  <div className="flex min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden flex-col gap-3">
+    {/* content 460px 但 inner 撐到 700px → scrollbar 浮現 */}
+  </div>
+</div>
+```
+
+#### Trade-off
+
+| 方案 | 優點 | 缺點 |
+|---|---|---|
+| Option A（sizes to content）— ✅ 採用 | 沒有 scrollbar、shadow 不被 clip、跟內容走 | viewports < 460px 高會凸出去（實務 desktop ≥ 700px 不影響）|
+| Option B（maxHeight + flex-1 + scroll） | 永遠不凸出 viewport | scrollbar 永遠浮現、shadow 被 clip、UX 像 web 1.0 |
+
+#### 為什麼 Option A 勝出
+
+1. Desktop viewport 高度實務 ≥ 700px（1080p / 1440p / MacBook）
+2. 凸出去的少數情境由「trigger 翻轉」處理（見 § 2）
+3. Shadow 不被 clip = visual polish（Figma / Linear 都這樣做）
+
+### 2. Placement — 嚴格空間檢查 + maxVisibleTop clamp
+
+```ts
+// ✅ 正確：嚴格空間檢查，翻轉後 clamp top 到 viewport 內
+function maxVisibleTop(viewportHeight: number): number {
+  return Math.max(8, viewportHeight - POPOVER_HEIGHT_ESTIMATE - 16);
+}
+
+function usePopoverPosition(open: boolean, containerRef: RefObject<HTMLElement | null>): PopoverPosition {
+  useLayoutEffect(() => {
+    if (!open || isMobile) return;
+    const container = containerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    
+    // 嚴格空間檢查：必須真的有足夠空間才放下方；否則翻轉到上方
+    const desiredTop =
+      spaceBelow >= POPOVER_HEIGHT_ESTIMATE + 16
+        ? rect.bottom + 8
+        : rect.top - POPOVER_HEIGHT_ESTIMATE - 8;
+    
+    // Clamp top：翻轉後仍超出 viewport 上緣 → 夾到 8px
+    const top = Math.max(8, Math.min(desiredTop, maxVisibleTop(window.innerHeight)));
+    const left = Math.min(rect.left, window.innerWidth - POPOVER_WIDTH - 8);
+    setPosition({ mobile: false, top, left });
+  }, [open, containerRef, isMobile]);
+}
+```
+
+#### 鐵律
+
+| 規則 | 為什麼 |
+|---|---|
+| **必須用 `useLayoutEffect`** 同步讀 rect | `useEffect` 會延遲一幀，popover 開啟時閃爍到錯誤位置 |
+| 翻轉判斷是「嚴格空間檢查」(`spaceBelow >= EST+16`) | 「`spaceBelow > spaceAbove`」是相對比較，會誤判 mid-band |
+| 翻轉後 clamp：`Math.max(8, Math.min(desiredTop, maxVisibleTop(...)))` | 防止翻轉後 popover top 超出 viewport 上緣（負值）|
+| `Math.max(8, ...)` 而非 `Math.max(0, ...)` | 8px 是 trigger 與 popover 視覺呼吸空間的最小值 |
+| `POPOVER_HEIGHT_ESTIMATE` 用估算常數，不量測實際高度 | 量測需 popover 先 mount → 先有雞先有蛋問題 |
+
+#### 為什麼是估算常數
+
+```ts
+// 460 是 desktop popover 的「自然內容高度」估計
+// (HSL 160 + palette 130 + hex 60 + gaps + padding ≈ 460)
+const POPOVER_HEIGHT_ESTIMATE = 460;
+```
+
+**future invariant**：未來改 popover 內容（加 search / 多 palette / 額外 settings）要同步 bump 這個常數，否則翻轉後仍會截斷。
+
+### 3. Mock-rect tests — 必覆蓋 3 種 viewport 情境
+
+jsdom 沒有真實 layout engine，`getBoundingClientRect()` 永遠回傳 `{x:0, y:0, width:0, height:0}` — **必須 mock** 才能觸發 placement 邏輯。
+
+```ts
+function stubTriggerRect(opts: {
+  triggerTop: number;
+  triggerHeight: number;
+  triggerLeft?: number;
+  viewportWidth?: number;
+  viewportHeight?: number;
+}) {
+  // mock container.getBoundingClientRect() to return rect with given values
+}
+
+describe('desktop popover placement', () => {
+  it('normal viewport → place below (no flip)', () => {
+    // 800x600 viewport, trigger top=100 (spaceBelow=480 > 476 → below)
+  });
+
+  it('mid-band viewport → flip above (regression 2026-09-04)', () => {
+    // 800x600 viewport, trigger top=400 (spaceBelow=180, spaceAbove=400)
+    // 舊規則: placeBelow (bug)
+    // 新規則: flip above
+  });
+
+  it('narrow viewport → clamp top to viewport (neither side has room)', () => {
+    // 800x300 viewport (超窄), trigger top=100 (spaceBelow=180, spaceAbove=100)
+    // 翻轉後 top=100-460-8=-368 → maxVisibleTop(300)=8 → clamp 到 8
+  });
+});
+```
+
+### 4. Reuse SOP — 新 popover / dropdown 元件
+
+未來任何 trigger-anchored overlay 套用同一個 SOP：
+
+1. ✅ Popover sizing = Option A（sizes to content，no maxHeight + flex-1）
+2. ✅ Placement = `useLayoutEffect` + 嚴格空間檢查 + `maxVisibleTop` clamp
+3. ✅ `POPOVER_HEIGHT_ESTIMATE` 估算常數
+4. ✅ Mock-rect test 覆蓋 3 種 viewport 情境（normal / mid-band / narrow）
+5. ✅ Mobile（< 640px）走 bottom sheet，不套本 rule
+
+---
+
+## 為什麼不用 popper.js / FLIP
+
+| 方案 | 優點 | 缺點 |
+|---|---|---|
+| popper.js | 智慧 flip / offset / boundary detection | bundle +10KB gzip；RN 不適用；對 native OS panel 整合不友善 |
+| FLIP animation | 平滑動畫 | 需 transition manager；對 trigger-anchored 用例過度 |
+| **簡單嚴格空間檢查 + clamp（✅ 採用）** | 0KB、純函式、RN-friendly（measure API 對應） | 需手動 bump `POPOVER_HEIGHT_ESTIMATE` |
+
+99% 的 popover 場景簡單 clamp 就夠；真遇到奇葩 viewport 才考慮 popper.js。
+
+---
+
+## 對齊既有 rule
+
+- **Rule 013 § Modal/Drawer**：mobile < 640px 走 bottom sheet；本 rule 專注 desktop popover
+- **Rule 024 § Hook Split Pattern**：`usePopoverPosition` 是 web-only（用 `getBoundingClientRect` / `window.innerHeight`），RN 化時可走 `.web.ts` / `.native.ts` split（RN 對應 `measure` API）
+
+---
+
+## 觸發關鍵字
+
+「popover」、「dropdown」、「select」、「combobox」、「menu overlay」、「trigger-anchored」、「placeBelow」、「usePopoverPosition」、「getBoundingClientRect」、「scrollbar 浮現」、「popover 被截斷」、「viewport mid-band」**必須**引用本 rule。
+
+## 參照
+
+- `runs/improvements/feedback/20260903-color-picker-popover-option-a.md`（Option A sizing decision）
+- `DEV/09-2026/0903-color-picker-implementation.md` Round 4（Option A popover sizing 紀錄）
+- `DEV/09-2026/0904-color-picker-popover-mid-band-fix.md`（mid-band 翻轉 + clamp 修法）
+- `apps/frontend/src/components/business/dashboard/CardBuilderEditor/Step3CardColors/ColorSwatchPicker.tsx`（reference implementation: `usePopoverPosition` + `maxVisibleTop` helper）
+- `apps/frontend/src/components/business/dashboard/CardBuilderEditor/Step3CardColors/ColorSwatchPicker.test.tsx`（3 種 viewport 情境 mock-rect test 範本）
+- Rule 013 § Modal/Drawer（mobile bottom sheet）
