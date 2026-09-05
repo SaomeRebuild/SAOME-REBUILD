@@ -6,6 +6,7 @@
  */
 
 import type { Sql } from '@/shared/db/client';
+import { unwrapCardSettings } from '@saome/shared/logic/cardSettings';
 import {
   insertTemplate,
   findTemplateById,
@@ -65,29 +66,14 @@ function toDto(row: TemplatesRow): TemplateDto {
  *   - jsonb array of partial merges (Bug #8 partial fix)
  *   - jsonb array of jsonb strings (Bug #8.5 worst case)
  *
- * Mirrors the frontend `unwrapCardSettings` helper (apps/frontend/src/components/
- * business/dashboard/CardBuilderEditor/CardBuilderEditor.store.ts). Kept inline
- * here because backend doesn't import the shared package — moving to packages/
- * shared/ is a separate refactor PR to avoid coupling this fix to that work.
+ * Now sourced from `packages/shared/logic/cardSettings.ts` (Plan Phase 5.7)
+ * so both this file and the frontend store share the exact same defensive
+ * logic; drift is prevented at compile time (single source of truth).
+ *
+ * @see packages/shared/logic/cardSettings.ts
+ * @see packages/shared/logic/cardSettings.test.ts (10 case contract)
  */
-function unwrapCardSettings(raw: unknown): Record<string, unknown> {
-  if (raw == null) return {};
-  if (typeof raw === 'string') {
-    try {
-      return JSON.parse(raw) as Record<string, unknown>;
-    } catch {
-      return {};
-    }
-  }
-  if (Array.isArray(raw)) {
-    return raw.reduce<Record<string, unknown>>(
-      (acc, elem) => ({ ...acc, ...unwrapCardSettings(elem) }),
-      {},
-    );
-  }
-  if (typeof raw === 'object') return raw as Record<string, unknown>;
-  return {};
-}
+// unwrapCardSettings now imported from @saome/shared/logic/cardSettings
 
 /**
  * Create a new template draft.

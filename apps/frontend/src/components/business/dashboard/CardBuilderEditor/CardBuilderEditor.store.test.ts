@@ -12,7 +12,10 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { useCardBuilderStore, unwrapCardSettings } from './CardBuilderEditor.store';
+// unwrapCardSettings now sourced from packages/shared/logic/cardSettings
+// (Plan Phase 5.7). See packages/shared/logic/cardSettings.test.ts for the
+// full 10-case contract; this file only asserts the store's USAGE of it.
+import { useCardBuilderStore } from './CardBuilderEditor.store';
 
 describe('CardBuilderEditor.store — loadSettings cache-busting fix', () => {
   beforeEach(() => {
@@ -188,22 +191,15 @@ describe('loadSettings — defensive parsing (Bug #8.5 / 2026-08-31)', () => {
     expect(useCardBuilderStore.getState().cardType).toBeNull();
   });
 
-  it('unwrapCardSettings — pure helper handles all defensive cases', () => {
-    // Object passthrough
-    expect(unwrapCardSettings({ a: 1 })).toEqual({ a: 1 });
-    // String parse
-    expect(unwrapCardSettings('{"a":2}')).toEqual({ a: 2 });
-    // String parse failure → {}
-    expect(unwrapCardSettings('not-json')).toEqual({});
-    // Array of objects (reduce merge)
-    expect(unwrapCardSettings([{ a: 1 }, { b: 2 }])).toEqual({ a: 1, b: 2 });
-    // Array of strings (Bug #8.5 worst case)
-    expect(unwrapCardSettings(['{"a":1}', '{"b":2}'])).toEqual({ a: 1, b: 2 });
-    // null / undefined → {}
-    expect(unwrapCardSettings(null)).toEqual({});
-    expect(unwrapCardSettings(undefined)).toEqual({});
-    // Nested array (recursion)
-    expect(unwrapCardSettings([[{ a: 1 }], [{ b: 2 }]])).toEqual({ a: 1, b: 2 });
+  it('unwrapCardSettings is now sourced from @saome/shared/logic (Plan Phase 5.7)', () => {
+    // Behavioral contract is fully tested in
+    // packages/shared/logic/cardSettings.test.ts (10 cases). Here we only
+    // assert that the shared import is wired correctly through the store
+    // and survives a round-trip through loadSettings.
+    const corrupted = ['{"description":"hi"}', '{"foo":1}']; // array-of-strings (Bug #8.5 worst case)
+    useCardBuilderStore.getState().loadSettings(corrupted);
+    // Reduce-merge → later wins → foo:1 survives
+    expect(useCardBuilderStore.getState().description).toBe('hi');
   });
 });
 

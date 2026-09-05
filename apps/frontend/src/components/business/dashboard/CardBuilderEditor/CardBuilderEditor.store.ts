@@ -11,6 +11,7 @@ import {
   LINKS_MAX,
 } from '@saome/shared/constants/card-back-fields';
 import { normalizeHex } from '@saome/shared/logic/color';
+import { unwrapCardSettings } from '@saome/shared/logic/cardSettings';
 
 /**
  * A single { label, value } pair used by both Step 4 back fields and Step 4
@@ -224,41 +225,15 @@ interface CardBuilderState {
 }
 
 /**
- * Defensive parser for `templates.settings` JSONB.
+ * Defensive parser for `templates.settings` JSONB — now sourced from
+ * `packages/shared/logic/cardSettings.ts` (Plan Phase 5.7). Backend's
+ * `apps/backend/src/modules/cards/services/cardService.ts` imports the
+ * same function, so behavior is guaranteed identical across layers.
  *
- * Bug #8.5 (2026-08-31): The settings column may have been corrupted into:
- *   - a proper object (normal case)
- *   - a JSON string (legacy corruption where JSON.stringify(obj) was stored)
- *   - an array of partial merges (Bug #8 partial fix — array grew on each PUT)
- *   - an array containing jsonb **strings** (Bug #8.5 worst case)
- *
- * This helper handles all cases and returns a single merged object:
- *   - Object → passthrough
- *   - String → JSON.parse with try/catch (returns `{}` on failure)
- *   - Array → reduce-merge (later elements override earlier)
- *   - null/undefined → `{}`
- *
- * Exported so MediaAssetUploader and any other consumer can share the same
- * defensive logic (avoids drift between layers).
+ * @see packages/shared/logic/cardSettings.ts
+ * @see packages/shared/logic/cardSettings.test.ts (10 case contract)
  */
-export function unwrapCardSettings(raw: unknown): Record<string, unknown> {
-  if (raw == null) return {};
-  if (typeof raw === 'string') {
-    try {
-      return JSON.parse(raw) as Record<string, unknown>;
-    } catch {
-      return {};
-    }
-  }
-  if (Array.isArray(raw)) {
-    return raw.reduce<Record<string, unknown>>(
-      (acc, elem) => ({ ...acc, ...unwrapCardSettings(elem) }),
-      {},
-    );
-  }
-  if (typeof raw === 'object') return raw as Record<string, unknown>;
-  return {};
-}
+// unwrapCardSettings now imported from @saome/shared/logic/cardSettings
 
 /**
  * Defensive parser for arrays of `{ label, value }` pairs (Step 4 back
