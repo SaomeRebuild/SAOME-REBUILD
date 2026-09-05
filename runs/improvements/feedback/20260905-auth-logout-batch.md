@@ -133,8 +133,12 @@ Critical + 兩個 Important 已修。
 
 ## Sync 狀態
 
-- **狀態**：⏳ 待 commit + push（git repo 尚未初始化於 SAOME-REBUILD，所以「commit」這一步目前不適用；用戶後續會手動 commit + push）
+- **狀態**：✅ Committed + pushed (2026-09-05)
+- **Commit**：`11b5f58` on `main`
+- **Push**：`origin/main` @ `4929e7f..11b5f58`
 - **Decision Log**：✅ 寫入 `runs/decisions/2026-09-05-auth-logout-revocation-strategy.md`
+- **Migration**：✅ `015_init_revoked_tokens` applied via `saome_supabase` MCP
 - **INDEX.md**：✅ 新增 row
 - **Code Review**：✅ 通過（1 Critical + 4 Important 已修）
+- **Verification**：typecheck backend/frontend exit 0；vitest backend 125/125；vitest frontend 568 passed | 5 skipped
 - **Production smoke**：⏳ 待 deploy 後 `SAOME_E2E_BACKEND=1 npm run test:smoke` 跑一次
