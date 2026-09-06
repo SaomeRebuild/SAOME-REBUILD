@@ -1,0 +1,156 @@
+---
+description: Cloudflare Worker fetch 出口有 3 條路徑，只有「Worker entry boundary 包裹」能覆蓋 runtime-emitted error — 任何 backend Worker 必套 3 層 CORS defense pattern
+alwaysApply: true
+---
+
+# Worker Runtime CORS Defense（MANDATORY）
+
+> 觸發：寫任何 Cloudflare Worker（Hono / Workers / Pages functions / 自寫 fetch handler）、改 backend Worker 的 default export、debug「瀏覽器看到 CORS drop 但 curl 看不到」、deploy backend Worker 前。
+
+## 背景
+
+2026-09-07 production 登入 CORS drop：Worker runtime 直接 emit 503（沒進 Hono chain），瀏覽器 silent drop，使用者看到「Network error」，curl 完全看不出來。完整 trace：`runs/improvements/feedback/20260907-cors-runtime-503-fix.md` + `DEV/09-2026/0907-cors-runtime-503-fix.md` + `runs/decisions/2026-09-07-three-layer-cors-defense.md`。
+
+SAOME 自 2026-07-28 Bug-4c 起的 fingerprint：**curl 看起來通、瀏覽器不通**。任何 silent CORS drop 都會有這個對稱性。
+
+## Cloudflare Worker fetch 的 3 條出口
+
+```
+                                  ┌─────────────────────────────┐
+HTTP request  ──▶ Worker fetch ──┤ ① runtime-level error path  │  ← 503 由 Cloudflare 發出
+                                  │    (binding failure, CPU/   │     **完全沒進 Hono**
+                                  │     memory limit, etc.)     │     CORS coverage: 無
+                                  ├─────────────────────────────┤
+                                  │ ② Hono `app.onError()`     │  ← route handler throw
+                                  │    (SaomeError / unknown)   │     CORS coverage: errorHandler 內
+                                  ├─────────────────────────────┤     `applyCorsHeadersToResponse`
+                                  │ ③ Hono `app.fetch()`        │  ← 正常 response
+                                  │    (route handler 完成)     │     CORS coverage: corsMiddleware
+                                  └─────────────────────────────┘     `wrap-after-next`
+```
+
+每一條出口對應不同的 CORS coverage。任何 backend Worker 都必須 3 條全部覆蓋，否則 runtime-emitted error 會 silent CORS drop。
+
+## 鐵律
+
+### 1. 三層 CORS Defense 必齊（全 Worker 適用）
+
+| 層 | 位置 | 覆蓋 | 來源 |
+|---|---|---|---|
+| **Layer 1** | `shared/middleware/cors.ts::corsMiddleware`（Hono chain 內，wrap-after-next）| 路徑 ③（正常 response）| env-driven allow-list（`ALLOWED_ORIGINS` + `ALLOWED_ORIGIN_PATTERNS`）|
+| **Layer 2** | `shared/middleware/errorHandler.ts::applyCorsHeadersToResponse`（Hono `onError` 內 inline 私有）| 路徑 ②（route handler throw）| 共用 Layer 1 的 `resolveAllowedOrigin` |
+| **Layer 3** | `shared/middleware/runtimeCors.ts::ensureCorsOnResponse`（Worker entry boundary）| 路徑 ①（runtime-emitted error）| **硬編 allow-list**（不靠 env，因為 entry boundary 拿不到 `c.env`）|
+
+### 2. Worker entry boundary 必包 `ExportedHandler.fetch`
+
+任何 Cloudflare Worker 的 default export **不可直接 export Hono app**，必須包成 `ExportedHandler.fetch` 包裹：
+
+```ts
+// ✅ 正確：Worker entry boundary 包裹 + Layer 3 CORS injection
+const worker: ExportedHandler<HonoEnv['Bindings']> = {
+  async fetch(request, env, ctx) {
+    try {
+      const res = await app.fetch(request, env, ctx);
+      return ensureCorsOnResponse(request, res);
+    } catch (err) {
+      console.error('[worker.fetch] uncaught error:', err);
+      const fallback = new Response(
+        JSON.stringify({ error: { code: 'INTERNAL_ERROR', message: ... } }),
+        { status: 503, headers: { 'Content-Type': 'application/json' } },
+      );
+      return ensureCorsOnResponse(request, fallback);
+    }
+  },
+};
+export default worker;
+
+// ❌ 錯誤：直接 export Hono app — runtime-emitted error 不會有 CORS header
+export default app;
+```
+
+### 3. Layer 3 必用硬編 allow-list（不讀 env）
+
+理由：Worker entry boundary 拿不到 `c.env`（request 還沒進 Hono）。三個選擇的取捨：
+
+| 方案 | 結果 |
+|---|---|
+| 把 env 解析邏輯寫死一份 | 違反 DRY；wrangler 改 env 後 deploy 完 runtimeCors 不知道 |
+| **硬編 host Set + pattern regex** ✅ | deploy 不依賴 env 載入；entry 仍能運作 |
+| 從 `env` 讀（重複解析）| 增加 entry 複雜度，沒好處 |
+
+選硬編 — 寧可犧牲 DRY 換「Hono 整個掛了，CORS 還在」。文件註解明寫「wrangler.jsonc 新增 production origin 要同步兩處」。
+
+### 4. 同步責任 SOP（MANDATORY — 新增 production origin 必跑）
+
+未來新增任何 production origin 到 backend Worker：
+
+1. **必跑** `wrangler.jsonc::vars.ALLOWED_ORIGINS` 加新 origin（或 `ALLOWED_ORIGIN_PATTERNS` 加新 pattern）
+2. **必跑** `apps/backend/src/shared/middleware/runtimeCors.ts::RUNTIME_ALLOWED_HOSTS` 加新 host（或 `RUNTIME_ALLOWED_HOST_PATTERNS` 加新 regex）
+3. **同一個 PR** 帶齊上面兩個改動 + 一條 conformance test 驗證新 origin 被兩處都接受
+4. **PR 描述必填**「同步加進 wrangler.jsonc 跟 runtimeCors.ts」checklist
+5. **deploy 後必跑** smoke test：curl `OPTIONS /api/auth/login` 帶新 origin 必須回 CORS header；curl `POST /api/auth/login` 帶新 origin 即使 401 也必須回 CORS header（Rule 017 § backend Worker CORS post-deploy check）
+
+### 5. Conformance test 必覆蓋（MANDATORY — Layer 3 不可缺）
+
+`apps/backend/src/shared/middleware/runtimeCors.test.ts` 必含 6 條：
+
+| # | Test | 覆蓋 |
+|---|---|---|
+| 1 | `isRuntimeAllowedHost` exact match | production workers.dev / saome.org |
+| 2 | `isRuntimeAllowedHost` pattern match | Pages preview subdomain |
+| 3 | `isRuntimeAllowedHost` 拒絕 unrelated host | 防 evil.example.com / localhost / apex |
+| 4 | `isRuntimeAllowedHost` case-insensitive | host.toUpperCase() |
+| 5 | `ensureCorsOnResponse` 帶 allow-list origin 的 503 → 加 CORS header | **本次事故回歸測試** |
+| 6 | `ensureCorsOnResponse` 帶 evil origin → 不加 CORS header | 安全邊界 |
+| 7 | `ensureCorsOnResponse` preserve existing headers | 與 requestId 等 middleware 並存 |
+| 8 | `ensureCorsOnResponse` works on 200 | defense-in-depth（正常 path 也走）|
+
+加上既有 `corsMiddleware.test.ts`（Bug-4d regression）+ `errorHandler.test.ts`（SaomeError CORS regression），3 個測試檔共同 pin 死 3 層防禦的行為。
+
+### 6. 為什麼 curl 看不到這條 bug
+
+```bash
+curl https://saome-backend.josh1989213.workers.dev/api/auth/login
+# → 503（runtime 拒絕）
+# curl 不在 HTTPS origin 內，沒有 CORS 規則，503 直接 body 給你看
+```
+
+**curl 看起來是「backend 503」，跟「正常 503」無法區分**。只有從 HTTPS origin 內 fetch 才會觸覽器 CORS drop，這是 SAOME 自 2026-07-28 Bug-4c 起的 fingerprint。
+
+### 7. 未來新 Worker 必套同樣 3 層 pattern
+
+任何新增 Cloudflare Worker（`saome-api` / `saome-cron-worker` / `saome-image-worker` / `saome-webhook-worker` 等）必走同樣 SOP：
+
+1. Layer 1：Hono `corsMiddleware`（或 framework equivalent）wrap-after-next
+2. Layer 2：error handler 內 inline CORS injection
+3. Layer 3：Worker entry boundary 包 `ExportedHandler.fetch`，跑 `ensureCorsOnResponse`
+4. 3 個測試檔分別覆蓋 3 層
+5. wrangler.jsonc 跟 runtimeCors.ts 同步更新
+
+第二個 Worker 出現時，把 `isRuntimeAllowedHost` + `ensureCorsOnResponse` 抽到 `packages/shared/lib/runtimeCors.ts` 共用。
+
+## 觸發關鍵字
+
+「Cloudflare Worker」、「Hono middleware」、「CORS drop」、「Worker runtime」、「ExportedHandler」、「entry boundary」、「fetch handler」、「worker.fetch」、「503 + no CORS」、「瀏覽器 silent drop」、「curl 看不出來」、「`Access-Control-Allow-Origin`」**必須**引用本 rule。
+
+「新增 backend Worker」、「新增 saome-api / saome-cron」、「wrangler.jsonc 新增 origin」、「同步兩處 allow-list」→ 必引 § 4 同步責任 SOP。
+
+## 與其他 rule 關係
+
+- `017-production-bundle-guard.mdc` § 為什麼 curl 不夠 + § backend Worker CORS post-deploy check — 對應
+- `000-modular-design.mdc` Part B § B.4 禁止清單 — 加 `❌ Worker default export 直接 expose Hono app`
+- `015-cloudflare-pages-deploy.mdc` § Workers runtime — 對齊
+- `apps/backend/AGENTS.md` § 3 層 CORS defense — reference implementation
+
+## 參照
+
+- `runs/improvements/feedback/20260907-cors-runtime-503-fix.md` — 原事故 trace + 6 條 test
+- `DEV/09-2026/0907-cors-runtime-503-fix.md` — DEV LOG 時間軸 + 4 輪 defense-in-depth 演進
+- `runs/decisions/2026-09-07-three-layer-cors-defense.md` — 三段式決策紀錄
+- `apps/backend/src/shared/middleware/runtimeCors.ts` — Layer 3 實作
+- `apps/backend/src/shared/middleware/runtimeCors.test.ts` — 6 條 conformance test
+- `apps/backend/src/shared/middleware/cors.ts` — Layer 1（Hono chain wrap-after-next）
+- `apps/backend/src/shared/middleware/errorHandler.ts` — Layer 2（Hono `onError` inline CORS）
+- `apps/backend/src/index.ts` line 76-103 — Worker entry boundary 包裹
+- `apps/backend/wrangler.jsonc` — Layer 1+2 的 env-driven allow-list
+- commit `7935de8` — fix(backend): Worker-level CORS injection for runtime-emitted 503s

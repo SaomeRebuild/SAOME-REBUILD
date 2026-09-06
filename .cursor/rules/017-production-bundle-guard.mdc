@@ -107,17 +107,154 @@ curl https://saome-backend.josh1989213.workers.dev/api/auth/login
 只有 HTTPS origin 內 fetch HTTP 才會被 Mixed Content 擋。Production
 deploy 後必須用瀏覽器開、或用 Playwright smoke test 驗證完整請求鏈。
 
+---
+
+## Backend Worker CORS post-deploy check（MANDATORY）
+
+> 觸發：`wrangler deploy` 完成後、宣布 deploy 成功前。
+
+### 為什麼這條規則存在
+
+2026-09-07 production 登入 CORS drop：Worker runtime 直接 emit 503（沒進 Hono chain），curl 看起來是「backend 503」但瀏覽器 silent CORS drop。3 層 CORS defense 任何一層失效都會觸發 — 而 curl 沒辦法在 HTTPS origin 內觸發 CORS policy，所以純 curl 檢查抓不到。
+
+詳見 `.cursor/rules/036-worker-runtime-cors-defense.mdc` + `runs/improvements/feedback/20260907-cors-runtime-503-fix.md`。
+
+### Backend Worker deploy 後必跑 curl 矩陣
+
+每次 `wrangler deploy` 完成 backend Worker 後，**必跑**這條 curl 矩陣，缺一即視為 deploy 失敗：
+
+```bash
+BACKEND="https://saome-backend.josh1989213.workers.dev"
+ORIGIN="https://saome-frontend.josh1989213.workers.dev"
+
+# 1. OPTIONS preflight — 必回 204 + Access-Control-Allow-Origin
+echo "=== OPTIONS preflight ==="
+curl -sS -i -X OPTIONS "$BACKEND/api/auth/login" \
+    -H "Origin: $ORIGIN" \
+    -H "Access-Control-Request-Method: POST" \
+    -H "Access-Control-Request-Headers: Content-Type" \
+    2>&1 | head -20
+
+# 預期：HTTP/1.1 204 + Access-Control-Allow-Origin: $ORIGIN + Access-Control-Allow-Credentials: true
+
+# 2. POST 帶 Origin（即使錯誤憑證）— 必回 Access-Control-Allow-Origin
+echo ""
+echo "=== POST with Origin (wrong creds) ==="
+curl -sS -i -X POST "$BACKEND/api/auth/login" \
+    -H "Origin: $ORIGIN" \
+    -H "Content-Type: application/json" \
+    -d '{"email":"nonexistent@test.invalid","password":"wrong"}' \
+    2>&1 | head -20
+
+# 預期：HTTP/1.1 401 + Access-Control-Allow-Origin: $ORIGIN
+# （不是 503 + 沒 CORS — 那是 runtime-emitted bug）
+
+# 3. POST 帶 evil origin — 必 NOT 回 Access-Control-Allow-Origin
+echo ""
+echo "=== POST with evil origin (regression for security boundary) ==="
+curl -sS -i -X POST "$BACKEND/api/auth/login" \
+    -H "Origin: https://evil.example.com" \
+    -H "Content-Type: application/json" \
+    -d '{"email":"x@x.x","password":"x"}' \
+    2>&1 | head -20
+
+# 預期：HTTP/1.1 4xx + 沒有 Access-Control-Allow-Origin header
+```
+
+### 什麼情況算 deploy 失敗
+
+| 檢查項 | 預期 | 失敗 = |
+|---|---|---|
+| OPTIONS 回 `Access-Control-Allow-Origin` | $ORIGIN | Layer 1（corsMiddleware）失效 — 不能 ship |
+| POST 401/200 回 `Access-Control-Allow-Origin` | $ORIGIN | Layer 3（runtimeCors）失效 — 不能 ship |
+| POST 503 回 `Access-Control-Allow-Origin` | $ORIGIN | Worker runtime 路徑 CORS 漏 — 不能 ship（本次事故）|
+| evil origin POST 不回 `Access-Control-Allow-Origin` | null | CORS 過於寬鬆 — 立即修 |
+
+### 為什麼 curl 沒第一時間抓到 production 503
+
+```bash
+# 修前
+curl -X POST .../api/auth/login -H "Origin: ..."
+# → 503，沒 CORS header
+# 看起來像「backend 503」(合理錯誤)
+
+# 但 wrangler tail 證實這條 request 沒進 Hono
+# → runtime 直接 emit → 瀏覽器 silent drop
+# → curl 解讀為「backend 503」，瀏覽器解讀為「CORS 拒絕」
+```
+
+curl 跟瀏覽器的解讀完全分裂 — 這是 SAOME 自 2026-07-28 Bug-4c 起的 fingerprint。
+
+### 寫成 post-deploy script（建議）
+
+在 `apps/backend/package.json` 的 `deploy` script 後串接：
+
+```json
+{
+  "scripts": {
+    "deploy": "wrangler deploy && node scripts/check-cors-post-deploy.cjs"
+  }
+}
+```
+
+`scripts/check-cors-post-deploy.cjs` 範本：
+
+```js
+// Run after `wrangler deploy` succeeds — fail loudly if backend Worker
+// doesn't return CORS headers for the production origin.
+const BACKEND = 'https://saome-backend.josh1989213.workers.dev';
+const ORIGIN = 'https://saome-frontend.josh1989213.workers.dev';
+
+async function check(label, fn) {
+  const { status, headers } = await fn();
+  const acao = headers.get('access-control-allow-origin');
+  console.log(`[${label}] status=${status} ACAO=${acao}`);
+  return acao === ORIGIN;
+}
+
+(async () => {
+  let pass = true;
+  pass &= await check('OPTIONS', () =>
+    fetch(BACKEND + '/api/auth/login', {
+      method: 'OPTIONS',
+      headers: {
+        Origin: ORIGIN,
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Headers': 'Content-Type',
+      },
+    }),
+  );
+  pass &= await check('POST (wrong creds)', () =>
+    fetch(BACKEND + '/api/auth/login', {
+      method: 'POST',
+      headers: { Origin: ORIGIN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'x@x.x', password: 'x' }),
+    }),
+  );
+  if (!pass) {
+    console.error('FAIL: backend Worker CORS post-deploy check failed');
+    process.exit(1);
+  }
+  console.log('OK: backend Worker CORS post-deploy check passed');
+})();
+```
+
+---
+
 ## 禁止
 
 - ❌ 只跑 `npm run build` 不跑後續 grep 就宣告 deploy 完成
 - ❌ 看到「build 成功」就 push 到 main（除非有 post-build audit）
 - ❌ 信任 `import.meta.env.PROD` 會自動切換 default —— 必須用 `.env.production` 顯式覆寫
+- ❌ Backend Worker deploy 後只跑 curl OPTIONS 不跑 curl POST — runtime-emitted 503 路徑只有 POST 才會命中
+- ❌ 看到「curl 回 503」就當成「backend 503」收工 — 必須驗 response 有沒有 `Access-Control-Allow-Origin`
 
 ## 與其他 rule 的關係
 
 - `010-uiux-pro-max.mdc`：禁止 hard-code，但這條專門抓「預設值沒分 build target」
 - `016-config-and-tsconfig-discipline.mdc`：7 個 surface 必須同步，這條把 `dist/` 視為第 8 個 surface
 - `006-verification.mdc`：完工驗證的 grep 清單補充
+- `036-worker-runtime-cors-defense.mdc`：Backend Worker CORS 3 層 defense pattern — 本章節是 deploy 時的對應 verification
 
 ## 觸發關鍵字
 
