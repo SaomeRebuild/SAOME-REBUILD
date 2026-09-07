@@ -15,6 +15,7 @@ import { Step3CardFields } from './Step3CardFields';
 import { Step3StampGrid } from './Step3StampGrid';
 import { Step4CardInfo } from './Step4CardInfo';
 import { Step5CardLocation } from './Step5CardLocation';
+import { Step6CardLogic } from './Step6CardLogic';
 import { useCardBuilderStore } from './CardBuilderEditor.store';
 import {
   DESCRIPTION_MAX_LENGTH,
@@ -135,12 +136,70 @@ export function CardBuilderEditorWorkspace({
     );
   }
 
+  /**
+   * Step 6 validation (Rule 019 — stamp card logic):
+   *   - Non stamp_card/multipass → always valid (ComingSoon placeholder, no fields).
+   *   - stamp_card / multipass → all 4 reward fields required:
+   *       stampAccrualMode !== null
+   *       rewardName.trim().length > 0
+   *       rewardType !== null
+   *       rewardValue !== null && rewardValue > 0
+   *       percent_off → maxDiscountAmount is optional (null = no cap)
+   *   - Accrual thresholds (2026-09-07):
+   *       per_visit → stampsPerVisitCount > 0 && stampsPerVisitStamps > 0
+   *       per_spend → stampsPerSpendAmount > 0 && stampsPerSpendStamps > 0
+   *       per_stamp → no threshold fields required
+   */
+  function isStep6Valid(): boolean {
+    const cardTypeValue = useCardBuilderStore.getState().cardType;
+    if (cardTypeValue !== 'stamp_card' && cardTypeValue !== 'multipass') return true;
+    const {
+      stampAccrualMode,
+      rewardName,
+      rewardType,
+      rewardValue,
+      stampsPerVisitCount,
+      stampsPerVisitStamps,
+      stampsPerSpendAmount,
+      stampsPerSpendStamps,
+    } = useCardBuilderStore.getState();
+
+    const baseRewardValid =
+      stampAccrualMode !== null &&
+      rewardName.trim().length > 0 &&
+      rewardType !== null &&
+      rewardValue !== null &&
+      rewardValue > 0;
+
+    if (stampAccrualMode === 'per_visit') {
+      return (
+        baseRewardValid &&
+        stampsPerVisitCount !== null &&
+        stampsPerVisitCount > 0 &&
+        stampsPerVisitStamps !== null &&
+        stampsPerVisitStamps > 0
+      );
+    }
+    if (stampAccrualMode === 'per_spend') {
+      return (
+        baseRewardValid &&
+        stampsPerSpendAmount !== null &&
+        stampsPerSpendAmount > 0 &&
+        stampsPerSpendStamps !== null &&
+        stampsPerSpendStamps > 0
+      );
+    }
+    // per_stamp — no threshold fields
+    return baseRewardValid;
+  }
+
   async function handleNext() {
     console.log('[handleNext] step:', step, 'cardId:', cardId);
     if (step < 8) {
       if (step === 2 && !isStep2Valid()) return;
       if (step === 4 && !isStep4Valid()) return;
       if (step === 5 && !isStep5Valid()) return;
+      if (step === 6 && !isStep6Valid()) return;
       if (step === 2 && cardId && onSave) {
         try {
           const { storeName, issuerName, issuerLogo } = useCardBuilderStore.getState();
@@ -251,6 +310,64 @@ export function CardBuilderEditorWorkspace({
         } catch (err) {
           // Don't block step transition — let the user proceed and retry later.
           console.error('[handleNext] Step 5 onSave failed:', err);
+        }
+      }
+      // ===== Step 6 — 卡片邏輯 (2026-09-07, stamp_card / multipass only) =====
+      // Store has Step 6 fields already gated by `isStep6Valid()`. For
+      // non-stamp_card card types the dispatcher renders a ComingSoon
+      // placeholder and `isStep6Valid()` returns `true` so this block is
+      // effectively a no-op (writes null/empty values into the JSONB).
+      // The backend zod schema accepts all-null Step 6 fields (`.optional()`
+      // + `.nullable()`); see Rule 019 § 4.1 mirror.
+      //
+      // 2026-09-07 round-trip fix: Step 6 must send ALL 9 fields, including
+      // the 4 accrual thresholds (`stampsPerVisit*`, `stampsPerSpend*`).
+      // Earlier commit omitted these — store kept them, but they never
+      // reached the DB, so reload came back empty and the UI re-rendered
+      // blank. Each threshold is `.nullable()` so non-stamp modes write
+      // null cleanly without serializing the wrong type.
+      if (step === 6 && cardId && onSave) {
+        try {
+          const {
+            stampAccrualMode,
+            rewardName,
+            rewardType,
+            rewardValue,
+            maxDiscountAmount,
+            stampsPerVisitCount,
+            stampsPerVisitStamps,
+            stampsPerSpendAmount,
+            stampsPerSpendStamps,
+          } = useCardBuilderStore.getState();
+          await onSave(cardId, {
+            stampAccrualMode,
+            rewardName,
+            rewardType,
+            rewardValue,
+            maxDiscountAmount,
+            // Accrual thresholds — only meaningful for per_visit / per_spend,
+            // but always sent (null otherwise) so the DB always reflects the
+            // current store state. loadSettings coerces non-matching values
+            // back to null.
+            stampsPerVisitCount,
+            stampsPerVisitStamps,
+            stampsPerSpendAmount,
+            stampsPerSpendStamps,
+          });
+          console.log('[handleNext] Step 6 card logic saved', {
+            stampAccrualMode,
+            rewardName,
+            rewardType,
+            rewardValue,
+            maxDiscountAmount,
+            stampsPerVisitCount,
+            stampsPerVisitStamps,
+            stampsPerSpendAmount,
+            stampsPerSpendStamps,
+          });
+        } catch (err) {
+          // Don't block step transition — let the user proceed and retry later.
+          console.error('[handleNext] Step 6 onSave failed:', err);
         }
       }
       onStepChange((step + 1) as EditorStep);
@@ -565,17 +682,15 @@ export function CardBuilderEditorWorkspace({
         </section>
       )}
 
-      {/* Step 6: 卡片邏輯（預留） */}
+      {/* Step 6: 卡片邏輯 (2026-09-07, dispatcher + StampCardLogic sub-module) */}
       {step === 6 && (
-        <section className="flex flex-col items-center justify-center gap-4 py-12">
-          <p className="text-muted-foreground">
+        <section className="flex min-w-0 flex-col gap-6">
+          <h2 className="text-lg font-semibold text-foreground">
             {t('step6.title')}
-          </p>
-          <p className="text-sm text-muted-foreground/60">
-            {t('comingSoon')}
-          </p>
+          </h2>
+          <Step6CardLogic showValidation={!isStep6Valid()} />
           {/* 上一步 / 下一步按鈕 */}
-          <div className="flex items-center gap-4 pt-4">
+          <div className="flex items-center justify-between pt-2">
             <button
               type="button"
               onClick={handlePrev}
@@ -593,12 +708,14 @@ export function CardBuilderEditorWorkspace({
             <button
               type="button"
               onClick={handleNext}
+              disabled={!isStep6Valid()}
               className="
                 flex items-center gap-2 rounded-lg bg-primary px-6 py-2.5
                 text-sm font-semibold text-on-primary
                 transition-all duration-150
                 hover:scale-[1.02] hover:shadow-[var(--shadow-glow)]
                 active:scale-[0.98]
+                disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100
               "
             >
               {t('step1.next')}
