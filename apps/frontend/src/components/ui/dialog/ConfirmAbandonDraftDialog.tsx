@@ -111,7 +111,7 @@ export function ConfirmAbandonDraftDialog({
           {/* Radio group */}
           <div className="flex flex-col gap-3">
             {/* Resume option */}
-            <label className="group relative flex cursor-pointer items-start gap-4 rounded-xl border border-border bg-card p-4 transition-transform transition-shadow duration-200 hover:scale-[1.03] hover:border-primary hover:shadow-[var(--shadow-lifted)] has-[:checked]:border-primary has-[:checked]:bg-primary/5 has-[:checked]:shadow-[var(--shadow-glow)] has-[:checked]:scale-[1.01] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-ring)]">
+            <label className="radio-card-primary group relative flex items-start gap-4 rounded-xl border border-border bg-card p-4 transition-transform transition-shadow duration-200 hover:scale-[1.03] hover:shadow-[var(--shadow-lifted)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-ring)]">
               {/* Hidden radio — must be inside label for clicking to work; opacity-0 keeps it invisible */}
               <input
                 type="radio"
@@ -123,11 +123,8 @@ export function ConfirmAbandonDraftDialog({
               />
               <div className="mt-0.5 flex items-center justify-center">
                 <div
-                  className="h-5 w-5 rounded-full border-2 border-border transition-colors duration-200 group-hover:border-primary has-[:checked]:border-primary has-[:checked]:bg-primary"
-                  style={{
-                    borderColor: selectedAction === 'resume' ? 'var(--color-primary)' : undefined,
-                    backgroundColor: selectedAction === 'resume' ? 'var(--color-primary)' : undefined,
-                  }}
+                  aria-hidden="true"
+                  className="radio-card-fill h-5 w-5 rounded-full border-2 border-border transition-colors duration-200"
                 />
               </div>
               <div className="flex flex-col gap-1">
@@ -139,7 +136,7 @@ export function ConfirmAbandonDraftDialog({
             </label>
 
             {/* Discard option */}
-            <label className="group relative flex cursor-pointer items-start gap-4 rounded-xl border border-border bg-card p-4 transition-transform transition-shadow duration-200 hover:scale-[1.03] hover:border-destructive hover:shadow-[var(--shadow-lifted)] has-[:checked]:border-destructive has-[:checked]:bg-destructive/5 has-[:checked]:scale-[1.01] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-ring)]">
+            <label className="radio-card-destructive group relative flex items-start gap-4 rounded-xl border border-border bg-card p-4 transition-transform transition-shadow duration-200 hover:scale-[1.03] hover:shadow-[var(--shadow-lifted)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-ring)]">
               {/* Hidden radio — must be inside label for clicking to work */}
               <input
                 type="radio"
@@ -151,11 +148,8 @@ export function ConfirmAbandonDraftDialog({
               />
               <div className="mt-0.5 flex items-center justify-center">
                 <div
-                  className="h-5 w-5 rounded-full border-2 border-border transition-colors duration-200 group-hover:border-destructive has-[:checked]:border-destructive has-[:checked]:bg-destructive"
-                  style={{
-                    borderColor: selectedAction === 'discard' ? 'var(--color-destructive)' : undefined,
-                    backgroundColor: selectedAction === 'discard' ? 'var(--color-destructive)' : undefined,
-                  }}
+                  aria-hidden="true"
+                  className="radio-card-fill h-5 w-5 rounded-full border-2 border-border transition-colors duration-200"
                 />
               </div>
               <div className="flex flex-col gap-1">

@@ -184,6 +184,7 @@ button {
   transition-duration: var(--transition-fast);
 }
 
+/* ── Card hover (lift on hover) ── */
 .card-hover {
   transition: transform var(--transition-base), box-shadow var(--transition-base);
 }
@@ -191,6 +192,63 @@ button {
 .card-hover:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-lifted);
+}
+
+/* ── Radio Card Pattern A (single source of truth for :checked visuals) ──
+ *
+ * Why these exist (2026-09-07 — StampAccrualModeField + ConfirmAbandonDraftDialog):
+ *   Tailwind v4 only emits `bg-primary` / `border-primary` etc. when the
+ *   semantic token is declared inside `@theme {}`. Our `--color-primary` /
+ *   `--color-destructive` live in `:root, [data-theme='dark']` +
+ *   `[data-theme='light']` blocks (so dark/light can override per-mode),
+ *   so the Tailwind color utilities are NOT emitted in the built CSS.
+ *
+ *   That means `has-[:checked]:bg-primary` would compile to a non-existent
+ *   class. We therefore drive the `:checked` visuals via hand-written CSS
+ *   rules keyed on `.radio-card-primary` / `.radio-card-destructive`. The
+ *   `:has(:checked)` selector is still single source of truth — no React
+ *   conditional, no inline style — so future color tokens stay consistent.
+ *
+ *   Mark .radio-card-primary / .radio-card-destructive as `group` so the
+ *   child indicator span (sibling of input, descendant of label) can flip
+ *   its own fill via `.group-radio-card-primary:has(:checked) .fill`
+ *   pattern in JSX. */
+.radio-card-primary {
+  position: relative;
+  cursor: pointer;
+}
+
+.radio-card-primary:has(:checked) {
+  border-color: var(--color-primary);
+  background-color: color-mix(in oklab, var(--color-primary) 5%, var(--color-card));
+  box-shadow: var(--shadow-glow);
+}
+
+/* Child indicator fill — sibling of input, descendant of label. The
+ * `:has(:checked)` selector only sees descendants of `.radio-card-primary`,
+ * so the inner fill flips when the label's checked radio fires. */
+.radio-card-primary:has(:checked) .radio-card-fill {
+  border-color: var(--color-primary);
+  background-color: var(--color-primary);
+}
+
+.radio-card-primary:has(:checked) .radio-card-icon {
+  color: var(--color-primary);
+}
+
+.radio-card-destructive {
+  position: relative;
+  cursor: pointer;
+}
+
+.radio-card-destructive:has(:checked) {
+  border-color: var(--color-destructive);
+  background-color: color-mix(in oklab, var(--color-destructive) 5%, var(--color-card));
+}
+
+.radio-card-destructive:has(:checked) .radio-card-fill {
+  border-color: var(--color-destructive);
+  background-color: var(--color-destructive);
 }
 
 /* ── Focus styles ── */
