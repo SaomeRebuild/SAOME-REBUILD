@@ -30,13 +30,15 @@
  *   - rounded-md / h-10 / px-3 / py-2 (form control sizing — matches Step 2 inputs)
  */
 
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown } from 'lucide-react';
 import { useCardBuilderStore } from '../CardBuilderEditor.store';
 import {
-  CARD_FIELDS,
+  type CardFieldDefinition,
   type CardFieldKey,
 } from '@saome/shared/constants/card-fields';
+import { filterCARD_FIELDS_BY_CARD_TYPE } from './filterCARD_FIELDS_BY_CARD_TYPE';
 
 /**
  * Shared `<select>` styling. Native `<select>` is used per user-confirmed
@@ -60,18 +62,18 @@ import {
  * Each `<option>` therefore sets `color: black` explicitly so the text is
  * always legible regardless of page theme. See 2026-09-04 Step3 fix.
  */
-const SELECT_CLASS =
-  'h-10 w-full appearance-none rounded-md border border-input bg-background ' +
-  'px-3 py-2 pr-9 text-sm text-foreground ' +
-  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ' +
-  'disabled:cursor-not-allowed disabled:opacity-50';
-
 /**
  * Force every `<option>` rendered inside the OS-native dropdown panel to
  * use black text. Pair with `<select style={{ colorScheme: 'light' }}>` —
  * the panel becomes white (light scheme) and option text becomes black.
  */
 const OPTION_STYLE = { color: '#000000' };
+
+const SELECT_CLASS =
+  'h-10 w-full appearance-none rounded-md border border-input bg-background ' +
+  'px-3 py-2 pr-9 text-sm text-foreground ' +
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ' +
+  'disabled:cursor-not-allowed disabled:opacity-50';
 
 interface FieldSelectProps {
   /** Side label, e.g. "左欄位" / "Left Field" — used for both visible label and aria-label. */
@@ -82,6 +84,15 @@ interface FieldSelectProps {
   otherValue: CardFieldKey | null;
   /** Store setter. `null` clears the slot back to placeholder. */
   onChange: (next: CardFieldKey | null) => void;
+  /**
+   * Fields visible in the dropdown for the current card type.
+   * `Step3CardFields` filters `CARD_FIELDS` by `group` (common / stamp) and
+   * passes the filtered list here. When the list excludes a key, that key
+   * is not rendered as an `<option>` — but the store may still hold it
+   * (e.g. user picked a stamp-only field then switched to a non-stamp card
+   * type; the value is preserved, not silently cleared).
+   */
+  availableFields: readonly CardFieldDefinition[];
 }
 
 /**
@@ -91,7 +102,7 @@ interface FieldSelectProps {
  * SEE WHY an option is unselectable (without that, `disabled` only greys out
  * without explanation in the dropdown).
  */
-function FieldSelect({ sideLabel, value, otherValue, onChange }: FieldSelectProps) {
+function FieldSelect({ sideLabel, value, otherValue, onChange, availableFields }: FieldSelectProps) {
   const { t } = useTranslation('cardEditor');
   const placeholder = t('step3.fieldsSection.placeholder');
   const disabledSuffix = t('step3.fieldsSection.disabledSuffix');
@@ -117,7 +128,7 @@ function FieldSelect({ sideLabel, value, otherValue, onChange }: FieldSelectProp
           <option value="" disabled style={OPTION_STYLE}>
             {placeholder}
           </option>
-          {CARD_FIELDS.map((field) => {
+          {availableFields.map((field) => {
             const pickedByOther = field.key === otherValue;
             return (
               <option
@@ -144,6 +155,16 @@ function FieldSelect({ sideLabel, value, otherValue, onChange }: FieldSelectProp
 /**
  * Step 3 — 顯示欄位 section. Mounted after `<Step3CardColors />` inside the
  * Step 3 wizard step. Mobile-first: stacked on < 768px, side-by-side on ≥ 768px.
+ *
+ * Card-type-conditional behavior (2026-09-08):
+ *   - The dropdown always renders both sides.
+ *   - Options are filtered by `CARD_FIELDS` `group` discriminator:
+ *     - `group: 'common'` entries are always shown.
+ *     - `group: 'stamp'` entries (availableRewards / totalStamps /
+ *       stampsRemaining) are shown ONLY when `cardType ∈ {stamp_card, multipass}`.
+ *   - The store keeps its value if the user later switches card type and the
+ *     previously-picked field becomes hidden — the filter affects the
+ *     dropdown options, not the stored value (no silent data loss).
  */
 export function Step3CardFields() {
   const { t } = useTranslation('cardEditor');
@@ -151,6 +172,16 @@ export function Step3CardFields() {
   const rightField = useCardBuilderStore((s) => s.rightField);
   const setLeftField = useCardBuilderStore((s) => s.setLeftField);
   const setRightField = useCardBuilderStore((s) => s.setRightField);
+  const cardType = useCardBuilderStore((s) => s.cardType);
+
+  // Filter once per cardType change — useMemo avoids recomputing on every
+  // leftField/rightField change (which would still produce the same array
+  // for a given cardType). `cardType` is `CardType | null`, and
+  // `filterCARD_FIELDS_BY_CARD_TYPE` accepts both.
+  const availableFields = useMemo(
+    () => filterCARD_FIELDS_BY_CARD_TYPE(cardType),
+    [cardType],
+  );
 
   return (
     <section className="flex min-w-0 flex-col gap-3 border-t pt-6">
@@ -173,12 +204,14 @@ export function Step3CardFields() {
           value={leftField}
           otherValue={rightField}
           onChange={setLeftField}
+          availableFields={availableFields}
         />
         <FieldSelect
           sideLabel={t('step3.fieldsSection.rightField')}
           value={rightField}
           otherValue={leftField}
           onChange={setRightField}
+          availableFields={availableFields}
         />
       </div>
     </section>

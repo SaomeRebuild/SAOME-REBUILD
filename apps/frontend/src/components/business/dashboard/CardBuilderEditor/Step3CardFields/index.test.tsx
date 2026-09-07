@@ -18,9 +18,11 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
 import { Step3CardFields } from './index';
+import { filterCARD_FIELDS_BY_CARD_TYPE } from './filterCARD_FIELDS_BY_CARD_TYPE';
 import { useCardBuilderStore } from '../CardBuilderEditor.store';
+import { CARD_FIELDS } from '@saome/shared/constants/card-fields';
 
 // Mock i18n — vi.fn(key => key) makes t() return the key as text.
 // This lets us assert against key paths directly without depending on the
@@ -51,7 +53,9 @@ describe('Step3CardFields — section structure', () => {
 });
 
 describe('Step3CardFields — option list', () => {
-  it('each <select> has 7 options: 1 disabled placeholder + 6 fields (phone, email, memberLevel, birthday, visitCount, memberName)', () => {
+  it('each <select> has 7 options for a NON-stamp card type: 1 disabled placeholder + 6 common fields (phone, email, memberLevel, birthday, visitCount, memberName)', () => {
+    // Default cardType is null (Step 1 not yet picked) → falls into the
+    // 'non-stamp' branch, so the 3 stamp-group options are hidden.
     render(<Step3CardFields />);
     const leftSelect = screen.getByLabelText(
       'step3.fieldsSection.leftField',
@@ -63,8 +67,8 @@ describe('Step3CardFields — option list', () => {
     expect(leftSelect.options).toHaveLength(7);
     expect(rightSelect.options).toHaveLength(7);
 
-    const fieldKeys = ['phone', 'email', 'memberLevel', 'birthday', 'visitCount', 'memberName'];
-    for (const key of fieldKeys) {
+    const commonKeys = ['phone', 'email', 'memberLevel', 'birthday', 'visitCount', 'memberName'];
+    for (const key of commonKeys) {
       expect(leftSelect.querySelector(`option[value="${key}"]`)).toBeTruthy();
       expect(rightSelect.querySelector(`option[value="${key}"]`)).toBeTruthy();
     }
@@ -256,5 +260,140 @@ describe('Step3CardFields — dedup (disable picked option on the other side)', 
     expect(phoneOptionOnRight?.textContent).toContain(
       ' (step3.fieldsSection.disabledSuffix)',
     );
+  });
+});
+
+describe('Step3CardFields — conditional visibility (stamp_card / multipass)', () => {
+  /**
+   * 2026-09-08 — Stamp-specific display fields feature.
+   *
+   * The 3 new options (availableRewards / totalStamps / stampsRemaining)
+   * are tagged with `group: 'stamp'` in CARD_FIELDS and are only shown when
+   * the current cardType ∈ {stamp_card, multipass}. This block pins that
+   * conditional behavior so future refactors of the filter logic must
+   * update these tests too.
+   */
+
+  // Card types we expect to be filtered to the 6 common fields.
+  const NON_STAMP_CARD_TYPES = [
+    'cashback_card',
+    'reward_card',
+    'membership_card',
+    'discount_card',
+    'coupon_card',
+    'gift_card',
+  ] as const;
+
+  const STAMP_KEYS = ['availableRewards', 'totalStamps', 'stampsRemaining'] as const;
+
+  it.each(NON_STAMP_CARD_TYPES)(
+    'each <select> has 7 options for non-stamp cardType="%s" (no stamp-group options)',
+    (cardType) => {
+      useCardBuilderStore.getState().setCardType(cardType);
+      render(<Step3CardFields />);
+      const leftSelect = screen.getByLabelText(
+        'step3.fieldsSection.leftField',
+      ) as HTMLSelectElement;
+      const rightSelect = screen.getByLabelText(
+        'step3.fieldsSection.rightField',
+      ) as HTMLSelectElement;
+      // 1 placeholder + 6 common = 7
+      expect(leftSelect.options).toHaveLength(7);
+      expect(rightSelect.options).toHaveLength(7);
+      // No stamp keys rendered
+      for (const key of STAMP_KEYS) {
+        expect(leftSelect.querySelector(`option[value="${key}"]`)).toBeNull();
+        expect(rightSelect.querySelector(`option[value="${key}"]`)).toBeNull();
+      }
+    },
+  );
+
+  it('each <select> has 10 options for cardType="stamp_card" (1 placeholder + 6 common + 3 stamp)', () => {
+    useCardBuilderStore.getState().setCardType('stamp_card');
+    render(<Step3CardFields />);
+    const leftSelect = screen.getByLabelText(
+      'step3.fieldsSection.leftField',
+    ) as HTMLSelectElement;
+    const rightSelect = screen.getByLabelText(
+      'step3.fieldsSection.rightField',
+    ) as HTMLSelectElement;
+    // 1 placeholder + 6 common + 3 stamp = 10
+    expect(leftSelect.options).toHaveLength(10);
+    expect(rightSelect.options).toHaveLength(10);
+    for (const key of STAMP_KEYS) {
+      expect(leftSelect.querySelector(`option[value="${key}"]`)).toBeTruthy();
+      expect(rightSelect.querySelector(`option[value="${key}"]`)).toBeTruthy();
+    }
+  });
+
+  it('each <select> has 10 options for cardType="multipass" (1 placeholder + 6 common + 3 stamp)', () => {
+    useCardBuilderStore.getState().setCardType('multipass');
+    render(<Step3CardFields />);
+    const leftSelect = screen.getByLabelText(
+      'step3.fieldsSection.leftField',
+    ) as HTMLSelectElement;
+    const rightSelect = screen.getByLabelText(
+      'step3.fieldsSection.rightField',
+    ) as HTMLSelectElement;
+    expect(leftSelect.options).toHaveLength(10);
+    expect(rightSelect.options).toHaveLength(10);
+    for (const key of STAMP_KEYS) {
+      expect(leftSelect.querySelector(`option[value="${key}"]`)).toBeTruthy();
+      expect(rightSelect.querySelector(`option[value="${key}"]`)).toBeTruthy();
+    }
+  });
+
+  it('switching cardType from stamp_card to cashback_card hides the stamp-only options but PRESERVES a previously-picked stamp-only leftField value (no silent data loss)', () => {
+    // 1. User picks stamp_card, then picks availableRewards on the left.
+    useCardBuilderStore.getState().setCardType('stamp_card');
+    useCardBuilderStore.getState().setLeftField('availableRewards');
+    render(<Step3CardFields />);
+
+    const leftSelect = screen.getByLabelText(
+      'step3.fieldsSection.leftField',
+    ) as HTMLSelectElement;
+    expect(leftSelect.value).toBe('availableRewards');
+    expect(leftSelect.options).toHaveLength(10);
+
+    // 2. User changes cardType to cashback_card — store value is preserved,
+    //    but the dropdown option disappears (since 'availableRewards' is no
+    //    longer in `availableFields`). The browser renders the closed select
+    //    text as empty for an unmatched value, so we re-check the store
+    //    rather than the DOM.
+    //
+    // Wrap the store mutation in `act()` so React commits the re-render
+    // before the next DOM query. Without this, Zustand notifies subscribers
+    // asynchronously and the assertions below see the pre-mutation DOM.
+    act(() => {
+      useCardBuilderStore.getState().setCardType('cashback_card');
+    });
+
+    expect(useCardBuilderStore.getState().leftField).toBe('availableRewards');
+    // The component must re-render with 7 options (cashback_card branch).
+    // We re-query because the existing `leftSelect` reference may still
+    // point to the pre-render DOM (DOM nodes are usually reused, but the
+    // safer pattern is to re-query after `act`).
+    const leftSelect2 = screen.getByLabelText(
+      'step3.fieldsSection.leftField',
+    ) as HTMLSelectElement;
+    expect(leftSelect2.options).toHaveLength(7);
+    expect(
+      leftSelect2.querySelector<HTMLOptionElement>('option[value="availableRewards"]'),
+    ).toBeNull();
+  });
+
+  it('filterCARD_FIELDS_BY_CARD_TYPE helper: returns 6 common fields for null, non-stamp, or unmatched cardType; returns all 9 for stamp_card/multipass', () => {
+    // Pure-function assertion — bypasses React entirely. Keeps the filter
+    // contract pinned independently of any rendering quirks.
+    expect(filterCARD_FIELDS_BY_CARD_TYPE(null)).toHaveLength(6);
+    expect(filterCARD_FIELDS_BY_CARD_TYPE('cashback_card')).toHaveLength(6);
+    expect(filterCARD_FIELDS_BY_CARD_TYPE('gift_card')).toHaveLength(6);
+    expect(filterCARD_FIELDS_BY_CARD_TYPE('stamp_card')).toHaveLength(9);
+    expect(filterCARD_FIELDS_BY_CARD_TYPE('multipass')).toHaveLength(9);
+
+    // Sanity: the helper returns the same key set as CARD_FIELDS when given
+    // a stamp cardType — no entries are dropped by mistake.
+    const allKeys = filterCARD_FIELDS_BY_CARD_TYPE('stamp_card').map((f) => f.key).sort();
+    expect(allKeys).toEqual([...CARD_FIELDS].map((f) => f.key).sort());
   });
 });

@@ -18,13 +18,33 @@
  */
 
 /**
- * Canonical field keys. Order is user-visible in the dropdown.
+ * Field group — controls where the option is shown in the editor UI.
+ *
+ *   - 'common' : every card type sees this option in the Step 3 left/right
+ *                field selector (phone, email, member level, etc).
+ *   - 'stamp'  : only cardType ∈ {stamp_card, multipass} sees this option.
+ *                Stamp-specific data (point balance, stamp progress, etc.)
+ *                is meaningless on non-stamp cards, so these options are
+ *                hidden rather than rendered as a confusing placeholder.
+ *
+ * The `group` discriminator is the single source of truth for the
+ * conditional filter: `Step3CardFields` reads `group` and filters
+ * declaratively, so adding a new field requires editing only this file.
+ */
+export type CardFieldGroup = 'common' | 'stamp';
+
+/**
+ * Canonical field keys. Order is user-visible in the dropdown for common
+ * keys; stamp-group keys are appended after the common keys (and only shown
+ * when cardType ∈ {stamp_card, multipass}).
  *
  * IMPORTANT: Adding a new key requires syncing:
- *   1. cardFieldKeySchema in packages/shared/schemas/card.ts
+ *   1. cardFieldKeySchema in packages/shared/schemas/card.ts (auto-derived
+ *      from this array via `z.enum([...CARD_FIELD_KEYS])`)
  *   2. TemplateSettings.leftField/rightField interface (apps/backend/.../db/templates.ts)
  *   3. i18n step3.fieldsSection.fields.{key} in cardEditor.{zh-TW,en}.ts
- *   4. CARD_FIELDS entry below
+ *   4. CARD_FIELDS entry below (with the right `group` discriminator)
+ *   5. i18n fieldPreview.{key} in passCard.{zh-TW,en}.ts (label + value)
  */
 export const CARD_FIELD_KEYS = [
   'phone',
@@ -33,6 +53,9 @@ export const CARD_FIELD_KEYS = [
   'birthday',
   'visitCount',
   'memberName',
+  'availableRewards',
+  'totalStamps',
+  'stampsRemaining',
 ] as const;
 
 export type CardFieldKey = (typeof CARD_FIELD_KEYS)[number];
@@ -41,6 +64,12 @@ export interface CardFieldDefinition {
   key: CardFieldKey;
   /** i18n key path inside the 'cardEditor' namespace */
   labelKey: string;
+  /**
+   * Which card types see this option in the Step 3 selector.
+   * - 'common' : always shown
+   * - 'stamp'  : only shown when cardType ∈ {stamp_card, multipass}
+   */
+  group: CardFieldGroup;
 }
 
 /**
@@ -54,10 +83,15 @@ export interface CardFieldDefinition {
  * rule 023 § Namespace Naming).
  */
 export const CARD_FIELDS: readonly CardFieldDefinition[] = [
-  { key: 'phone', labelKey: 'step3.fieldsSection.fields.phone' },
-  { key: 'email', labelKey: 'step3.fieldsSection.fields.email' },
-  { key: 'memberLevel', labelKey: 'step3.fieldsSection.fields.memberLevel' },
-  { key: 'birthday', labelKey: 'step3.fieldsSection.fields.birthday' },
-  { key: 'visitCount', labelKey: 'step3.fieldsSection.fields.visitCount' },
-  { key: 'memberName', labelKey: 'step3.fieldsSection.fields.memberName' },
+  // ── common: every card type ────────────────────────────────────────────
+  { key: 'phone',       group: 'common', labelKey: 'step3.fieldsSection.fields.phone' },
+  { key: 'email',       group: 'common', labelKey: 'step3.fieldsSection.fields.email' },
+  { key: 'memberLevel', group: 'common', labelKey: 'step3.fieldsSection.fields.memberLevel' },
+  { key: 'birthday',    group: 'common', labelKey: 'step3.fieldsSection.fields.birthday' },
+  { key: 'visitCount',  group: 'common', labelKey: 'step3.fieldsSection.fields.visitCount' },
+  { key: 'memberName',  group: 'common', labelKey: 'step3.fieldsSection.fields.memberName' },
+  // ── stamp: only stamp_card / multipass ─────────────────────────────────
+  { key: 'availableRewards', group: 'stamp', labelKey: 'step3.fieldsSection.fields.availableRewards' },
+  { key: 'totalStamps',      group: 'stamp', labelKey: 'step3.fieldsSection.fields.totalStamps' },
+  { key: 'stampsRemaining',  group: 'stamp', labelKey: 'step3.fieldsSection.fields.stampsRemaining' },
 ];

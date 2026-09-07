@@ -103,7 +103,7 @@ export default {
     },
     fieldsSection: {
       title: 'Display Fields',
-      hint: 'Choose two fields to display on the card face. Available options will change based on the card type selected in Step 1.',
+      hint: 'Choose two fields to display on the card face. When "Stamp Card" or "Multipass" is selected, stamp-related fields (Available Rewards, Total Stamps, Stamps Remaining) are also available.',
       leftField: 'Left Field',
       rightField: 'Right Field',
       placeholder: 'Select a field',
@@ -115,6 +115,10 @@ export default {
         birthday: 'Birthday',
         visitCount: 'Visit Count',
         memberName: 'Member Name',
+        // Stamp-only fields — only shown for stamp_card / multipass (see card-fields.ts `group` filter)
+        availableRewards: 'Available Rewards',
+        totalStamps: 'Total Stamps',
+        stampsRemaining: 'Stamps Remaining',
       },
     },
     // ===== Stamp grid — added 2026-09-04 =====
