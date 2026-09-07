@@ -136,6 +136,34 @@ export const templateSettingsSchema = z.object({
     .max(1000)
     .nullable()
     .optional(),
+  // ===== Step 6 — 卡片邏輯 (2026-09-07, stamp_card / multipass only) =====
+  // Mirrors `shared/templateSettingsSchema.stampAccrualMode / rewardName /
+  // rewardType / rewardValue / maxDiscountAmount`. Single source of truth:
+  //   - packages/shared/schemas/card.ts (Rule 019 § 4.1 layer 1)
+  //   - packages/shared/constants/stamp-card.ts (length / enum constants)
+  //
+  // All fields are `.optional()` because Step 6 is conditional on cardType
+  // (only stamp_card / multipass). Drafts created before this commit will
+  // have these keys absent; loadSettings defaults them to null.
+  stampAccrualMode: z
+    .enum(['per_stamp', 'per_visit', 'per_spend'])
+    .nullable()
+    .optional(),
+  // Max 40 matches REWARD_NAME_MAX_LENGTH in shared/constants/stamp-card.ts.
+  rewardName: z.string().max(40).optional(),
+  rewardType: z
+    .enum(['amount_off', 'percent_off'])
+    .nullable()
+    .optional(),
+  rewardValue: z.number().positive().nullable().optional(),
+  // `.nullable()` because store uses null = "無上限" (percent_off mode only).
+  // `.nullable()` is placed BEFORE .positive() so null short-circuits the positive check.
+  maxDiscountAmount: z.number().min(0).nullable().optional(),
+  // ===== Step 6 — Accrual thresholds (2026-09-07) =====
+  stampsPerVisitCount: z.number().int().min(1).nullable().optional(),
+  stampsPerVisitStamps: z.number().int().min(1).nullable().optional(),
+  stampsPerSpendAmount: z.number().positive().nullable().optional(),
+  stampsPerSpendStamps: z.number().int().min(1).nullable().optional(),
 });
 
 export type TemplateSettings = z.infer<typeof templateSettingsSchema>;

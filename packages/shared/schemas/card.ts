@@ -205,6 +205,70 @@ export const templateSettingsSchema = z.object({
     .max(1000)
     .nullable()
     .optional(),
+  // ===== Step 6 — 卡片邏輯 (2026-09-07, stamp_card / multipass only) =====
+  // Mirrors mu-plugins `_stamp_accrual_type` + `_stamp_reward_tiers_json`
+  // (collapsed into a single tier — the active reward; mu-plugins stores
+  // an array, but SAOME-REBUILD stores a single tier to keep the editor
+  // simple and match the single-reward user spec 2026-09-07).
+  //
+  // Field-level limits live in `@saome/shared/constants/stamp-card`:
+  //   - ACCRUAL_MODES / REWARD_TYPES: the enum values
+  //   - REWARD_NAME_MAX_LENGTH = 40: matches PassCreator `title` cap
+  //   - REWARD_VALUE bounds differ by `rewardType`:
+  //       amount_off → > 0 (currency-agnostic number)
+  //       percent_off → [1, 100] integer percentage
+  //   - MAX_DISCOUNT_AMOUNT_MIN = 0; null means "無上限"
+  //
+  // Cross-references:
+  //   - packages/shared/constants/stamp-card.ts (single source of truth)
+  //   - packages/shared/schemas/cardBuilder.ts (cardTypeExtensions.stamp_card / .multipass)
+  //   - apps/backend/src/modules/cards/schemas/request.ts (mirror)
+  //   - apps/backend/src/modules/cards/db/templates.ts (TemplateSettings interface)
+  /**
+   * 蓋章模式: per_stamp (手動蓋章) / per_visit (來訪蓋章) / per_spend (消費蓋章).
+   * Mirrors mu-plugins `_stamp_accrual_type` (camelCased to align with TS convention).
+   * `.nullable().optional()` — null = not set (frontend store uses null for "unselected").
+   */
+  stampAccrualMode: z.enum(['per_stamp', 'per_visit', 'per_spend']).nullable().optional(),
+  /**
+   * 獎勵名稱 (例: "10元折價活動" 或 "$10 off coupon"). Max REWARD_NAME_MAX_LENGTH=40.
+   * Mirrors mu-plugins `_stamp_reward_tiers_json[0].name`.
+   */
+  rewardName: z.string().max(40).optional(),
+  /**
+   * 獎勵類型: 訂單折抵現金 (amount_off) / 訂單折抵百分比 (percent_off).
+   * Mirrors mu-plugins `_stamp_reward_tiers_json[0].reward_type`.
+   * `.nullable().optional()` — null = not set (frontend store uses null for "unselected").
+   */
+  rewardType: z.enum(['amount_off', 'percent_off']).nullable().optional(),
+  /**
+   * 折抵金額 (amount_off) 或百分比整數 (percent_off).
+   * Bound check is performed by `setRewardValue` setter (拒絕 ≤ 0);
+   * zod uses `.positive()` as a backend double-check.
+   * Mirrors mu-plugins `_stamp_reward_tiers_json[0].reward_value`.
+   */
+  rewardValue: z.number().positive().nullable().optional(),
+  /**
+   * 最高折抵金額 (僅 percent_off 模式有意義; null = 無上限).
+   * zod `.nullable()` matches store's `number | null` shape (null = no ceiling).
+   * Always validated as ≥ MAX_DISCOUNT_AMOUNT_MIN=0 by `setMaxDiscountAmount`.
+   * Mirrors mu-plugins `_stamp_reward_tiers_json[0].max_discount_amount`.
+   */
+  maxDiscountAmount: z.number().min(0).nullable().optional(),
+  /**
+   * 來訪門檻（僅 per_visit 模式有意義）— 每 N 次拜訪可獲得 M 個蓋章。
+   * stampsPerVisitCount = N（拜訪次數），stampsPerVisitStamps = M（獲得蓋章數）。
+   * 2026-09-07 新增。
+   */
+  stampsPerVisitCount: z.number().int().min(1).nullable().optional(),
+  stampsPerVisitStamps: z.number().int().min(1).nullable().optional(),
+  /**
+   * 消費門檻（僅 per_spend 模式有意義）— 每消費 N 元可獲得 M 個蓋章。
+   * stampsPerSpendAmount = N（消費金額），stampsPerSpendStamps = M（獲得蓋章數）。
+   * 2026-09-07 新增。
+   */
+  stampsPerSpendAmount: z.number().positive().nullable().optional(),
+  stampsPerSpendStamps: z.number().int().min(1).nullable().optional(),
 });
 
 export type TemplateSettings = z.infer<typeof templateSettingsSchema>;

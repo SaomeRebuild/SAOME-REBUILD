@@ -169,6 +169,57 @@ export interface TemplateSettings {
   // that pre-date Migration 017 (rename notificationRadius → locationsMaxDistance).
   // Frontend no longer writes this key. New writes use `locationsMaxDistance`.
   notificationRadius?: number | null;
+  // ===== Step 6 — 集點卡邏輯 (Rule 019 § 4.1, layer 3 of 4) =====
+  // Mirrors `shared/templateSettingsSchema.stampAccrualMode / rewardName /
+  // rewardType / rewardValue / maxDiscountAmount`. Step 6 plan 2026-09-07 —
+  // first card-type-specific logic editor; the dispatcher lives at
+  // `apps/frontend/src/components/business/dashboard/CardBuilderEditor/Step6CardLogic/`.
+  /**
+   * 蓋章模式: per_stamp (手動蓋章) / per_visit (來訪蓋章) / per_spend (消費蓋章).
+   * Mirrors mu-plugins `_stamp_accrual_type` (camelCased).
+   * Only used when cardType === 'stamp_card' | 'multipass'.
+   * Type includes `| null` because zod schema uses `.nullable().optional()`
+   * (frontend store uses null for "unselected").
+   */
+  stampAccrualMode?: 'per_stamp' | 'per_visit' | 'per_spend' | null;
+  /**
+   * 獎勵名稱 (例: "10元折價活動"). Max 40 chars per REWARD_NAME_MAX_LENGTH.
+   * Mirrors mu-plugins `_stamp_reward_tiers_json[0].name`.
+   */
+  rewardName?: string;
+  /**
+   * 獎勵類型: amount_off (訂單折抵現金) / percent_off (訂單折抵百分比).
+   * Mirrors mu-plugins `_stamp_reward_tiers_json[0].reward_type`.
+   * Type includes `| null` because zod schema uses `.nullable().optional()`.
+   */
+  rewardType?: 'amount_off' | 'percent_off' | null;
+  /**
+   * 折抵金額 (amount_off) 或百分比整數 (percent_off).
+   * Mirrors mu-plugins `_stamp_reward_tiers_json[0].reward_value`.
+   * `.positive()` is the contract — UI `setRewardValue` rejects ≤ 0.
+   * Type includes `| null` because zod schema uses `.nullable().optional()`.
+   */
+  rewardValue?: number | null;
+  /**
+   * 最高折抵金額 (僅 percent_off 模式有意義). `null` = 無上限.
+   * Mirrors mu-plugins `_stamp_reward_tiers_json[0].max_discount_amount`.
+   */
+  maxDiscountAmount?: number | null;
+  // ===== Step 6 — Accrual thresholds (2026-09-07) =====
+  /**
+   * 來訪門檻：每 stampsPerVisitCount 次拜訪可獲得 stampsPerVisitStamps 個蓋章。
+   * stampsPerVisitCount ∈ [1, ∞); stampsPerVisitStamps ∈ [1, ∞)。
+   * 2026-09-07 新增。
+   */
+  stampsPerVisitCount?: number | null;
+  stampsPerVisitStamps?: number | null;
+  /**
+   * 消費門檻：每消費 stampsPerSpendAmount 元可獲得 stampsPerSpendStamps 個蓋章。
+   * stampsPerSpendAmount > 0; stampsPerSpendStamps ∈ [1, ∞)。
+   * 2026-09-07 新增。
+   */
+  stampsPerSpendAmount?: number | null;
+  stampsPerSpendStamps?: number | null;
   [key: string]: unknown;
 }
 

@@ -19,7 +19,12 @@ import {
   RELEVANT_TEXT_MAX_LENGTH,
   LOCATIONS_MAX_DISTANCE_MIN,
   LOCATIONS_MAX_DISTANCE_MAX,
-} from '@saome/shared/constants/card-back-fields';
+  ACCRUAL_MODES,
+  REWARD_NAME_MAX_LENGTH,
+  MAX_DISCOUNT_AMOUNT_MAX,
+  type AccrualMode,
+  type RewardType,
+} from '@saome/shared/constants';
 import type { LocationInput } from '@saome/shared/logic/locations';
 import { normalizeHex } from '@saome/shared/logic/color';
 import { unwrapCardSettings } from '@saome/shared/logic/cardSettings';
@@ -322,6 +327,63 @@ interface CardBuilderState {
    * the workspace enforces "≥ 1 row" via `isStep5Valid()` instead.
    */
   removeLocation: (idx: number) => void;
+
+  // ===== Step 6 — 集點卡邏輯 (2026-09-07, stamp_card / multipass only) =====
+  // UI dispatcher (`Step6CardLogic`) conditionally renders stamp-card editor
+  // when `cardType === 'stamp_card' | 'multipass'`. All other card types
+  // see a ComingSoon placeholder. Values persist to template_settings via the
+  // standard onNext save path in CardBuilderEditorWorkspace.
+  //
+  // Guards:
+  //   - `setRewardType` clears `rewardValue` and `maxDiscountAmount` when
+  //     type changes (amount vs percent have different valid ranges).
+  //   - `setRewardValue` rejects ≤ 0 (backend zod `.positive()` is the
+  //     double-check on save).
+  //   - `setMaxDiscountAmount` clamps to [0, MAX_DISCOUNT_AMOUNT_MAX].
+  /** 蓋章方式: per_stamp (手動) / per_visit (來訪) / per_spend (消費). null = 未選. */
+  stampAccrualMode: AccrualMode | null;
+  /** 獎勵名稱 (例: "10元折價活動"). max 40 chars enforced by `setRewardName`. */
+  rewardName: string;
+  /** 獎勵類型: amount_off (固定金額) / percent_off (百分比). null = 未選. */
+  rewardType: RewardType | null;
+  /** 折抵值 (amount_off → 金額; percent_off → 百分比整數). null = 未填. */
+  rewardValue: number | null;
+  /** 最高折抵上限 (僅 percent_off 有意義). null = 無上限. */
+  maxDiscountAmount: number | null;
+  /** 來訪門檻 — 每 N 次拜訪可獲得 M 個蓋章. stampsPerVisitCount ∈ [1, ∞). */
+  stampsPerVisitCount: number | null;
+  /** 來訪門檻 — stampsPerVisitStamps ∈ [1, ∞). */
+  stampsPerVisitStamps: number | null;
+  /** 消費門檻 — 每消費 N 元可獲得 M 個蓋章. stampsPerSpendAmount > 0. */
+  stampsPerSpendAmount: number | null;
+  /** 消費門檻 — stampsPerSpendStamps ∈ [1, ∞). */
+  stampsPerSpendStamps: number | null;
+
+  /** 設定蓋章方式. null = 未選. */
+  setStampAccrualMode: (mode: AccrualMode | null) => void;
+  /** 設定獎勵名稱. Truncates at REWARD_NAME_MAX_LENGTH=40. */
+  setRewardName: (name: string) => void;
+  /**
+   * 設定獎勵類型. 順便清空 `rewardValue` 和 `maxDiscountAmount`
+   * （type 變了之後舊值不合新規範圍）。
+   */
+  setRewardType: (type: RewardType | null) => void;
+  /**
+   * 設定折抵值. Rejects ≤ 0 — returns early without updating state.
+   * Backend zod `.positive()` is the authoritative gate on save.
+   */
+  setRewardValue: (value: number | null) => void;
+  /** 設定最高折抵上限. null = 無上限. Clamps to [0, MAX_DISCOUNT_AMOUNT_MAX]. */
+  setMaxDiscountAmount: (amount: number | null) => void;
+  /** 設定來訪門檻（拜訪次數）. Rejects ≤ 0. null = 未填. */
+  setStampsPerVisitCount: (count: number | null) => void;
+  /** 設定來訪門檻（獲得蓋章數）. Rejects ≤ 0. null = 未填. */
+  setStampsPerVisitStamps: (stamps: number | null) => void;
+  /** 設定消費門檻（消費金額）. Rejects ≤ 0. null = 未填. */
+  setStampsPerSpendAmount: (amount: number | null) => void;
+  /** 設定消費門檻（獲得蓋章數）. Rejects ≤ 0. null = 未填. */
+  setStampsPerSpendStamps: (stamps: number | null) => void;
+
   /**
    * 從既有 template 的 settings 載入 store.
    *
@@ -508,6 +570,19 @@ const initialState = {
   // at first render; addLocation appends, removeLocation deletes (no refill).
   // Each row shape: {name, latitude, longitude, relevantText}.
   locations: [],
+
+  // ===== Step 6 — 集點卡邏輯 (2026-09-07) =====
+  // Defaults: all null/empty — user must fill in before advancing.
+  stampAccrualMode: null,
+  rewardName: '',
+  rewardType: null,
+  rewardValue: null,
+  maxDiscountAmount: null,
+  // Accrual thresholds (2026-09-07)
+  stampsPerVisitCount: null,
+  stampsPerVisitStamps: null,
+  stampsPerSpendAmount: null,
+  stampsPerSpendStamps: null,
 };
 
 /**
@@ -686,6 +761,52 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
       locations: state.locations.filter((_, i) => i !== idx),
     })),
 
+  // ===== Step 6 — 集點卡邏輯 setters (2026-09-07) =====
+  setStampAccrualMode: (mode) => set({ stampAccrualMode: mode }),
+  setRewardName: (name) =>
+    set({ rewardName: name.slice(0, REWARD_NAME_MAX_LENGTH) }),
+  /** setRewardType clears rewardValue + maxDiscountAmount when type changes (old values are invalid for new type's range). */
+  setRewardType: (type) =>
+    set({ rewardType: type, rewardValue: null, maxDiscountAmount: null }),
+  /** Reject ≤ 0; backend zod `.positive()` is the authoritative gate on save. */
+  setRewardValue: (value) => {
+    if (value !== null && (typeof value !== 'number' || value <= 0 || !Number.isFinite(value))) {
+      return;
+    }
+    set({ rewardValue: value });
+  },
+  /** null = 無上限. Clamps to [0, MAX_DISCOUNT_AMOUNT_MAX]. */
+  setMaxDiscountAmount: (amount) => {
+    if (amount === null) { set({ maxDiscountAmount: null }); return; }
+    if (typeof amount !== 'number' || !Number.isFinite(amount)) return;
+    const clamped = Math.max(0, Math.min(amount, MAX_DISCOUNT_AMOUNT_MAX));
+    set({ maxDiscountAmount: clamped });
+  },
+  /** Reject ≤ 0. null = 未填. */
+  setStampsPerVisitCount: (count) => {
+    if (count === null) { set({ stampsPerVisitCount: null }); return; }
+    if (typeof count !== 'number' || !Number.isFinite(count) || count <= 0) return;
+    set({ stampsPerVisitCount: Math.round(count) });
+  },
+  /** Reject ≤ 0. null = 未填. */
+  setStampsPerVisitStamps: (stamps) => {
+    if (stamps === null) { set({ stampsPerVisitStamps: null }); return; }
+    if (typeof stamps !== 'number' || !Number.isFinite(stamps) || stamps <= 0) return;
+    set({ stampsPerVisitStamps: Math.round(stamps) });
+  },
+  /** Reject ≤ 0. null = 未填. */
+  setStampsPerSpendAmount: (amount) => {
+    if (amount === null) { set({ stampsPerSpendAmount: null }); return; }
+    if (typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0) return;
+    set({ stampsPerSpendAmount: amount });
+  },
+  /** Reject ≤ 0. null = 未填. */
+  setStampsPerSpendStamps: (stamps) => {
+    if (stamps === null) { set({ stampsPerSpendStamps: null }); return; }
+    if (typeof stamps !== 'number' || !Number.isFinite(stamps) || stamps <= 0) return;
+    set({ stampsPerSpendStamps: Math.round(stamps) });
+  },
+
   loadSettings: (settings) => {
     // Bug #8.5 defensive: settings may be object / JSON string / array-of-partials
     // (legacy corruption). unwrapCardSettings handles all cases.
@@ -788,6 +909,64 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
           );
         })(),
         locations: sanitizeLocations(resolved?.locations, state.locations),
+        // ===== Step 6 — 集點卡邏輯 (2026-09-07) =====
+        stampAccrualMode: (() => {
+          const raw = resolved?.stampAccrualMode;
+          if (raw === null) return null;
+          if (typeof raw === 'string' && ACCRUAL_MODES.includes(raw as AccrualMode)) {
+            return raw as AccrualMode;
+          }
+          return state.stampAccrualMode;
+        })(),
+        rewardName: (() => {
+          const raw = resolved?.rewardName;
+          if (typeof raw === 'string') return raw.slice(0, REWARD_NAME_MAX_LENGTH);
+          return state.rewardName;
+        })(),
+        rewardType: (() => {
+          const raw = resolved?.rewardType;
+          if (raw === null) return null;
+          if (raw === 'amount_off' || raw === 'percent_off') return raw;
+          return state.rewardType;
+        })(),
+        rewardValue: (() => {
+          const raw = resolved?.rewardValue;
+          if (raw === null) return null;
+          if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) return raw;
+          return state.rewardValue;
+        })(),
+        maxDiscountAmount: (() => {
+          const raw = resolved?.maxDiscountAmount;
+          if (raw === null) return null;
+          if (typeof raw === 'number' && Number.isFinite(raw) && raw >= 0) {
+            return Math.min(raw, MAX_DISCOUNT_AMOUNT_MAX);
+          }
+          return state.maxDiscountAmount;
+        })(),
+        stampsPerVisitCount: (() => {
+          const raw = resolved?.stampsPerVisitCount;
+          if (raw === null) return null;
+          if (typeof raw === 'number' && Number.isFinite(raw) && raw >= 1) return Math.round(raw);
+          return state.stampsPerVisitCount;
+        })(),
+        stampsPerVisitStamps: (() => {
+          const raw = resolved?.stampsPerVisitStamps;
+          if (raw === null) return null;
+          if (typeof raw === 'number' && Number.isFinite(raw) && raw >= 1) return Math.round(raw);
+          return state.stampsPerVisitStamps;
+        })(),
+        stampsPerSpendAmount: (() => {
+          const raw = resolved?.stampsPerSpendAmount;
+          if (raw === null) return null;
+          if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) return raw;
+          return state.stampsPerSpendAmount;
+        })(),
+        stampsPerSpendStamps: (() => {
+          const raw = resolved?.stampsPerSpendStamps;
+          if (raw === null) return null;
+          if (typeof raw === 'number' && Number.isFinite(raw) && raw >= 1) return Math.round(raw);
+          return state.stampsPerSpendStamps;
+        })(),
       };
     });
   },

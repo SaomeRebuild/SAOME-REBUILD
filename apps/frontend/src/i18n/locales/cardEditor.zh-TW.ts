@@ -238,6 +238,89 @@ export default {
   // Step 6: 卡片邏輯
   step6: {
     title: '卡片邏輯',
+    // 進入 Step 6 時的說明
+    intro: '設定此卡片的蓋章與獎勵規則',
+    introHint: '集點卡的獎勵發放方式，會員集滿指定印章數量後即可領取。',
+    // 集點卡專用（StampCardLogic 子模組）
+    stamp: {
+      accrualModeTitle: '蓋章方式',
+      accrualModeDescription: '選擇此卡要採用哪一種蓋章方式',
+      // 三種模式
+      modes: {
+        per_stamp: {
+          label: '基於蓋章',
+          helper: '由店員手動在顧客的卡片上蓋印章。適用於實體店面消費滿額後，給予印章鼓勵再訪。',
+        },
+        per_visit: {
+          label: '基於來訪',
+          helper: '顧客每次到訪（出示卡片或掃描 QR 碼）即自動獲得印章。適用於健身房、診所、補習班等需要計算到訪次數的場所。',
+        },
+        per_spend: {
+          label: '基於消費',
+          helper: '顧客每次消費達指定金額即自動獲得印章，金額由消費記錄系統決定。適用於連鎖餐廳、零售通路等。',
+        },
+      },
+      // 獎勵設定
+      rewardNameTitle: '獎勵名稱',
+      rewardNamePlaceholder: '例如：10元折價活動 或 8% 門市折扣',
+      rewardNameHelper: '這會顯示在顧客的卡片上，例如「集滿可兌換 10% 門市折扣」。',
+      rewardNameCounter: '{{count}} / 40',
+      rewardNameEmptyError: '請輸入獎勵名稱',
+      rewardTypeTitle: '獎勵類型',
+      rewardTypePlaceholder: '請選擇獎勵類型',
+      rewardTypeAmount: '訂單折抵現金',
+      rewardTypeAmountHint: '例如：消費滿額可折抵 10 元',
+      rewardTypePercent: '訂單折抵百分比',
+      rewardTypePercentHint: '例如：集滿可享 8% 折扣',
+      rewardValueLabel: '獎勵數量',
+      rewardValuePlaceholderAmount: '輸入折抵金額，例如 10',
+      rewardValuePlaceholderPercent: '輸入折抵百分比，例如 8',
+      rewardValueAmountUnit: '元',
+      rewardValuePercentUnit: '%',
+      rewardValueEmptyError: '請輸入獎勵數量',
+      rewardValueInvalidError: '請輸入有效的數字',
+      rewardValueTooSmallError: '折抵百分比需大於 0',
+      rewardValueTooLargeError: '折抵百分比不能超過 100',
+      maxDiscountTitle: '最高折抵金額',
+      maxDiscountDescription: '當選擇「折抵百分比」時，可設定每筆消費的最高折抵上限。',
+      maxDiscountPlaceholder: '例如：50（留空表示無上限）',
+      maxDiscountOptional: '（選填，留空表示無上限）',
+      maxDiscountHelper: '設定上限可避免大筆消費時折扣金額過高，確保店家利潤。',
+      maxDiscountZeroIsNoCap: '輸入 0 = 無上限',
+      // 門檻設定 — 基於拜訪 / 基於消費（2026-09-07）
+      accrualThreshold: {
+        perVisitTitle: '來訪門檻',
+        perVisitVisitsLabel: '次拜訪',
+        perVisitStampsLabel: '個蓋章',
+        perVisitHelper: '每 N 次拜訪可獲得 M 個蓋章。',
+        perSpendTitle: '消費門檻',
+        perSpendAmountLabel: '元消費',
+        perSpendStampsLabel: '個蓋章',
+        perSpendHelper: '每消費 N 元可獲得 M 個蓋章。',
+        requiredError: '請輸入門檻值',
+        visitsMinError: '拜訪次數需大於 0',
+        stampsMinError: '蓋章數量需大於 0',
+        amountMinError: '消費金額需大於 0',
+      },
+      // 預覽說明（StampCardLogicPreview 用）
+      preview: {
+        modeUnknown: '請選擇蓋章方式',
+        rewardUnknown: '請填寫獎勵名稱',
+        amountReward: '${{amount}} 元折價',
+        percentReward: '{{percent}}% 折扣',
+        amountWithCap: '${{amount}} 元折價，最高折抵 ${{cap}} 元',
+        percentWithCap: '{{percent}}% 折扣，最高折抵 ${{cap}} 元',
+        percentNoCap: '{{percent}}% 折扣，無折抵上限',
+        template: '集滿 {{total}} 個印章可兌換 {{reward}}',
+        templateWithCap: '集滿 {{total}} 個印章可兌換 {{reward}}',
+        stampUnit: '個印章',
+      },
+    },
+    // 非集點卡的提示（其他卡種尚未實作）
+    comingSoon: {
+      otherCardTypes: '此卡種的卡片邏輯尚未實作。',
+      hint: '選擇「集點卡」或「多通卡」即可設定蓋章與獎勵規則。',
+    },
   },
   // Step 7: 客製化桌牌
   step7: {

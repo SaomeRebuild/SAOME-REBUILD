@@ -38,6 +38,20 @@ export const cardTypeExtensions = {
      * Stamp icon manifest id. Mirrors `shared/templateSettingsSchema.stampIconId`.
      */
     stampIconId: z.string().optional(),
+    // ===== Step 6 — 集點卡邏輯 (2026-09-07) =====
+    // Mirrors `shared/templateSettingsSchema.stampAccrualMode / rewardName /
+    // rewardType / rewardValue / maxDiscountAmount`. Stamp card is the first
+    // card type with a Step 6 sub-module (see `Step6CardLogic` dispatcher).
+    stampAccrualMode: z.enum(['per_stamp', 'per_visit', 'per_spend']).optional(),
+    rewardName: z.string().max(40).optional(),
+    rewardType: z.enum(['amount_off', 'percent_off']).optional(),
+    rewardValue: z.number().positive().optional(),
+    maxDiscountAmount: z.number().min(0).nullable().optional(),
+    // ===== Step 6 — Accrual thresholds (2026-09-07) =====
+    stampsPerVisitCount: z.number().int().min(1).nullable().optional(),
+    stampsPerVisitStamps: z.number().int().min(1).nullable().optional(),
+    stampsPerSpendAmount: z.number().positive().nullable().optional(),
+    stampsPerSpendStamps: z.number().int().min(1).nullable().optional(),
   }),
   gift_card: z.object({}),
   membership_card: z.object({}),
@@ -46,10 +60,24 @@ export const cardTypeExtensions = {
    * render the same `<StampGridPreview>` in the preview strip). Mirrors
    * `shared/templateSettingsSchema.stampGridRows / stampIconId`.
    * Stamp grid feature 2026-09-04.
+   *
+   * 2026-09-07 refactor: also shares the Step 6 stamp card logic extension
+   * (multipass = 多通卡 = a multi-pass stamp card; reward rules are the same).
    */
   multipass: z.object({
     stampGridRows: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).optional(),
     stampIconId: z.string().optional(),
+    // ===== Step 6 — 集點卡邏輯 (2026-09-07, multipass 共用) =====
+    stampAccrualMode: z.enum(['per_stamp', 'per_visit', 'per_spend']).optional(),
+    rewardName: z.string().max(40).optional(),
+    rewardType: z.enum(['amount_off', 'percent_off']).optional(),
+    rewardValue: z.number().positive().optional(),
+    maxDiscountAmount: z.number().min(0).nullable().optional(),
+    // ===== Step 6 — Accrual thresholds (2026-09-07, multipass 共用) =====
+    stampsPerVisitCount: z.number().int().min(1).nullable().optional(),
+    stampsPerVisitStamps: z.number().int().min(1).nullable().optional(),
+    stampsPerSpendAmount: z.number().positive().nullable().optional(),
+    stampsPerSpendStamps: z.number().int().min(1).nullable().optional(),
   }),
 } as const;
 

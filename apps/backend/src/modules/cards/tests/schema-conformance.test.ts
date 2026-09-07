@@ -205,4 +205,117 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
     const field = sharedTemplateSettingsSchema.shape.locationsMaxDistance;
     expect(() => field.parse(150.5)).toThrow();
   });
+
+  // ===== Step 6 — 集點卡邏輯 (Rule 019 § 4.1, plan 2026-09-07) =====
+
+  it('shared schema has the stampAccrualMode field (Rule 019 § 4.1 — Step 6 stamp card logic)', () => {
+    expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('stampAccrualMode');
+  });
+
+  it('local schema has the stampAccrualMode field (4-layer sync — Layer 2, Step 6)', () => {
+    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('stampAccrualMode');
+  });
+
+  it('shared stampAccrualMode accepts per_stamp | per_visit | per_spend', () => {
+    const field = sharedTemplateSettingsSchema.shape.stampAccrualMode;
+    expect(field.parse('per_stamp')).toBe('per_stamp');
+    expect(field.parse('per_visit')).toBe('per_visit');
+    expect(field.parse('per_spend')).toBe('per_spend');
+  });
+
+  it('shared stampAccrualMode rejects invalid values', () => {
+    const field = sharedTemplateSettingsSchema.shape.stampAccrualMode;
+    expect(() => field.parse('manual')).toThrow();
+    expect(() => field.parse('perSpend')).toThrow();
+    // .nullable().optional() — accepts undefined AND null (frontend store uses null for "unselected")
+    expect(field.parse(null)).toBe(null);
+    expect(field.parse(undefined)).toBe(undefined);
+  });
+
+  it('shared schema has the rewardName field (Rule 019 § 4.1 — Step 6 stamp card logic)', () => {
+    expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('rewardName');
+  });
+
+  it('local schema has the rewardName field (4-layer sync — Layer 2, Step 6)', () => {
+    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('rewardName');
+  });
+
+  it('shared rewardName caps at 40 chars', () => {
+    const field = sharedTemplateSettingsSchema.shape.rewardName;
+    expect(() => field.parse('x'.repeat(41))).toThrow();
+    expect(field.parse('x'.repeat(40))).toBe('x'.repeat(40));
+  });
+
+  it('shared schema has the rewardType field (Rule 019 § 4.1 — Step 6 stamp card logic)', () => {
+    expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('rewardType');
+  });
+
+  it('local schema has the rewardType field (4-layer sync — Layer 2, Step 6)', () => {
+    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('rewardType');
+  });
+
+  it('shared rewardType accepts amount_off | percent_off', () => {
+    const field = sharedTemplateSettingsSchema.shape.rewardType;
+    expect(field.parse('amount_off')).toBe('amount_off');
+    expect(field.parse('percent_off')).toBe('percent_off');
+  });
+
+  it('shared rewardType rejects invalid values', () => {
+    const field = sharedTemplateSettingsSchema.shape.rewardType;
+    expect(() => field.parse('$')).toThrow();
+    // .nullable().optional() — accepts undefined AND null (frontend store uses null for "unselected")
+    expect(field.parse(null)).toBe(null);
+    expect(field.parse(undefined)).toBe(undefined);
+  });
+
+  it('shared schema has the rewardValue field (Rule 019 § 4.1 — Step 6 stamp card logic)', () => {
+    expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('rewardValue');
+  });
+
+  it('local schema has the rewardValue field (4-layer sync — Layer 2, Step 6)', () => {
+    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('rewardValue');
+  });
+
+  it('shared rewardValue rejects zero and negative numbers', () => {
+    const field = sharedTemplateSettingsSchema.shape.rewardValue;
+    expect(() => field.parse(0)).toThrow();
+    expect(() => field.parse(-5)).toThrow();
+  });
+
+  it('shared rewardValue accepts positive numbers (amount or percent)', () => {
+    const field = sharedTemplateSettingsSchema.shape.rewardValue;
+    expect(field.parse(0.01)).toBe(0.01);
+    expect(field.parse(10)).toBe(10);
+    expect(field.parse(100)).toBe(100);
+  });
+
+  it('shared schema has the maxDiscountAmount field (Rule 019 § 4.1 — Step 6 stamp card logic)', () => {
+    expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('maxDiscountAmount');
+  });
+
+  it('local schema has the maxDiscountAmount field (4-layer sync — Layer 2, Step 6)', () => {
+    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('maxDiscountAmount');
+  });
+
+  it('shared maxDiscountAmount accepts null (no ceiling sentinel)', () => {
+    const field = sharedTemplateSettingsSchema.shape.maxDiscountAmount;
+    expect(field.parse(null)).toBe(null);
+    expect(field.parse(undefined)).toBe(undefined);
+  });
+
+  it('shared maxDiscountAmount accepts 0 (zero ceiling)', () => {
+    const field = sharedTemplateSettingsSchema.shape.maxDiscountAmount;
+    expect(field.parse(0)).toBe(0);
+  });
+
+  it('shared maxDiscountAmount accepts positive numbers', () => {
+    const field = sharedTemplateSettingsSchema.shape.maxDiscountAmount;
+    expect(field.parse(10)).toBe(10);
+    expect(field.parse(1_000_000)).toBe(1_000_000);
+  });
+
+  it('shared maxDiscountAmount rejects negative numbers', () => {
+    const field = sharedTemplateSettingsSchema.shape.maxDiscountAmount;
+    expect(() => field.parse(-1)).toThrow();
+  });
 });

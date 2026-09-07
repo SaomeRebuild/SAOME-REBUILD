@@ -238,6 +238,92 @@ export default {
   // Step 6: Card Logic
   step6: {
     title: 'Card Logic',
+    // Introduction shown when entering Step 6
+    intro: 'Set the stamping and reward rules for this card',
+    introHint: 'Members earn a reward after collecting the required number of stamps.',
+    // Stamp card specific (StampCardLogic sub-module)
+    stamp: {
+      accrualModeTitle: 'Stamping Method',
+      accrualModeDescription: 'Choose how stamps are earned on this card',
+      // Three accrual modes
+      modes: {
+        per_stamp: {
+          label: 'Manual Stamp',
+          helper: 'Staff manually stamps the customer\'s card. Ideal for in-store purchases where stamps are awarded after reaching a spending threshold.',
+        },
+        per_visit: {
+          label: 'Per Visit',
+          helper: 'Customer receives a stamp automatically each time they visit (by showing the card or scanning a QR code). Ideal for gyms, clinics, or tutoring centers.',
+        },
+        per_spend: {
+          label: 'Per Spend',
+          helper: 'Customer earns a stamp automatically when spending reaches a set amount, determined by the point-of-sale system. Ideal for chain restaurants or retail stores.',
+        },
+      },
+      // Reward settings
+      rewardNameTitle: 'Reward Name',
+      rewardNamePlaceholder: 'e.g. R10 store credit or 8% store discount',
+      rewardNameHelper: 'This will appear on the customer\'s card, e.g. "Redeem for 10% off at any store".',
+      rewardNameCounter: '{{count}} / 40',
+      rewardNameEmptyError: 'Please enter a reward name',
+      rewardTypeTitle: 'Reward Type',
+      rewardTypePlaceholder: 'Select reward type',
+      rewardTypeAmount: 'Fixed cash discount',
+      rewardTypeAmountHint: 'e.g. R10 off the total bill',
+      rewardTypePercent: 'Percentage discount',
+      rewardTypePercentHint: 'e.g. 8% off when you collect enough stamps',
+      rewardValueLabel: 'Reward Amount',
+      rewardValuePlaceholderAmount: 'Enter discount amount, e.g. 10',
+      rewardValuePlaceholderPercent: 'Enter discount percentage, e.g. 8',
+      // SAOME targets ZAR (South African Rand) for English locale — the
+      // "R" symbol is rendered next to the Reward Amount input. Per-locale
+      // currency unit lives here so future locales can override.
+      rewardValueAmountUnit: 'R',
+      rewardValuePercentUnit: '%',
+      rewardValueEmptyError: 'Please enter the reward amount',
+      rewardValueInvalidError: 'Please enter a valid number',
+      rewardValueTooSmallError: 'Discount percentage must be greater than 0',
+      rewardValueTooLargeError: 'Discount percentage cannot exceed 100',
+      maxDiscountTitle: 'Maximum Discount Amount',
+      maxDiscountDescription: 'When choosing "Percentage discount", set a cap on the maximum discount per transaction.',
+      maxDiscountPlaceholder: 'e.g. 50 (leave blank for no cap)',
+      maxDiscountOptional: '(Optional, leave blank for no cap)',
+      maxDiscountHelper: 'Setting a cap prevents large discounts on big purchases and protects store margins.',
+      maxDiscountZeroIsNoCap: 'Enter 0 = no cap',
+      // Accrual threshold — per visit / per spend (2026-09-07)
+      accrualThreshold: {
+        perVisitTitle: 'Visit Threshold',
+        perVisitVisitsLabel: 'visits',
+        perVisitStampsLabel: 'stamps',
+        perVisitHelper: 'Earn M stamps every N visits.',
+        perSpendTitle: 'Spend Threshold',
+        perSpendAmountLabel: 'spend',
+        perSpendStampsLabel: 'stamps',
+        perSpendHelper: 'Earn M stamps for every N spent.',
+        requiredError: 'Please enter a threshold value',
+        visitsMinError: 'Visit count must be greater than 0',
+        stampsMinError: 'Stamp count must be greater than 0',
+        amountMinError: 'Spend amount must be greater than 0',
+      },
+      // Preview description (StampCardLogicPreview component)
+      preview: {
+        modeUnknown: 'Please select a stamping method',
+        rewardUnknown: 'Please enter a reward name',
+        amountReward: 'R{{amount}} off',
+        percentReward: '{{percent}}% off',
+        amountWithCap: 'R{{amount}} off, max R{{cap}} per transaction',
+        percentWithCap: '{{percent}}% off, max R{{cap}} per transaction',
+        percentNoCap: '{{percent}}% off, no discount cap',
+        template: 'Collect {{total}} stamps to redeem {{reward}}',
+        templateWithCap: 'Collect {{total}} stamps to redeem {{reward}}',
+        stampUnit: 'stamps',
+      },
+    },
+    // Placeholder for non-stamp card types
+    comingSoon: {
+      otherCardTypes: 'Card logic for this card type is not yet available.',
+      hint: 'Select "Stamp Card" or "Multipass" to configure stamping and reward rules.',
+    },
   },
   // Step 7: Customize Table Card
   step7: {
