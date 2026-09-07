@@ -20,11 +20,12 @@ import {
   CELL_GAP,
 } from './StampGridPreview.utils';
 import type { StampGridPreviewProps } from './StampGridPreview.types';
+import { STAMPS_PER_ROW } from './StampGridPreview.types';
 
 export function StampGridPreview({
   iconId,
   rows,
-  cols = 5,
+  cols = STAMPS_PER_ROW,
   stampedCount = 3,
   stripHeight,
   stripWidth,

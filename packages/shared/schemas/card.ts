@@ -38,9 +38,17 @@ export type CardType = z.infer<typeof cardTypeSchema>;
  * frontend `<Step3CardFields>` selector and the backend `templateSettingsSchema`
  * derive their enum from this single source.
  *
- * Card-type-dependent extensions (e.g. `pointBalance` for stamp_card) are
- * deferred to a future plan; this enum ships with the six base fields shared
- * by every card type (see step3_card_fields_selector_baffa936.plan.md).
+ * Stamp-card-specific keys (`availableRewards`, `totalStamps`,
+ * `stampsRemaining`) are valid values for every card type at the schema
+ * level (the enum is global), but the editor UI hides them when the user
+ * picks a non-stamp card type — see `CardFieldGroup` in card-fields.ts and
+ * the filter logic in `Step3CardFields/index.tsx`. Stored values are not
+ * cleared on card-type churn (the conditional filter only affects the
+ * dropdown options, not the store roundtrip).
+ *
+ * Card-type-dependent extensions beyond the 3 stamp keys are deferred to a
+ * future plan; this enum ships with the six base common fields plus the
+ * three stamp-only fields (see step3_card_fields_selector_baffa936.plan.md).
  */
 export const cardFieldKeySchema = z.enum([...CARD_FIELD_KEYS]);
 

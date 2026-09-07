@@ -4,11 +4,12 @@
  * Covers the PassCreator Label/Value wiring:
  *   1. Placeholder behavior when leftField/rightField are null
  *   2. Demo label/value rendering when fields are selected
- *   3. All 6 fields × 2 slots = 12 cases (parametrized via CARD_FIELDS)
+ *   3. All 9 fields × 2 slots = 18 cases (parametrized via CARD_FIELDS)
  *   4. textColor scope (label + value spans)
  *   5. compact mode (truncate on value spans)
  *   6. PassCreator typography hierarchy (label class < value class)
  *   7. PassCreator load-bearing invariant (computed font-size of label < value)
+ *   8. Stamp preview interpolation (totalStamps.value uses {{rows}})
  */
 
 import { render, screen } from '@testing-library/react';
@@ -16,8 +17,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { PassCardPreviewBody } from './PassCardPreviewBody';
 import { CARD_FIELD_KEYS } from '@saome/shared/constants/card-fields';
 
-// Mock: vi.fn(key => key) makes t() return the key as text — this lets the
-// i18n key path itself be asserted (e.g. 'fieldPreview.phone.label').
+// Mock: vi.fn(key => key) makes t() return the key as text. This lets the
+// i18n key path itself be asserted (e.g. 'fieldPreview.phone.label') in the
+// parametrized "all 9 fields × 2 slots" block. For the stamp interpolation
+// tests we additionally assert on the `t()` call arguments to verify that
+// `totalStamps.value` is called WITH `{ rows }` opts (the actual
+// interpolation is done by react-i18next at runtime, not by this mock).
 vi.mock('react-i18next', () => {
   return { useTranslation: vi.fn(() => ({ t: vi.fn((key: string) => key) })) };
 });
@@ -305,3 +310,114 @@ describe('PassCardPreviewBody — column layout (left/right side-by-side, L&V ve
     expect(phoneColumn?.parentElement?.className).toContain('flex-row');
   });
 });
+
+describe('PassCardPreviewBody — stamp preview interpolation (2026-09-08)', () => {
+  /**
+   * totalStamps is the ONLY field whose preview value depends on another
+   * section's data (Step 3 StampGrid → stampGridRows). The body component
+   * receives `stampGridRows` as a prop and passes it to `t()` as
+   * `t('fieldPreview.totalStamps.value', { rows })`. The denominator is
+   * the TOTAL stamp count = rows × STAMPS_PER_ROW (5), not the raw row
+   * count — see `StampGridPreview.types.ts::STAMPS_PER_ROW` for the
+   * geometry contract.
+   *
+   * We assert on the call arguments (rather than rendered output, since
+   * the mock returns the key verbatim) to pin the interpolation contract:
+   *   - The key is `fieldPreview.totalStamps.value`.
+   *   - The opts object contains `rows: <rows × STAMPS_PER_ROW>` (or
+   *     `1 × 5 = 5` if stampGridRows is undefined).
+   *   - Other stamp fields (availableRewards / stampsRemaining) call t()
+   *     WITHOUT opts (static value, no interpolation).
+   */
+
+  /** Build a t() spy that accepts variadic args and returns the key. */
+  function buildTSpy() {
+    // Variadic so we can capture both single-arg and two-arg calls.
+    return vi.fn((...args: unknown[]) => args[0] as string);
+  }
+
+  /** Re-mock `useTranslation` for one render with our spy as `t`. */
+  function mockUseTranslationOnce(spy: ReturnType<typeof buildTSpy>) {
+    // The component reads `const { t } = useTranslation('passCard')`, so we
+    // only need to provide the `t` field. Cast through `unknown` to bypass
+    // `react-i18next`'s strict tuple return type `[t, i18n, ready]`.
+    vi.mocked(useTranslation).mockReturnValueOnce({ t: spy } as unknown as ReturnType<typeof useTranslation>);
+  }
+
+  it('leftField="totalStamps" with stampGridRows=2 calls t() with { rows: 10 } (2 rows × 5 stamps/row)', () => {
+    const tSpy = buildTSpy();
+    mockUseTranslationOnce(tSpy);
+    render(<PassCardPreviewBody leftField="totalStamps" stampGridRows={2} />);
+
+    // Find the value call (the one with opts as the 2nd positional arg).
+    const valueCalls = tSpy.mock.calls.filter((call) => call[1] !== undefined);
+    expect(valueCalls).toHaveLength(1);
+    expect(valueCalls[0]?.[0]).toBe('fieldPreview.totalStamps.value');
+    expect(valueCalls[0]?.[1]).toEqual({ rows: 10 });
+  });
+
+  it('rightField="totalStamps" with stampGridRows=4 calls t() with { rows: 20 } (4 rows × 5 stamps/row)', () => {
+    const tSpy = buildTSpy();
+    mockUseTranslationOnce(tSpy);
+    render(<PassCardPreviewBody rightField="totalStamps" stampGridRows={4} />);
+
+    const valueCalls = tSpy.mock.calls.filter((call) => call[1] !== undefined);
+    expect(valueCalls).toHaveLength(1);
+    expect(valueCalls[0]?.[1]).toEqual({ rows: 20 });
+  });
+
+  it('leftField="totalStamps" with stampGridRows=3 calls t() with { rows: 15 } (3 rows × 5 stamps/row)', () => {
+    const tSpy = buildTSpy();
+    mockUseTranslationOnce(tSpy);
+    render(<PassCardPreviewBody leftField="totalStamps" stampGridRows={3} />);
+
+    const valueCalls = tSpy.mock.calls.filter((call) => call[1] !== undefined);
+    expect(valueCalls).toHaveLength(1);
+    expect(valueCalls[0]?.[1]).toEqual({ rows: 15 });
+  });
+
+  it('leftField="totalStamps" with stampGridRows=1 calls t() with { rows: 5 } (1 row × 5 stamps/row)', () => {
+    const tSpy = buildTSpy();
+    mockUseTranslationOnce(tSpy);
+    render(<PassCardPreviewBody leftField="totalStamps" stampGridRows={1} />);
+
+    const valueCalls = tSpy.mock.calls.filter((call) => call[1] !== undefined);
+    expect(valueCalls).toHaveLength(1);
+    expect(valueCalls[0]?.[1]).toEqual({ rows: 5 });
+  });
+
+  it('leftField="totalStamps" without stampGridRows falls back to rows=5 (1 row × 5 stamps/row, never NaN/undefined)', () => {
+    const tSpy = buildTSpy();
+    mockUseTranslationOnce(tSpy);
+    render(<PassCardPreviewBody leftField="totalStamps" />);
+
+    const valueCalls = tSpy.mock.calls.filter((call) => call[1] !== undefined);
+    expect(valueCalls).toHaveLength(1);
+    expect(valueCalls[0]?.[1]).toEqual({ rows: 5 });
+  });
+
+  it('leftField="availableRewards" calls t() WITHOUT opts (static value)', () => {
+    const tSpy = buildTSpy();
+    mockUseTranslationOnce(tSpy);
+    render(<PassCardPreviewBody leftField="availableRewards" stampGridRows={3} />);
+
+    // No call should include opts — this field has no interpolation.
+    const valueCalls = tSpy.mock.calls.filter((call) => call[1] !== undefined);
+    expect(valueCalls).toHaveLength(0);
+    // But the fieldPreview.availableRewards.value key IS called.
+    expect(tSpy).toHaveBeenCalledWith('fieldPreview.availableRewards.value');
+  });
+
+  it('leftField="stampsRemaining" calls t() WITHOUT opts (static value)', () => {
+    const tSpy = buildTSpy();
+    mockUseTranslationOnce(tSpy);
+    render(<PassCardPreviewBody leftField="stampsRemaining" stampGridRows={3} />);
+
+    const valueCalls = tSpy.mock.calls.filter((call) => call[1] !== undefined);
+    expect(valueCalls).toHaveLength(0);
+    expect(tSpy).toHaveBeenCalledWith('fieldPreview.stampsRemaining.value');
+  });
+});
+
+// Pull in useTranslation so the tests above can `vi.mocked` it.
+import { useTranslation } from 'react-i18next';

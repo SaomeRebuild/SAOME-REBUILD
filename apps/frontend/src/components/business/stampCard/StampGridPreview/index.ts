@@ -1,5 +1,6 @@
 export { StampGridPreview } from './StampGridPreview';
 export type { StampGridPreviewProps, StampGridRows } from './StampGridPreview.types';
+export { STAMPS_PER_ROW } from './StampGridPreview.types';
 export {
   calculateCellSize,
   STRIP_INNER_PADDING,

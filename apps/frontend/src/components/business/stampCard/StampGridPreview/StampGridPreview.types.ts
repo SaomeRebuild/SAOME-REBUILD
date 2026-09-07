@@ -16,6 +16,33 @@
 
 import type { StampIconEntry } from '@/assets/icons/stamps/manifest';
 
+/**
+ * Stamp card grid geometry — single source of truth.
+ *
+ * The stamp card UI renders a fixed-shape grid: every row holds the same
+ * number of stamps (the "columns" dimension). The user picks a row count
+ * (1..4), and the cell count per row never changes.
+ *
+ *   rows 1 × STAMPS_PER_ROW 5 = 5 stamps total
+ *   rows 2 × STAMPS_PER_ROW 5 = 10 stamps total
+ *   rows 3 × STAMPS_PER_ROW 5 = 15 stamps total
+ *   rows 4 × STAMPS_PER_ROW 5 = 20 stamps total
+ *
+ * This constant is consumed by:
+ *   - `StampGridPreview` — used as the default `cols` prop (the column count
+ *     of the grid). Callers can override, but the default reflects the
+ *     locked-in design.
+ *   - `PassCardPreviewBody` — multiplied with `StampGridRows` to interpolate
+ *     the `totalStamps` preview value (e.g. `3/{{rows * 5}}` → `3/10` when
+ *     the user picks 2 rows).
+ *
+ * If the grid geometry ever changes (e.g. 4-wide or 6-wide), update this
+ * constant AND re-derive the locked-in cell-size numbers in
+ * `StampGridPreview.utils.test.ts`. Both consumers pull from this value, so
+ * no other touch points should drift.
+ */
+export const STAMPS_PER_ROW = 5;
+
 /** Allowed number of rows for a stamp card (1×5 to 4×5 grids). */
 export type StampGridRows = 1 | 2 | 3 | 4;
 
@@ -30,7 +57,7 @@ export interface StampGridPreviewProps {
   /** Number of grid rows (1..4). */
   rows: StampGridRows;
 
-  /** Number of grid columns. Defaults to 5. */
+  /** Number of grid columns. Defaults to `STAMPS_PER_ROW` (5). */
   cols?: number;
 
   /**
