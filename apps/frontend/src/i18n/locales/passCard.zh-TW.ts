@@ -23,5 +23,21 @@ export default {
     birthday: { label: '生日', value: '05/11/1999' },
     visitCount: { label: '拜訪次數', value: '5 次' },
     memberName: { label: '會員姓名', value: '王大明' },
+    // 印章卡專用欄位預覽 — 僅在 stamp_card / multipass 時顯示於下拉選單
+    // totalStamps 的 value 使用 {{rows}} 內插，由 PassCardPreviewBody 帶入 stampGridRows
+    availableRewards: { label: '可用獎勵', value: '2 次' },
+    totalStamps: { label: '總印章數', value: '3/{{rows}}' },
+    stampsRemaining: { label: '還差幾個章', value: '6個' },
+  },
+  // ===== 餘額預覽 — 僅在 stamp_card / reward_card / cashback_card 顯示 =====
+  // Step 1 選這 3 種卡時，PassCardPreviewHeader 的右側卡種 pill 會被替換成兩行垂直區塊。
+  //   - label: "餘額" (locale-driven，由 i18n 提供)
+  //   - value: 由 store.currency 決定 — TWD → "200元"、ZAR → "R100" (1:0.5 換算)
+  //   注意：value 字串放在 `@saome/shared/constants/balancePreview.ts` 而非 i18n，
+  //   因為貨幣單位與金額是「由 store.currency 決定」而非由 i18n locale 決定。
+  //   （en 翻譯禁止包含 Han 字元，故不能把 "200元" 放進 passCard.en.ts。）
+  //   詳見 plan § 設計決策與 Rule 024 § 業務邏輯在 shared/。
+  balancePreview: {
+    label: '餘額',
   },
 };

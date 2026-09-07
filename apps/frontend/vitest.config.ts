@@ -43,6 +43,7 @@ const aliasArray: { find: string | RegExp; replacement: string }[] = [
   { find: '@saome/shared/constants/color-presets', replacement: resolve(sharedRoot, 'constants/color-presets.ts') },
   { find: '@saome/shared/constants/crop-interaction', replacement: resolve(sharedRoot, 'constants/crop-interaction.ts') },
   { find: '@saome/shared/constants/r2', replacement: resolve(sharedRoot, 'constants/r2.ts') },
+  { find: '@saome/shared/constants/balancePreview', replacement: resolve(sharedRoot, 'constants/balancePreview.ts') },
   { find: '@saome/shared/constants', replacement: resolve(sharedRoot, 'constants/index.ts') },
   { find: '@saome/shared/i18n/zh-TW', replacement: resolve(sharedRoot, 'i18n/zh-TW.ts') },
   { find: '@saome/shared/i18n/en', replacement: resolve(sharedRoot, 'i18n/en.ts') },

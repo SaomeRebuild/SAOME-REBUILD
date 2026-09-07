@@ -8,6 +8,7 @@ import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { PassCardPreview } from './PassCardPreview';
 import { PassCardPreviewBack } from './PassCardPreviewBack';
+import { BALANCE_PREVIEW_AMOUNTS } from '@saome/shared/constants/balancePreview';
 
 // Mock: vi.fn(key => key) makes t() return the key as text
 vi.mock('react-i18next', () => {
@@ -35,9 +36,13 @@ describe('PassCardPreview', () => {
   });
 
   it('renders card type label', () => {
-    render(<PassCardPreview name="測試卡片" cardType="stamp_card" />);
-    // cardType is rendered directly without i18n lookup
-    expect(screen.getAllByText('stamp_card').length).toBeGreaterThan(0);
+    render(<PassCardPreview name="測試卡片" cardType="membership_card" />);
+    // cardType is rendered directly without i18n lookup.
+    // Use a NON-balance-preview card type (membership_card) here so the
+    // rounded-full pill is the rendered element; for stamp_card /
+    // reward_card / cashback_card the pill is replaced by the 2-line
+    // balance block (see 'balance preview for target card types' below).
+    expect(screen.getAllByText('membership_card').length).toBeGreaterThan(0);
   });
 
   it('has correct aspect ratio', () => {
@@ -113,16 +118,53 @@ describe('PassCardPreview', () => {
 
   it('applies textColor to card type badge', () => {
     const { container } = render(
-      <PassCardPreview name="測試卡片" cardType="stamp_card" textColor="#ff0000" />
+      <PassCardPreview name="測試卡片" cardType="membership_card" textColor="#ff0000" />
     );
     // The card type badge has class rounded-full (pill).
     // 2026-09-03: removed bg-neutral-200 → background is now transparent.
     // Identify the badge by its text content matching the cardType.
+    // Use membership_card so the pill path is rendered; stamp_card /
+    // reward_card / cashback_card replace the pill with the 2-line balance
+    // block, which has its own test below.
     const badge = Array.from(container.querySelectorAll('span.rounded-full')).find(
-      (el) => el.textContent === 'stamp_card',
+      (el) => el.textContent === 'membership_card',
     ) as HTMLElement;
     expect(badge).toBeInTheDocument();
     expect(badge.style.color).toBe('rgb(255, 0, 0)');
+  });
+
+  // ─── Balance preview integration (2026-09-08) ───
+  // PassCardPreviewHeader replaces the rounded-full pill with a 2-line
+  // balance block for {stamp_card, reward_card, cashback_card} (driven by
+  // store.currency). The integration test below pins the render at the
+  // PassCardPreview layer: the pill is gone and both balance spans exist.
+  // Per-scenario detail (typography, currency switch, textColor scope,
+  // DOM order, store reactivity) lives in PassCardPreviewHeader.test.tsx.
+  it('renders 2-line balance preview (label + value) for stamp_card, replacing the pill', () => {
+    render(<PassCardPreview name="測試卡片" cardType="stamp_card" />);
+    // No rounded-full pill anymore for stamp_card
+    expect(screen.queryByText('stamp_card')).toBeNull();
+    // Balance label is the i18n key (mock returns key verbatim)
+    expect(screen.getByText('balancePreview.label')).toBeInTheDocument();
+    // Balance value is the resolved string from BALANCE_PREVIEW_AMOUNTS
+    // (NOT an i18n key — it's a shared constant value).
+    expect(screen.getByText(BALANCE_PREVIEW_AMOUNTS.TWD)).toBeInTheDocument();
+  });
+
+  it('renders balance preview for reward_card and cashback_card as well', () => {
+    const { unmount: unmount1 } = render(
+      <PassCardPreview name="測試卡片" cardType="reward_card" />,
+    );
+    expect(screen.getByText('balancePreview.label')).toBeInTheDocument();
+    expect(screen.getByText(BALANCE_PREVIEW_AMOUNTS.TWD)).toBeInTheDocument();
+    unmount1();
+
+    const { unmount: unmount2 } = render(
+      <PassCardPreview name="測試卡片" cardType="cashback_card" />,
+    );
+    expect(screen.getByText('balancePreview.label')).toBeInTheDocument();
+    expect(screen.getByText(BALANCE_PREVIEW_AMOUNTS.TWD)).toBeInTheDocument();
+    unmount2();
   });
 
   it('applies textColor to body field labels and values (left + right)', () => {

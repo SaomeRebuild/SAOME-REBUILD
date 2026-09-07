@@ -108,6 +108,7 @@ export function PassCardPreview({
               compact={compact}
               leftField={leftField}
               rightField={rightField}
+              stampGridRows={stampGridRows}
             />
 
             {/* Footer / Barcode */}
