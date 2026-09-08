@@ -26,16 +26,65 @@ import { useCardBuilderStore } from '../../CardBuilderEditor.store';
 
 vi.mock('react-i18next', () => ({
   useTranslation: vi.fn(() => ({
-    // Mock t() so the `template` key returns the formatted sentence
-    // "<threshold> 點可兌換 <reward>" — this lets tests assert that the
-    // preview actually picks the right tier (lowest threshold first) and
-    // includes the right reward string.
+    // Mock t() so:
+    //   - `template` returns "<threshold> 點可兌換 <reward>" (full sentence)
+    //   - reward-fragment keys (amountReward / percentReward / amountWithCap
+    //     / percentWithCap / percentNoCap) substitute `{{amount}}` /
+    //     `{{percent}}` / `{{cap}}` placeholders by simple replacement.
+    //   - unit keys (rewardValueAmountUnitTWD / rewardValueAmountUnitZAR /
+    //     maxDiscountUnitTWD / maxDiscountUnitZAR) return a literal symbol
+    //     so formatAmount() produces a real "50元" / "R50" amount string.
+    // This lets tests assert that the preview actually picks the right tier
+    // (lowest threshold first) and includes the right reward string.
+    //
+    // 2026-09-09 update: the reward-fragment keys are now real i18n keys
+    // (instead of hardcoded Chinese fragments). The mock substitutes
+    // `{{var}}` placeholders so tests can assert on the actual rendered
+    // reward text, not just the raw key.
     t: vi.fn((key: string, p?: Record<string, unknown>) => {
       if (key === 'step6.reward.preview.template' && p) {
         return `${p.threshold} 點可兌換 ${p.reward}`;
       }
+      // Simple {{var}} substitution for reward-fragment keys.
+      if (
+        key === 'step6.reward.preview.amountReward' ||
+        key === 'step6.reward.preview.percentReward' ||
+        key === 'step6.reward.preview.amountWithCap' ||
+        key === 'step6.reward.preview.percentWithCap' ||
+        key === 'step6.reward.preview.percentNoCap'
+      ) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const lookup: Record<string, string> = {
+          amountReward: '{{amount}}折價',
+          percentReward: '{{percent}}%折扣',
+          amountWithCap: '{{amount}}折價，最高折抵 {{cap}}',
+          percentWithCap: '{{percent}}%折扣，最高折抵 {{cap}}',
+          percentNoCap: '{{percent}}%折扣，無折抵上限',
+        };
+        const tmpl = lookup[key.split('.').pop() as keyof typeof lookup];
+        if (!tmpl) return key;
+        return tmpl.replace(/\{\{(\w+)\}\}/g, (_, k) =>
+          p && k in p ? String(p[k]) : `{{${k}}}`,
+        );
+      }
+      // Currency unit resolution (2026-09-09): formatAmount() reads these
+      // keys to compose the amount string before passing it as {{amount}}
+      // to the template above. The mock returns the literal symbol so the
+      // amount string is a real "50元" / "R50" — not the raw i18n key.
+      const unitLookup: Record<string, string> = {
+        'step6.reward.tier.rewardValueAmountUnitTWD': '元',
+        'step6.reward.tier.rewardValueAmountUnitZAR': 'R',
+        'step6.reward.tier.maxDiscountUnitTWD': '元',
+        'step6.reward.tier.maxDiscountUnitZAR': 'R',
+      };
+      if (key in unitLookup) return unitLookup[key];
       return key;
     }),
+    // 2026-09-09: formatAmount() reads i18n.language to decide suffix vs
+    // prefix placement. Default mock = 'zh-TW' (matches the zh-TW test
+    // scenarios); individual tests can override via
+    // useTranslation.mockReturnValue(...) if they need 'en' behaviour.
+    i18n: { language: 'zh-TW' },
   })),
 }));
 
@@ -95,13 +144,16 @@ describe('RewardCardLogicPreview (Step 6 live preview)', () => {
     const { container } = render(<RewardCardLogicPreview />);
 
     // With the t() mock formatting `template` to "<threshold> 點可兌換 <reward>",
-    // we verify the threshold is rendered correctly.
+    // the threshold appears in the sentence.
     expect(container.textContent).toContain('500 點可兌換');
-    // The ZAR unit should NOT appear (currency is TWD here).
-    expect(container.textContent).toContain('step6.reward.tier.rewardValueAmountUnitTWD');
+    // Reward fragment is now routed through t('step6.reward.preview.amountReward')
+    // with `amount: formatAmount(50)` = `50元` (TWD zh-TW suffix).
+    expect(container.textContent).toContain('50元折價');
+    // Sanity check: ZAR prefix pattern must NOT appear in the TWD render.
+    expect(container.textContent).not.toContain('R50折價');
   });
 
-  it('amount_off with ZAR currency uses unit R', () => {
+  it('amount_off with ZAR currency uses prefix R (zh-TW locale)', () => {
     useCardBuilderStore.setState({
       currency: 'ZAR',
       earningMode: 'based_on_points',
@@ -121,13 +173,15 @@ describe('RewardCardLogicPreview (Step 6 live preview)', () => {
     });
     const { container } = render(<RewardCardLogicPreview />);
 
-    // buildRewardStr composes `${value}${t(unitKey)}折價` — for ZAR the unit
-    // t() returns "step6.reward.tier.rewardValueAmountUnitZAR". The actual
-    // rendered text concatenates value + unit + "折價", so check substring.
-    expect(container.textContent).toContain('step6.reward.tier.rewardValueAmountUnitZAR');
+    // 2026-09-09 i18n fix: ZAR is always prefix regardless of locale.
+    // formatAmount(50) for ZAR = `R50`. Reward fragment becomes `R50折價`.
+    expect(container.textContent).toContain('R50折價');
+    // Sanity check: suffix pattern must NOT appear.
+    expect(container.textContent).not.toContain('50R折價');
+    expect(container.textContent).not.toContain('50元折價');
   });
 
-  it('percent_off with cap → uses cap unit', () => {
+  it('percent_off with TWD cap → suffix notation', () => {
     useCardBuilderStore.setState({
       currency: 'TWD',
       earningMode: 'based_on_visits',
@@ -147,13 +201,15 @@ describe('RewardCardLogicPreview (Step 6 live preview)', () => {
     });
     const { container } = render(<RewardCardLogicPreview />);
 
-    // The threshold should appear via t(template, { threshold: 200 }).
+    // 2026-09-09 i18n fix: percentWithCap key substitutes {{percent}} and
+    // {{cap}}; cap comes pre-formatted with the currency unit.
+    // TWD zh-TW suffix → cap becomes `50元`.
+    expect(container.textContent).toContain('8%折扣，最高折抵 50元');
+    // Threshold should still appear via t(template, { threshold: 200 }).
     expect(container.textContent).toContain('200 點可兌換');
-    // Cap unit for TWD = "step6.reward.tier.maxDiscountUnitTWD"
-    expect(container.textContent).toContain('step6.reward.tier.maxDiscountUnitTWD');
   });
 
-  it('percent_off with ZAR currency → uses ZAR cap unit', () => {
+  it('percent_off with ZAR cap → prefix notation (R before amount)', () => {
     useCardBuilderStore.setState({
       currency: 'ZAR',
       earningMode: 'based_on_visits',
@@ -173,49 +229,17 @@ describe('RewardCardLogicPreview (Step 6 live preview)', () => {
     });
     const { container } = render(<RewardCardLogicPreview />);
 
-    // buildRewardStr composes `${value}%折扣，最高折抵 ${cap}${t(unitKey)}` —
-    // for ZAR, the t() returns "step6.reward.tier.maxDiscountUnitZAR". Check
-    // the rendered text contains the cap-unit key (use a function matcher
-    // since the value is concatenated).
-    expect(container.textContent).toContain('step6.reward.tier.maxDiscountUnitZAR');
+    // 2026-09-09 i18n fix: ZAR is prefix-only regardless of locale. cap
+    // becomes `R50` and the reward fragment renders as `8%折扣，最高折抵 R50`.
+    expect(container.textContent).toContain('8%折扣，最高折抵 R50');
+    // Sanity check: suffix 元 must NOT appear with the ZAR cap.
+    expect(container.textContent).not.toContain('最高折抵 50元');
   });
 
-  // 2026-09-09 currency placement fix — ZAR must render R BEFORE the number
-  // (South African Rand convention). These two tests pin the placement order
-  // independently of the actual translation value.
-  it('amount_off with ZAR currency → unit R appears BEFORE the amount (prefix notation)', () => {
-    useCardBuilderStore.setState({
-      currency: 'ZAR',
-      earningMode: 'based_on_points',
-      rewardTiers: [
-        {
-          id: 'a',
-          name: '500 pts R50 off',
-          threshold: 500,
-          rewardType: 'amount_off',
-          rewardValue: 50,
-          maxDiscountAmount: null,
-          pointsPerVisit: null,
-          pointsPerSpendAmount: null,
-          pointsPerSpendPoints: null,
-        },
-      ],
-    });
-    const { container } = render(<RewardCardLogicPreview />);
-
-    // With the mock t() returning the key string verbatim, ZAR prefix
-    // composition is `${amountUnitZAR}${value}折價`. The ZAR unit key MUST
-    // appear immediately before "50" in the rendered text.
-    const text = container.textContent ?? '';
-    const zarUnitIdx = text.indexOf('step6.reward.tier.rewardValueAmountUnitZAR');
-    const valueIdx = text.indexOf('50', zarUnitIdx);
-    expect(zarUnitIdx).toBeGreaterThanOrEqual(0);
-    expect(valueIdx).toBeGreaterThan(zarUnitIdx);
-    // Sanity check: the suffix order (value, then unit) must NOT appear.
-    expect(text.indexOf('50step6.reward.tier.rewardValueAmountUnitZAR')).toBe(-1);
-  });
-
-  it('amount_off with TWD currency → unit 元 appears AFTER the amount (suffix notation)', () => {
+  // 2026-09-09 placement regression tests — pin the position of the
+  // currency unit relative to the amount in BOTH the amount_off reward
+  // string AND the percent_off cap string.
+  it('amount_off + TWD zh-TW → unit 元 is AFTER the amount (suffix)', () => {
     useCardBuilderStore.setState({
       currency: 'TWD',
       earningMode: 'based_on_points',
@@ -235,30 +259,26 @@ describe('RewardCardLogicPreview (Step 6 live preview)', () => {
     });
     const { container } = render(<RewardCardLogicPreview />);
 
-    // TWD suffix composition is `${value}${amountUnitTWD}折價`. The TWD
-    // unit key MUST appear immediately after "50" in the rendered text.
     const text = container.textContent ?? '';
-    const valueIdx = text.indexOf('50');
-    const twdUnitIdx = text.indexOf('step6.reward.tier.rewardValueAmountUnitTWD');
-    expect(valueIdx).toBeGreaterThanOrEqual(0);
-    expect(twdUnitIdx).toBeGreaterThan(valueIdx);
-    // Sanity check: prefix order (unit, then value) must NOT appear.
-    expect(text.indexOf('step6.reward.tier.rewardValueAmountUnitTWD50')).toBe(-1);
+    // TWD zh-TW suffix: 50 must appear immediately before 元.
+    expect(text).toContain('50元');
+    // Sanity: prefix order (元, then value) must NOT appear.
+    expect(text).not.toMatch(/元50/);
   });
 
-  it('percent_off with ZAR cap → cap unit R appears BEFORE the cap amount (prefix notation)', () => {
+  it('amount_off + ZAR (any locale) → unit R is BEFORE the amount (prefix)', () => {
     useCardBuilderStore.setState({
       currency: 'ZAR',
-      earningMode: 'based_on_visits',
+      earningMode: 'based_on_points',
       rewardTiers: [
         {
           id: 'a',
-          name: '8% off',
-          threshold: 200,
-          rewardType: 'percent_off',
-          rewardValue: 8,
-          maxDiscountAmount: 50,
-          pointsPerVisit: 10,
+          name: '500 pts R50 off',
+          threshold: 500,
+          rewardType: 'amount_off',
+          rewardValue: 50,
+          maxDiscountAmount: null,
+          pointsPerVisit: null,
           pointsPerSpendAmount: null,
           pointsPerSpendPoints: null,
         },
@@ -266,18 +286,15 @@ describe('RewardCardLogicPreview (Step 6 live preview)', () => {
     });
     const { container } = render(<RewardCardLogicPreview />);
 
-    // ZAR cap composition is `${capUnitZAR}${cap}`. The ZAR cap unit key
-    // MUST appear before "50" (the cap amount) in the rendered text.
     const text = container.textContent ?? '';
-    const zarCapUnitIdx = text.indexOf('step6.reward.tier.maxDiscountUnitZAR');
-    const capAmountIdx = text.indexOf('50', zarCapUnitIdx);
-    expect(zarCapUnitIdx).toBeGreaterThanOrEqual(0);
-    expect(capAmountIdx).toBeGreaterThan(zarCapUnitIdx);
-    // Sanity check: suffix order (cap amount, then unit) must NOT appear.
-    expect(text.indexOf('50step6.reward.tier.maxDiscountUnitZAR')).toBe(-1);
+    // ZAR prefix: R must appear immediately before 50.
+    expect(text).toContain('R50');
+    // Sanity: suffix order (value, then R) must NOT appear in the reward.
+    // Allow "50R" only if it's not part of a number followed by R as currency.
+    expect(text).not.toMatch(/(?<![\d])50R/);
   });
 
-  it('percent_off with TWD cap → cap unit 元 appears AFTER the cap amount (suffix notation)', () => {
+  it('percent_off + TWD zh-TW → cap unit 元 is AFTER the cap amount (suffix)', () => {
     useCardBuilderStore.setState({
       currency: 'TWD',
       earningMode: 'based_on_visits',
@@ -297,15 +314,113 @@ describe('RewardCardLogicPreview (Step 6 live preview)', () => {
     });
     const { container } = render(<RewardCardLogicPreview />);
 
-    // TWD cap composition is `${cap}${capUnitTWD}`. The TWD cap unit key
-    // MUST appear after "50" in the rendered text.
     const text = container.textContent ?? '';
-    const capAmountIdx = text.indexOf('50');
-    const twdCapUnitIdx = text.indexOf('step6.reward.tier.maxDiscountUnitTWD');
-    expect(capAmountIdx).toBeGreaterThanOrEqual(0);
-    expect(twdCapUnitIdx).toBeGreaterThan(capAmountIdx);
-    // Sanity check: prefix order (unit, then cap) must NOT appear.
-    expect(text.indexOf('step6.reward.tier.maxDiscountUnitTWD50')).toBe(-1);
+    // TWD zh-TW suffix: 50 must appear immediately before 元 in the cap phrase.
+    expect(text).toContain('最高折抵 50元');
+    // Sanity: prefix order (元, then value) must NOT appear in the cap.
+    expect(text).not.toMatch(/元50/);
+  });
+
+  it('percent_off + ZAR (any locale) → cap unit R is BEFORE the cap amount (prefix)', () => {
+    useCardBuilderStore.setState({
+      currency: 'ZAR',
+      earningMode: 'based_on_visits',
+      rewardTiers: [
+        {
+          id: 'a',
+          name: '8% off',
+          threshold: 200,
+          rewardType: 'percent_off',
+          rewardValue: 8,
+          maxDiscountAmount: 50,
+          pointsPerVisit: 10,
+          pointsPerSpendAmount: null,
+          pointsPerSpendPoints: null,
+        },
+      ],
+    });
+    const { container } = render(<RewardCardLogicPreview />);
+
+    const text = container.textContent ?? '';
+    // ZAR prefix: R must appear immediately before 50 in the cap phrase.
+    expect(text).toContain('最高折抵 R50');
+    // Sanity: suffix order (cap value, then R) must NOT appear.
+    expect(text).not.toMatch(/(?<![\d])50R/);
+  });
+
+  it('percent_off with NO cap → renders percentNoCap template (no max fragment)', () => {
+    useCardBuilderStore.setState({
+      currency: 'TWD',
+      earningMode: 'based_on_visits',
+      rewardTiers: [
+        {
+          id: 'a',
+          name: '8% off no cap',
+          threshold: 200,
+          rewardType: 'percent_off',
+          rewardValue: 8,
+          maxDiscountAmount: null,
+          pointsPerVisit: 10,
+          pointsPerSpendAmount: null,
+          pointsPerSpendPoints: null,
+        },
+      ],
+    });
+    const { container } = render(<RewardCardLogicPreview />);
+
+    // 2026-09-09 i18n fix: percentNoCap template substitutes {{percent}}.
+    expect(container.textContent).toContain('8%折扣，無折抵上限');
+    // Sanity: cap phrase must NOT appear when maxDiscountAmount is null.
+    expect(container.textContent).not.toContain('最高折抵');
+  });
+
+  it('regression — preview output contains NO raw Chinese fragments when only English keys are translated', () => {
+    // 2026-09-09 regression for the mixed-language bleed:
+    // "Earn 1500 points to redeem 20%折扣，最高折抵 R50" was the bug report
+    // — zh-TW fragments leaking into the en render. Pin that the preview
+    // routes EVERY phrase through i18n by:
+    //   1. The amount string includes the currency unit via the unit key
+    //      (regression: the bug was "20%" without a unit symbol, since
+    //      the unit was injected only for amount_off / cap, not the
+    //      percent value itself).
+    //   2. The reward phrase comes from the i18n template, which only
+    //      contains locale-correct Chinese in zh-TW — so for an en
+    //      render the phrase would be "R20 off" instead of "R20折價".
+    //   3. The threshold phrase comes from `template`, which (for en)
+    //      would be "Earn 1500 points to redeem …" instead of
+    //      "集滿 1500 點可兌換 …".
+    useCardBuilderStore.setState({
+      currency: 'ZAR',
+      earningMode: 'based_on_points',
+      rewardTiers: [
+        {
+          id: 'a',
+          name: '1500 pts R50 off',
+          threshold: 1500,
+          rewardType: 'amount_off',
+          rewardValue: 20,
+          maxDiscountAmount: null,
+          pointsPerVisit: null,
+          pointsPerSpendAmount: null,
+          pointsPerSpendPoints: null,
+        },
+      ],
+    });
+    const { container } = render(<RewardCardLogicPreview />);
+
+    const text = container.textContent ?? '';
+    // Currency unit placement: R must prefix the value (R20).
+    expect(text).toContain('R20');
+    // The reward fragment now comes from the amountReward i18n template,
+    // which (under the zh-TW mock) is "{{amount}}折價" — the formatted
+    // amount string "R20" gets interpolated into the template, producing
+    // the locale-correct phrase.
+    expect(text).toContain('R20折價');
+    // The threshold phrase comes from `template`, which the mock formats
+    // as "<threshold> 點可兌換 <reward>". No raw i18n key should leak into
+    // the rendered output.
+    expect(text).not.toContain('step6.reward.preview.amountReward');
+    expect(text).not.toContain('step6.reward.preview.template');
   });
 
   it('picks the first valid tier in stored order (sortRewardTiers pins the order)', () => {

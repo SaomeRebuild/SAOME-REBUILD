@@ -132,20 +132,22 @@ describe('RewardTierRewardValueField (Step 6 section 4 — type-conditional)', (
     expect(screen.getByText('step6.reward.tier.rewardValueTooLargeError')).toBeInTheDocument();
   });
 
-  // Regression: 2026-09-09 prefix-vs-suffix bug fix.
-  // Previous version rendered `<input> 元` so "50元" looked like a glued
-  // value. Unit is now a PREFIX: `元 <input>` matches currency convention
-  // (NT$50 / R50 / %10). DOM-order assertion catches any future re-suffix.
-  it('amount_off + TWD: unit label is rendered BEFORE the input (prefix)', () => {
+  // Regression: 2026-09-09 semantic fix.
+  // Currency-aware unit placement:
+  //   - TWD amount_off: 元 is a SUFFIX → [input] 元  (e.g. "50元")
+  //   - ZAR amount_off: R  is a PREFIX  → R [input] (e.g. "R50")
+  //   - percent_off:     %  is a SUFFIX → [input] %  (e.g. "10%")
+  // DOM-order assertions catch any future regression.
+  it('amount_off + TWD: unit label 元 is rendered AFTER the input (suffix)', () => {
     seedTier({ rewardType: 'amount_off', rewardValue: null });
     useCardBuilderStore.setState({ currency: 'TWD' });
     const { container } = render(<RewardTierRewardValueField showValidation={false} tierId="tier-x" />);
 
     const row = container.querySelector('div.flex.items-center.gap-2')!;
-    const firstChild = row.firstElementChild;
-    expect(firstChild?.tagName).toBe('SPAN');
-    expect(firstChild?.textContent).toBe('step6.reward.tier.rewardValueAmountUnitTWD');
-    expect(row.lastElementChild?.tagName).toBe('INPUT');
+    // 元 is a suffix: input comes first, 元 comes last
+    expect(row.firstElementChild?.tagName).toBe('INPUT');
+    expect(row.lastElementChild?.tagName).toBe('SPAN');
+    expect(row.lastElementChild?.textContent).toBe('step6.reward.tier.rewardValueAmountUnitTWD');
   });
 
   it('amount_off + ZAR: unit label R is rendered BEFORE the input (prefix)', () => {
@@ -154,19 +156,21 @@ describe('RewardTierRewardValueField (Step 6 section 4 — type-conditional)', (
     const { container } = render(<RewardTierRewardValueField showValidation={false} tierId="tier-x" />);
 
     const row = container.querySelector('div.flex.items-center.gap-2')!;
+    // R is a prefix: R span comes first, input comes after
     expect(row.firstElementChild?.tagName).toBe('SPAN');
     expect(row.firstElementChild?.textContent).toBe('step6.reward.tier.rewardValueAmountUnitZAR');
     expect(row.lastElementChild?.tagName).toBe('INPUT');
   });
 
-  it('percent_off: % unit is rendered BEFORE the input (prefix)', () => {
+  it('percent_off: % unit is rendered AFTER the input (suffix)', () => {
     seedTier({ rewardType: 'percent_off', rewardValue: null });
     useCardBuilderStore.setState({ currency: 'TWD' });
     const { container } = render(<RewardTierRewardValueField showValidation={false} tierId="tier-x" />);
 
     const row = container.querySelector('div.flex.items-center.gap-2')!;
-    expect(row.firstElementChild?.tagName).toBe('SPAN');
-    expect(row.firstElementChild?.textContent).toBe('step6.reward.tier.rewardValuePercentUnit');
-    expect(row.lastElementChild?.tagName).toBe('INPUT');
+    // % is a suffix: input comes first, % comes last
+    expect(row.firstElementChild?.tagName).toBe('INPUT');
+    expect(row.lastElementChild?.tagName).toBe('SPAN');
+    expect(row.lastElementChild?.textContent).toBe('step6.reward.tier.rewardValuePercentUnit');
   });
 });

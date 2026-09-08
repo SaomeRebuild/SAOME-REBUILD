@@ -9,17 +9,25 @@
  * / pointsPerSpendAmount / pointsPerSpendPoints) but the mode itself is
  * one per card.
  *
- * 2026-09-09 currency placement fix: ZAR uses prefix notation (R first,
- * amount after) per South African Rand convention. TWD keeps suffix
- * notation (元 after) per zh-TW convention. EN uses prefix for both
- * (NT$50 / R50). The buildRewardStr() helper conditionally orders the unit
- * symbol around the amount.
+ * 2026-09-09 i18n fix (mixed-language bleed): reward fragments are routed
+ * through i18n keys (`step6.reward.preview.amountReward` /
+ * `.percentReward` / `.amountWithCap` / `.percentWithCap` / `.percentNoCap`)
+ * instead of hardcoded Chinese words (`折價` / `折扣` / `最高折抵`). The
+ * currency unit (元 / NT$ / R) is pre-baked into the amount string at the
+ * correct position (suffix for zh-TW TWD, prefix for everything else) and
+ * passed as the `{{amount}}` / `{{cap}}` interpolation variable — so the
+ * locale template stays free of currency symbols and pure locale phrasing.
  *
- * Example outputs (zh-TW):
- *   - "集滿 1000 點可兌換 500點折抵50元"   (TWD amount_off)
- *   - "集滿 500 點可兌換 10%折扣，最高折抵 R50"   (ZAR percent_off with cap)
- *   - "請選擇累積方式" (when card-wide earningMode is null but tier identity is complete)
- *   - "請設定獎勵級距"
+ * Currency placement convention (ISO 4217 / locale usage):
+ *   - ZAR:  prefix always (R50) regardless of locale
+ *   - TWD zh-TW: suffix (50元)
+ *   - TWD en: prefix (NT$50)
+ *
+ * Example outputs (en, TWD): "Earn 1500 points to redeem NT$50 off"
+ * Example outputs (en, ZAR): "Earn 1500 points to redeem R50 off"
+ * Example outputs (zh-TW, TWD): "集滿 1500 點可兌換 50元折價"
+ * Example outputs (zh-TW, ZAR): "集滿 1500 點可兌換 R50折價"
+ * Example incomplete: "請設定獎勵級距" / "Please set up at least one reward tier"
  *
  * The preview reads `rewardTiers[0]` (or the first valid tier) — multiple
  * tiers' preview is OUT OF SCOPE for this iteration (UI keeps the same
@@ -32,23 +40,35 @@ import { useTranslation } from 'react-i18next';
 import { useCardBuilderStore } from '../../CardBuilderEditor.store';
 
 export function RewardCardLogicPreview() {
-  const { t } = useTranslation('cardEditor');
+  const { t, i18n } = useTranslation('cardEditor');
   const rewardTiers = useCardBuilderStore((s) => s.rewardTiers);
   const currency = useCardBuilderStore((s) => s.currency);
   // 2026-09-09 mixed refactor: earningMode is CARD-WIDE (top-level).
   const cardWideEarningMode = useCardBuilderStore((s) => s.earningMode);
 
-  // Build the reward display string for a single tier (called with the first valid tier).
+  // 2026-09-09 i18n fix: route the reward fragment through i18n keys
+  // (no hardcoded Chinese fragments leaking into the English render).
+  // Currency unit (元 / NT$ / R) is pre-formatted into the amount string
+  // before being passed as `{{amount}}` / `{{cap}}` to the i18n template —
+  // the template then provides ONLY the locale-correct phrasing.
   //
-  // 2026-09-09 currency placement fix: ZAR uses prefix (R first, amount
-  // after); TWD keeps suffix (amount first, 元 after). Both compositions
-  // read the unit via i18n so the actual symbol is locale-correct (zh-TW
-  // 元/NT$ R, en NT$ / R — both EN currencies are prefix-style).
+  // Placement convention (ISO 4217 / locale usage):
+  //   - ZAR: prefix always (R50 / R50) regardless of locale
+  //   - TWD zh-TW: suffix (50元)
+  //   - TWD en: prefix (NT$50)
   const isZAR = currency === 'ZAR';
+  const isZhLocale = (i18n.language ?? '').startsWith('zh');
   const amountUnitTWD = t('step6.reward.tier.rewardValueAmountUnitTWD');
   const amountUnitZAR = t('step6.reward.tier.rewardValueAmountUnitZAR');
-  const capUnitTWD = t('step6.reward.tier.maxDiscountUnitTWD');
-  const capUnitZAR = t('step6.reward.tier.maxDiscountUnitZAR');
+
+  // 2026-09-09 helper: format a numeric amount with the currency unit in
+  // locale-correct position. Used to pre-bake the amount string before it
+  // is interpolated into the i18n template, so the template stays free of
+  // currency symbols and pure locale-phrasing.
+  const formatAmount = (value: number): string => {
+    if (isZAR) return `${amountUnitZAR}${value}`;
+    return isZhLocale ? `${value}${amountUnitTWD}` : `${amountUnitTWD}${value}`;
+  };
 
   const buildRewardStr = (tier: {
     name: string;
@@ -59,21 +79,19 @@ export function RewardCardLogicPreview() {
     if (!tier.name.trim()) return tier.name; // empty → placeholder shown separately
 
     if (tier.rewardType === 'amount_off' && tier.rewardValue !== null && tier.rewardValue !== undefined && tier.rewardValue > 0) {
-      // TWD: 50元折價 / ZAR: R50折價
-      return isZAR
-        ? `${amountUnitZAR}${tier.rewardValue}折價`
-        : `${tier.rewardValue}${amountUnitTWD}折價`;
+      return t('step6.reward.preview.amountReward', {
+        amount: formatAmount(tier.rewardValue),
+      });
     }
 
     if (tier.rewardType === 'percent_off' && tier.rewardValue !== null && tier.rewardValue !== undefined && tier.rewardValue > 0) {
       if (tier.maxDiscountAmount !== null && tier.maxDiscountAmount !== undefined && tier.maxDiscountAmount > 0) {
-        // TWD: 折抵 50元 / ZAR: 折抵 R50
-        const capStr = isZAR
-          ? `${capUnitZAR}${tier.maxDiscountAmount}`
-          : `${tier.maxDiscountAmount}${capUnitTWD}`;
-        return `${tier.rewardValue}%折扣，最高折抵 ${capStr}`;
+        return t('step6.reward.preview.percentWithCap', {
+          percent: tier.rewardValue,
+          cap: formatAmount(tier.maxDiscountAmount),
+        });
       }
-      return `${tier.rewardValue}%折扣，無折抵上限`;
+      return t('step6.reward.preview.percentNoCap', { percent: tier.rewardValue });
     }
 
     // rewardType not yet selected — just show the name

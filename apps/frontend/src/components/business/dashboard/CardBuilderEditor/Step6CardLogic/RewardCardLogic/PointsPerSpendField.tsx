@@ -7,14 +7,44 @@
  * `updateRewardTier(tierId, { pointsPerSpendAmount })` and
  * `updateRewardTier(tierId, { pointsPerSpendPoints })`.
  *
- * 2026-09-09 copy update: the field reads
- *   "每消費 [N] 元 = 獲得 [M] 個點數"
- * with placeholders "例如：100" and "例如：1" so the user can see exactly
- * what each input slot maps to. The previous copy ("元獲得") was unclear.
+ * 2026-09-09 desktop layout: the two inputs ("每消費 [N] 元" and
+ * "= 獲得 [M] 個點數") are rendered as a SINGLE horizontal sentence on md+.
+ * Mobile stays as TWO semantic phrase rows (one per phrase) so labels
+ * don't break every fragment onto its own line.
+ *
+ * 2026-09-09 2nd-pass mobile polish: previous fix used `w-full md:w-24`
+ * for amount input and `w-full md:w-20` for points input — which forced
+ * mobile inputs to claim full container width, pushing labels and units
+ * onto separate lines. The user asked us to compact the inputs so the
+ * whole phrase fits on one line:
+ *   Mobile:
+ *     每消費 [200] 元
+ *     =獲得 [2] 個點數       (no pl-4 indent — both rows start at left margin)
+ *   Desktop (md+):
+ *     每消費 [200] 元 =獲得 [2] 個點數    (single horizontal sentence)
+ *
+ *   equalLabel + earnLabel were merged into `equalEarnLabel` ('=獲得') so
+ *   there's no visible space between "=" and the verb (previous gap-x-1.5
+ *   between two separate spans produced "= 獲得").
+ *
+ * Layout strategy:
+ *   - Outer container: flex-col on mobile (2 stacked phrase rows, 8px gap),
+ *     md:flex-row on md+ (single horizontal sentence).
+ *   - Each phrase-row is its own flex container with `gap-x-1.5 gap-y-1`
+ *     and `md:contents` so the children get hoisted into the outer container
+ *     at md+ screens (display: contents visually flattens the DOM).
+ *   - Row 1: "每消費 [N] 元"        (phrase 1 — spend amount)
+ *   - Row 2: "=獲得 [M] 個點數"     (phrase 2 — earned points)
+ *
+ * Input widths (2026-09-09 2nd-pass): amount input = w-24 (96px), points
+ * input = w-20 (80px). Both widths apply on BOTH mobile and desktop —
+ * removing the `w-full` mobile fallback that was forcing inputs to claim
+ * the full container width. Both inputs use `min-w-0` so labels stay
+ * readable even in narrow md viewports.
  *
  * 2026-09-09 currency placement fix: ZAR uses prefix notation (R first,
  * amount after) per South African Rand convention. TWD keeps suffix
- * (元 after) per zh-TW convention. The row renders as:
+ * (元 after) per zh-TW convention. The phrase renders as:
  *   TWD: 每消費 [input] 元   (suffix 元)
  *   ZAR: 每消費 R [input]     (prefix R)
  *
@@ -87,12 +117,28 @@ export function PointsPerSpendField({ showValidation, tierId }: PointsPerSpendFi
         </p>
       </header>
 
-      <div className="flex flex-col gap-1.5">
-        {/* Row 1: amount = N 元（每消費金額）
-            2026-09-09 copy update: "每消費 [N] 元" with placeholder "例如：100".
-            2026-09-09 currency placement fix: TWD keeps 元 suffix; ZAR moves
-            R to the prefix (renders R before the input). */}
-        <div className="flex items-center gap-2">
+      {/* 2026-09-09 mobile-fix layout: the sentence is split into TWO semantic
+          phrase-row containers (one for "每消費 [N] 元", one for
+          "=獲得 [M] 個點數"). On mobile each row renders as its own phrase
+          so labels and inputs stay together visually. On md+ the rows use
+          `md:contents` (display: contents) so their children get hoisted
+          into the outer container — visually the sentence still reads as
+          one continuous horizontal sentence.
+
+          2026-09-09 2nd-pass mobile polish: each input uses a FIXED
+          width (w-24 / w-20) on BOTH mobile and desktop — the previous
+          `w-full md:w-24` mobile fallback forced inputs to claim the
+          full container width on mobile, pushing labels and units onto
+          separate lines. With fixed mobile widths, the whole phrase
+          fits on one line: "每消費 [input] 元" / "=獲得 [input] 個點數". */}
+
+      {/* Outer container — mobile = vertical (2 stacked rows, 8px gap),
+          md+ = horizontal single-row with wrap (for very narrow md viewports). */}
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:flex-wrap md:gap-x-2 md:gap-y-1.5">
+        {/* Phrase row 1: "每消費 [N] 元" (spend amount).
+            Mobile input width: w-24 (96px). Labels + input + unit all fit
+            on one line at ≥320px viewport. */}
+        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 md:contents">
           <span className="shrink-0 text-sm text-muted-foreground">
             {t('step6.reward.pointsPerSpend.amountLabel')}
           </span>
@@ -121,12 +167,13 @@ export function PointsPerSpendField({ showValidation, tierId }: PointsPerSpendFi
             aria-label={t('step6.reward.pointsPerSpend.amountLabel')}
             aria-invalid={showError}
             className={`
-              flex h-10 w-full min-w-0 rounded-md border bg-background px-3 py-2 text-sm
+              flex h-10 min-w-0 rounded-md border bg-background px-3 py-2 text-sm
               text-foreground ring-offset-background
               placeholder:text-muted-foreground
               focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
               disabled:cursor-not-allowed disabled:opacity-50
               ${showError ? 'border-destructive' : 'border-input'}
+              w-24
             `}
           />
           {amountUnitSuffix && (
@@ -136,15 +183,15 @@ export function PointsPerSpendField({ showValidation, tierId }: PointsPerSpendFi
           )}
         </div>
 
-        {/* Row 2: = 獲得 M 個點數
-            2026-09-09 copy update: "= 獲得 [M] 個點數" with placeholder "例如：
-            1" (user explicitly asked for "獲得 M 個點數" pattern). */}
-        <div className="flex items-center gap-2">
+        {/* Phrase row 2: "=獲得 [M] 個點數" (earned points).
+            2026-09-09 2nd-pass: equalLabel + earnLabel merged into a
+            single `equalEarnLabel` span so the sentence renders as
+            "=獲得" with no visible space between "=" and the verb.
+            Mobile indent (pl-4) removed in 2nd-pass — both rows now
+            start at the left margin and each fits on one line. */}
+        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 md:contents">
           <span className="shrink-0 text-sm text-muted-foreground">
-            {t('step6.reward.pointsPerSpend.equalLabel')}
-          </span>
-          <span className="shrink-0 text-sm text-muted-foreground">
-            {t('step6.reward.pointsPerSpend.earnLabel')}
+            {t('step6.reward.pointsPerSpend.equalEarnLabel')}
           </span>
           <input
             id={`step6-tier-${tierId}-points-per-spend-points`}
@@ -166,27 +213,26 @@ export function PointsPerSpendField({ showValidation, tierId }: PointsPerSpendFi
             aria-label={t('step6.reward.pointsPerSpend.pointsLabel')}
             aria-invalid={showError}
             className={`
-              flex h-10 w-full min-w-0 rounded-md border bg-background px-3 py-2 text-sm
+              flex h-10 min-w-0 rounded-md border bg-background px-3 py-2 text-sm
               text-foreground ring-offset-background
               placeholder:text-muted-foreground
               focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
               disabled:cursor-not-allowed disabled:opacity-50
               ${showError ? 'border-destructive' : 'border-input'}
+              w-20
             `}
           />
           <span className="shrink-0 text-sm text-muted-foreground">
-            {/* 2026-09-09 copy: user asked for "獲得 M 個點數" (so the suffix
-                is "個點數", not just "點"). Use pointsLabel key. */}
             {t('step6.reward.pointsPerSpend.pointsLabel')}
           </span>
         </div>
-
-        {showError && (
-          <p className="text-xs text-destructive" role="alert">
-            {t('step6.reward.pointsPerSpend.requiredError')}
-          </p>
-        )}
       </div>
+
+      {showError && (
+        <p className="text-xs text-destructive" role="alert">
+          {t('step6.reward.pointsPerSpend.requiredError')}
+        </p>
+      )}
     </section>
   );
 }

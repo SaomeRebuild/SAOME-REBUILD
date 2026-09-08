@@ -361,11 +361,11 @@ export default {
         minError: '每次拜訪至少需獲得 1 點',
       },
       // ===== 基於消費門檻 (per-tier, 2026-09-09) =====
-      // Copy restructure (2026-09-09): previously a single inline row
-      // "每消費 [N] 元 = [M] 元獲得" was hard to parse. Now split into TWO rows:
-      //   Row 1: "每消費" + input[placeholder: 例如：100] + "元"
-      //   Row 2: "=" + "獲得" + input[placeholder: 例如：1] + "個點數"
-      // The two rows make the meaning crystal clear: spend N → earn M points.
+      // 2026-09-09 2nd-pass: equalLabel + earnLabel merged into
+      // equalEarnLabel so the sentence renders as "=獲得" with no
+      // visible space between "=" and the verb. Previous gap-x-1.5
+      // between two separate spans produced "= 獲得" which the user
+      // explicitly asked to compact on mobile.
       pointsPerSpend: {
         title: '消費點數比例',
         helper: '每消費 N 元可獲得 M 點。',
@@ -375,8 +375,7 @@ export default {
         // 渲染層根據 store.currency 條件選擇 prefix / suffix
         amountUnitTWD: '元',
         amountUnitZAR: 'R',
-        equalLabel: '=',
-        earnLabel: '獲得',
+        equalEarnLabel: '=獲得',
         pointsLabel: '個點數',
         pointsPlaceholder: '例如：1',
         pointsUnit: '點',
@@ -422,13 +421,17 @@ export default {
       removeTier: '移除',
       maxTiersReached: '已達最高 5 組級距',
       // ===== 即時預覽湊句 =====
+      // 2026-09-09 i18n fix: {{amount}} / {{cap}} already include the
+      // currency unit in the correct position (suffix 元 for zh-TW TWD,
+      // prefix NT$/R for everything else). Templates provide ONLY the
+      // locale-correct phrasing — no currency symbols embedded here.
       preview: {
         modeUnknown: '請選擇累積方式',
         tierUnknown: '請設定獎勵級距',
-        amountReward: '{{amount}}元折價',
+        amountReward: '{{amount}}折價',
         percentReward: '{{percent}}%折扣',
-        amountWithCap: '{{amount}}元折價，最高折抵 {{cap}}元',
-        percentWithCap: '{{percent}}%折扣，最高折抵 {{cap}}元',
+        amountWithCap: '{{amount}}折價，最高折抵 {{cap}}',
+        percentWithCap: '{{percent}}%折扣，最高折抵 {{cap}}',
         percentNoCap: '{{percent}}%折扣，無折抵上限',
         template: '集滿 {{threshold}} 點可兌換 {{reward}}',
       },

@@ -372,8 +372,12 @@ export default {
         // 渲染層根據 store.currency 條件選擇 prefix / suffix
         amountUnitTWD: 'spent',
         amountUnitZAR: 'R',
-        equalLabel: '=',
-        earnLabel: 'earn',
+        // 2026-09-09 2nd-pass: equalLabel + earnLabel merged into
+        // equalEarnLabel so the sentence renders as "=earn" with no
+        // visible space between "=" and the verb. Previous gap-x-1.5
+        // between two separate spans produced "= earn" which the user
+        // explicitly asked to compact on mobile.
+        equalEarnLabel: '=earn',
         pointsLabel: 'points',
         pointsPlaceholder: 'e.g. 1',
         pointsUnit: 'pts',
@@ -420,6 +424,10 @@ export default {
       removeTier: 'Remove',
       maxTiersReached: 'Maximum 5 tiers reached',
       // Live preview sentence
+      // 2026-09-09 i18n fix: {{amount}} / {{cap}} already include the
+      // currency unit (R / NT$ prefix-style for English). Templates
+      // provide ONLY the locale-correct phrasing — no currency symbols
+      // embedded here.
       preview: {
         modeUnknown: 'Please select an earning method',
         tierUnknown: 'Please set up at least one reward tier',

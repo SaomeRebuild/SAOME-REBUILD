@@ -95,7 +95,7 @@ describe('PointsPerSpendField (per-tier rate, Step 6 section 2b — CONDITIONAL 
     expect(container.firstChild).toBeNull();
   });
 
-  it('renders when card-wide earningMode is based_on_spending (with 2026-09-09 copy)', () => {
+  it('renders with 2026-09-09 compact copy', () => {
     const tierId = seedTier('based_on_spending');
     render(<PointsPerSpendField showValidation={false} tierId={tierId} />);
 
@@ -104,18 +104,39 @@ describe('PointsPerSpendField (per-tier rate, Step 6 section 2b — CONDITIONAL 
     expect(
       screen.getByPlaceholderText('step6.reward.pointsPerSpend.amountPlaceholder'),
     ).toBeInTheDocument();
-    expect(screen.getByText('step6.reward.pointsPerSpend.earnLabel')).toBeInTheDocument();
+    // 2026-09-09 2nd-pass: equalLabel + earnLabel merged into equalEarnLabel
+    expect(screen.getByText('step6.reward.pointsPerSpend.equalEarnLabel')).toBeInTheDocument();
     expect(screen.getByText('step6.reward.pointsPerSpend.pointsLabel')).toBeInTheDocument();
     expect(
       screen.getByPlaceholderText('step6.reward.pointsPerSpend.pointsPlaceholder'),
     ).toBeInTheDocument();
   });
 
-  it('renders equal label (=) between amount row and points row', () => {
+  it('renders the merged "=獲得" label as a single span (not separate equalLabel + earnLabel spans)', () => {
     const tierId = seedTier('based_on_spending');
-    render(<PointsPerSpendField showValidation={false} tierId={tierId} />);
+    const { container } = render(
+      <PointsPerSpendField showValidation={false} tierId={tierId} />,
+    );
 
-    expect(screen.getByText('step6.reward.pointsPerSpend.equalLabel')).toBeInTheDocument();
+    // The single i18n key `equalEarnLabel` must be rendered as one <span>.
+    // The previous equalLabel/earnLabel split (with gap-x-1.5 between them)
+    // produced a visible "= 獲得" with extra space, which the user
+    // explicitly asked to compact to "=獲得" on mobile.
+    const mergedSpans = Array.from(container.querySelectorAll('span')).filter(
+      (s) => s.textContent === 'step6.reward.pointsPerSpend.equalEarnLabel',
+    );
+    expect(mergedSpans.length).toBe(1);
+
+    // equalLabel / earnLabel must NOT be rendered as standalone spans any
+    // more (they were merged into equalEarnLabel in 2026-09-09 2nd pass).
+    const obsoleteEqual = Array.from(container.querySelectorAll('span')).filter(
+      (s) => s.textContent === 'step6.reward.pointsPerSpend.equalLabel',
+    );
+    const obsoleteEarn = Array.from(container.querySelectorAll('span')).filter(
+      (s) => s.textContent === 'step6.reward.pointsPerSpend.earnLabel',
+    );
+    expect(obsoleteEqual.length).toBe(0);
+    expect(obsoleteEarn.length).toBe(0);
   });
 
   it('updates tier.pointsPerSpendAmount on valid input', async () => {
@@ -179,6 +200,149 @@ describe('PointsPerSpendField (per-tier rate, Step 6 section 2b — CONDITIONAL 
     expect(
       screen.queryByText('step6.reward.pointsPerSpend.requiredError'),
     ).not.toBeInTheDocument();
+  });
+
+  it('mobile regression 2026-09-09: "每消費" label sits in SAME phrase-row as amount input', () => {
+    const tierId = seedTier('based_on_spending');
+    render(<PointsPerSpendField showValidation={false} tierId={tierId} />);
+
+    // Mock t() returns the key verbatim, so `getByText('step6.reward...amountLabel')`
+    // resolves the "每消費" label and `getByLabelText(...)` resolves the input
+    // sharing the SAME aria-label.
+    const amountLabel = screen.getByText('step6.reward.pointsPerSpend.amountLabel');
+    const amountInput = screen.getByLabelText(
+      'step6.reward.pointsPerSpend.amountLabel',
+    );
+
+    // Mobile fix: the label and the amount input are now SIBLINGS inside ONE
+    // semantic phrase-row container, so the input doesn't break onto its own
+    // line (regression — each fragment used to be a top-level flex child of
+    // the outer flex-col, so "每消費" / "R" / "200" / "元" / "=" / "獲得" /
+    // "2" / "個點數" all stacked vertically as 8 separate lines).
+    expect(amountLabel.parentElement).toBe(amountInput.parentElement);
+  });
+
+  it('mobile regression 2026-09-09: amount and points live in DIFFERENT phrase-row containers', () => {
+    const tierId = seedTier('based_on_spending');
+    const { container } = render(
+      <PointsPerSpendField showValidation={false} tierId={tierId} />,
+    );
+
+    const amountInput = container.querySelector<HTMLInputElement>(
+      `input[id="step6-tier-${tierId}-points-per-spend-amount"]`,
+    );
+    const pointsInput = container.querySelector<HTMLInputElement>(
+      `input[id="step6-tier-${tierId}-points-per-spend-points"]`,
+    );
+    expect(amountInput).not.toBeNull();
+    expect(pointsInput).not.toBeNull();
+
+    // Mobile (jsdom default = no media query applied): each input lives in
+    // its own semantic phrase-row container ("每消費 [N] 元" / "= 獲得 [M] 個點數").
+    // Their parents must be DIFFERENT (one per phrase).
+    const amountParent = amountInput!.parentElement!;
+    const pointsParent = pointsInput!.parentElement!;
+    expect(amountParent).not.toBe(pointsParent);
+
+    // But both phrase-row containers share the SAME grandparent — the outer
+    // container that drives mobile=vertical / md+ horizontal layout.
+    expect(amountParent.parentElement).toBe(pointsParent.parentElement);
+  });
+
+  it('md+ viewport: amount + points share a GRANDPARENT row container; each phrase-row uses md:contents to flatten (2026-09-09 mobile-fix layout)', () => {
+    const tierId = seedTier('based_on_spending');
+    const { container } = render(
+      <PointsPerSpendField showValidation={false} tierId={tierId} />,
+    );
+
+    const amountInput = container.querySelector<HTMLInputElement>(
+      `input[id="step6-tier-${tierId}-points-per-spend-amount"]`,
+    );
+    const pointsInput = container.querySelector<HTMLInputElement>(
+      `input[id="step6-tier-${tierId}-points-per-spend-points"]`,
+    );
+    expect(amountInput).not.toBeNull();
+    expect(pointsInput).not.toBeNull();
+
+    // After the 2026-09-09 mobile fix, inputs live in DIFFERENT phrase-row
+    // containers (one per logical phrase). Both phrase-row containers share
+    // the SAME grandparent row, which is the outer container.
+    const amountParent = amountInput!.parentElement!;
+    const pointsParent = pointsInput!.parentElement!;
+    expect(amountParent).not.toBe(pointsParent);
+    expect(amountParent.parentElement).toBe(pointsParent.parentElement);
+
+    // Each phrase-row inner container uses `md:contents` (display: contents
+    // at md+) so the children get hoisted into the outer container at md+
+    // screens — visually the whole sentence still reads as a single
+    // horizontal row, despite the DOM having a deeper tree.
+    expect(amountParent.className).toContain('md:contents');
+    expect(pointsParent.className).toContain('md:contents');
+
+    // Outer container keeps the mobile-first → md+ enhancement pattern.
+    const outer = amountParent.parentElement!;
+    expect(outer.className).toContain('flex-col');
+    expect(outer.className).toContain('md:flex-row');
+  });
+
+  // 2026-09-09 2nd-pass mobile polish: previous fix used `w-full md:w-24`
+  // for the amount input and `w-full md:w-20` for the points input. On
+  // mobile that forced each input to claim the full container width —
+  // pushing labels and units onto separate lines. The user asked us to
+  // compact the inputs so the whole phrase fits on one line:
+  //   每消費 [input] 元       (single line on mobile)
+  //   =獲得 [input] 個點數    (single line on mobile)
+  describe('mobile compact-width (2026-09-09 2nd-pass polish)', () => {
+    it('amount input is compact on BOTH breakpoints — not full-width on mobile', () => {
+      const tierId = seedTier('based_on_spending');
+      const { container } = render(
+        <PointsPerSpendField showValidation={false} tierId={tierId} />,
+      );
+
+      const input = container.querySelector<HTMLInputElement>(
+        `input[id="step6-tier-${tierId}-points-per-spend-amount"]`,
+      )!;
+      // Mobile fix: no `w-full` class — input is fixed width on mobile too
+      // so labels + unit can fit on the same line.
+      expect(input.className).not.toMatch(/\bw-full\b/);
+      // Tailwind w-24 = 96px (6rem). Verify the class is present.
+      expect(input.className).toMatch(/\bw-24\b/);
+    });
+
+    it('points input is compact on BOTH breakpoints — not full-width on mobile', () => {
+      const tierId = seedTier('based_on_spending');
+      const { container } = render(
+        <PointsPerSpendField showValidation={false} tierId={tierId} />,
+      );
+
+      const input = container.querySelector<HTMLInputElement>(
+        `input[id="step6-tier-${tierId}-points-per-spend-points"]`,
+      )!;
+      expect(input.className).not.toMatch(/\bw-full\b/);
+      // Tailwind w-20 = 80px (5rem). Verify the class is present.
+      expect(input.className).toMatch(/\bw-20\b/);
+    });
+
+    it('phrase row 2 (earned points) carries NO mobile indent — labels and unit start at left margin', () => {
+      const tierId = seedTier('based_on_spending');
+      const { container } = render(
+        <PointsPerSpendField showValidation={false} tierId={tierId} />,
+      );
+
+      const pointsInput = container.querySelector<HTMLInputElement>(
+        `input[id="step6-tier-${tierId}-points-per-spend-points"]`,
+      )!;
+      const pointsRow = pointsInput.parentElement!;
+
+      // Previous fix added `pl-4 md:pl-0` to visually indent the result
+      // phrase ("this is the result of row 1"). With the new compact
+      // mobile layout — both rows now start at the left margin and
+      // each row fits on one line — the indent is no longer needed
+      // and was removed.
+      expect(pointsRow.className).not.toMatch(/\bpl-4\b/);
+      // `md:contents` still applies so the row flattens on md+.
+      expect(pointsRow.className).toContain('md:contents');
+    });
   });
 
   // 2026-09-09 currency placement fix — TWD keeps 元 as suffix; ZAR uses R

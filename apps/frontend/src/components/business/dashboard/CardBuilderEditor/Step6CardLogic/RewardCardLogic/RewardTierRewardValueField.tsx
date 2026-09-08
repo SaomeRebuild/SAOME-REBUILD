@@ -6,17 +6,14 @@
  *   amount_off  → "輸入折抵金額" + currency unit (元 / R based on currency)
  *   percent_off → "輸入折抵%數" + "%" unit
  *
- * Currency-aware unit:
- *   - TWD: 元
- *   - ZAR: R
- * The unit is read from `store.currency` so it follows the user's Step 2 choice.
+ * Currency-aware unit placement (2026-09-09 semantic fix):
+ *   - TWD amount_off: 元 is a SUFFIX → [input] 元  (e.g. "50元")
+ *   - ZAR amount_off: R  is a PREFIX  → R [input] (e.g. "R50", South African Rand convention)
+ *   - percent_off:     %  is a SUFFIX → [input] %  (e.g. "10%")
  *
- * Unit placement:
- *   - The unit is rendered as a PREFIX (left of the input), not a suffix.
- *   - 2026-09-09 fix: previous layout rendered `<input> 元`, which read as
- *     "50元" (unit glued to the value). Prefix matches currency conventions
- *     (NT$50 / R50 / %10) and aligns with the same fix applied to
- *     MaxDiscountAmountField / RewardValueField / AccrualThresholdField.
+ * The unit is read from `store.currency` so it follows the user's Step 2 choice.
+ * The % symbol is ALWAYS a suffix per convention (% goes after the number).
+ * The R prefix for ZAR is preserved because South African Rand uses prefix notation.
  *
  * Validation:
  *   - Negative numbers are rejected by `onChange`.
@@ -54,17 +51,20 @@ export function RewardTierRewardValueField({ showValidation, tierId }: RewardTie
     ? t('step6.reward.tier.rewardValuePercentPlaceholder')
     : '';
 
-  // Currency-aware unit for amount_off mode.
-  const amountUnitKey =
-    currency === 'ZAR'
-      ? 'step6.reward.tier.rewardValueAmountUnitZAR'
-      : 'step6.reward.tier.rewardValueAmountUnitTWD';
+  // Currency-aware unit keys (2026-09-09 semantic fix):
+  // - amount_off: uses currency unit (元 for TWD, R for ZAR)
+  // - percent_off: uses % (always suffix)
+  const amountUnitTWD = t('step6.reward.tier.rewardValueAmountUnitTWD');
+  const amountUnitZAR = t('step6.reward.tier.rewardValueAmountUnitZAR');
+  const percentUnit = t('step6.reward.tier.rewardValuePercentUnit');
 
-  const unitLabel = isPercent
-    ? t('step6.reward.tier.rewardValuePercentUnit')
-    : isAmount
-    ? t(amountUnitKey)
-    : '';
+  // 2026-09-09 semantic fix: % and 元 are ALWAYS suffixes;
+  // R (ZAR) is ALWAYS a prefix per South African Rand convention.
+  const isZAR = currency === 'ZAR';
+  const unitSuffix =
+    isPercent ? percentUnit : isAmount ? (isZAR ? '' : amountUnitTWD) : '';
+  const unitPrefix =
+    isPercent ? '' : isAmount ? (isZAR ? amountUnitZAR : '') : '';
 
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
@@ -83,16 +83,15 @@ export function RewardTierRewardValueField({ showValidation, tierId }: RewardTie
 
       {isSelected && (
         <>
-          {/* Unit rendered as a PREFIX (left of the input).
-              Previous version rendered the unit as a suffix ("50 R"), which
-              visually reads as "50R" — the unit is part of the displayed value
-              rather than labelling the input. Prefix matches currency
-              conventions (NT$50 / R50 / %10). Tests assert the unit text is
-              rendered; order is intentionally reversed. */}
+          {/* 2026-09-09 semantic fix: unit placement follows currency convention.
+              - R (ZAR amount_off) is a PREFIX: "R 50"
+              - 元 (TWD amount_off) is a SUFFIX: "50 元"
+              - % (percent_off) is a SUFFIX: "10 %"
+              Tests assert the correct suffix/prefix order. */}
           <div className="flex items-center gap-2">
-            {unitLabel && (
+            {unitPrefix && (
               <span className="shrink-0 text-sm text-muted-foreground">
-                {unitLabel}
+                {unitPrefix}
               </span>
             )}
             <input
@@ -124,6 +123,11 @@ export function RewardTierRewardValueField({ showValidation, tierId }: RewardTie
                 ${showError ? 'border-destructive' : 'border-input'}
               `}
             />
+            {unitSuffix && (
+              <span className="shrink-0 text-sm text-muted-foreground">
+                {unitSuffix}
+              </span>
+            )}
           </div>
 
           {showError && (

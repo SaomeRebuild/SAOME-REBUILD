@@ -12,14 +12,16 @@
  *
  * The row includes a Remove button (top-right) that calls `removeRewardTier(id)`.
  *
- * 2026-09-09 mixed refactor: `<EarningModeField />` is NO LONGER inside each
- * RewardTierRow — it was moved back to the top level of `<RewardCardLogic />`
- * (one mode per card, matching STAMP card's StampAccrualModeField pattern).
- * The earn rate fields (PointsPerVisitField + PointsPerSpendField) stay
- * PER-TIER and read the card-wide `earningMode` to decide whether to render.
+ * 2026-09-09 desktop layout refactor:
+ * - Identity section (name + threshold): 2-col grid on md+, stacked on mobile.
+ * - Reward rule section (type + value): 2-col grid on md+ inside the
+ *   same flex-col container; MaxDiscountField stays on its own full-width row.
+ *   This compresses "獎勵名稱 / 達成門檻" and "獎勵方式 / 獎勵值" into
+ *   two side-by-side fields on desktop, dramatically reducing vertical space.
+ * - Earn rate section stays as-is (only one earn-rate field renders at a time).
  *
  * Mobile-first: stack vertically by default; on md+ the row becomes a
- * grid with 2 columns (left: name + threshold; right: rewardType + value).
+ * grid with 2 columns (left: name / rewardType; right: threshold / rewardValue).
  */
 
 import { useTranslation } from 'react-i18next';
@@ -62,8 +64,9 @@ export function RewardTierRow({ showValidation, tierId }: RewardTierRowProps) {
         </button>
       </div>
 
-      {/* ===== Reward identity ===== */}
-      <div className="flex flex-col gap-3">
+      {/* ===== Reward identity (2026-09-09 desktop layout) ===== */}
+      {/* 2-col grid: name | threshold on md+; stacked on mobile. */}
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <RewardTierNameField showValidation={showValidation} tierId={tierId} />
         <RewardTierThresholdField showValidation={showValidation} tierId={tierId} />
       </div>
@@ -83,10 +86,14 @@ export function RewardTierRow({ showValidation, tierId }: RewardTierRowProps) {
         <PointsPerSpendField showValidation={showValidation} tierId={tierId} />
       </div>
 
-      {/* ===== Reward rule (rewardType + value + cap) ===== */}
+      {/* ===== Reward rule (rewardType + value + cap) (2026-09-09 desktop layout) ===== */}
+      {/* type + value use 2-col grid on md+; MaxDiscountField stays full-width
+          on its own row beneath them. */}
       <div className="flex min-w-0 flex-col gap-3 border-t border-border pt-4">
-        <RewardTierRewardTypeField showValidation={showValidation} tierId={tierId} />
-        <RewardTierRewardValueField showValidation={showValidation} tierId={tierId} />
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <RewardTierRewardTypeField showValidation={showValidation} tierId={tierId} />
+          <RewardTierRewardValueField showValidation={showValidation} tierId={tierId} />
+        </div>
         {/* RewardTierMaxDiscountField is CONDITIONAL: only rendered for percent_off */}
         <RewardTierMaxDiscountField showValidation={showValidation} tierId={tierId} />
       </div>
