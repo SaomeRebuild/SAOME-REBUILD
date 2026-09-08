@@ -148,6 +148,20 @@ export class HttpClient {
         setAccessToken(newToken);
         return this.requestWithRetry<T>(method, path, { ...init, retryOn401: false }, attempt);
       }
+      // Refresh failed (expired / revoked token, or network error).
+      // Do NOT fall through to retry the original request with the same expired
+      // token — that would loop 401 → tryRefresh → null → retry → 401 again.
+      // Throw immediately so callers get a clean auth error they can handle
+      // (e.g. AuthProvider catches it and shows the login form).
+      let errBody: unknown;
+      try {
+        errBody = await res.json();
+      } catch {
+        errBody = { message: res.statusText };
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const parsed = errBody as { error?: { code?: string; i18nKey?: string; message?: string; details?: any } };
+      throw new SaomeApiError(res.status, parsed);
     }
 
     if (!res.ok) {

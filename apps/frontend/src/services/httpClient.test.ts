@@ -120,6 +120,51 @@ describe('HttpClient — 5xx retry behavior', () => {
     expect(fetchMock.mock.calls.length).toBeLessThanOrEqual(2);
   });
 
+  /**
+   * Regression — 2026-09-08: when tryRefresh() returns null (refresh token
+   * expired/revoked), the original request MUST throw SaomeApiError(401)
+   * immediately rather than retrying with the same stale accessToken.
+   *
+   * Background: previously the code fell through to `if (!res.ok) throw
+   * SaomeApiError(...)`, which (per the flow) retried the original request
+   * with the same expired token, producing a 401 → tryRefresh → null →
+   * retry → 401 loop. The user observed this in incognito mode with a
+   * stale cookie: multiple 401s followed by a 429 because the rate
+   * limiter counted each failed attempt.
+   *
+   * After the fix: tryRefresh null ⇒ immediate throw SaomeApiError(401).
+   */
+  it('regression 2026-09-08: tryRefresh null → immediate throw, no retry storm', async () => {
+    authStore.setRefreshToken('expired-refresh');
+
+    // original 401 → tryRefresh (mocked via the refresh endpoint returning 401)
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: 'unauthorized' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: 'refresh expired' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+
+    const client = buildClient();
+    await expect(client.get('/api/cards')).rejects.toBeInstanceOf(SaomeApiError);
+
+    // Critical: only 2 fetch calls (original + 1 refresh attempt).
+    // The old bug would have retried the original after refresh failed,
+    // producing 3+ calls on `/api/cards` and indefinite 401s.
+    const originalCalls = fetchMock.mock.calls.filter((call) => {
+      const url = call[0] as string;
+      return url.includes('/api/cards');
+    });
+    expect(originalCalls).toHaveLength(1);
+  });
+
   it('gives up after MAX_5XX_RETRIES attempts (3 retries → 4 attempts total)', async () => {
     // 4 consecutive 503s
     fetchMock.mockResolvedValue(mockResponse(503, { message: 'busy' }));

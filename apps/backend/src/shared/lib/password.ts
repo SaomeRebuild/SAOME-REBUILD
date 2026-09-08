@@ -50,14 +50,40 @@ import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 const ALGO = 'scrypt';
 const KEY_LEN = 64;
 const SALT_LEN = 16;
-const N = 16384;
+// Lower CPU cost for Workers Free plan compatibility.
+//
+// Why N=1024 (instead of the OWASP 2023 minimum N=131072 or the
+// previous N=16384):
+//   - Workers Free plan: 10 ms CPU limit per request.  scrypt with
+//     N=16384 takes ~30-100 ms on the Workers V8 isolate → 1102 always.
+//   - Workers Paid plan: 30 s CPU limit → N=16384 is fine.
+//   - A login endpoint that can return 1102 is a security problem
+//     (the browser sees a CORS drop instead of an auth error).
+//
+// Trade-off: N=1024 is weaker than N=16384, but:
+//   - still resists quick GPU attacks (r=8, p=1)
+//   - the admin account (migration 003) has its hash baked in and is
+//     not re-hashed on login, so lowering N does NOT retroactively
+//     weaken the admin hash.
+//   - any future accounts can be created with the lower-cost hash.
+//
+// Future migration: when Workers Paid is confirmed, bump back to N=16384
+// and ship a background re-hash on next login (see
+// runs/improvements/feedback/20260727-backend-db-migrations.md
+// 'Open: Password algorithm').
+const N = 1024;
 const R = 8;
 const P = 1;
+// Legacy N value used to generate the admin seed hash (migration 003).
+// Kept here so verifyPassword can fall back to it when the current N
+// does not match — i.e. when verifying a pre-existing hash.
+const N_LEGACY = 16384;
 // 128 MiB — comfortably above 128*r*N for both N=16384 (~16 MiB) and
 // N=131072 (~128 MiB). Keeps the code future-proof if we bump params.
 const SCRYPT_MAXMEM = 128 * 1024 * 1024;
 
 const SCRYPT_OPTS = { N, r: R, p: P, maxmem: SCRYPT_MAXMEM } as const;
+const SCRYPT_OPTS_LEGACY = { N: N_LEGACY, r: R, p: P, maxmem: SCRYPT_MAXMEM } as const;
 
 export function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(SALT_LEN);
@@ -86,18 +112,24 @@ export function verifyPassword(password: string, storedHash: string): Promise<bo
   if (salt.length !== SALT_LEN || expected.length !== KEY_LEN) {
     return Promise.resolve(false);
   }
+  // Try with current N first (new passwords created with N=1024).
   let actual: Buffer;
   try {
     actual = scryptSync(password, salt, KEY_LEN, SCRYPT_OPTS);
   } catch {
-    // scrypt can throw on platforms that reject the param set
-    // (ERR_CRYPTO_INVALID_SCRYPT_PARAMS / memory limit). Treat as
-    // "verification failed" rather than letting it bubble up as 500.
     return Promise.resolve(false);
   }
+  if (timingSafeEqual(expected, actual)) {
+    return Promise.resolve(true);
+  }
+
+  // Fallback: try legacy N (admin seed hash from migration 003 was
+  // generated with N=16384, before this file switched to N=1024).
+  let legacy: Buffer;
   try {
-    return Promise.resolve(timingSafeEqual(actual, expected));
+    legacy = scryptSync(password, salt, KEY_LEN, SCRYPT_OPTS_LEGACY);
   } catch {
     return Promise.resolve(false);
   }
+  return Promise.resolve(timingSafeEqual(expected, legacy));
 }

@@ -84,13 +84,7 @@ export const logoutRoute = new Hono<HonoEnv>().post('/', async (c) => {
 
   const attrs = buildLogoutCookieAttrs(origin, hadCredential);
   const setCookieHeader = buildLogoutSetCookie(attrs);
-
-  const jsonResponse = c.json({ loggedOut: true });
-  // Always emit Set-Cookie so the browser defensively clears any stale
-  // `saome_refresh` cookie (covers the case where the client forgot to
-  // attach the credential header but the cookie still exists in the jar).
-  jsonResponse.headers.append('Set-Cookie', setCookieHeader);
-  return jsonResponse;
+  return c.json({ loggedOut: true }, 200, { 'Set-Cookie': setCookieHeader });
 });
 
 export default logoutRoute;

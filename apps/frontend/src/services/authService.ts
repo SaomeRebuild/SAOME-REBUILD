@@ -18,7 +18,7 @@
 
 import { httpClient } from './httpClient';
 import { api } from '@/config/api';
-import { setAccessToken, setRefreshToken, withRefreshMutex } from './authStore';
+import { setAccessToken, setRefreshToken } from './authStore';
 import type {
   LoginCredentials,
   RegistrationPayload,
@@ -66,16 +66,15 @@ export const authService = {
     // response, so this single call is enough for AuthProvider to recover
     // the user/tenant on mount.
     //
-    // Concurrency fix: wrap in withRefreshMutex so that if multiple code paths
-    // call refresh() simultaneously (e.g. CardBuilderPage + httpClient 401 retry),
-    // they all share the same in-flight request rather than racing on
-    // setAccessToken and corrupting each other's results.
-    const session = await withRefreshMutex(async () => {
-      const result = await httpClient.post<AuthSessionWithTenant>(api.paths.refresh);
-      syncTokens(result);
-      return result;
-    });
-    return session;
+    // B4 fix (2026-09-08): removed the redundant withRefreshMutex wrapper.
+    // httpClient.request() already routes all 401s through a single shared
+    // in-flight POST /api/auth/refresh (via the mutex inside
+    // httpClient.tryRefresh()). Wrapping httpClient.post() in a second
+    // mutex created a deadlock risk: if any caller also uses the
+    // authService.refresh() path directly, two mutexes would race.
+    const result = await httpClient.post<AuthSessionWithTenant>(api.paths.refresh);
+    syncTokens(result);
+    return result;
   },
 
   async me(): Promise<MeResponse> {
