@@ -328,6 +328,118 @@ export default {
       otherCardTypes: 'Card logic for this card type is not yet available.',
       hint: 'Select "Stamp Card" or "Multipass" to configure stamping and reward rules.',
     },
+    // ===== Reward card (2026-09-09) =====
+    // Differs from stamp card:
+    //   - Points-driven (not stamps)
+    //   - Up to 5 reward tiers (not single reward)
+    //   - earningMode: based_on_points / based_on_visits / based_on_spending
+    reward: {
+      intro: 'Set the points accumulation and reward redemption rules for this card',
+      introHint: 'Members can earn points by custom conditions, visits, or spending, then redeem rewards once the threshold is met.',
+      // Earning Mode selector
+      earningModeTitle: 'Points Earning Method',
+      earningModeDescription: 'Choose how points are earned on this card',
+      modes: {
+        based_on_points: {
+          label: 'Custom Conditions',
+          helper: 'Members earn points by fulfilling custom conditions (e.g. completing tasks, referring new members, filling out surveys). Best for engagement-driven scenarios.',
+        },
+        based_on_visits: {
+          label: 'Per Visit',
+          helper: 'Members automatically earn points each time they visit (by showing the card or scanning a QR code). Ideal for gyms, clinics, or tutoring centers.',
+        },
+        based_on_spending: {
+          label: 'Per Spend',
+          helper: 'Members earn points automatically when spending reaches a set amount, determined by the point-of-sale system. Ideal for chain restaurants or retail stores.',
+        },
+      },
+      // Per-visit threshold
+      pointsPerVisit: {
+        title: 'Points Per Visit',
+        helper: 'Points earned each time a member visits.',
+        placeholder: 'e.g. 10',
+        unit: 'points',
+        requiredError: 'Please enter points earned per visit',
+        minError: 'Points per visit must be at least 1',
+      },
+      // Per-spend threshold (per-tier, 2026-09-09 copy refactor)
+      pointsPerSpend: {
+        title: 'Spend-Points Ratio',
+        helper: 'Earn M points for every N spent.',
+        amountLabel: 'every',
+        amountPlaceholder: 'e.g. 100',
+        // 2026-09-09: currency-aware — TWD 後綴 spent, ZAR 前綴R
+        // 渲染層根據 store.currency 條件選擇 prefix / suffix
+        amountUnitTWD: 'spent',
+        amountUnitZAR: 'R',
+        equalLabel: '=',
+        earnLabel: 'earn',
+        pointsLabel: 'points',
+        pointsPlaceholder: 'e.g. 1',
+        pointsUnit: 'pts',
+        requiredError: 'Please enter the spend amount and points',
+        amountMinError: 'Spend amount must be greater than 0',
+        pointsMinError: 'Points must be greater than 0',
+      },
+      // Reward tiers
+      tiersTitle: 'Reward Tiers',
+      tiersHint: 'Set up to 5 reward tiers that members can redeem at each point threshold.',
+      tier: {
+        nameTitle: 'Reward Name',
+        namePlaceholder: 'e.g. 1000 pts for 10% off or 500 pts for R50 off',
+        nameCounter: '{{count}} / 40',
+        nameRequiredError: 'Please enter a reward name',
+        thresholdTitle: 'Points Threshold',
+        thresholdUnit: 'points',
+        thresholdPlaceholder: 'e.g. 1000',
+        thresholdRequiredError: 'Please enter the threshold',
+        thresholdMinError: 'Threshold must be greater than 0',
+        rewardTypeTitle: 'Reward Type',
+        rewardTypePlaceholder: 'Select reward type',
+        rewardTypeAmount: 'Cash discount',
+        rewardTypePercent: 'Percentage discount',
+        rewardValueTitle: 'Reward Value',
+        rewardValueAmountPlaceholder: 'Enter discount amount, e.g. 10',
+        rewardValuePercentPlaceholder: 'Enter discount percentage, e.g. 10',
+        // Currency-aware unit: TWD uses NT$ (per SAOME i18n convention —
+        // see auth.en.ts / pricing.en.ts), ZAR uses R (South African Rand)
+        rewardValueAmountUnitTWD: 'NT$',
+        rewardValueAmountUnitZAR: 'R',
+        rewardValuePercentUnit: '%',
+        rewardValueRequiredError: 'Please enter the reward value',
+        rewardValueInvalidError: 'Please enter a valid number',
+        rewardValueTooLargeError: 'Discount percentage cannot exceed 100',
+        maxDiscountTitle: 'Maximum Discount Amount',
+        maxDiscountUnitTWD: 'NT$',
+        maxDiscountUnitZAR: 'R',
+        maxDiscountPlaceholder: 'e.g. 50 (leave blank for no cap)',
+        maxDiscountOptional: '(Optional, leave blank for no cap)',
+        maxDiscountHelper: 'Setting a cap prevents large discounts on big purchases.',
+      },
+      addTier: 'Add Reward Tier',
+      removeTier: 'Remove',
+      maxTiersReached: 'Maximum 5 tiers reached',
+      // Live preview sentence
+      preview: {
+        modeUnknown: 'Please select an earning method',
+        tierUnknown: 'Please set up at least one reward tier',
+        amountReward: '{{amount}} off',
+        percentReward: '{{percent}}% off',
+        amountWithCap: '{{amount}} off, max {{cap}} per transaction',
+        percentWithCap: '{{percent}}% off, max {{cap}} per transaction',
+        percentNoCap: '{{percent}}% off, no discount cap',
+        template: 'Earn {{threshold}} points to redeem {{reward}}',
+      },
+      // Validation
+      validation: {
+        earningModeRequired: 'Please select an earning method',
+        tierRequired: 'Please set up at least one reward tier',
+        tierNameRequired: 'Reward name is required',
+        thresholdRequired: 'Threshold is required',
+        rewardTypeRequired: 'Please select a reward type',
+        rewardValueRequired: 'Please enter the reward value',
+      },
+    },
   },
   // Step 7: Customize Table Card
   step7: {

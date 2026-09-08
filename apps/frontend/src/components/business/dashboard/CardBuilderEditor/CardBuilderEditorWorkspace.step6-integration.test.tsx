@@ -232,10 +232,11 @@ describe('CardBuilderEditorWorkspace — Step 6 (2026-09-07 stamp card logic int
       expect(onSave).toHaveBeenCalledTimes(1);
     });
 
-    // 2026-09-07 round-trip fix: payload now contains ALL 9 Step 6 fields.
-    // For per_stamp the 4 thresholds are explicitly null (not undefined)
-    // because the save block always forwards them — this lets
-    // loadSettings's defensive null-coercion reset them cleanly on reload.
+    // 2026-09-09 mixed refactor: top-level `earningMode` is included in
+    // the save payload (one mode per card). Per-tier earn rate fields
+    // (pointsPerVisit / pointsPerSpendAmount / pointsPerSpendPoints)
+    // are inline per tier; per-tier `earningMode` is NO LONGER sent
+    // (the backend schema no longer carries that field).
     expect(onSave).toHaveBeenCalledWith('test-card-id', {
       stampAccrualMode: 'per_stamp',
       rewardName: '10元折價',
@@ -246,6 +247,8 @@ describe('CardBuilderEditorWorkspace — Step 6 (2026-09-07 stamp card logic int
       stampsPerVisitStamps: null,
       stampsPerSpendAmount: null,
       stampsPerSpendStamps: null,
+      earningMode: null,
+      rewardTiers: [],
     });
 
     expect(onStepChange).toHaveBeenCalledWith(7);
@@ -297,6 +300,10 @@ describe('CardBuilderEditorWorkspace — Step 6 (2026-09-07 stamp card logic int
       // per_visit: spend fields are explicitly null
       stampsPerSpendAmount: null,
       stampsPerSpendStamps: null,
+      // 2026-09-09 mixed refactor: top-level earningMode (reward_card) is
+      // always sent (null for stamp_card since reward fields don't apply).
+      earningMode: null,
+      rewardTiers: [],
     });
 
     expect(onStepChange).toHaveBeenCalledWith(7);
@@ -346,8 +353,176 @@ describe('CardBuilderEditorWorkspace — Step 6 (2026-09-07 stamp card logic int
       stampsPerVisitStamps: null,
       stampsPerSpendAmount: 100,
       stampsPerSpendStamps: 1,
+      // 2026-09-09 mixed refactor: top-level earningMode (reward_card)
+      earningMode: null,
+      rewardTiers: [],
     });
 
     expect(onStepChange).toHaveBeenCalledWith(7);
+  });
+
+  // ===== 2026-09-09 mixed refactor: reward_card save payload =====
+  it('handleNext forwards card-wide earningMode + per-tier earn rates for reward_card', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    useCardBuilderStore.setState({
+      cardType: 'reward_card',
+      earningMode: 'based_on_spending',
+      rewardTiers: [
+        {
+          id: 'tier-1',
+          name: '500點折抵5%',
+          threshold: 500,
+          rewardType: 'percent_off',
+          rewardValue: 5,
+          maxDiscountAmount: 50,
+          // Per-tier earn rate fields (no per-tier earningMode — top-level only)
+          pointsPerVisit: null,
+          pointsPerSpendAmount: 100,
+          pointsPerSpendPoints: 1,
+        },
+        {
+          id: 'tier-2',
+          name: '1000點折抵10%',
+          threshold: 1000,
+          rewardType: 'percent_off',
+          rewardValue: 10,
+          maxDiscountAmount: 100,
+          // Different per-tier rate under the same card-wide mode
+          pointsPerVisit: null,
+          pointsPerSpendAmount: 50,   // tier-2: $50 = 1 pt (different from tier-1)
+          pointsPerSpendPoints: 1,
+        },
+      ],
+    });
+
+    const onStepChange = vi.fn();
+    render(
+      <CardBuilderEditorWorkspace
+        step={6}
+        onStepChange={onStepChange}
+        cardType="reward_card"
+        cardId="reward-card-id"
+        onCardTypeChange={vi.fn()}
+        onSave={onSave}
+        onBack={vi.fn()}
+      />,
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByText('step1.next'));
+
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalledTimes(1);
+    });
+
+    expect(onSave).toHaveBeenCalledWith('reward-card-id', {
+      // Stamp fields are null/empty for reward_card (not applicable).
+      stampAccrualMode: null,
+      rewardName: '',
+      rewardType: null,
+      rewardValue: null,
+      maxDiscountAmount: null,
+      stampsPerVisitCount: null,
+      stampsPerVisitStamps: null,
+      stampsPerSpendAmount: null,
+      stampsPerSpendStamps: null,
+      // 2026-09-09 mixed refactor: card-wide earningMode (top-level) +
+      // per-tier earn rate fields (inline). NO per-tier earningMode —
+      // the backend schema dropped that field.
+      earningMode: 'based_on_spending',
+      rewardTiers: [
+        {
+          name: '500點折抵5%',
+          threshold: 500,
+          rewardType: 'percent_off',
+          rewardValue: 5,
+          maxDiscountAmount: 50,
+          pointsPerVisit: null,
+          pointsPerSpendAmount: 100,
+          pointsPerSpendPoints: 1,
+        },
+        {
+          name: '1000點折抵10%',
+          threshold: 1000,
+          rewardType: 'percent_off',
+          rewardValue: 10,
+          maxDiscountAmount: 100,
+          pointsPerVisit: null,
+          pointsPerSpendAmount: 50,
+          pointsPerSpendPoints: 1,
+        },
+      ],
+    });
+
+    expect(onStepChange).toHaveBeenCalledWith(7);
+  });
+
+  // ===== isRewardStep6Valid tests (2026-09-09 mixed refactor) =====
+  it('reward_card: Next disabled when card-wide earningMode is null', () => {
+    useCardBuilderStore.setState({
+      cardType: 'reward_card',
+      earningMode: null,
+      rewardTiers: [
+        { id: 'tier-1', name: '500點', threshold: 500, rewardType: 'amount_off', rewardValue: 50, maxDiscountAmount: null, pointsPerVisit: null, pointsPerSpendAmount: null, pointsPerSpendPoints: null },
+      ],
+    });
+    render(
+      <CardBuilderEditorWorkspace
+        step={6}
+        onStepChange={vi.fn()}
+        cardType="reward_card"
+        cardId="r1"
+        onCardTypeChange={vi.fn()}
+        onSave={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('step1.next')).toBeDisabled();
+  });
+
+  it('reward_card: Next enabled when card-wide mode=based_on_visits and every tier has pointsPerVisit', () => {
+    useCardBuilderStore.setState({
+      cardType: 'reward_card',
+      earningMode: 'based_on_visits',
+      rewardTiers: [
+        { id: 'tier-1', name: '500點', threshold: 500, rewardType: 'amount_off', rewardValue: 50, maxDiscountAmount: null, pointsPerVisit: 10, pointsPerSpendAmount: null, pointsPerSpendPoints: null },
+        { id: 'tier-2', name: '1000點', threshold: 1000, rewardType: 'amount_off', rewardValue: 100, maxDiscountAmount: null, pointsPerVisit: 5, pointsPerSpendAmount: null, pointsPerSpendPoints: null },
+      ],
+    });
+    render(
+      <CardBuilderEditorWorkspace
+        step={6}
+        onStepChange={vi.fn()}
+        cardType="reward_card"
+        cardId="r2"
+        onCardTypeChange={vi.fn()}
+        onSave={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('step1.next')).not.toBeDisabled();
+  });
+
+  it('reward_card: Next disabled when card-wide mode=based_on_visits but one tier lacks pointsPerVisit', () => {
+    useCardBuilderStore.setState({
+      cardType: 'reward_card',
+      earningMode: 'based_on_visits',
+      rewardTiers: [
+        { id: 'tier-1', name: '500點', threshold: 500, rewardType: 'amount_off', rewardValue: 50, maxDiscountAmount: null, pointsPerVisit: 10, pointsPerSpendAmount: null, pointsPerSpendPoints: null },
+        { id: 'tier-2', name: '1000點', threshold: 1000, rewardType: 'amount_off', rewardValue: 100, maxDiscountAmount: null, pointsPerVisit: null, pointsPerSpendAmount: null, pointsPerSpendPoints: null },
+      ],
+    });
+    render(
+      <CardBuilderEditorWorkspace
+        step={6}
+        onStepChange={vi.fn()}
+        cardType="reward_card"
+        cardId="r3"
+        onCardTypeChange={vi.fn()}
+        onSave={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('step1.next')).toBeDisabled();
   });
 });

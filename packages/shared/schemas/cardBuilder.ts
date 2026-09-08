@@ -56,14 +56,40 @@ export const cardTypeExtensions = {
   gift_card: z.object({}),
   membership_card: z.object({}),
   /**
-   * Multi-pass card shares the stamp grid extension with stamp_card (both
-   * render the same `<StampGridPreview>` in the preview strip). Mirrors
-   * `shared/templateSettingsSchema.stampGridRows / stampIconId`.
-   * Stamp grid feature 2026-09-04.
+   * Reward card (獎勵卡) — Step 6 REWARD 卡實作 (2026-09-09).
+   * Differs from stamp_card:
+   *   - earningMode: based_on_points / based_on_visits / based_on_spending
+   *   - pointsPerVisit: points earned per visit
+   *   - pointsPerSpend*: points earned per spend amount
+   *   - rewardTiers: array of up to 5 reward tiers (vs stamp's single reward)
    *
-   * 2026-09-07 refactor: also shares the Step 6 stamp card logic extension
-   * (multipass = 多通卡 = a multi-pass stamp card; reward rules are the same).
+   * Mirrors mu-plugins `SAOME-Points-Engine/modules/cards/reward-card.php`
+   * and `SAOME-Passcreator-Engine/modules/passcreator-reward-card.php`.
    */
+  reward_card: z.object({
+    // ===== Step 6 — 獎勵卡邏輯 (2026-09-09) =====
+    /** 累積方式: 基於點數 / 基於拜訪 / 基於消費. */
+    earningMode: z.enum(['based_on_points', 'based_on_visits', 'based_on_spending']).optional(),
+    /** 基於拜訪: 每次拜訪獲得多少點. */
+    pointsPerVisit: z.number().int().min(1).nullable().optional(),
+    /** 基於消費: 每消費多少元. */
+    pointsPerSpendAmount: z.number().positive().nullable().optional(),
+    /** 基於消費: 每次獲得多少點. */
+    pointsPerSpendPoints: z.number().int().min(1).nullable().optional(),
+    /** 獎勵級距陣列 (最多 5 組). */
+    rewardTiers: z
+      .array(
+        z.object({
+          name: z.string().min(1).max(40),
+          threshold: z.number().int().min(1),
+          rewardType: z.enum(['amount_off', 'percent_off']),
+          rewardValue: z.number().positive(),
+          maxDiscountAmount: z.number().min(0).nullable().optional(),
+        }),
+      )
+      .max(5)
+      .optional(),
+  }),
   multipass: z.object({
     stampGridRows: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).optional(),
     stampIconId: z.string().optional(),

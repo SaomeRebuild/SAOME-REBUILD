@@ -325,6 +325,123 @@ export default {
       otherCardTypes: '此卡種的卡片邏輯尚未實作。',
       hint: '選擇「集點卡」或「多通卡」即可設定蓋章與獎勵規則。',
     },
+    // ===== REWARD 卡（獎勵卡，2026-09-09）=====
+    // 與 stamp 卡的核心差異:
+    //   - 點數驅動 (非印章)
+    //   - 最多 5 組獎勵級距 (非單一獎勵)
+    //   - earningMode: based_on_points / based_on_visits / based_on_spending
+    reward: {
+      // 進入 Step 6 時的說明
+      intro: '設定此獎勵卡的點數累積與獎勵兌換規則',
+      introHint: '會員可由自訂條件、拜訪或消費累積點數，集滿指定點數後可兌換獎勵。',
+      // ===== Earning Mode 選擇 =====
+      earningModeTitle: '點數累積方式',
+      earningModeDescription: '選擇此卡要採用哪一種點數累積方式',
+      modes: {
+        based_on_points: {
+          label: '基於點數',
+          helper: '會員滿足自訂條件（如完成任務、推薦新會員、填寫問卷等）即獲得點數。適用於鼓勵互動、參與活動的場景。',
+        },
+        based_on_visits: {
+          label: '基於拜訪',
+          helper: '顧客每次到訪（出示卡片或掃描 QR 碼）即自動獲得點數。適用於健身房、診所、補習班等需要計算到訪次數的場所。',
+        },
+        based_on_spending: {
+          label: '基於消費',
+          helper: '顧客每次消費達指定金額即自動獲得點數，金額由消費記錄系統決定。適用於連鎖餐廳、零售通路等。',
+        },
+      },
+      // ===== 基於拜訪門檻 =====
+      pointsPerVisit: {
+        title: '每次拜訪獲得點數',
+        helper: '顧客每次到訪可獲得的點數。',
+        placeholder: '例如：10',
+        unit: '點',
+        requiredError: '請輸入每次拜訪獲得的點數',
+        minError: '每次拜訪至少需獲得 1 點',
+      },
+      // ===== 基於消費門檻 (per-tier, 2026-09-09) =====
+      // Copy restructure (2026-09-09): previously a single inline row
+      // "每消費 [N] 元 = [M] 元獲得" was hard to parse. Now split into TWO rows:
+      //   Row 1: "每消費" + input[placeholder: 例如：100] + "元"
+      //   Row 2: "=" + "獲得" + input[placeholder: 例如：1] + "個點數"
+      // The two rows make the meaning crystal clear: spend N → earn M points.
+      pointsPerSpend: {
+        title: '消費點數比例',
+        helper: '每消費 N 元可獲得 M 點。',
+        amountLabel: '每消費',
+        amountPlaceholder: '例如：100',
+        // 2026-09-09: 改為 currency-aware — TWD 後綴元, ZAR 前綴R
+        // 渲染層根據 store.currency 條件選擇 prefix / suffix
+        amountUnitTWD: '元',
+        amountUnitZAR: 'R',
+        equalLabel: '=',
+        earnLabel: '獲得',
+        pointsLabel: '個點數',
+        pointsPlaceholder: '例如：1',
+        pointsUnit: '點',
+        requiredError: '請輸入消費金額與點數',
+        amountMinError: '消費金額需大於 0',
+        pointsMinError: '點數需大於 0',
+      },
+      // ===== 獎勵級距 =====
+      tiersTitle: '獎勵級距',
+      tiersHint: '設定會員集滿指定點數可兌換的獎勵。最多可設定 5 組級距。',
+      tier: {
+        nameTitle: '獎勵名稱',
+        namePlaceholder: '例如：1000點折抵10% 或 500點折抵50元',
+        nameCounter: '{{count}} / 40',
+        nameRequiredError: '請輸入獎勵名稱',
+        thresholdTitle: '達成門檻',
+        thresholdUnit: '點',
+        thresholdPlaceholder: '例如：1000',
+        thresholdRequiredError: '請輸入門檻點數',
+        thresholdMinError: '門檻點數需大於 0',
+        rewardTypeTitle: '獎勵方式',
+        rewardTypePlaceholder: '請選擇獎勵方式',
+        rewardTypeAmount: '現金折扣',
+        rewardTypePercent: '百分比折扣',
+        rewardValueTitle: '獎勵值',
+        rewardValueAmountPlaceholder: '輸入折抵金額，例如 10',
+        rewardValuePercentPlaceholder: '輸入折抵百分比，例如 10',
+        // 動態單位: 根據 store.currency 切換元 / R
+        rewardValueAmountUnitTWD: '元',
+        rewardValueAmountUnitZAR: 'R',
+        rewardValuePercentUnit: '%',
+        rewardValueRequiredError: '請輸入獎勵值',
+        rewardValueInvalidError: '請輸入有效的數字',
+        rewardValueTooLargeError: '折抵百分比不能超過 100',
+        maxDiscountTitle: '最高折抵金額',
+        maxDiscountUnitTWD: '元',
+        maxDiscountUnitZAR: 'R',
+        maxDiscountPlaceholder: '例如：50（留空表示無上限）',
+        maxDiscountOptional: '（選填，留空表示無上限）',
+        maxDiscountHelper: '設定上限可避免大筆消費時折扣金額過高。',
+      },
+      addTier: '新增獎勵級距',
+      removeTier: '移除',
+      maxTiersReached: '已達最高 5 組級距',
+      // ===== 即時預覽湊句 =====
+      preview: {
+        modeUnknown: '請選擇累積方式',
+        tierUnknown: '請設定獎勵級距',
+        amountReward: '{{amount}}元折價',
+        percentReward: '{{percent}}%折扣',
+        amountWithCap: '{{amount}}元折價，最高折抵 {{cap}}元',
+        percentWithCap: '{{percent}}%折扣，最高折抵 {{cap}}元',
+        percentNoCap: '{{percent}}%折扣，無折抵上限',
+        template: '集滿 {{threshold}} 點可兌換 {{reward}}',
+      },
+      // ===== Validation =====
+      validation: {
+        earningModeRequired: '請選擇累積方式',
+        tierRequired: '請至少設定 1 組獎勵級距',
+        tierNameRequired: '獎勵名稱為必填欄位',
+        thresholdRequired: '門檻點數為必填欄位',
+        rewardTypeRequired: '請選擇獎勵方式',
+        rewardValueRequired: '請輸入獎勵值',
+      },
+    },
   },
   // Step 7: 客製化桌牌
   step7: {

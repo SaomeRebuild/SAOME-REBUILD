@@ -5,6 +5,7 @@
  *   - null          → ComingSoon
  *   - stamp_card    → StampCardLogic (集點卡)
  *   - multipass     → StampCardLogic (集點卡 shared)
+ *   - reward_card   → RewardCardLogic (獎勵卡, 2026-09-09)
  *   - cashback_card → ComingSoon (Step 6 not yet implemented for non-stamp types)
  *
  * Plan ref: step6_集點卡模組化實作 plan 2026-09-07 § Phase 6.1 dispatcher test.
@@ -23,12 +24,20 @@ vi.mock('react-i18next', () => ({
 
 // Track which sub-component is rendered.
 let stampCardLogicRenders = 0;
+let rewardCardLogicRenders = 0;
 let comingSoonRenders = 0;
 
 vi.mock('./StampCardLogic', () => ({
   StampCardLogic: () => {
     stampCardLogicRenders += 1;
     return <div data-testid="stamp-card-logic">StampCardLogic</div>;
+  },
+}));
+
+vi.mock('./RewardCardLogic', () => ({
+  RewardCardLogic: () => {
+    rewardCardLogicRenders += 1;
+    return <div data-testid="reward-card-logic">RewardCardLogic</div>;
   },
 }));
 
@@ -45,6 +54,7 @@ vi.mock('./Step6CardLogicComingSoon', () => ({
 
 beforeEach(() => {
   stampCardLogicRenders = 0;
+  rewardCardLogicRenders = 0;
   comingSoonRenders = 0;
 });
 
@@ -59,6 +69,7 @@ describe('Step6CardLogic — dispatcher (Rule 000 § A.1)', () => {
     render(<Step6CardLogic showValidation={false} />);
 
     expect(stampCardLogicRenders).toBe(0);
+    expect(rewardCardLogicRenders).toBe(0);
     expect(comingSoonRenders).toBe(1);
     expect(screen.getByTestId('coming-soon')).toHaveAttribute(
       'data-card-type',
@@ -71,6 +82,7 @@ describe('Step6CardLogic — dispatcher (Rule 000 § A.1)', () => {
     render(<Step6CardLogic showValidation={false} />);
 
     expect(stampCardLogicRenders).toBe(1);
+    expect(rewardCardLogicRenders).toBe(0);
     expect(comingSoonRenders).toBe(0);
     expect(screen.getByTestId('stamp-card-logic')).toBeInTheDocument();
   });
@@ -80,8 +92,19 @@ describe('Step6CardLogic — dispatcher (Rule 000 § A.1)', () => {
     render(<Step6CardLogic showValidation={false} />);
 
     expect(stampCardLogicRenders).toBe(1);
+    expect(rewardCardLogicRenders).toBe(0);
     expect(comingSoonRenders).toBe(0);
     expect(screen.getByTestId('stamp-card-logic')).toBeInTheDocument();
+  });
+
+  it('renders RewardCardLogic for reward_card (Step 6 plan 2026-09-09)', () => {
+    useCardBuilderStore.setState({ cardType: 'reward_card' });
+    render(<Step6CardLogic showValidation={false} />);
+
+    expect(stampCardLogicRenders).toBe(0);
+    expect(rewardCardLogicRenders).toBe(1);
+    expect(comingSoonRenders).toBe(0);
+    expect(screen.getByTestId('reward-card-logic')).toBeInTheDocument();
   });
 
   it('renders ComingSoon for cashback_card (not yet supported)', () => {
@@ -89,6 +112,7 @@ describe('Step6CardLogic — dispatcher (Rule 000 § A.1)', () => {
     render(<Step6CardLogic showValidation={false} />);
 
     expect(stampCardLogicRenders).toBe(0);
+    expect(rewardCardLogicRenders).toBe(0);
     expect(comingSoonRenders).toBe(1);
     expect(screen.getByTestId('coming-soon')).toHaveAttribute(
       'data-card-type',
@@ -107,23 +131,24 @@ describe('Step6CardLogic — dispatcher (Rule 000 § A.1)', () => {
     );
   });
 
-  it('renders ComingSoon for discount_card, coupon_card, gift_card, reward_card', () => {
+  it('renders ComingSoon for discount_card, coupon_card, gift_card', () => {
     const unsupportedTypes: CardType[] = [
       'discount_card',
       'coupon_card',
       'gift_card',
-      'reward_card',
     ];
 
     for (const cardType of unsupportedTypes) {
       // Reset sub-component counters for each iteration.
       stampCardLogicRenders = 0;
+      rewardCardLogicRenders = 0;
       comingSoonRenders = 0;
       cleanup();
       useCardBuilderStore.setState({ cardType });
       const { unmount } = render(<Step6CardLogic showValidation={false} />);
 
       expect(stampCardLogicRenders).toBe(0);
+      expect(rewardCardLogicRenders).toBe(0);
       expect(comingSoonRenders).toBe(1);
       expect(screen.getByTestId('coming-soon')).toHaveAttribute(
         'data-card-type',
@@ -141,5 +166,15 @@ describe('Step6CardLogic — dispatcher (Rule 000 § A.1)', () => {
     // Dispatcher hero text uses t('step6.intro') and t('step6.introHint').
     expect(screen.getByText('step6.intro')).toBeInTheDocument();
     expect(screen.getByText('step6.introHint')).toBeInTheDocument();
+  });
+
+  it('renders the Step 6 reward-card-specific intro hero text for reward_card', () => {
+    useCardBuilderStore.setState({ cardType: 'reward_card' });
+    render(<Step6CardLogic showValidation={false} />);
+
+    // Dispatcher uses t('step6.reward.intro') and t('step6.reward.introHint')
+    // for reward_card branch (distinct copy from stamp_card branch).
+    expect(screen.getByText('step6.reward.intro')).toBeInTheDocument();
+    expect(screen.getByText('step6.reward.introHint')).toBeInTheDocument();
   });
 });

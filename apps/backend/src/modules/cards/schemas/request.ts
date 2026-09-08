@@ -164,6 +164,53 @@ export const templateSettingsSchema = z.object({
   stampsPerVisitStamps: z.number().int().min(1).nullable().optional(),
   stampsPerSpendAmount: z.number().positive().nullable().optional(),
   stampsPerSpendStamps: z.number().int().min(1).nullable().optional(),
+  // ===== Step 6 — REWARD 卡 (2026-09-09, reward_card only) =====
+  // Mirrors `shared/templateSettingsSchema.rewardTiers`.
+  // Single source of truth:
+  //   - packages/shared/schemas/card.ts (Rule 019 § 4.1 layer 1)
+  //   - packages/shared/constants/reward-card.ts (length / enum constants)
+  //
+  // 2026-09-09 mixed refactor: `earningMode` is CARD-WIDE (top-level);
+  // `pointsPerVisit` / `pointsPerSpendAmount` / `pointsPerSpendPoints`
+  // are PER-TIER (inside each `rewardTiers[*]` entry). Switching the
+  // card-wide earningMode via `setEarningMode` clears all per-tier earn
+  // fields so no stale data leaks across modes. Each tier can still
+  // configure a different earn rate under the same mode (e.g. tier-1
+  // = 1 visit = 1 point, tier-2 = 1 visit = 2 points).
+  /**
+   * 整張卡片的點數累積方式 (2026-09-09, top-level — moved back from per-tier).
+   * Mirrors `shared/templateSettingsSchema.earningMode`.
+   * One mode per card. Drives which per-tier earn rate fields are meaningful.
+   */
+  earningMode: z
+    .enum(['based_on_points', 'based_on_visits', 'based_on_spending'])
+    .nullable()
+    .optional(),
+  /**
+   * 獎勵級距陣列（最多 5 組）.
+   * Mirrors `shared/templateSettingsSchema.rewardTiers`.
+   * Each tier carries reward rule (name + threshold + rewardType +
+   * rewardValue + maxDiscountAmount) + per-tier earn rate fields
+   * (pointsPerVisit / pointsPerSpendAmount / pointsPerSpendPoints).
+   * No per-tier earningMode — moved to top-level.
+   */
+  rewardTiers: z
+    .array(
+      z.object({
+        name: z.string().min(1).max(40),
+        threshold: z.number().int().min(1),
+        rewardType: z.enum(['amount_off', 'percent_off']),
+        rewardValue: z.number().positive(),
+        maxDiscountAmount: z.number().min(0).nullable().optional(),
+        // Per-tier earn rate fields (2026-09-09 — earningMode itself
+        // moved to top-level; per-tier only carries the rate now).
+        pointsPerVisit: z.number().int().min(1).nullable().optional(),
+        pointsPerSpendAmount: z.number().positive().nullable().optional(),
+        pointsPerSpendPoints: z.number().int().min(1).nullable().optional(),
+      }),
+    )
+    .max(5)
+    .optional(),
 });
 
 export type TemplateSettings = z.infer<typeof templateSettingsSchema>;

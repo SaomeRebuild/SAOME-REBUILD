@@ -2,7 +2,8 @@
  * Step6CardLogic — Generic dispatcher.
  *
  * Routes to the appropriate card-type-specific logic sub-module.
- * Currently only `stamp_card` / `multipass` have a real implementation.
+ * Implemented: `stamp_card` / `multipass` (StampCardLogic) and
+ *              `reward_card` (RewardCardLogic).
  * All other card types render a ComingSoon placeholder.
  *
  * Architecture (Rule 000 § A.1 L2 結構):
@@ -10,12 +11,15 @@
  *   - Dispatcher stays ≤ 80 lines, delegates to sub-modules
  *   - Future card types add their own sub-module without changing this file
  *
- * 2026-09-07: First sub-module = StampCardLogic (集點卡).
+ * History:
+ *   - 2026-09-07: First sub-module = StampCardLogic (集點卡).
+ *   - 2026-09-09: Second sub-module = RewardCardLogic (獎勵卡).
  */
 
 import { useTranslation } from 'react-i18next';
 import { useCardBuilderStore } from '../CardBuilderEditor.store';
 import { StampCardLogic } from './StampCardLogic';
+import { RewardCardLogic } from './RewardCardLogic';
 import { Step6CardLogicComingSoon } from './Step6CardLogicComingSoon';
 import type { Step6CardLogicProps } from './Step6CardLogic.types';
 
@@ -24,6 +28,7 @@ import type { Step6CardLogicProps } from './Step6CardLogic.types';
  *
  * cardType === null (no type selected yet) → ComingSoon
  * cardType === 'stamp_card' | 'multipass' → StampCardLogic (集點卡)
+ * cardType === 'reward_card'              → RewardCardLogic (獎勵卡)
  * Other card types → ComingSoon (not yet implemented)
  */
 export function Step6CardLogic({ showValidation }: Step6CardLogicProps) {
@@ -49,6 +54,20 @@ export function Step6CardLogic({ showValidation }: Step6CardLogicProps) {
           <p className="text-xs text-muted-foreground">{t('step6.introHint')}</p>
         </div>
         <StampCardLogic showValidation={showValidation} />
+      </div>
+    );
+  }
+
+  // reward_card → points-driven logic editor (2026-09-09).
+  if (cardType === 'reward_card') {
+    return (
+      <div className="flex min-w-0 flex-col gap-6">
+        {/* Step 6 hero intro — reward-card-specific copy */}
+        <div className="flex flex-col gap-1.5 rounded-lg border border-dashed border-border bg-muted/30 p-4">
+          <p className="text-sm font-medium text-foreground">{t('step6.reward.intro')}</p>
+          <p className="text-xs text-muted-foreground">{t('step6.reward.introHint')}</p>
+        </div>
+        <RewardCardLogic showValidation={showValidation} />
       </div>
     );
   }

@@ -137,8 +137,8 @@ export function CardBuilderEditorWorkspace({
   }
 
   /**
-   * Step 6 validation (Rule 019 — stamp card logic):
-   *   - Non stamp_card/multipass → always valid (ComingSoon placeholder, no fields).
+   * Step 6 validation (Rule 019):
+   *   - Non stamp_card / multipass / reward_card → always valid (ComingSoon, no fields).
    *   - stamp_card / multipass → all 4 reward fields required:
    *       stampAccrualMode !== null
    *       rewardName.trim().length > 0
@@ -149,10 +149,26 @@ export function CardBuilderEditorWorkspace({
    *       per_visit → stampsPerVisitCount > 0 && stampsPerVisitStamps > 0
    *       per_spend → stampsPerSpendAmount > 0 && stampsPerSpendStamps > 0
    *       per_stamp → no threshold fields required
+   *
+   *   - reward_card (2026-09-09 mixed refactor):
+   *       earningMode !== null  (card-wide)
+   *       based_on_visits    → all tiers have pointsPerVisit ≥ 1
+   *       based_on_spending  → all tiers have pointsPerSpendAmount > 0
+   *                            AND all tiers have pointsPerSpendPoints ≥ 1
+   *       based_on_points    → no per-tier points fields required
+   *       rewardTiers.length ≥ 1 with each tier identity complete
+   *         (name.trim() !== '' && threshold > 0 && rewardType !== null
+   *          && rewardValue > 0)
    */
   function isStep6Valid(): boolean {
     const cardTypeValue = useCardBuilderStore.getState().cardType;
-    if (cardTypeValue !== 'stamp_card' && cardTypeValue !== 'multipass') return true;
+    if (cardTypeValue !== 'stamp_card' && cardTypeValue !== 'multipass' && cardTypeValue !== 'reward_card') {
+      return true;
+    }
+    if (cardTypeValue === 'reward_card') {
+      return isRewardStep6Valid();
+    }
+    // stamp_card / multipass path
     const {
       stampAccrualMode,
       rewardName,
@@ -191,6 +207,71 @@ export function CardBuilderEditorWorkspace({
     }
     // per_stamp — no threshold fields
     return baseRewardValid;
+  }
+
+  /**
+   * REWARD 卡 Step 6 validation (2026-09-09 mixed refactor).
+   *
+   * earningMode is CARD-WIDE; per-tier earn rate fields are PER-TIER.
+   * Validation walks each tier's identity AND verifies that per-tier earn
+   * rate fields are consistent with the card-wide earningMode:
+   *   - card-wide earningMode !== null
+   *   - rewardTiers.length ≥ 1
+   *   - each tier identity complete (name + threshold + rewardType + rewardValue)
+   *   - based_on_visits    → each tier's pointsPerVisit ≥ 1
+   *   - based_on_spending  → each tier's pointsPerSpendAmount > 0
+   *                          AND each tier's pointsPerSpendPoints ≥ 1
+   *   - based_on_points    → no per-tier points fields required
+   */
+  function isRewardStep6Valid(): boolean {
+    const { earningMode, rewardTiers } = useCardBuilderStore.getState();
+
+    // Card-wide earning mode must be selected.
+    if (earningMode === null || earningMode === undefined) return false;
+    if (!rewardTiers || rewardTiers.length === 0) return false;
+
+    return rewardTiers.every((tier) => {
+      // Tier identity
+      if (
+        tier.name.trim() === '' ||
+        tier.threshold <= 0 ||
+        tier.rewardType === null ||
+        tier.rewardType === undefined ||
+        tier.rewardValue === null ||
+        tier.rewardValue === undefined ||
+        tier.rewardValue <= 0
+      ) {
+        return false;
+      }
+      // Per-tier earn rate fields (conditional on card-wide earningMode).
+      if (earningMode === 'based_on_visits') {
+        if (
+          tier.pointsPerVisit === null ||
+          tier.pointsPerVisit === undefined ||
+          tier.pointsPerVisit < 1
+        ) {
+          return false;
+        }
+      }
+      if (earningMode === 'based_on_spending') {
+        if (
+          tier.pointsPerSpendAmount === null ||
+          tier.pointsPerSpendAmount === undefined ||
+          tier.pointsPerSpendAmount <= 0
+        ) {
+          return false;
+        }
+        if (
+          tier.pointsPerSpendPoints === null ||
+          tier.pointsPerSpendPoints === undefined ||
+          tier.pointsPerSpendPoints < 1
+        ) {
+          return false;
+        }
+      }
+      // based_on_points: no extra per-tier checks needed.
+      return true;
+    });
   }
 
   async function handleNext() {
@@ -312,13 +393,13 @@ export function CardBuilderEditorWorkspace({
           console.error('[handleNext] Step 5 onSave failed:', err);
         }
       }
-      // ===== Step 6 — 卡片邏輯 (2026-09-07, stamp_card / multipass only) =====
+      // ===== Step 6 — 卡片邏輯 (2026-09-07 stamp; 2026-09-09 reward) =====
       // Store has Step 6 fields already gated by `isStep6Valid()`. For
-      // non-stamp_card card types the dispatcher renders a ComingSoon
-      // placeholder and `isStep6Valid()` returns `true` so this block is
-      // effectively a no-op (writes null/empty values into the JSONB).
-      // The backend zod schema accepts all-null Step 6 fields (`.optional()`
-      // + `.nullable()`); see Rule 019 § 4.1 mirror.
+      // non-stamp_card / non-reward_card card types the dispatcher renders
+      // a ComingSoon placeholder and `isStep6Valid()` returns `true` so
+      // this block is effectively a no-op (writes null/empty values into
+      // the JSONB). The backend zod schema accepts all-null Step 6 fields
+      // (`.optional()` + `.nullable()`); see Rule 019 § 4.1 mirror.
       //
       // 2026-09-07 round-trip fix: Step 6 must send ALL 9 fields, including
       // the 4 accrual thresholds (`stampsPerVisit*`, `stampsPerSpend*`).
@@ -326,6 +407,12 @@ export function CardBuilderEditorWorkspace({
       // reached the DB, so reload came back empty and the UI re-rendered
       // blank. Each threshold is `.nullable()` so non-stamp modes write
       // null cleanly without serializing the wrong type.
+      //
+      // 2026-09-09 reward_card extension (mixed refactor): `earningMode`
+      // is CARD-WIDE (top-level), sent at the top of the payload. Each
+      // `rewardTiers[*]` entry carries only the per-tier earn rate
+      // fields (pointsPerVisit / pointsPerSpendAmount /
+      // pointsPerSpendPoints) — earningMode itself is no longer per-tier.
       if (step === 6 && cardId && onSave) {
         try {
           const {
@@ -338,7 +425,25 @@ export function CardBuilderEditorWorkspace({
             stampsPerVisitStamps,
             stampsPerSpendAmount,
             stampsPerSpendStamps,
+            earningMode,
+            rewardTiers,
           } = useCardBuilderStore.getState();
+          // Strip `id` field from each reward tier before sending to backend
+          // (id is a UI-only React key, not part of the data contract).
+          // 2026-09-09 mixed refactor: rewardTiers no longer carries a
+          // per-tier earningMode — that's top-level now. Each tier only
+          // serializes its per-tier earn rate fields inline.
+          const sanitizedRewardTiers = rewardTiers.map((tier) => ({
+            name: tier.name,
+            threshold: tier.threshold,
+            rewardType: tier.rewardType,
+            rewardValue: tier.rewardValue,
+            maxDiscountAmount: tier.maxDiscountAmount,
+            // Per-tier earn rate fields (no per-tier earningMode)
+            pointsPerVisit: tier.pointsPerVisit ?? null,
+            pointsPerSpendAmount: tier.pointsPerSpendAmount ?? null,
+            pointsPerSpendPoints: tier.pointsPerSpendPoints ?? null,
+          }));
           await onSave(cardId, {
             stampAccrualMode,
             rewardName,
@@ -353,6 +458,11 @@ export function CardBuilderEditorWorkspace({
             stampsPerVisitStamps,
             stampsPerSpendAmount,
             stampsPerSpendStamps,
+            // REWARD 卡 (2026-09-09 mixed refactor) — earningMode is at
+            // top level (one mode per card). rewardTiers carries only
+            // per-tier earn rate fields (no per-tier earningMode).
+            earningMode,
+            rewardTiers: sanitizedRewardTiers,
           });
           console.log('[handleNext] Step 6 card logic saved', {
             stampAccrualMode,
@@ -364,6 +474,8 @@ export function CardBuilderEditorWorkspace({
             stampsPerVisitStamps,
             stampsPerSpendAmount,
             stampsPerSpendStamps,
+            earningMode,
+            rewardTiers: sanitizedRewardTiers,
           });
         } catch (err) {
           // Don't block step transition — let the user proceed and retry later.

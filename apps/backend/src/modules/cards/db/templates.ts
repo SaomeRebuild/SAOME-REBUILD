@@ -220,6 +220,55 @@ export interface TemplateSettings {
    */
   stampsPerSpendAmount?: number | null;
   stampsPerSpendStamps?: number | null;
+  // ===== Step 6 — REWARD 卡 (Rule 019 § 4.1, layer 3 of 4) =====
+  // Mirrors `shared/templateSettingsSchema.rewardTiers`.
+  // Step 6 plan 2026-09-09: second card-type-specific logic editor (after
+  // stamp_card / multipass). Differs from stamp logic in two key ways:
+  //   - Reward card is **points-driven** (vs stamp's stamp-driven).
+  //   - Reward card supports **up to 5 reward tiers** (vs stamp's single reward).
+  // The dispatcher lives at
+  // `apps/frontend/src/components/business/dashboard/CardBuilderEditor/Step6CardLogic/`.
+  //
+  // 2026-09-09 mixed refactor: `earningMode` is CARD-WIDE (top-level);
+  // `pointsPerVisit` / `pointsPerSpendAmount` / `pointsPerSpendPoints`
+  // are PER-TIER (inside each `rewardTiers[*]` entry). Switching the
+  // card-wide earningMode via `setEarningMode` clears all per-tier earn
+  // fields so no stale data leaks across modes.
+  /**
+   * 整張卡片的點數累積方式 (2026-09-09, top-level — moved back from per-tier).
+   * Mirrors `shared/templateSettingsSchema.earningMode`.
+   * One mode per card. null = 未選.
+   */
+  earningMode?: 'based_on_points' | 'based_on_visits' | 'based_on_spending' | null;
+  /**
+   * 獎勵級距陣列（最多 5 組）.
+   * Mirrors mu-plugins `_reward_program_tiers_json` (which uses an array; SAOME-REBUILD
+   * also uses an array but capped at 5 tiers per user spec 2026-09-09).
+   *
+   * Each tier shape:
+   *   - `name` (1..40 chars): tier name shown on the pass.
+   *   - `threshold` (≥ 1): points required to unlock the tier.
+   *   - `rewardType` ('amount_off' | 'percent_off'): cash discount or percentage.
+   *   - `rewardValue` (> 0): cash amount or percentage integer.
+   *   - `maxDiscountAmount` (≥ 0 or null): cap for percent_off mode; null = no cap.
+   *   - `pointsPerVisit` (≥ 1 or null): only meaningful when card-wide
+   *       earningMode is 'based_on_visits'. Points awarded per visit (this tier).
+   *   - `pointsPerSpendAmount` (> 0 or null): only meaningful when card-wide
+   *       earningMode is 'based_on_spending'. Trigger spend threshold (this tier).
+   *   - `pointsPerSpendPoints` (≥ 1 or null): only meaningful when card-wide
+   *       earningMode is 'based_on_spending'. Points awarded when spend
+   *       threshold is hit (this tier).
+   */
+  rewardTiers?: Array<{
+    name: string;
+    threshold: number;
+    rewardType: 'amount_off' | 'percent_off';
+    rewardValue: number;
+    maxDiscountAmount?: number | null;
+    pointsPerVisit?: number | null;
+    pointsPerSpendAmount?: number | null;
+    pointsPerSpendPoints?: number | null;
+  }>;
   [key: string]: unknown;
 }
 
