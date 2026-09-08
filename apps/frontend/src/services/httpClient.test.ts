@@ -361,3 +361,139 @@ describe('HttpClient — tryRefresh mutex sharing', () => {
     expect(refreshCalls).toHaveLength(1);
   });
 });
+
+/**
+ * Phase 2026-09-09 — Cold start 503 dead zone closure (network-error retry).
+ *
+ * Critical invariant under test:
+ *   - `TypeError` from `fetch` (cold-start 503 CORS drop, ERR_FAILED,
+ *     connection reset) is retried with exponential backoff (500ms ×
+ *     2^attempt), max 2 retries.
+ *   - `AbortError` / `DOMException` (AbortSignal.timeout) is NOT retried
+ *     — timeout is user/timeout-initiated.
+ *   - Network-error retry and 5xx-retry are independent: cold start can
+ *     trigger network-retry first (TypeError), then 5xx-retry (503
+ *     response) once the isolate is warm enough to load entry code.
+ *
+ * Regression for production CORS drop incident at 2026-09-09 06:10 UTC:
+ * user clicks Login → cold start 503 + no CORS → fetch rejects with
+ * TypeError → user sees "Network error" → F5 → token fallback recovers.
+ * After this fix: user clicks Login → TypeError → 500ms retry → 200 OK
+ * (no F5 needed).
+ */
+describe('HttpClient — network-error retry behavior', () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    fetchMock = vi.fn();
+    authStore.setAccessToken(null);
+    authStore.setRefreshToken(null);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.clearAllMocks();
+  });
+
+  function buildClient() {
+    return new HttpClient({
+      baseUrl: 'http://test.local',
+      fetchImpl: fetchMock as unknown as typeof fetch,
+      timeoutMs: 1000,
+    });
+  }
+
+  /** Build a fetch response with given status + JSON body. */
+  function mockResponse(status: number, body: unknown = {}) {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  /** Mock a single TypeError rejection — mimics cold-start 503 CORS drop. */
+  function mockNetworkError(message = 'Failed to fetch') {
+    return Promise.reject(new TypeError(message));
+  }
+
+  it('retries once on TypeError then succeeds on second attempt (500ms backoff)', async () => {
+    fetchMock
+      .mockImplementationOnce(() => mockNetworkError())
+      .mockResolvedValueOnce(mockResponse(200, { ok: true }));
+
+    const client = buildClient();
+    const promise = client.get<{ ok: boolean }>('/api/cards/test');
+
+    // Network retry backoff is 500ms
+    await vi.advanceTimersByTimeAsync(600);
+
+    const result = await promise;
+    expect(result).toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('gives up after MAX_NETWORK_RETRIES (2 retries → 3 attempts total) on persistent TypeError', async () => {
+    fetchMock.mockImplementation(() => mockNetworkError());
+
+    const client = buildClient();
+    const promise = client.get('/api/cards');
+    // Attach a noop rejection handler so vitest's unhandled-rejection
+    // tracker doesn't double-count the eventual rejection we expect.
+    promise.catch(() => {});
+
+    // Backoffs: 500ms (after 1st) + 1000ms (after 2nd)
+    await vi.advanceTimersByTimeAsync(600);
+    await vi.advanceTimersByTimeAsync(1100);
+
+    await expect(promise).rejects.toBeInstanceOf(TypeError);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('does NOT retry on AbortError (AbortSignal.timeout) — surface immediately', async () => {
+    // AbortSignal.timeout throws DOMException with name 'AbortError' or
+    // 'TimeoutError' (varies by Node/browser version). We simulate the
+    // TypeError-not-included branch by throwing a non-TypeError error.
+    const abortError = new DOMException('The operation was aborted.', 'AbortError');
+    fetchMock.mockRejectedValueOnce(abortError);
+
+    const client = buildClient();
+    await expect(client.get('/api/cards')).rejects.toBe(abortError);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT trigger network-retry when first attempt succeeds — fetch called once', async () => {
+    fetchMock.mockResolvedValueOnce(mockResponse(200, { ok: true }));
+
+    const client = buildClient();
+    const result = await client.get<{ ok: boolean }>('/api/cards/fast-network');
+
+    expect(result).toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('chains network-retry → 5xx-retry → success: cold start then transient 503 then OK', async () => {
+    // Scenario: worker isolate cold start (TypeError) → entry code loaded
+    // but first response is 503 → warm enough to return 200 on retry.
+    //   attempt 0: TypeError (cold start CORS drop) → wait 500ms (network-retry)
+    //   attempt 1: 503 (transient overload) → wait 500ms (5xx-retry, attempt=1, 250 × 2^1)
+    //   attempt 2: 503 (still transient) → wait 1000ms (5xx-retry, attempt=2, 250 × 2^2)
+    //   attempt 3: 200 (warm) → success
+    fetchMock
+      .mockImplementationOnce(() => mockNetworkError())
+      .mockResolvedValueOnce(mockResponse(503, { error: { code: 'TRANSIENT', message: 'busy' } }))
+      .mockResolvedValueOnce(mockResponse(503, { error: { code: 'TRANSIENT', message: 'busy' } }))
+      .mockResolvedValueOnce(mockResponse(200, { ok: true }));
+
+    const client = buildClient();
+    const promise = client.get<{ ok: boolean }>('/api/cards/cold-start');
+
+    // Advance enough to cover all three backoffs: 500 + 500 + 1000 = 2000ms
+    await vi.advanceTimersByTimeAsync(2100);
+
+    const result = await promise;
+    expect(result).toEqual({ ok: true });
+    // 1 initial (TypeError) + 1 network-retry + 2 5xx-retries + 1 success = 4 fetch calls
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+});

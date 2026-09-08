@@ -63,6 +63,27 @@ const MAX_5XX_RETRIES = 3;
 /** Base backoff delay in ms. Subsequent retries double this: 250 → 500 → 1000. */
 const RETRY_BASE_DELAY_MS = 250;
 
+/**
+ * Network-level retry policy (Phase 2026-09-09 — closes Layer 3 dead zone).
+ *
+ * Cold start 503 emitted by Cloudflare Worker runtime BEFORE the entry code
+ * loads produces a 503 with no CORS header → browser drops the response →
+ * fetch promise rejects with `TypeError("Failed to fetch")`. This bypasses
+ * the existing 5xx retry (which inspects `res.status`, not thrown errors).
+ *
+ * Without this retry layer, every cold-start login attempt surfaces as a
+ * user-visible "Network error" even though the next request (200ms later)
+ * would succeed. We retry `TypeError` with exponential backoff (500ms →
+ * 1000ms, max 2 retries) to make cold starts transparent to the user.
+ *
+ * We do NOT retry `AbortError` / `DOMException` from AbortSignal.timeout —
+ * those are user/timeout-initiated and should surface immediately.
+ */
+const MAX_NETWORK_RETRIES = 2;
+
+/** Base backoff delay for network retries. Subsequent retries double this: 500 → 1000. */
+const NETWORK_RETRY_BASE_DELAY_MS = 500;
+
 export class HttpClient {
   private baseUrl: string;
   private fetchImpl: typeof fetch;
@@ -87,8 +108,14 @@ export class HttpClient {
    *
    * Retry policy:
    *   - 502 / 503 / 504 → exponential backoff (250ms × 2^attempt), max 3 retries
+   *   - Network errors (`TypeError` from fetch — cold-start 503 CORS drop,
+   *     ERR_FAILED, connection reset) → exponential backoff (500ms ×
+   *     2^attempt), max 2 retries. See `MAX_NETWORK_RETRIES` rationale
+   *     in the constant block above.
    *   - 401 → handled by `tryRefresh()` flow (see existing path below), NOT 5xx retry
    *   - 4xx (other), 429, 500 → no retry; surface immediately
+   *   - AbortError / DOMException from AbortSignal.timeout → no retry;
+   *     surface immediately (timeout is user/timeout-initiated)
    *
    * The retry loop is intentionally separated from the 401 refresh path so the
    * two retry mechanisms don't fight each other (401 triggers refresh+replay;
@@ -115,13 +142,34 @@ export class HttpClient {
       ...(headers ?? {}),
     };
 
-    const res = await this.fetchImpl(url, {
-      method,
-      headers: reqHeaders,
-      body: body === undefined ? undefined : JSON.stringify(body),
-      credentials: 'include',
-      signal: AbortSignal.timeout(this.timeoutMs),
-    });
+    // Network-error retry path (2026-09-09): cold start 503 CORS drop
+    // produces TypeError, not a 5xx Response, so the 5xx retry below
+    // never sees it. Wrapping fetchImpl in try/catch closes that gap.
+    // AbortError is intentionally NOT retried — see MAX_NETWORK_RETRIES
+    // rationale in the constant block above.
+    let res: Response;
+    try {
+      res = await this.fetchImpl(url, {
+        method,
+        headers: reqHeaders,
+        body: body === undefined ? undefined : JSON.stringify(body),
+        credentials: 'include',
+        signal: AbortSignal.timeout(this.timeoutMs),
+      });
+    } catch (err) {
+      if (err instanceof TypeError && attempt < MAX_NETWORK_RETRIES) {
+        const delayMs = NETWORK_RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
+        if (import.meta.env.DEV) {
+          console.warn(
+            `[httpClient] network error on ${method} ${path} — retrying in ${delayMs}ms (attempt ${attempt + 1}/${MAX_NETWORK_RETRIES})`,
+          );
+        }
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        return this.requestWithRetry<T>(method, path, init, attempt + 1);
+      }
+      // AbortError or exhausted retries → propagate to caller
+      throw err;
+    }
 
     // 5xx retry path — exponential backoff, capped at MAX_5XX_RETRIES attempts.
     // 401 is intentionally NOT routed here: it has its own tryRefresh() flow

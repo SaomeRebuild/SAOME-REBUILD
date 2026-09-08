@@ -129,6 +129,116 @@ curl https://saome-backend.josh1989213.workers.dev/api/auth/login
 
 第二個 Worker 出現時，把 `isRuntimeAllowedHost` + `ensureCorsOnResponse` 抽到 `packages/shared/lib/runtimeCors.ts` 共用。
 
+### 8. Cold Start Dead Zone — 後端救不了，前端必須硬化（2026-09-09 新增）
+
+**3 層 CORS defense 的邊界**：Layer 3 是 **last-line-of-defense 但不是 impossible-line-of-defense**。在 **Worker isolate cold start 早期**（isolate 還沒載到 entry code 就 emit 的 503）情況下：
+
+```
+Hyperdrive binding 解析 timeout
+   ↓
+Worker runtime 直接 emit 503（在 entry code 載入之前）
+   ↓
+Layer 3 ensureCorsOnResponse 沒機會跑 ← 真正的 dead zone
+   ↓
+Browser fetch silent drop → TypeError("Failed to fetch")
+```
+
+**修法不在後端**（沒有 Cloudflare runtime hook 可以讓我們在「entry code 載入前」inject CORS），**必須前端硬化**。兩條並存：
+
+#### 8.1 Layer 4 — LoginPage mount 背景 ping `/health`（預防）
+
+[apps/frontend/src/pages/auth/LoginPage.tsx](apps/frontend/src/pages/auth/LoginPage.tsx) 加 useEffect：
+
+```ts
+useEffect(() => {
+  const ctrl = new AbortController();
+  const timer = window.setTimeout(() => {
+    fetch(`${api.baseUrl}/health`, {
+      method: 'GET',
+      signal: ctrl.signal,
+      credentials: 'omit',
+    }).catch(() => {
+      /* swallow — httpClient.network-retry handles real failures */
+    });
+  }, 100);
+  return () => {
+    ctrl.abort();
+    window.clearTimeout(timer);
+  };
+}, []);
+```
+
+| 設計 | 原因 |
+|---|---|
+| `useEffect` mount-only + 100ms delay | 避開 React hydration 跟 initial paint 的競爭 |
+| `AbortController` cleanup | unmount 時 abort stale fetch |
+| `.catch(() => {})` fire-and-forget | warmup 失敗不該影響 user 看到 form |
+| `credentials: 'omit'` | warmup 不需要 cookie |
+
+只 warmup LoginPage（user 第一個 entry point）；不 warmup Dashboard / CardBuilder 等「登入後」page（cold start 只在第一個 request 發生）。
+
+#### 8.2 Layer 5 — httpClient 加 network-error retry（兜底）
+
+[apps/frontend/src/services/httpClient.ts](apps/frontend/src/services/httpClient.ts) 的 `requestWithRetry` 內包 try/catch fetchImpl：
+
+```ts
+const MAX_NETWORK_RETRIES = 2;
+const NETWORK_RETRY_BASE_DELAY_MS = 500;
+
+let res: Response;
+try {
+  res = await this.fetchImpl(url, { ... });
+} catch (err) {
+  if (err instanceof TypeError && attempt < MAX_NETWORK_RETRIES) {
+    const delayMs = NETWORK_RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    return this.requestWithRetry<T>(method, path, init, attempt + 1);
+  }
+  throw err;  // AbortError 或 retry 上限 → 給 caller 處理
+}
+```
+
+| 設計 | 原因 |
+|---|---|
+| 只 retry `TypeError` | TypeError 是 transient（cold start CORS drop、ERR_FAILED、connection reset）|
+| 不 retry `AbortError` | AbortSignal.timeout 是 user/timeout-initiated，不該 retry |
+| `MAX_NETWORK_RETRIES = 2`（比 5xx retry 少）| 避免 user 等太久；加上 5xx retry 上限會疊到 6 次 |
+| 與 5xx retry **完全獨立** | cold start 先走 network-retry（TypeError），warm 後走 5xx-retry（5xx response）|
+
+#### 8.3 兩條必須並存
+
+| 場景 | 只有 warmup | 只有 retry | 兩條並存 |
+|---|---|---|---|
+| 常見 cold start | 修好 | user 多等 500-1000ms | user 無感 |
+| Warmup race window（< 100ms）| leak | 修好 | retry 兜底 |
+| Worker 完全 down | user 看到 error | user 看到 error | user 看到 error（沒 regression）|
+
+#### 8.4 完整 5 層 defense-in-depth 演進
+
+| 時期 | Defense | 場景 | 沒覆蓋 |
+|---|---|---|---|
+| 2026-07-28 Bug-4c | frontend Mixed Content | 前端 bundle | 後端 |
+| 2026-07-28 Bug-4d | `ALLOWED_ORIGINS` 補 Workers preview subdomain | Hono path ②③④ | runtime ① |
+| 2026-09-05 Phase 3.3 | `corsMiddleware` wrap-after-next + `errorHandler` 內 CORS | Hono path ②③④ | runtime ① |
+| 2026-09-07 | `ensureCorsOnResponse` Worker entry boundary | runtime ① (warm 後) | cold start 期間 |
+| **2026-09-09（這次）** | **LoginPage warmup + httpClient.network-retry** | **cold start TypeError 兜底** | — |
+
+#### 8.5 Frontend regression test 必覆蓋
+
+新增測試檔 / describe block 必含：
+
+| 測試 | 覆蓋 |
+|---|---|
+| LoginPage mount 後 100ms fetch 呼叫 1 次 | 100ms delay 設計 |
+| unmount 後 `signal.aborted === true` | AbortController cleanup |
+| 已認證 user 走 Navigate redirect 時 warmup useEffect 仍跑 | mount 觸發順序 |
+| httpClient TypeError 第一次 + 第二次 success → 2 次 fetch | 基本 retry |
+| httpClient TypeError 連續 3 次 throw TypeError → 3 次 fetch | retry 上限 |
+| httpClient AbortError throw immediately → 1 次 fetch | timeout 不 retry |
+| httpClient TypeError → 503 → 503 → 200 → 4 次 fetch | network + 5xx retry 鏈 |
+
+完整討論見：[runs/improvements/feedback/20260909-cold-start-dead-zone-network-error.md](../runs/improvements/feedback/20260909-cold-start-dead-zone-network-error.md)。
+
 ## 觸發關鍵字
 
 「Cloudflare Worker」、「Hono middleware」、「CORS drop」、「Worker runtime」、「ExportedHandler」、「entry boundary」、「fetch handler」、「worker.fetch」、「503 + no CORS」、「瀏覽器 silent drop」、「curl 看不出來」、「`Access-Control-Allow-Origin`」**必須**引用本 rule。
@@ -145,6 +255,7 @@ curl https://saome-backend.josh1989213.workers.dev/api/auth/login
 ## 參照
 
 - `runs/improvements/feedback/20260907-cors-runtime-503-fix.md` — 原事故 trace + 6 條 test
+- `runs/improvements/feedback/20260909-cold-start-dead-zone-network-error.md` — cold start dead zone trace + 8 條 regression test（network-retry × 5 + warmup × 3）
 - `DEV/09-2026/0907-cors-runtime-503-fix.md` — DEV LOG 時間軸 + 4 輪 defense-in-depth 演進
 - `runs/decisions/2026-09-07-three-layer-cors-defense.md` — 三段式決策紀錄
 - `apps/backend/src/shared/middleware/runtimeCors.ts` — Layer 3 實作
@@ -153,4 +264,8 @@ curl https://saome-backend.josh1989213.workers.dev/api/auth/login
 - `apps/backend/src/shared/middleware/errorHandler.ts` — Layer 2（Hono `onError` inline CORS）
 - `apps/backend/src/index.ts` line 76-103 — Worker entry boundary 包裹
 - `apps/backend/wrangler.jsonc` — Layer 1+2 的 env-driven allow-list
+- `apps/frontend/src/services/httpClient.ts` — Layer 5 network-error retry 實作
+- `apps/frontend/src/services/httpClient.test.ts` — 5 條 network-retry test
+- `apps/frontend/src/pages/auth/LoginPage.tsx` — Layer 4 mount-time warmup
+- `apps/frontend/src/pages/auth/LoginPage.test.tsx` — 3 條 warmup test
 - commit `7935de8` — fix(backend): Worker-level CORS injection for runtime-emitted 503s
