@@ -336,4 +336,42 @@ describe('POST /api/auth/login', () => {
     const body = (await res.json()) as Record<string, unknown>;
     expect(getErrorCode(body)).toBe('VALIDATION_ERROR');
   });
+
+  // Bug-6 regression: c.json() returns an immutable Response.
+  // The old pattern `const r = c.json({...}); r.headers.append('Set-Cookie', ...)`
+  // was a silent NO-OP — the header was never transmitted.
+  // The fix is `c.json({...}, 200, {'Set-Cookie': cookie})` — pass headers
+  // as the third argument to the Response constructor.
+  //
+  // This test is a deliberate pin: even if the happy-path test passes
+  // (by coincidence), this test documents the specific bug and would fail if
+  // the code reverts to the old append()-after-c.json() pattern.
+  describe('Bug-6 regression: Set-Cookie via c.json() third-argument (NOT .append())', () => {
+    it('Set-Cookie is present in the response with the refresh token value', async () => {
+      const app = buildApp();
+      const res = await callLogin(app, validCreds);
+      expect(res.status).toBe(200);
+      // The token value from the mock (set in beforeEach) must appear in the cookie
+      const setCookie = res.headers.get('Set-Cookie') ?? '';
+      expect(setCookie).toMatch(/saome_refresh=refresh/);
+    });
+
+    it('Set-Cookie header is NOT a no-op when body has all session fields', async () => {
+      // Additional coverage: ensure the bug is pinned even when response body
+      // contains all fields (accessToken, refreshToken, user, tenant, pass, expiresIn).
+      // With the old .append() pattern, the header would still be missing.
+      const app = buildApp();
+      const res = await callLogin(app, validCreds);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as Record<string, unknown>;
+      expect(body).toHaveProperty('accessToken');
+      expect(body).toHaveProperty('refreshToken');
+      expect(body).toHaveProperty('user');
+      expect(body).toHaveProperty('tenant');
+      expect(body).toHaveProperty('pass');
+      expect(body).toHaveProperty('expiresIn');
+      // And the Set-Cookie is still present (not silently dropped)
+      expect(res.headers.get('Set-Cookie')).toContain('saome_refresh=refresh');
+    });
+  });
 });
