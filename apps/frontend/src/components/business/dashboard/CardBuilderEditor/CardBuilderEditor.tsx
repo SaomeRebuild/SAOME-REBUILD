@@ -318,22 +318,68 @@ export function CardBuilderEditor({
       // Read the latest values from the store at fire time so we don't
       // capture a stale closure.
       const s = useCardBuilderStore.getState();
-      // 2026-09-06 refactor: when `locationsDisabled=true` the store has
-      // already cleared `locations` + `locationsMaxDistance` (via the
-      // `setLocationsDisabled(true)` setter). Echo them as-is so the DB
-      // keeps no stale data.
+
+      // ===== Fix 400 (2026-09-09): field-level validation gate =====
+      // Distinguish from `isStep5Valid()` in CardBuilderEditorWorkspace.tsx
+      // (which gates the "Next" button and requires ALL fields valid —
+      // ≥1 location row + valid locationsMaxDistance).
+      //
+      // For autosave we want to SAVE partial state as the user types, so
+      // we only block specific cases that would 400 from backend:
+      //   - `locationsMaxDistance` is set to a non-null value that is NOT
+      //     a valid integer in [100, 1000].
+      //   - any `locations` row has empty name or out-of-range lat/lng.
+      //
+      // Null `locationsMaxDistance` ("use pass-type default") and empty
+      // `locations` array are VALID partial states — backend accepts them.
+      //
+      // Without this gate, an autosave that fires with corrupted store
+      // data (e.g. `locationsMaxDistance: 10` from pre-clamp migration
+      // rows, or a row missing required fields) would PUT invalid data
+      // → backend returns 400.
+      const lmd = s.locationsMaxDistance;
+      if (lmd !== null && (!Number.isInteger(lmd) || lmd < 100 || lmd > 1000)) {
+        console.warn('[CardBuilderEditor] Step 5 autosave skipped — locationsMaxDistance out of range:', lmd);
+        return;
+      }
+      const hasInvalidRow = (s.locations ?? []).some(
+        (l) =>
+          !l.name ||
+          l.name.trim().length === 0 ||
+          !Number.isFinite(l.latitude) ||
+          l.latitude < -90 ||
+          l.latitude > 90 ||
+          !Number.isFinite(l.longitude) ||
+          l.longitude < -180 ||
+          l.longitude > 180,
+      );
+      if (hasInvalidRow) {
+        console.warn('[CardBuilderEditor] Step 5 autosave skipped — invalid location row');
+        return;
+      }
+
+      // Fix 400 (2026-09-09): s.locations === null is NOT a valid optional
+      // value for z.array().optional(). Omit the key entirely so Zod receives
+      // undefined (which .optional() accepts) instead of null (which it rejects).
+      const locationsPayload = s.locations
+        ? s.locations.map((l) => ({
+            name: l.name,
+            latitude: l.latitude,
+            longitude: l.longitude,
+            relevantText: l.relevantText,
+          }))
+        : undefined;
+
+      // 2026-09-06 refactor: when locationsDisabled=true the store has already
+      // cleared locations + locationsMaxDistance (via setLocationsDisabled(true)).
+      // Echo them as-is so the DB keeps no stale data.
       cardService
         .update(cardId, {
           settings: {
             initialMessage: s.initialMessage,
             locationsDisabled: s.locationsDisabled,
             locationsMaxDistance: s.locationsMaxDistance,
-            locations: s.locations.map((l) => ({
-              name: l.name,
-              latitude: l.latitude,
-              longitude: l.longitude,
-              relevantText: l.relevantText,
-            })),
+            locations: locationsPayload,
           },
         })
         .catch((err) => {

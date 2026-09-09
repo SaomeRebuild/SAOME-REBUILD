@@ -81,21 +81,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // Proactive refresh: fire ~30 min before token expires to avoid silent expiry.
+  // Proactive refresh: fire ~1 min before token expires to avoid silent expiry.
   // Also acts as a keep-alive ping so the session stays alive across page navigations.
   //
-  // B4 follow-up (2026-09-05): ACCESS_TOKEN_TTL is now 3600s (1h) instead of
-  // 28800s (8h), so the refresh window shortens proportionally.
+  // B4 follow-up (2026-09-05): ACCESS_TOKEN_TTL is 900s (15 min) — backend
+  // constant ACCESS_TOKEN_TTL_DEFAULT in apps/backend/src/modules/auth/services/*.
+  // The previous 30-min-before-expiry logic was written when TTL was 1h/8h.
+  // With 15-min TTL, "30 min before" = a time that's already in the past,
+  // making the timer fire AFTER expiry. Fix 401 (2026-09-09):
+  //   - REFRESH_BEFORE_MS: 60s (was 30 min, now aligned with actual TTL)
+  //   - MIN_REFRESH_INTERVAL_MS: 60s (was 30 min) — fires sooner if expiry is closer
   useEffect(() => {
     if (!state.expiresAt || state.loading) return;
 
-    const MS_BEFORE_EXPIRY_TO_REFRESH = 30 * 60 * 1000; // 30 min before expiry
-    const INTERVAL_MS = 30 * 60 * 1000; // refresh every 30 min as a keep-alive floor
+    const REFRESH_BEFORE_MS = 60 * 1000; // 1 min before expiry
+    const MIN_REFRESH_INTERVAL_MS = 60 * 1000; // floor: refresh at least every 1 min
 
     function scheduleNext() {
       const now = Date.now();
-      const msUntilRefresh = state.expiresAt! - now - MS_BEFORE_EXPIRY_TO_REFRESH;
-      const delay = Math.max(INTERVAL_MS, msUntilRefresh);
+      const timeUntilExpiry = state.expiresAt! - now;
+      const msUntilRefresh = timeUntilExpiry - REFRESH_BEFORE_MS;
+      // Clamp: never delay more than 1 min past expiry, never less than 1 min
+      const delay = Math.max(
+        MIN_REFRESH_INTERVAL_MS,
+        Math.max(1000, msUntilRefresh),
+      );
 
       const timerId = window.setTimeout(async () => {
         try {

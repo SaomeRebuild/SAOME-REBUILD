@@ -37,7 +37,7 @@ const adminSession: AuthSessionWithTenant = {
   user: { id: 'admin-id', email: 'admin@saome.org', role: 'admin' },
   tenant: null,
   accessToken: 'access-token-original',
-  expiresIn: 3600, // 1 hour — matches ACCESS_TOKEN_TTL env (B4 follow-up 2026-09-05)
+  expiresIn: 900, // 15 min — mirrors backend ACCESS_TOKEN_TTL_DEFAULT (refreshService.ts line 22)
   refreshToken: 'refresh-token-original',
 };
 
@@ -49,12 +49,11 @@ function setupRefreshMock() {
     callCount++;
     // Bug-7 follow-up: refresh() now returns the full AuthSessionWithTenant
     // (user + tenant + accessToken), not just {accessToken, expiresIn}.
-    // B4 follow-up (2026-09-05): TTL is 3600s (1h), not 28800s (8h).
     return Promise.resolve({
       user: adminSession.user,
       tenant: null,
       accessToken: newAccessToken,
-      expiresIn: 3600,
+      expiresIn: 900, // mirrors backend ACCESS_TOKEN_TTL_DEFAULT
     });
   });
   vi.mocked(authService.me).mockResolvedValue({
@@ -115,11 +114,11 @@ describe('AuthProvider session persistence', () => {
     });
   });
 
-  it('proactively refreshes access token before 1h expiry', async () => {
-    // B4 follow-up (2026-09-05): ACCESS_TOKEN_TTL is 3600s (1h) now, with a
-    // 30-min proactive refresh window. Fast-forwarding 50 minutes should
-    // comfortably cover both the 30-min mark and the 30-min keep-alive
-    // interval (whichever fires first).
+  it('proactively refreshes access token before TTL expiry', async () => {
+    // Fix 401 (2026-09-09): previously tested 1h TTL with 30-min proactive refresh.
+    // Backend issues 900s (15 min) TTL. Proactive refresh now fires 60s before expiry
+    // (REFRESH_BEFORE_MS = 60_000). For a 900s TTL: fires at 840s = 14 min.
+    // Fast-forward 15 min to cover the 14-min proactive refresh + 1 min keep-alive floor.
     const { getCallCount } = setupRefreshMock();
 
     // First mount
@@ -134,13 +133,12 @@ describe('AuthProvider session persistence', () => {
       expect(authService.refresh).toHaveBeenCalled();
     });
 
-    // Fast-forward 50 minutes — proactive refresh should have triggered.
+    // Fast-forward 15 minutes — proactive refresh should have triggered at ~14 min.
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(50 * 60 * 1000); // 50 minutes
+      await vi.advanceTimersByTimeAsync(15 * 60 * 1000); // 15 minutes
     });
 
-    // After 50 minutes the proactive refresh should have fired
-    // (30-min mark from initial mount + 30-min keep-alive at minute 60).
+    // After 15 minutes the proactive refresh should have fired (at ~14 min mark).
     // We expect at least 2 calls: initial mount + 1 proactive refresh.
     expect(getCallCount()).toBeGreaterThanOrEqual(2);
   });
