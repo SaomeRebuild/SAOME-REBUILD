@@ -47,7 +47,7 @@
     "SAOME_BACKEND_URL": "https://saome-backend.josh1989213.workers.dev"
   },
   "triggers": {
-    "crons": ["*/2 * * * *"]
+    "crons": ["*/5 * * * *"]
   },
   "observability": {
     "enabled": true

@@ -140,9 +140,11 @@ const worker: ExportedHandler<HonoEnv['Bindings']> = {
    * crash the cron. Production observability (`wrangler tail`) will still
    * surface the warning.
    *
-   * Frequency tuning: wrangler.jsonc triggers.crons is every-2-minutes —
-   * short enough to survive Cloudflare's idle eviction window, long
-   * enough to not waste CPU/DB cycles.
+   * Frequency tuning: wrangler.jsonc triggers.crons is every-5-minutes.
+   * See `runs/decisions/2026-09-09-cron-frequency-*/5.md` for the rationale
+   * (Workers Free CPU budget = 10s/day; */2 burned ~14s/day). */5 still
+   * sits well inside Cloudflare's 15-min idle eviction window while
+   * bringing cron CPU to ~6s/day — safely under the Free quota.
    */
   async scheduled(event, env, ctx) {
     const cronName = event.cron;

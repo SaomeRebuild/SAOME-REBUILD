@@ -104,7 +104,7 @@ describe('scheduled keep-alive handler logic', () => {
       new Response(JSON.stringify({ ok: true }), { status: 200 }),
     );
 
-    await runScheduledHandler({ cron: '*/2 * * * *' }, TEST_ENV);
+    await runScheduledHandler({ cron: '*/5 * * * *' }, TEST_ENV);
 
     expect(mockFetch).toHaveBeenCalledWith(
       'https://saome-backend.josh1989213.workers.dev/health',
@@ -117,7 +117,7 @@ describe('scheduled keep-alive handler logic', () => {
       new Response(JSON.stringify({ ok: true }), { status: 200 }),
     );
 
-    await runScheduledHandler({ cron: '*/2 * * * *' }, TEST_ENV);
+    await runScheduledHandler({ cron: '*/5 * * * *' }, TEST_ENV);
 
     expect(mockGetDb).toHaveBeenCalledWith(TEST_ENV.HYPERDRIVE);
     const mockSql = (await mockGetDb.mock.results[0].value) as { unsafe: ReturnType<typeof vi.fn> };
@@ -136,7 +136,7 @@ describe('scheduled keep-alive handler logic', () => {
         }),
       );
 
-    await runScheduledHandler({ cron: '*/2 * * * *' }, TEST_ENV);
+    await runScheduledHandler({ cron: '*/5 * * * *' }, TEST_ENV);
 
     // fetch called twice: /health + /api/cron/billing-cycle
     expect(mockFetch).toHaveBeenCalledTimes(2);
@@ -151,7 +151,7 @@ describe('scheduled keep-alive handler logic', () => {
 
     // Must NOT throw
     await expect(
-      runScheduledHandler({ cron: '*/2 * * * *' }, TEST_ENV),
+      runScheduledHandler({ cron: '*/5 * * * *' }, TEST_ENV),
     ).resolves.not.toThrow();
   });
 
@@ -159,7 +159,7 @@ describe('scheduled keep-alive handler logic', () => {
     mockGetDb.mockRejectedValueOnce(new Error('Hyperdrive connection error'));
 
     await expect(
-      runScheduledHandler({ cron: '*/2 * * * *' }, TEST_ENV),
+      runScheduledHandler({ cron: '*/5 * * * *' }, TEST_ENV),
     ).resolves.not.toThrow();
   });
 
@@ -169,7 +169,7 @@ describe('scheduled keep-alive handler logic', () => {
       .mockRejectedValueOnce(new Error('billing fetch failed'));
 
     await expect(
-      runScheduledHandler({ cron: '*/2 * * * *' }, TEST_ENV),
+      runScheduledHandler({ cron: '*/5 * * * *' }, TEST_ENV),
     ).resolves.not.toThrow();
   });
 
@@ -183,7 +183,7 @@ describe('scheduled keep-alive handler logic', () => {
         }),
       );
 
-    await runScheduledHandler({ cron: '*/2 * * * *' }, TEST_ENV);
+    await runScheduledHandler({ cron: '*/5 * * * *' }, TEST_ENV);
 
     // HTTP warmup failed, but billing-cycle still fired
     expect(mockFetch).toHaveBeenCalledTimes(2);
@@ -208,7 +208,7 @@ describe('scheduled keep-alive handler logic', () => {
         }),
       );
 
-    await runScheduledHandler({ cron: '*/2 * * * *' }, customEnv);
+    await runScheduledHandler({ cron: '*/5 * * * *' }, customEnv);
 
     const allFetchCalls = mockFetch.mock.calls;
     expect(allFetchCalls[0][0]).toContain('custom-backend.example.com');

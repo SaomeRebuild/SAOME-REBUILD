@@ -5,8 +5,10 @@
  * @module modules/health/routes/warmupCron
  * @description Manual-trigger endpoint for warming the Worker + Hyperdrive
  * pool. Production keep-alive is now driven by the Cloudflare Cron Trigger
- * handler in `src/index.ts` (which runs every 2 minutes per
- * `wrangler.jsonc::triggers.crons`). This HTTP route exists for:
+ * handler in `src/index.ts` (which runs every 5 minutes per
+ * `wrangler.jsonc::triggers.crons` — see
+ * `runs/decisions/2026-09-09-cron-frequency-*/5.md`). This HTTP route
+ * exists for:
  *   - Manual smoke-testing (`curl https://.../api/cron/warmup`)
  *   - Unit tests (`warmupCron.test.ts`)
  *
