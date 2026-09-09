@@ -1,4 +1,4 @@
-﻿/**
+/**
  * refresh.test.ts — vitest unit tests for refreshService + refreshRoute.
  *
  * @module modules/auth/tests/refresh

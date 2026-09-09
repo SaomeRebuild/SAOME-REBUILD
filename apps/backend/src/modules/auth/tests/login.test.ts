@@ -1,4 +1,4 @@
-﻿/**
+/**
  * login.test.ts — vitest unit tests for loginService + loginRoute.
  *
  * @module modules/auth/tests/login
