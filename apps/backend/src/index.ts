@@ -113,7 +113,7 @@ const worker: ExportedHandler<HonoEnv['Bindings']> = {
   /**
    * Cloudflare Cron Trigger handler — fires per `wrangler.jsonc::triggers.crons`.
    *
-   * ROOT CAUSE FIX (2026-09-09 r2): replaced `fetch(${env.SAOME_BACKEND_URL}/health)`
+   * ROOT CAUSE FIX (2026-09-09 r2): replaced fetch(backendUrl/health)
    * with direct `app.fetch(request, env, ctx)` invocation. The previous
    * network roundtrip went through Cloudflare's edge → Worker loopback,
    * and in production the edge returned 404 for the internal `/health`
@@ -141,10 +141,10 @@ const worker: ExportedHandler<HonoEnv['Bindings']> = {
    * surface the warning.
    *
    * Frequency tuning: wrangler.jsonc triggers.crons is every-5-minutes.
-   * See `runs/decisions/2026-09-09-cron-frequency-*/5.md` for the rationale
-   * (Workers Free CPU budget = 10s/day; */2 burned ~14s/day). */5 still
-   * sits well inside Cloudflare's 15-min idle eviction window while
-   * bringing cron CPU to ~6s/day — safely under the Free quota.
+   * See runs/decisions/2026-09-09-cron-frequency-star-slash/5.md for rationale.
+   * Workers Free CPU budget = 10s/day; the every-2-min pattern burned ~14s/day.
+   * Every-5-mins sits inside the 15-min Cloudflare idle eviction window and
+   * brings cron CPU to ~6s/day — safely under the Free quota.
    */
   async scheduled(event, env, ctx) {
     const cronName = event.cron;
