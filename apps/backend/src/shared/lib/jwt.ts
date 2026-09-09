@@ -27,6 +27,13 @@ export const jwtPayloadSchema = z.object({
   sub: z.string().uuid(),
   email: z.string().email(),
   role: z.enum(['tenant', 'admin']),
+  /**
+   * Optional tenant id — present for tenant users, undefined for admins.
+   * Phase 3.2 (2026-09-09): added so `requireAuth` can trust JWT for
+   * `tenant.id` without an extra DB lookup. See
+   * `runs/decisions/2026-09-09-jwt-tenant-id-trust.md`.
+   */
+  tenantId: z.string().uuid().optional(),
   iat: z.number().int().nonnegative(),
   exp: z.number().int().nonnegative(),
   /**
@@ -69,7 +76,7 @@ export async function signAccessToken(
   secret: string,
   ttlSeconds = 900
 ): Promise<string> {
-  return new SignJWT({ email: payload.email, role: payload.role })
+  return new SignJWT({ email: payload.email, role: payload.role, tenantId: payload.tenantId })
     .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
     .setSubject(payload.sub)
     .setJti(newJti())
@@ -86,7 +93,7 @@ export async function signRefreshToken(
   secret: string,
   ttlSeconds = 2592000
 ): Promise<string> {
-  return new SignJWT({ email: payload.email, role: payload.role, typ: 'refresh' })
+  return new SignJWT({ email: payload.email, role: payload.role, tenantId: payload.tenantId, typ: 'refresh' })
     .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
     .setSubject(payload.sub)
     .setJti(newJti())
@@ -116,6 +123,7 @@ export async function verifyToken(token: string, secret: string): Promise<JwtPay
     sub: payload.sub,
     email: payload.email,
     role: payload.role,
+    tenantId: payload.tenantId,
     iat: payload.iat,
     exp: payload.exp,
     jti: payload.jti,

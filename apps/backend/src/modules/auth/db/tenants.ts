@@ -68,6 +68,26 @@ export async function findTenantByOwnerId(sql: Sql, ownerUserId: string): Promis
   return rows[0];
 }
 
+/**
+ * Lookup a tenant by its primary key (UUID).
+ *
+ * Phase 3.2 (2026-09-09): added so authenticated routes can resolve
+ * `tenant.id` from the JWT `tenant_id` claim without an owner-index scan.
+ * Used by `meRoute`, all card routes, and `passRoutes.get('/current')`.
+ *
+ * @see runs/decisions/2026-09-09-jwt-tenant-id-trust.md
+ */
+export async function findTenantById(sql: Sql, tenantId: string): Promise<TenantsRow | undefined> {
+  const rows = await sql<TenantsRow[]>`
+    SELECT id, owner_user_id, name, contact_name, phone_city, address,
+           tax_id, invoice_address, mobile, website, email, created_at
+      FROM tenants
+     WHERE id = ${tenantId}
+     LIMIT 1
+  `;
+  return rows[0];
+}
+
 export async function findTenantByTaxId(sql: Sql, taxId: string): Promise<TenantsRow | undefined> {
   const rows = await sql<TenantsRow[]>`
     SELECT id, owner_user_id, name, contact_name, phone_city, address,

@@ -1,13 +1,13 @@
 ﻿/**
- * me.test.ts ??vitest unit tests for meRoute.
+ * me.test.ts — vitest unit tests for meRoute.
  *
  * @module modules/auth/tests/me
  *
  * Tests:
- *   - authenticated user with tenant ??200 + user + tenant
- *   - authenticated user without tenant (admin) ??200 + user only
- *   - missing token ??401
- *   - invalid token ??401
+ *   - authenticated user with tenant → 200 + user + tenant
+ *   - authenticated user without tenant (admin) → 200 + user + tenant=null
+ *   - missing token → 401
+ *   - invalid token → 401
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -16,14 +16,17 @@ import type { HonoEnv } from '@/shared/types/bindings';
 
 vi.mock('@/shared/db/client', () => ({
   getDb: vi.fn().mockResolvedValue({}),
+  getDbForRequest: vi.fn().mockResolvedValue({}),
 }));
 
 vi.mock('@/shared/lib/jwt', () => ({
   verifyToken: vi.fn(),
 }));
 
+// Phase 3.2 (2026-09-09): meRoute uses findTenantById (PK lookup from JWT tenantId)
+// instead of findTenantByOwnerId (index scan by user.id).
 vi.mock('../db/tenants', () => ({
-  findTenantByOwnerId: vi.fn(),
+  findTenantById: vi.fn(),
 }));
 
 vi.mock('../db/users', () => ({
@@ -32,15 +35,13 @@ vi.mock('../db/users', () => ({
   insertUser: vi.fn(),
 }));
 
-import { findTenantByOwnerId } from '../db/tenants';
-import { findUserById } from '../db/users';
+import { findTenantById } from '../db/tenants';
 import { verifyToken } from '@/shared/lib/jwt';
 import { errorHandler } from '@/shared/middleware/errorHandler';
 import { meRoute } from '../routes/me';
 
 const mockedVerify = vi.mocked(verifyToken);
-const mockedFindTenant = vi.mocked(findTenantByOwnerId);
-const mockedFindUserById = vi.mocked(findUserById);
+const mockedFindTenant = vi.mocked(findTenantById);
 
 function buildApp() {
   const app = new Hono<HonoEnv>();
@@ -70,20 +71,18 @@ describe('GET /api/auth/me', () => {
     vi.clearAllMocks();
   });
 
-  it('authenticated tenant returns 200 with user + tenant', async () => {
+  it('authenticated tenant returns 200 with user + tenant (Phase 3.2: JWT tenantId → findTenantById)', async () => {
+    // Phase 3.2: requireAuth trusts JWT for user identity (no findUserById DB lookup).
+    // The meRoute reads tenantId from the JWT and calls findTenantById.
     mockedVerify.mockResolvedValue({
       sub: 'user-1',
-      email: 'user' + '@example.com',
-      role: 'tenant',
-      type: 'access',
-    });
-    mockedFindUserById.mockResolvedValue({
-      id: 'user-1',
-      email: 'user' + '@example.com',
-      password_hash: 'h',
-      role: 'tenant',
-      is_active: true,
-      created_at: new Date(),
+      email: 'user@example.com',
+      role: 'tenant' as const,
+      type: 'access' as const,
+      tenantId: 'tenant-1',
+      iat: 0,
+      exp: 9999999999,
+      jti: 'jti-1',
     });
     mockedFindTenant.mockResolvedValue({
       id: 'tenant-1',
@@ -96,7 +95,8 @@ describe('GET /api/auth/me', () => {
       invoice_address: null,
       mobile: null,
       website: null,
-      email: 'user' + '@example.com',
+      email: 'user@example.com',
+      created_at: new Date(),
     });
     const app = buildApp();
     const res = await callMe(app, 'valid-access');
@@ -107,27 +107,25 @@ describe('GET /api/auth/me', () => {
   });
 
   it('authenticated admin (no tenant) returns 200 with tenant=null', async () => {
+    // Admin JWT has no tenantId → findTenantById is not called.
     mockedVerify.mockResolvedValue({
       sub: 'admin-1',
-      email: 'user' + '@example.com',
-      role: 'admin',
-      type: 'access',
+      email: 'admin@example.com',
+      role: 'admin' as const,
+      type: 'access' as const,
+      tenantId: undefined,
+      iat: 0,
+      exp: 9999999999,
+      jti: 'jti-2',
     });
-    mockedFindUserById.mockResolvedValue({
-      id: 'admin-1',
-      email: 'user' + '@example.com',
-      password_hash: 'h',
-      role: 'admin',
-      is_active: true,
-      created_at: new Date(),
-    });
-    mockedFindTenant.mockResolvedValue(null);
+    // findTenantById should not be called for admins
     const app = buildApp();
     const res = await callMe(app, 'admin-access');
     expect(res.status).toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
     expect((body.user as Record<string, unknown>).role).toBe('admin');
     expect(body.tenant).toBeNull();
+    expect(mockedFindTenant).not.toHaveBeenCalled();
   });
 
   it('missing token returns 401', async () => {

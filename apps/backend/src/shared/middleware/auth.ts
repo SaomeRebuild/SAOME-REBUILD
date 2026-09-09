@@ -10,7 +10,6 @@ import type { Context, MiddlewareHandler } from 'hono';
 import type { HonoEnv } from '@/shared/types/bindings';
 import { verifyToken } from '@/shared/lib/jwt';
 import { AuthError, ForbiddenError } from '@/shared/lib/saomeError';
-import { findUserById } from '@/modules/auth/db/users';
 import { getDb } from '@/shared/db/client';
 import { isTokenRevoked } from '@/modules/auth/db/revokedTokens';
 
@@ -62,17 +61,18 @@ export const requireAuth: MiddlewareHandler<HonoEnv> = async (c, next) => {
     throw new AuthError('auth.error.tokenRevoked', 'Token has been revoked');
   }
 
-  const userRow = await findUserById(sql, payload.sub);
-  if (!userRow) {
-    throw new AuthError('auth.error.userNotFound', 'User not found');
-  }
-  if (!userRow.is_active) {
-    throw new ForbiddenError('auth.error.accountInactive', 'Account is inactive');
-  }
+  // Phase 3.2 (2026-09-09): trust the verified JWT for user identity.
+  // `is_active` is enforced only at login (loginService). After login, a
+  // revoked token can no longer reach this middleware (Phase 2.2
+  // `revoked_tokens` table). Removing `findUserById` saves one DB round-trip
+  // per protected request — the main lever for staying under the Free plan
+  // 10 ms CPU budget. See
+  // `runs/decisions/2026-09-09-jwt-tenant-id-trust.md`.
   c.set(AUTH_USER_KEY, {
-    id: userRow.id,
-    email: userRow.email,
-    role: userRow.role,
+    id: payload.sub,
+    email: payload.email,
+    role: payload.role,
+    tenantId: payload.tenantId,
   } as never);
   await next();
 };

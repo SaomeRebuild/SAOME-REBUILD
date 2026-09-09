@@ -1,20 +1,35 @@
 ﻿/**
- * refresh.test.ts ??vitest unit tests for refreshService + refreshRoute.
+ * refresh.test.ts — vitest unit tests for refreshService + refreshRoute.
  *
  * @module modules/auth/tests/refresh
  *
  * Tests:
- *   - happy path: valid refresh cookie ??200 + new tokens
- *   - missing cookie ??401 AUTH_MISSING_REFRESH
- *   - invalid token ??401 AUTH_INVALID_REFRESH
+ *   - happy path: valid refresh cookie → 200 + new tokens
+ *   - missing cookie → 401 AUTH_MISSING_REFRESH
+ *   - invalid token → 401 AUTH_INVALID_REFRESH
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Hono } from 'hono';
 import type { HonoEnv } from '@/shared/types/bindings';
 
+// Phase 3.2 (2026-09-09): getDb must return a sql instance that supports tagged
+// template calls (e.g. `db`SELECT * FROM ...``). An empty object causes
+// "db is not a function" when advanceBillingCycle calls db as a tagged template.
+function createMockSql() {
+  // A tagged template function: `sql`SELECT * FROM t WHERE id = ${id}``
+  const taggedFn = (...args: unknown[]) => {
+    // Return a promise that resolves to an empty array (no rows found in mocks)
+    return Promise.resolve([]);
+  };
+  return Object.assign(taggedFn, {
+    __proto__: null,
+  });
+}
+
 vi.mock('@/shared/db/client', () => ({
-  getDb: vi.fn().mockResolvedValue({}),
+  getDb: vi.fn().mockResolvedValue(createMockSql()),
+  getDbForRequest: vi.fn().mockResolvedValue(createMockSql()),
 }));
 
 vi.mock('@/shared/lib/jwt', () => ({
@@ -23,14 +38,24 @@ vi.mock('@/shared/lib/jwt', () => ({
   verifyToken: vi.fn(),
 }));
 
+// Phase 3.2 (2026-09-09): refreshService no longer calls findUserById (trust JWT).
+// findTenantByOwnerId is also removed (now uses findTenantById with PK from JWT tenantId).
 vi.mock('../db/users', () => ({
+  // findUserById removed — Phase 3.2 trusts JWT for user identity
   findUserById: vi.fn(),
   insertUser: vi.fn(),
 }));
 
 vi.mock('../db/tenants', () => ({
+  // Phase 3.2: findTenantByOwnerId replaced by findTenantById (PK lookup from JWT tenantId)
   findTenantByOwnerId: vi.fn().mockResolvedValue(null),
+  findTenantById: vi.fn(),
   insertTenant: vi.fn(),
+}));
+
+vi.mock('../../pass/db/passes', () => ({
+  getPassStatus: vi.fn(),
+  advanceBillingCycle: vi.fn().mockResolvedValue(null),
 }));
 
 // Phase 2.2 mock — must be declared before the module imports below
@@ -45,7 +70,7 @@ vi.mock('../db/revokedTokens', () => ({
   _clearRevokedCacheForTests: vi.fn(),
 }));
 
-import { findUserById } from '../db/users';
+import { findTenantById } from '../db/tenants';
 import { signAccessToken, signRefreshToken, verifyToken } from '@/shared/lib/jwt';
 import { errorHandler } from '@/shared/middleware/errorHandler';
 import { refreshRoute } from '../routes/refresh';
@@ -57,7 +82,7 @@ import { refreshRoute } from '../routes/refresh';
 // forwards to `mockIsTokenRevoked`. We use the hoisted var directly since the
 // vi.mock factory cannot be asked "what mock fn was this replaced with?".
 const mockedIsTokenRevoked = mockIsTokenRevoked;
-const mockedFindUserById = vi.mocked(findUserById);
+const mockedFindTenantById = vi.mocked(findTenantById);
 const mockedAccess = vi.mocked(signAccessToken);
 const mockedRefreshSign = vi.mocked(signRefreshToken);
 const mockedVerify = vi.mocked(verifyToken);
@@ -98,13 +123,23 @@ describe('POST /api/auth/refresh', () => {
       email: 'user' + '@example.com',
       role: 'tenant',
       type: 'refresh',
+      tenantId: 'tenant-1',
+      jti: 'jti-1',
     });
-    mockedFindUserById.mockResolvedValue({
-      id: 'user-1',
+    // Phase 3.2: refreshService trusts JWT for user identity (no findUserById call).
+    // It uses findTenantById to hydrate tenant from JWT tenantId claim.
+    mockedFindTenantById.mockResolvedValue({
+      id: 'tenant-1',
+      owner_user_id: 'user-1',
+      contact_name: 'X',
+      phone_city: 'X',
+      address: 'X',
+      tax_id: '0',
+      name: 'X Store',
+      invoice_address: null,
+      mobile: null,
+      website: null,
       email: 'user' + '@example.com',
-      password_hash: 'h',
-      role: 'tenant',
-      is_active: true,
       created_at: new Date(),
     });
     mockedAccess.mockResolvedValue('new-access');
@@ -127,6 +162,10 @@ describe('POST /api/auth/refresh', () => {
   // frontend AuthProvider can recover the session on a full page reload
   // (without an additional /api/auth/me call which previously 401'd because
   // the AuthProvider hadn't yet threaded the freshly-issued access token).
+  //
+  // Phase 3.2 (2026-09-09): refreshService uses findTenantById (PK lookup from
+  // JWT tenantId claim) instead of findTenantByOwnerId. Tenant is hydrated
+  // from the JWT's tenantId, not from a secondary lookup by owner_user_id.
   it('refresh response includes user + tenant (Bug-7 follow-up)', async () => {
     const app = buildApp();
     const res = await callRefresh(app, 'saome_refresh=old-refresh-token');
@@ -137,7 +176,20 @@ describe('POST /api/auth/refresh', () => {
       email: 'user' + '@example.com',
       role: 'tenant',
     });
-    expect(body.tenant).toBeNull(); // mocked findTenantByOwnerId resolves null
+    // Phase 3.2: findTenantById hydrates tenant from JWT tenantId (mocked in beforeEach).
+    // The service transforms DB rows to camelCase (refreshService.ts line ~96).
+    expect(body.tenant).toEqual({
+      id: 'tenant-1',
+      name: 'X Store',
+      contactName: 'X',
+      phoneCity: 'X',
+      address: 'X',
+      taxId: '0',
+      invoiceAddress: null,
+      mobile: null,
+      website: null,
+      email: 'user' + '@example.com',
+    });
   });
 
   it('missing refresh cookie returns 401 UNAUTHORIZED', async () => {
@@ -157,18 +209,46 @@ describe('POST /api/auth/refresh', () => {
     expect(getErrorCode(body)).toBe('UNAUTHORIZED');
   });
 
-  it('refresh for inactive user returns 403', async () => {
-    mockedFindUserById.mockResolvedValue({
-      id: 'user-1',
-      email: 'user' + '@example.com',
-      password_hash: 'h',
+  it('Phase 3.2: active-user tokens are trusted from JWT — is_active check removed from refreshService', async () => {
+    // Phase 3.2 (2026-09-09): refreshService trusts the JWT for user identity.
+    // is_active is only enforced at login (loginService). After login, a revoked
+    // token is blocked by Phase 2.2 revoked_tokens table. An inactive user
+    // with a non-revoked token will get a 200 with new tokens — the access
+    // TTL is the re-auth window.
+    mockedVerify.mockResolvedValue({
+      sub: 'user-1',
+      email: 'user@example.com',
       role: 'tenant',
-      is_active: false,
+      type: 'refresh',
+      tenantId: 'tenant-1',
+      jti: 'jti-1',
+    });
+    // findTenantById still hydrates the tenant for the session response
+    mockedFindTenantById.mockResolvedValue({
+      id: 'tenant-1',
+      owner_user_id: 'user-1',
+      contact_name: 'X',
+      phone_city: 'X',
+      address: 'X',
+      tax_id: '0',
+      name: 'X Store',
+      invoice_address: null,
+      mobile: null,
+      website: null,
+      email: 'user@example.com',
       created_at: new Date(),
     });
     const app = buildApp();
     const res = await callRefresh(app, 'saome_refresh=valid-token');
-    expect(res.status).toBe(403);
+    // Returns 200 — refreshService trusts JWT, does not check is_active
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.user).toEqual({
+      id: 'user-1',
+      email: 'user@example.com',
+      role: 'tenant',
+    });
+    expect(body.tenant).not.toBeNull();
   });
 
   // Phase 2.2 (2026-09-05): server-side revocation check in refreshService.

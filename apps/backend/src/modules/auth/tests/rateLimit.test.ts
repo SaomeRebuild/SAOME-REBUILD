@@ -25,6 +25,7 @@ import {
 // Mock the DB layer so rateLimit tests don't need real Postgres.
 vi.mock('@/shared/db/client', () => ({
   getDb: vi.fn().mockResolvedValue({}),
+  getDbForRequest: vi.fn().mockResolvedValue({}),
 }));
 
 vi.mock('../db/loginAttempts', () => ({

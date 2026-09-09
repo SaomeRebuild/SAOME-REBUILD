@@ -14,7 +14,7 @@ import { Hono } from 'hono';
 import type { HonoEnv } from '@/shared/types/bindings';
 import { getDb } from '@/shared/db/client';
 import { requireAuth, getAuthenticatedUser } from '@/shared/middleware/auth';
-import { findTenantByOwnerId } from '@/modules/auth/db/tenants';
+import { findTenantById } from '@/modules/auth/db/tenants';
 import { findTemplateById } from '../db/templates';
 import { NotFoundError, SaomeError } from '@/shared/lib/saomeError';
 import { z } from 'zod';
@@ -43,7 +43,7 @@ export const getImageRoute = new Hono<HonoEnv>()
       throw new NotFoundError('common.error.notFound');
     }
 
-    const tenant = await findTenantByOwnerId(sql, user.id);
+    const tenant = user.tenantId ? await findTenantById(sql, user.tenantId) : null;
     if (!tenant) {
       throw new NotFoundError('common.error.notFound');
     }

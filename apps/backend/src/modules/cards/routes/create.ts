@@ -6,7 +6,7 @@ import { Hono } from 'hono';
 import type { HonoEnv } from '@/shared/types/bindings';
 import { getDb } from '@/shared/db/client';
 import { requireAuth, getAuthenticatedUser } from '@/shared/middleware/auth';
-import { findTenantByOwnerId } from '@/modules/auth/db/tenants';
+import { findTenantById } from '@/modules/auth/db/tenants';
 import { ValidationError, NotFoundError } from '@/shared/lib/saomeError';
 import { createTemplateSchema } from '../schemas/request';
 import { createTemplateService } from '../services/cardService';
@@ -17,8 +17,8 @@ export const createCardRoute = new Hono<HonoEnv>()
     const user = getAuthenticatedUser(c);
     const sql = await getDb(c.env.HYPERDRIVE);
 
-    // Get tenant ID for the authenticated user
-    const tenant = await findTenantByOwnerId(sql, user.id);
+    // Get tenant ID for the authenticated user (via JWT claim + PK lookup)
+    const tenant = user.tenantId ? await findTenantById(sql, user.tenantId) : null;
     if (!tenant) {
       throw new NotFoundError('common.error.notFound', 'Tenant not found');
     }

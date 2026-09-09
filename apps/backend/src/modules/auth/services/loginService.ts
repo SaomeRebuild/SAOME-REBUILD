@@ -11,9 +11,8 @@ import type { AuthSessionDto, PassDto } from '@/contracts/auth';
 import { AuthError, ForbiddenError } from '@/shared/lib/saomeError';
 import { verifyPassword } from '@/shared/lib/password';
 import { signAccessToken, signRefreshToken } from '@/shared/lib/jwt';
-import { findUserByEmail } from '../db/users';
+import { findUserAndTenantByEmail } from '../db/users';
 import { insertLoginAttempt } from '../db/loginAttempts';
-import { findTenantByOwnerId } from '../db/tenants';
 import { getPassStatus, advanceBillingCycle } from '../../pass/db/passes';
 
 const ACCESS_TOKEN_TTL_DEFAULT = 900;
@@ -24,9 +23,9 @@ export async function loginService(
   credentials: LoginCredentials,
   accessTokenTtl: number = ACCESS_TOKEN_TTL_DEFAULT
 ): Promise<AuthSessionDto> {
-  const user = await findUserByEmail(sql, credentials.email);
+  const lookup = await findUserAndTenantByEmail(sql, credentials.email);
 
-  if (!user) {
+  if (!lookup) {
     // Anti-enumeration: insert a fail attempt with user_id NULL, then return same error as wrong password.
     await insertLoginAttempt(sql, {
       userId: null,
@@ -35,6 +34,8 @@ export async function loginService(
     });
     throw new AuthError('auth.error.invalidCredentials', 'Invalid email or password');
   }
+
+  const { user, tenant } = lookup;
 
   if (!user.is_active) {
     await insertLoginAttempt(sql, {
@@ -61,8 +62,7 @@ export async function loginService(
     success: true,
   });
 
-  // Tenant (admin won't have one)
-  const tenant = await findTenantByOwnerId(sql, user.id);
+  // Tenant already hydrated by the LEFT JOIN above (admin won't have one).
 
   // Pass — embedded in session to avoid a separate /api/me/pass polling call.
   // Lazy update: advance billing cycle if needed (for paid users who haven't logged in for a while).
@@ -84,6 +84,7 @@ export async function loginService(
     sub: user.id,
     email: user.email,
     role: user.role,
+    tenantId: tenant?.id,
   };
   const accessToken = await signAccessToken(tokenPayload, jwtSecret, accessTokenTtl);
   const refreshToken = await signRefreshToken(tokenPayload, jwtSecret);

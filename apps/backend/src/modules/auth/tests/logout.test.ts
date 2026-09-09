@@ -53,6 +53,7 @@ vi.mock('@/modules/auth/db/revokedTokens', () => ({
 
 vi.mock('@/shared/db/client', () => ({
   getDb: (...args: unknown[]) => mockGetDb(...args),
+  getDbForRequest: vi.fn().mockResolvedValue({}),
 }));
 
 function buildApp() {

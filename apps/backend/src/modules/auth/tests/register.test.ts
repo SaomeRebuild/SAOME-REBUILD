@@ -20,6 +20,9 @@ vi.mock('@/shared/db/client', () => ({
   getDb: vi.fn().mockResolvedValue({
     begin: vi.fn().mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => cb({})),
   }),
+  getDbForRequest: vi.fn().mockResolvedValue({
+    begin: vi.fn().mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => cb({})),
+  }),
 }));
 
 vi.mock('@/shared/lib/password', () => ({

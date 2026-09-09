@@ -1,21 +1,25 @@
 ﻿/**
- * login.test.ts ??vitest unit tests for loginService + loginRoute.
+ * login.test.ts — vitest unit tests for loginService + loginRoute.
  *
  * @module modules/auth/tests/login
  *
  * Tests:
- *   - happy path: valid creds ??200 + AuthSessionDto + Set-Cookie
- *   - wrong password ??401 AUTH_INVALID
- *   - unknown email ??401 AUTH_INVALID
- *   - validation error (zod) ??400
+ *   - happy path: valid creds → 200 + AuthSessionDto + Set-Cookie
+ *   - wrong password → 401 AUTH_INVALID
+ *   - unknown email → 401 AUTH_INVALID
+ *   - validation error (zod) → 400
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Hono } from 'hono';
 import type { HonoEnv } from '@/shared/types/bindings';
 
+// Phase 3.2 (2026-09-09): loginService now calls findUserAndTenantByEmail (LEFT JOIN)
+// instead of findUserByEmail + findTenantByOwnerId. The vi.mock factory must export
+// findUserAndTenantByEmail, otherwise vitest throws "No export is defined".
 vi.mock('@/shared/db/client', () => ({
   getDb: vi.fn().mockResolvedValue({}),
+  getDbForRequest: vi.fn().mockResolvedValue({}),
 }));
 
 vi.mock('@/shared/lib/password', () => ({
@@ -29,7 +33,10 @@ vi.mock('@/shared/lib/jwt', () => ({
   verifyToken: vi.fn(),
 }));
 
+// Phase 3.2 (2026-09-09): loginService now uses findUserAndTenantByEmail (LEFT JOIN).
+// findUserByEmail is no longer called by the service.
 vi.mock('../db/users', () => ({
+  findUserAndTenantByEmail: vi.fn(),
   findUserByEmail: vi.fn(),
   insertUser: vi.fn(),
 }));
@@ -72,7 +79,7 @@ vi.mock('../middleware/rateLimit', () => ({
   }),
 }));
 
-import { findUserByEmail } from '../db/users';
+import { findUserAndTenantByEmail } from '../db/users';
 import { findTenantByOwnerId } from '../db/tenants';
 import { getPassStatus } from '../../pass/db/passes';
 import { verifyPassword } from '@/shared/lib/password';
@@ -81,7 +88,7 @@ import { insertLoginAttempt } from '../db/loginAttempts';
 import { errorHandler } from '@/shared/middleware/errorHandler';
 import { loginRoute } from '../routes/login';
 
-const mockedFindUser = vi.mocked(findUserByEmail);
+const mockedFindUserAndTenant = vi.mocked(findUserAndTenantByEmail);
 const mockedFindTenant = vi.mocked(findTenantByOwnerId);
 const mockedGetPass = vi.mocked(getPassStatus);
 const mockedVerify = vi.mocked(verifyPassword);
@@ -157,7 +164,10 @@ async function callLogin(app: Hono<HonoEnv>, body: unknown) {
 describe('POST /api/auth/login', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockedFindUser.mockResolvedValue(fakeUser);
+    mockedFindUserAndTenant.mockResolvedValue({
+      user: fakeUser,
+      tenant: fakeTenant,
+    });
     mockedFindTenant.mockResolvedValue(fakeTenant);
     mockedVerify.mockResolvedValue(true);
     mockedAccess.mockResolvedValue('access');
@@ -310,7 +320,8 @@ describe('POST /api/auth/login', () => {
   });
 
   it('unknown email returns 401 UNAUTHORIZED (does not leak existence)', async () => {
-    mockedFindUser.mockResolvedValue(null);
+    // Phase 3.2: findUserAndTenantByEmail returns null when email not found
+    mockedFindUserAndTenant.mockResolvedValue(null);
     const app = buildApp();
     const res = await callLogin(app, validCreds);
     expect(res.status).toBe(401);
@@ -321,7 +332,11 @@ describe('POST /api/auth/login', () => {
   });
 
   it('inactive user returns 403 FORBIDDEN', async () => {
-    mockedFindUser.mockResolvedValue({ ...fakeUser, is_active: false });
+    // Phase 3.2: findUserAndTenantByEmail returns user with is_active=false
+    mockedFindUserAndTenant.mockResolvedValue({
+      user: { ...fakeUser, is_active: false },
+      tenant: fakeTenant,
+    });
     const app = buildApp();
     const res = await callLogin(app, validCreds);
     expect(res.status).toBe(403);

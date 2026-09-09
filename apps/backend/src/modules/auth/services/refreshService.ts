@@ -15,8 +15,7 @@ import type { Sql } from '@/shared/db/client';
 import type { AuthSessionDto } from '@/contracts/auth';
 import { AuthError, ForbiddenError } from '@/shared/lib/saomeError';
 import { verifyToken, signAccessToken, signRefreshToken } from '@/shared/lib/jwt';
-import { findUserById } from '../db/users';
-import { findTenantByOwnerId } from '../db/tenants';
+import { findTenantById } from '../db/tenants';
 import { getPassStatus, advanceBillingCycle } from '@/modules/pass/db/passes';
 import { isTokenRevoked } from '../db/revokedTokens';
 
@@ -43,25 +42,22 @@ export async function refreshService(
     throw new AuthError('auth.error.tokenRevoked', 'Refresh token has been revoked');
   }
 
-  const user = await findUserById(sql, payload.sub);
-  if (!user) {
-    throw new AuthError('auth.error.userNotFound', 'User not found');
-  }
-  if (!user.is_active) {
-    throw new ForbiddenError('auth.error.accountInactive', 'Account is inactive');
-  }
-
-  // Issue new access token + new refresh token (rotation)
+  // Issue new access token + new refresh token (rotation).
+  // Phase 3.2 (2026-09-09): trust the verified JWT for user identity
+  // (no `findUserById` DB lookup). Tenant id is taken from the JWT claim
+  // and resolved via PK lookup below. See
+  // `runs/decisions/2026-09-09-jwt-tenant-id-trust.md`.
   const tokenPayload = {
-    sub: user.id,
-    email: user.email,
-    role: user.role,
+    sub: payload.sub,
+    email: payload.email,
+    role: payload.role,
+    tenantId: payload.tenantId,
   };
   const accessToken = await signAccessToken(tokenPayload, jwtSecret, accessTokenTtl);
   const newRefreshToken = await signRefreshToken(tokenPayload, jwtSecret);
 
   // Hydrate tenant (admin won't have one)
-  const tenant = await findTenantByOwnerId(sql, user.id);
+  const tenant = payload.tenantId ? await findTenantById(sql, payload.tenantId) : null;
 
   // Pass — embedded in session to avoid a separate /api/me/pass polling call.
   // Lazy update: advance billing cycle if needed (for paid users who haven't logged in for a while).
@@ -79,12 +75,14 @@ export async function refreshService(
       }
     : null;
 
+  const authUserDto = {
+    id: payload.sub,
+    email: payload.email,
+    role: payload.role,
+  };
+
   return {
-    user: {
-      id: user.id,
-      email: user.email,
-      role: user.role,
-    },
+    user: authUserDto,
     tenant: tenant
       ? {
           id: tenant.id,

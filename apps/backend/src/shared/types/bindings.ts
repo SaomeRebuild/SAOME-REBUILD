@@ -9,6 +9,7 @@
 
 import type { Hyperdrive } from '@cloudflare/workers-types';
 import type { R2Bucket } from '@cloudflare/workers-types';
+import type { Sql } from '@/shared/db/client';
 
 /**
  * Worker env shape, passed as `c.env` in Hono handlers.
@@ -92,7 +93,20 @@ export type HonoEnv = {
       id: string;
       email: string;
       role: 'tenant' | 'admin';
+      /**
+       * Optional tenant id — present for tenant users, undefined for admins.
+       * Phase 3.2 (2026-09-09): added so `requireAuth` can populate from the
+       * verified JWT without a DB lookup. See
+       * `runs/decisions/2026-09-09-jwt-tenant-id-trust.md`.
+       */
+      tenantId?: string;
     };
+    /**
+     * Per-request memoized postgres.js instance. Set by `getDbForRequest`
+     * so subsequent calls within the same Hono request reuse the same pool
+     * (and skip the eager warmup `SELECT 1`).
+     */
+    db?: Sql;
   };
 };
 

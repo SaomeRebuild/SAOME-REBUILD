@@ -27,6 +27,8 @@
  */
 
 import postgres from 'postgres';
+import type { Context } from 'hono';
+import type { HonoEnv } from '@/shared/types/bindings';
 
 /**
  * Postgres.js client type — the SQL template literal tag.
@@ -86,5 +88,28 @@ export async function getDb(hyperdrive: { connectionString: string }): Promise<S
     throw err;
   }
 
+  return sql;
+}
+
+/**
+ * Per-request memoization wrapper around `getDb`.
+ *
+ * Within a single request, multiple calls return the SAME sql instance
+ * (no second pool creation, no second warmup `SELECT 1`). Across requests,
+ * each call gets a fresh instance — required by Cloudflare Workers I/O
+ * isolation rules (a pool from request A must NEVER be reused in request B).
+ *
+ * Usage:
+ *   const sql = await getDbForRequest(c);   // preferred inside Hono handlers
+ *
+ * @see runs/decisions/2026-09-09-jwt-tenant-id-trust.md
+ */
+export async function getDbForRequest(
+  c: Pick<Context<HonoEnv>, 'get' | 'set'>
+): Promise<Sql> {
+  const cached = c.get('db') as Sql | undefined;
+  if (cached) return cached;
+  const sql = await getDb(c.env.HYPERDRIVE);
+  c.set('db', sql as never);
   return sql;
 }

@@ -149,6 +149,13 @@ export const jwtPayloadSchema = z.object({
   sub: z.string().uuid(),
   email: z.string().email(),
   role: roleSchema,
+  /**
+   * Optional tenant id — present for tenant users, undefined for admins.
+   * Phase 3.2 (2026-09-09): added so `requireAuth` can trust JWT for
+   * `tenant.id` without an extra DB lookup. See
+   * `runs/decisions/2026-09-09-jwt-tenant-id-trust.md`.
+   */
+  tenant_id: z.string().uuid().optional(),
   iat: z.number().int(),
   exp: z.number().int(),
 });
