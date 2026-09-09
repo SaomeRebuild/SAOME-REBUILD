@@ -75,6 +75,11 @@ app.route('/api/cards', cardsModule);
  * The CORS injection itself lives in `shared/middleware/runtimeCors.ts`
  * (separated so it can be unit-tested without pulling in the full app
  * graph).
+ *
+ * The cron handler also uses direct `app.fetch(req, env, ctx)` instead of
+ * `fetch(env.SAOME_BACKEND_URL/...)` so the keep-alive ping can't get
+ * intercepted by Cloudflare's edge routing (Bug: cron self-fetch 404,
+ * 2026-09-09 r2).
  */
 const worker: ExportedHandler<HonoEnv['Bindings']> = {
   async fetch(request, env, ctx) {
@@ -108,52 +113,59 @@ const worker: ExportedHandler<HonoEnv['Bindings']> = {
   /**
    * Cloudflare Cron Trigger handler — fires per `wrangler.jsonc::triggers.crons`.
    *
-   * ROOT CAUSE FIX (2026-09-09): before this commit, wrangler.jsonc
-   * declared `triggers.crons` but the Worker had NO `scheduled` handler.
-   * Cloudflare fired the cron every 5 minutes into the void, the Worker
-   * isolate stayed subject to Cloudflare's normal idle-eviction policy,
-   * and after 15-30 minutes of idle time the next real user request
-   * triggered a cold start. For a ~450 KB Worker bundle, cold start can
-   * exceed Cloudflare's internal 503 threshold, producing a runtime-emitted
-   * 503 that has no CORS header → browser silent drop → user sees
-   * "Network error" (the recurring 503+CORS symptom this whole week).
+   * ROOT CAUSE FIX (2026-09-09 r2): replaced `fetch(${env.SAOME_BACKEND_URL}/health)`
+   * with direct `app.fetch(request, env, ctx)` invocation. The previous
+   * network roundtrip went through Cloudflare's edge → Worker loopback,
+   * and in production the edge returned 404 for the internal `/health`
+   * request (durationMs=8 was the smoking gun — too fast for a real
+   * roundtrip, indicating edge cache hit on a stale 404). That meant the
+   * HTTP-handler isolate was NOT being kept warm, so real user requests
+   * still hit cold-start 503 → Layer 3 CORS drop. Direct app.fetch runs
+   * the Hono pipeline IN-PROCESS (no edge, no DNS, no cache), so the
+   * cron always exercises the full middleware chain and surfaces any
+   * regression in tail logs instead of producing a false-negative 404.
    *
    * Two-purpose cron (keep-alive + scheduled business work):
-   *   1. HTTP layer keep-alive: internal `fetch('/health')` exercises the
-   *      full Hono pipeline (corsMiddleware → requestId → handler → CORS
-   *      wrap-after-next) so an idle Worker stays warm AND any Layer 1
+   *   1. HTTP layer keep-alive: in-process `app.fetch('/health')` exercises
+   *      the full Hono pipeline (corsMiddleware → requestId → handler →
+   *      CORS wrap-after-next). An idle Worker stays warm AND any Layer 1
    *      regression surfaces in cron logs (not user-facing failures).
    *   2. Hyperdrive keep-alive: `SELECT 1` pings the connection pool so
    *      Hyperdrive's >60s idle disconnect doesn't bite the next real
-   *      user request (the original motivation for `warmupCron.ts`, which
-   *      was incorrectly mounted as an HTTP route).
+   *      user request.
    *   3. Billing cycle: every cron tick, advance billing cycles whose
-   *      `billing_cycle_end <= now()`. The original `billingCycleCronRoute`
-   *      was also mounted as an HTTP route — its intent was to be invoked
-   *      by THIS handler, but the wiring was never completed.
+   *      `billing_cycle_end <= now()`.
    *
    * Errors are swallowed with `console.warn` so a transient blip doesn't
    * crash the cron. Production observability (`wrangler tail`) will still
    * surface the warning.
    *
-   * Frequency tuning: wrangler.jsonc triggers.crons is now every-2-minutes
-   * (every 2 minutes) — short enough to survive Cloudflare's idle eviction
-   * window, long enough to not waste CPU/DB cycles.
+   * Frequency tuning: wrangler.jsonc triggers.crons is every-2-minutes —
+   * short enough to survive Cloudflare's idle eviction window, long
+   * enough to not waste CPU/DB cycles.
    */
   async scheduled(event, env, ctx) {
     const cronName = event.cron;
     const startedAt = Date.now();
 
-    // Purpose 1: HTTP layer keep-alive (warm the Hono pipeline)
+    // Purpose 1: HTTP layer keep-alive (warm the Hono pipeline).
+    // Direct in-process invocation — NO network roundtrip, NO edge
+    // routing, NO cache lookup. This is what Cloudflare's loopback fetch
+    // SHOULD do but didn't reliably (see index.ts header for context).
     try {
-      const res = await fetch(`${env.SAOME_BACKEND_URL}/health`, {
+      const req = new Request('https://saome-internal/health', {
         method: 'GET',
         headers: { Accept: 'application/json' },
-        signal: AbortSignal.timeout(5_000),
       });
-      console.log(`[scheduled] cron=${cronName} http-warmup status=${res.status} durationMs=${Date.now() - startedAt}`);
+      const res = await app.fetch(req, env, ctx);
+      console.log(
+        `[scheduled] cron=${cronName} http-warmup status=${res.status} durationMs=${Date.now() - startedAt}`,
+      );
     } catch (err) {
-      console.warn(`[scheduled] cron=${cronName} http-warmup FAILED:`, err instanceof Error ? err.message : String(err));
+      console.warn(
+        `[scheduled] cron=${cronName} http-warmup FAILED:`,
+        err instanceof Error ? err.message : String(err),
+      );
     }
 
     // Purpose 2: Hyperdrive keep-alive (`SELECT 1` — forces a fresh pooled
@@ -164,23 +176,30 @@ const worker: ExportedHandler<HonoEnv['Bindings']> = {
       const [{ ok }] = await sql<{ ok: number }[]>`SELECT 1 AS ok`;
       console.log(`[scheduled] cron=${cronName} hyperdrive-keepalive ok=${ok}`);
     } catch (err) {
-      console.warn(`[scheduled] cron=${cronName} hyperdrive-keepalive FAILED:`, err instanceof Error ? err.message : String(err));
+      console.warn(
+        `[scheduled] cron=${cronName} hyperdrive-keepalive FAILED:`,
+        err instanceof Error ? err.message : String(err),
+      );
     }
 
-    // Purpose 3: billing cycle advancement (was previously mounted as an
-    // unused HTTP route at /api/cron/billing-cycle — now invoked by the
-    // cron handler every tick. Idempotent: rows whose end_date <= now()
-    // are updated once, and the route returns the count).
+    // Purpose 3: billing cycle advancement. Previously wired as an HTTP
+    // route that nobody called; now invoked in-process via app.fetch so
+    // it's deterministic and observable.
     try {
-      const res = await fetch(`${env.SAOME_BACKEND_URL}/api/cron/billing-cycle`, {
+      const req = new Request('https://saome-internal/api/cron/billing-cycle', {
         method: 'GET',
         headers: { Accept: 'application/json' },
-        signal: AbortSignal.timeout(30_000),
       });
+      const res = await app.fetch(req, env, ctx);
       const body = await res.json().catch(() => ({}));
-      console.log(`[scheduled] cron=${cronName} billing-cycle status=${res.status} body=${JSON.stringify(body)}`);
+      console.log(
+        `[scheduled] cron=${cronName} billing-cycle status=${res.status} body=${JSON.stringify(body)}`,
+      );
     } catch (err) {
-      console.warn(`[scheduled] cron=${cronName} billing-cycle FAILED:`, err instanceof Error ? err.message : String(err));
+      console.warn(
+        `[scheduled] cron=${cronName} billing-cycle FAILED:`,
+        err instanceof Error ? err.message : String(err),
+      );
     }
   },
 };
