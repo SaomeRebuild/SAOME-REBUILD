@@ -239,6 +239,90 @@ try {
 
 完整討論見：[runs/improvements/feedback/20260909-cold-start-dead-zone-network-error.md](../runs/improvements/feedback/20260909-cold-start-dead-zone-network-error.md)。
 
+## 9. Root Cause Fix — Missing `scheduled` Handler（2026-09-09 新增）
+
+> 2026-09-09 早上實測：0909 的 LoginPage warmup + httpClient retry 解決了「cold start 後 user 看到 Network error」的症狀，但**根本原因是**：`wrangler.jsonc::triggers.crons` 宣告了 `*/5 * * * *`（每 5 分鐘），但 `worker` 物件**從來沒有 `scheduled` 方法**。
+
+### 為什麼 cron trigger 沒有暖化 Worker？
+
+Cloudflare Cron Trigger 的行為：
+1. `wrangler.jsonc::triggers.crons` 宣告排程
+2. Cloudflare 在排程時間呼叫 Worker 的 `scheduled(event, env, ctx)` 方法
+3. 如果 Worker **沒有** `scheduled` 方法 → cron 事件被 Cloudflare 默默丢掉，**沒有任何錯誤**
+4. Worker isolate 照樣被 idle-eviction 踢掉 → 幾小時後第一個 user request 冷啟
+
+關鍵：`warmupCron` 是 HTTP route（`GET /api/cron/warmup`），不是 `scheduled` handler。兩者完全不同：
+- **HTTP route**：需要外部 request 觸發
+- **`scheduled` handler**：Cloudflare cron trigger 在內部呼叫，**不需要外部 request**
+
+### 為什麼 wrangler deploy output 沒有說 cron handler 找不到？
+
+Cloudflare 的設計：**如果 Worker 沒有 `scheduled` handler，cron 就默默失敗，不噴 error**。這讓問題難以發現。直到這次，加上 `wrangler tail` 看即時 log 才發現。
+
+### 修法：加 `worker.scheduled`
+
+`src/index.ts` 的 `worker` 物件加 `scheduled` 方法（Phase 2026-09-09）：
+
+```typescript
+const worker: ExportedHandler<HonoEnv['Bindings']> = {
+  async fetch(request, env, ctx) { ... },   // 既有的 Layer 3 CORS wrapper
+
+  async scheduled(event, env, ctx) {
+    // Purpose 1: HTTP layer keep-alive
+    //   fetch(SaOME_BACKEND_URL/health) 暖化整個 Hono pipeline
+    // Purpose 2: Hyperdrive keep-alive
+    //   SELECT 1 防止 Hyperdrive >60s idle 斷線
+    // Purpose 3: Billing cycle advancement
+    //   原本 billingCycleCronRoute 是 HTTP route（沒被呼叫），現在正確鉤上
+  },
+};
+```
+
+所有錯誤用 `try/catch` 包起來：`console.warn`（wrangler tail 看得見）但不 throw。cron 的任何一步失敗不該 crash 整個 handler。
+
+### wrangler.jsonc 同步更新
+
+`wrangler.jsonc::triggers.crons` 從 `*/5 * * * *`（每 5 分鐘）改為 `*/2 * * * *`（每 2 分鐘）。`*/2` 更保守，確保 Worker isolate 不會被 idle-eviction 踢掉。
+
+### deploy output 確認
+
+有 `schedule` 行表示 `scheduled` handler 已正確綁定：
+
+```
+Deployed saome-backend triggers (2.06 sec)
+  https://saome-backend.josh1989213.workers.dev
+  schedule: */2 * * * *
+```
+
+之前沒有這行（因為沒有 handler）。
+
+### 與 §8 的關係
+
+| | §8 LoginPage warmup + httpClient retry | §9 scheduled handler |
+|---|---|---|
+| 位置 | 前端 | 後端 |
+| 目的 | cold start 後的 UX 兜底 | **根本原因：防止 cold start** |
+| 何時觸發 | user 訪問 `/login` 時 | 每 2 分鐘（cron）|
+| 覆蓋 | 只覆蓋登入 flow | 覆蓋所有 API endpoint |
+
+§8 + §9 必須並存：§9 預防、§8 兜底。
+
+### 驗證
+
+```bash
+# 1. deploy output 有 schedule 行
+$ wrangler deploy | grep "schedule"
+  schedule: */2 * * * *
+
+# 2. wrangler tail 看 cron 實際有跑
+$ wrangler tail --format pretty
+# 等 2 分鐘，應該看到：
+# [scheduled] cron=*/2 * * * * http-warmup status=200
+# [scheduled] cron=*/2 * * * * hyperdrive-keepalive ok=1
+```
+
+完整 trace：[runs/improvements/feedback/20260909-cold-start-scheduled-handler-missing.md](../runs/improvements/feedback/20260909-cold-start-scheduled-handler-missing.md)。
+
 ## 觸發關鍵字
 
 「Cloudflare Worker」、「Hono middleware」、「CORS drop」、「Worker runtime」、「ExportedHandler」、「entry boundary」、「fetch handler」、「worker.fetch」、「503 + no CORS」、「瀏覽器 silent drop」、「curl 看不出來」、「`Access-Control-Allow-Origin`」**必須**引用本 rule。
@@ -262,8 +346,9 @@ try {
 - `apps/backend/src/shared/middleware/runtimeCors.test.ts` — 6 條 conformance test
 - `apps/backend/src/shared/middleware/cors.ts` — Layer 1（Hono chain wrap-after-next）
 - `apps/backend/src/shared/middleware/errorHandler.ts` — Layer 2（Hono `onError` inline CORS）
-- `apps/backend/src/index.ts` line 76-103 — Worker entry boundary 包裹
-- `apps/backend/wrangler.jsonc` — Layer 1+2 的 env-driven allow-list
+- `apps/backend/src/index.ts` line 76-188 — Worker entry boundary + scheduled handler
+- `apps/backend/src/index.scheduled.test.ts` — 8 條 scheduled handler test
+- `apps/backend/wrangler.jsonc` — Layer 1+2 的 env-driven allow-list + triggers.crons
 - `apps/frontend/src/services/httpClient.ts` — Layer 5 network-error retry 實作
 - `apps/frontend/src/services/httpClient.test.ts` — 5 條 network-retry test
 - `apps/frontend/src/pages/auth/LoginPage.tsx` — Layer 4 mount-time warmup

@@ -1,7 +1,14 @@
 /**
- * Warmup cron route — keeps Hyperdrive connection pool warm.
+ * HTTP warmup route — kept for manual triggering + tests; the primary
+ * keep-alive now lives in `src/index.ts::worker.scheduled` (Phase 2026-09-09).
  *
  * @module modules/health/routes/warmupCron
+ * @description Manual-trigger endpoint for warming the Worker + Hyperdrive
+ * pool. Production keep-alive is now driven by the Cloudflare Cron Trigger
+ * handler in `src/index.ts` (which runs every 2 minutes per
+ * `wrangler.jsonc::triggers.crons`). This HTTP route exists for:
+ *   - Manual smoke-testing (`curl https://.../api/cron/warmup`)
+ *   - Unit tests (`warmupCron.test.ts`)
  *
  * The `saome-backend` Worker connects to Supabase Postgres through
  * Cloudflare Hyperdrive. Hyperdrive's idle connection timeout can sever the
@@ -9,14 +16,6 @@
  * comes in (a real user login / card save), the first attempt then hits a
  * `Error: Hyperdrive connection error` which manifests to the user as a
  * transient 503 from the API.
- *
- * Mitigation: trigger a tiny request every 5 minutes via Cloudflare Cron
- * Triggers. The route does an internal fetch to the backend's own `/health`
- * endpoint, which exercises the Hyperdrive pool without doing any DB work
- * (since `/health` doesn't touch the DB).
- *
- * Cron binding lives in `wrangler.jsonc` under `triggers.crons`. In dev,
- * `wrangler dev --test-scheduled` lets you trigger the cron manually.
  */
 
 import { Hono } from 'hono';
