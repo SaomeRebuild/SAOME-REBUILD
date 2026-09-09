@@ -19,9 +19,14 @@ import { MaxDiscountAmountField } from './MaxDiscountAmountField';
 import { useCardBuilderStore } from '../../CardBuilderEditor.store';
 import { MAX_DISCOUNT_AMOUNT_MAX } from '@saome/shared/constants';
 
+// 2026-09-10 currency-aware: MaxDiscountAmountField uses `i18n.language`
+// to decide whether the unit renders as a prefix (en / ZAR) or suffix
+// (zh-TW TWD). The mock now exposes `i18n.language` so the suffix
+// branch can be tested deterministically.
 vi.mock('react-i18next', () => ({
   useTranslation: vi.fn(() => ({
     t: vi.fn((key: string) => key),
+    i18n: { language: 'zh-TW' },
   })),
 }));
 
@@ -113,5 +118,32 @@ describe('MaxDiscountAmountField (Step 6 section 5 — CONDITIONAL)', () => {
 
     const input = screen.getByPlaceholderText('step6.stamp.maxDiscountPlaceholder') as HTMLInputElement;
     expect(input.value).toBe('200');
+  });
+
+  // 2026-09-10 currency-aware rendering: the unit's position changes
+  // based on `store.currency` and `i18n.language`.
+  it('zh-TW TWD → renders unit 元 as a SUFFIX after the input', () => {
+    useCardBuilderStore.setState({ rewardType: 'percent_off', currency: 'TWD' });
+    render(<MaxDiscountAmountField showValidation={false} />);
+
+    const input = screen.getByPlaceholderText('step6.stamp.maxDiscountPlaceholder');
+    // The unit span must come AFTER the input in DOM order.
+    expect(
+      input.compareDocumentPosition(
+        screen.getByText('step6.stamp.maxDiscountUnitTWD'),
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('ZAR → renders unit R as a PREFIX before the input', () => {
+    useCardBuilderStore.setState({ rewardType: 'percent_off', currency: 'ZAR' });
+    render(<MaxDiscountAmountField showValidation={false} />);
+
+    const input = screen.getByPlaceholderText('step6.stamp.maxDiscountPlaceholder');
+    expect(
+      input.compareDocumentPosition(
+        screen.getByText('step6.stamp.maxDiscountUnitZAR'),
+      ) & Node.DOCUMENT_POSITION_PRECEDING,
+    ).toBeTruthy();
   });
 });

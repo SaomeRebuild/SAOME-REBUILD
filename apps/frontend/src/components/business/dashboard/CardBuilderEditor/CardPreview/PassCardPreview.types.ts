@@ -24,7 +24,19 @@ import type { StampGridRows } from '@/components/business/stampCard/StampGridPre
 export interface PassCardPreviewProps extends HTMLAttributes<HTMLDivElement> {
   /** 卡片名稱 */
   name?: string;
-  /** 卡片類型 */
+  /** 卡片類型
+   *
+   * Drives three independent pieces of preview rendering:
+   *   - `PassCardPreviewHeader` — 2-line balance preview when
+   *     `cardType ∈ {stamp_card, reward_card, cashback_card}`,
+   *     rounded-full pill otherwise.
+   *   - `PassCardPreviewStrip` — stamp grid icon row when
+   *     `cardType ∈ {stamp_card, multipass}`.
+   *   - `PassCardPreviewBody` — `memberLevel` slot becomes "獎勵 / Reward"
+   *     (label = stampLabel, value = rewardName) when
+   *     `cardType === 'stamp_card'` (2026-09-10 stamp card member-level
+   *     → reward refactor).
+   */
   cardType?: CardType | null;
   /** 發卡機構標誌（可選，URL 或 SVG） */
   issuerLogo?: string;
@@ -66,6 +78,15 @@ export interface PassCardPreviewProps extends HTMLAttributes<HTMLDivElement> {
    * Stamp grid feature 2026-09-04。
    */
   stampIconId?: string;
+  /**
+   * Live reward name from the editor store (Step 6 `step6-reward-name`
+   * input). Surfaced as the preview `value` for the `memberLevel` slot when
+   * `cardType === 'stamp_card'` (PassCardPreviewBody applies the
+   * stamp-card → reward override). Optional — when omitted or empty, the
+   * preview renders an empty value.
+   * (2026-09-10 stamp card member-level → reward refactor.)
+   */
+  rewardName?: string;
   /**
    * 卡片描述（背面 Section 1）。對應 templateSettings.description。
    * Step 4 card-info 2026-09-04。空字串或 undefined 時，預覽顯示 placeholder。

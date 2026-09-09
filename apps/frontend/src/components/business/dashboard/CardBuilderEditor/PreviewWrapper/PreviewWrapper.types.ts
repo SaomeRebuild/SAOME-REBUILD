@@ -56,6 +56,13 @@ export interface PreviewWrapperProps {
    */
   stampIconId?: string;
   /**
+   * Live reward name from the editor store (Step 6 `step6-reward-name`
+   * input). Forwarded to PassCardPreviewBody so the `memberLevel` slot
+   * surfaces as a "獎勵" preview with this value when cardType is
+   * `stamp_card` (2026-09-10 stamp card member-level → reward refactor).
+   */
+  rewardName?: string;
+  /**
    * 卡片描述（背面 Section 1）。對應 templateSettings.description。
    * Step 4 card-info 2026-09-04。
    */

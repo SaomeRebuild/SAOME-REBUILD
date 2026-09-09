@@ -24,6 +24,8 @@ export function RewardValueField({ showValidation }: RewardValueFieldProps) {
   const rewardType = useCardBuilderStore((s) => s.rewardType);
   const rewardValue = useCardBuilderStore((s) => s.rewardValue);
   const setRewardValue = useCardBuilderStore((s) => s.setRewardValue);
+  // 2026-09-10 currency-aware rendering: ZAR prefix (R), TWD suffix (元 / NT$).
+  const currency = useCardBuilderStore((s) => s.currency);
 
   const isAmount = rewardType === 'amount_off';
   const isPercent = rewardType === 'percent_off';
@@ -37,11 +39,20 @@ export function RewardValueField({ showValidation }: RewardValueFieldProps) {
       ? t('step6.stamp.rewardValuePlaceholderPercent')
       : '';
 
-  const unitLabel = isPercent
-    ? t('step6.stamp.rewardValuePercentUnit')
-    : isAmount
-    ? t('step6.stamp.rewardValueAmountUnit')
-    : '';
+  // 2026-09-10: split unit into prefix / suffix so currency-aware
+  // placement matches locale convention (ZAR prefix R; TWD suffix 元
+  // for zh-TW, prefix NT$ for en).
+  const isZAR = currency === 'ZAR';
+  const unitPrefix =
+    isAmount && isZAR
+      ? t('step6.stamp.rewardValueAmountUnitZAR')
+      : '';
+  const unitSuffix =
+    isAmount && !isZAR
+      ? t('step6.stamp.rewardValueAmountUnitTWD')
+      : isPercent
+      ? t('step6.stamp.rewardValuePercentUnit')
+      : '';
 
   return (
     <section className="flex min-w-0 flex-col gap-2">
@@ -63,6 +74,11 @@ export function RewardValueField({ showValidation }: RewardValueFieldProps) {
       {isSelected && (
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center gap-2">
+            {unitPrefix && (
+              <span className="shrink-0 text-sm text-muted-foreground">
+                {unitPrefix}
+              </span>
+            )}
             <input
               id="step6-reward-value"
               type="number"
@@ -95,9 +111,9 @@ export function RewardValueField({ showValidation }: RewardValueFieldProps) {
                 ${showError ? 'border-destructive' : 'border-input'}
               `}
             />
-            {unitLabel && (
+            {unitSuffix && (
               <span className="shrink-0 text-sm text-muted-foreground">
-                {unitLabel}
+                {unitSuffix}
               </span>
             )}
           </div>

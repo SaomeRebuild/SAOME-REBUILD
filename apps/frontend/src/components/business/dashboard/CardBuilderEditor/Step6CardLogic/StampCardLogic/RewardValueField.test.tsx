@@ -52,13 +52,25 @@ describe('RewardValueField (Step 6 section 4)', () => {
     ).toBeInTheDocument();
   });
 
-  it('uses amount placeholder when rewardType=amount_off', () => {
-    useCardBuilderStore.setState({ rewardType: 'amount_off' });
+  it('uses amount placeholder when rewardType=amount_off (TWD default → suffix unit)', () => {
+    useCardBuilderStore.setState({ rewardType: 'amount_off', currency: 'TWD' });
     render(<RewardValueField showValidation={false} />);
 
     const input = screen.getByPlaceholderText('step6.stamp.rewardValuePlaceholderAmount') as HTMLInputElement;
     expect(input).toBeInTheDocument();
-    expect(screen.getByText('step6.stamp.rewardValueAmountUnit')).toBeInTheDocument();
+    // 2026-09-10 currency-aware: TWD renders suffix unit 元.
+    expect(screen.getByText('step6.stamp.rewardValueAmountUnitTWD')).toBeInTheDocument();
+  });
+
+  it('uses amount placeholder when rewardType=amount_off (ZAR → prefix unit)', () => {
+    useCardBuilderStore.setState({ rewardType: 'amount_off', currency: 'ZAR' });
+    render(<RewardValueField showValidation={false} />);
+
+    const input = screen.getByPlaceholderText('step6.stamp.rewardValuePlaceholderAmount') as HTMLInputElement;
+    expect(input).toBeInTheDocument();
+    // 2026-09-10 currency-aware: ZAR renders prefix unit R, no suffix unit.
+    expect(screen.getByText('step6.stamp.rewardValueAmountUnitZAR')).toBeInTheDocument();
+    expect(screen.queryByText('step6.stamp.rewardValueAmountUnitTWD')).not.toBeInTheDocument();
   });
 
   it('uses percent placeholder when rewardType=percent_off', () => {

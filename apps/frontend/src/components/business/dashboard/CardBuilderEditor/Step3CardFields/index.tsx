@@ -38,6 +38,7 @@ import {
   type CardFieldDefinition,
   type CardFieldKey,
 } from '@saome/shared/constants/card-fields';
+import type { CardType } from '@saome/shared/schemas/card';
 import { filterCARD_FIELDS_BY_CARD_TYPE } from './filterCARD_FIELDS_BY_CARD_TYPE';
 
 /**
@@ -93,6 +94,31 @@ interface FieldSelectProps {
    * type; the value is preserved, not silently cleared).
    */
   availableFields: readonly CardFieldDefinition[];
+  /**
+   * Current `cardType` from the store (Step 1 selection). Used to override
+   * the option label for `memberLevel` when cardType === 'stamp_card':
+   * the dropdown option reads "獎勵" instead of "會員等級", and the live
+   * preview's label/value follow the same cardType-driven path
+   * (PassCardPreviewBody.tsx). For all other cardTypes (incl. `multipass`),
+   * the original "會員等級" label is preserved. (2026-09-10 stamp card
+   * member-level → reward refactor.)
+   */
+  cardType?: CardType | null;
+}
+
+/**
+ * Resolve the i18n labelKey for a `CardFieldDefinition` in the dropdown.
+ * The only conditional override today is `memberLevel` → `memberLevelStamp`
+ * when cardType is stamp_card; every other field uses its canonical
+ * `field.labelKey`. Keeping this helper local (rather than baking the
+ * conditional into the map() below) keeps the override auditable in one
+ * place and avoids drift if a future field needs the same treatment.
+ */
+function resolveOptionLabelKey(field: CardFieldDefinition, cardType?: CardType | null): string {
+  if (field.key === 'memberLevel' && cardType === 'stamp_card') {
+    return 'step3.fieldsSection.fields.memberLevelStamp';
+  }
+  return field.labelKey;
 }
 
 /**
@@ -102,7 +128,7 @@ interface FieldSelectProps {
  * SEE WHY an option is unselectable (without that, `disabled` only greys out
  * without explanation in the dropdown).
  */
-function FieldSelect({ sideLabel, value, otherValue, onChange, availableFields }: FieldSelectProps) {
+function FieldSelect({ sideLabel, value, otherValue, onChange, availableFields, cardType }: FieldSelectProps) {
   const { t } = useTranslation('cardEditor');
   const placeholder = t('step3.fieldsSection.placeholder');
   const disabledSuffix = t('step3.fieldsSection.disabledSuffix');
@@ -130,6 +156,7 @@ function FieldSelect({ sideLabel, value, otherValue, onChange, availableFields }
           </option>
           {availableFields.map((field) => {
             const pickedByOther = field.key === otherValue;
+            const labelKey = resolveOptionLabelKey(field, cardType);
             return (
               <option
                 key={field.key}
@@ -137,7 +164,7 @@ function FieldSelect({ sideLabel, value, otherValue, onChange, availableFields }
                 disabled={pickedByOther}
                 style={OPTION_STYLE}
               >
-                {t(field.labelKey)}
+                {t(labelKey)}
                 {pickedByOther ? ` (${disabledSuffix})` : ''}
               </option>
             );
@@ -205,6 +232,7 @@ export function Step3CardFields() {
           otherValue={rightField}
           onChange={setLeftField}
           availableFields={availableFields}
+          cardType={cardType}
         />
         <FieldSelect
           sideLabel={t('step3.fieldsSection.rightField')}
@@ -212,6 +240,7 @@ export function Step3CardFields() {
           otherValue={leftField}
           onChange={setRightField}
           availableFields={availableFields}
+          cardType={cardType}
         />
       </div>
     </section>

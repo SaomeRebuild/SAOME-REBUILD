@@ -19,7 +19,7 @@ export default {
   fieldPreview: {
     phone: { label: 'Phone', value: '+279XXXXXXXXX' },
     email: { label: 'Email', value: 'hi@saome.org' },
-    memberLevel: { label: 'Member Level', value: 'Gold' },
+    memberLevel: { label: 'Member Level', value: 'Gold', stampLabel: 'Reward' },
     birthday: { label: 'Birthday', value: '05/11/1999' },
     visitCount: { label: 'Visit Count', value: '5 times' },
     memberName: { label: 'Member Name', value: 'Thabo Mokoena' },

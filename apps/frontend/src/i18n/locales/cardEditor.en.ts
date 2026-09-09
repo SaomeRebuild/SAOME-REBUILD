@@ -112,6 +112,10 @@ export default {
         phone: 'Phone',
         email: 'Email',
         memberLevel: 'Member Level',
+        // Stamp Card override: when cardType is stamp_card, the "memberLevel"
+        // option in the left/right dropdown renders as "Reward" instead.
+        // (2026-09-10 stamp card member-level → reward refactor)
+        memberLevelStamp: 'Reward',
         birthday: 'Birthday',
         visitCount: 'Visit Count',
         memberName: 'Member Name',
@@ -273,16 +277,18 @@ export default {
       rewardTypeTitle: 'Reward Type',
       rewardTypePlaceholder: 'Select reward type',
       rewardTypeAmount: 'Fixed cash discount',
-      rewardTypeAmountHint: 'e.g. R10 off the total bill',
+      // 2026-09-10 currency-aware hint: ZAR prefix (R10) vs TWD prefix (NT$10).
+      rewardTypeAmountHintTWD: 'e.g. NT$10 off when you spend enough',
+      rewardTypeAmountHintZAR: 'e.g. R10 off when you spend enough',
       rewardTypePercent: 'Percentage discount',
       rewardTypePercentHint: 'e.g. 8% off when you collect enough stamps',
       rewardValueLabel: 'Reward Amount',
       rewardValuePlaceholderAmount: 'Enter discount amount, e.g. 10',
       rewardValuePlaceholderPercent: 'Enter discount percentage, e.g. 8',
-      // SAOME targets ZAR (South African Rand) for English locale — the
-      // "R" symbol is rendered next to the Reward Amount input. Per-locale
-      // currency unit lives here so future locales can override.
-      rewardValueAmountUnit: 'R',
+      // 2026-09-10 currency-aware unit (replaces single `rewardValueAmountUnit: 'R'`).
+      // English: TWD uses prefix NT$, ZAR uses prefix R (both prefix-style).
+      rewardValueAmountUnitTWD: 'NT$',
+      rewardValueAmountUnitZAR: 'R',
       rewardValuePercentUnit: '%',
       rewardValueEmptyError: 'Please enter the reward amount',
       rewardValueInvalidError: 'Please enter a valid number',
@@ -291,6 +297,10 @@ export default {
       maxDiscountTitle: 'Maximum Discount Amount',
       maxDiscountDescription: 'When choosing "Percentage discount", set a cap on the maximum discount per transaction.',
       maxDiscountPlaceholder: 'e.g. 50 (leave blank for no cap)',
+      // 2026-09-10 currency-aware max discount unit. Both TWD and ZAR
+      // use prefix notation in English (NT$50 / R50).
+      maxDiscountUnitTWD: 'NT$',
+      maxDiscountUnitZAR: 'R',
       maxDiscountOptional: '(Optional, leave blank for no cap)',
       maxDiscountHelper: 'Setting a cap prevents large discounts on big purchases and protects store margins.',
       maxDiscountZeroIsNoCap: 'Enter 0 = no cap',
@@ -301,7 +311,12 @@ export default {
         perVisitStampsLabel: 'stamps',
         perVisitHelper: 'Earn M stamps every N visits.',
         perSpendTitle: 'Spend Threshold',
-        perSpendAmountLabel: 'spend',
+        // 2026-09-10 currency-aware per-spend amount label.
+        // TWD uses suffix "spent"; ZAR uses prefix "R".
+        // Component decides whether to render before / after input based
+        // on store.currency — see AccrualThresholdField.tsx.
+        perSpendAmountLabelTWD: 'spent',
+        perSpendAmountLabelZAR: 'R',
         perSpendStampsLabel: 'stamps',
         perSpendHelper: 'Earn M stamps for every N spent.',
         requiredError: 'Please enter a threshold value',
@@ -310,13 +325,18 @@ export default {
         amountMinError: 'Spend amount must be greater than 0',
       },
       // Preview description (StampCardLogicPreview component)
+      // 2026-09-10 i18n refactor: {{amount}} / {{cap}} are pre-formatted
+      // with the currency unit at the correct position (prefix R for ZAR,
+      // prefix NT$ for TWD, suffix 元 for zh-TW TWD) before being
+      // interpolated. Templates provide ONLY English phrasing — no
+      // currency symbols embedded here. Mirrors REWARD preview.
       preview: {
         modeUnknown: 'Please select a stamping method',
         rewardUnknown: 'Please enter a reward name',
-        amountReward: 'R{{amount}} off',
+        amountReward: '{{amount}} off',
         percentReward: '{{percent}}% off',
-        amountWithCap: 'R{{amount}} off, max R{{cap}} per transaction',
-        percentWithCap: '{{percent}}% off, max R{{cap}} per transaction',
+        amountWithCap: '{{amount}} off, max {{cap}} per transaction',
+        percentWithCap: '{{percent}}% off, max {{cap}} per transaction',
         percentNoCap: '{{percent}}% off, no discount cap',
         template: 'Collect {{total}} stamps to redeem {{reward}}',
         templateWithCap: 'Collect {{total}} stamps to redeem {{reward}}',

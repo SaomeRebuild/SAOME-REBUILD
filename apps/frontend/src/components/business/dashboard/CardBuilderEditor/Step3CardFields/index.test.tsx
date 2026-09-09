@@ -397,3 +397,147 @@ describe('Step3CardFields — conditional visibility (stamp_card / multipass)', 
     expect(allKeys).toEqual([...CARD_FIELDS].map((f) => f.key).sort());
   });
 });
+
+describe('Step3CardFields — stamp_card "會員等級" → "獎勵" option label override (2026-09-10)', () => {
+  /**
+   * 2026-09-10 stamp card member-level → reward refactor:
+   *   When cardType === 'stamp_card', the option whose `value` is
+   *   `'memberLevel'` should render with the i18n key
+   *   `step3.fieldsSection.fields.memberLevelStamp` (which resolves to
+   *   "獎勵" / "Reward") instead of the default
+   *   `step3.fieldsSection.fields.memberLevel` ("會員等級" / "Member Level").
+   *   The dropdown still emits `'memberLevel'` as the option value (the
+   *   CardFieldKey contract is preserved — backend / shared schema
+   *   unchanged per Rule 019 § 4.1).
+   *
+   *   For `multipass` (which shares the same STAMP_CARD_TYPES filter for
+   *   the stamp-only field group) the label is INTENTIONALLY NOT
+   *   overridden — `multipass` keeps "會員等級" because the user's UX
+   *   intent was scoped to `stamp_card` only (user-confirmed scope:
+   *   `stamp_only`).
+   *
+   *   Tests rely on `vi.mock('react-i18next')` returning the key path
+   *   verbatim, so we assert against the i18n key path rather than the
+   *   translated text. The `verify:i18n` smoke test (separate run) guards
+   *   against missing translations.
+   */
+
+  // Card types we expect to NOT trigger the memberLevel → memberLevelStamp
+  // override. Mirrors the set used by the conditional-visibility describe
+  // block above (kept local to avoid coupling two describe blocks).
+  const NON_STAMP_CARD_TYPES = [
+    'cashback_card',
+    'reward_card',
+    'membership_card',
+    'discount_card',
+    'coupon_card',
+    'gift_card',
+  ] as const;
+
+  it('memberLevel option label uses memberLevelStamp i18n key when cardType="stamp_card"', () => {
+    useCardBuilderStore.getState().setCardType('stamp_card');
+    render(<Step3CardFields />);
+    const leftSelect = screen.getByLabelText(
+      'step3.fieldsSection.leftField',
+    ) as HTMLSelectElement;
+    const memberLevelOption = leftSelect.querySelector(
+      'option[value="memberLevel"]',
+    ) as HTMLOptionElement;
+    expect(memberLevelOption).toBeTruthy();
+    // vi.mock returns the key path verbatim; assert against the key.
+    expect(memberLevelOption.textContent).toBe(
+      'step3.fieldsSection.fields.memberLevelStamp',
+    );
+    // The underlying option value is still 'memberLevel' — only the label
+    // changes. The store contract is preserved.
+    expect(memberLevelOption.value).toBe('memberLevel');
+  });
+
+  it('memberLevel option label keeps the original memberLevel key when cardType="multipass" (scope = stamp_card only)', () => {
+    useCardBuilderStore.getState().setCardType('multipass');
+    render(<Step3CardFields />);
+    const leftSelect = screen.getByLabelText(
+      'step3.fieldsSection.leftField',
+    ) as HTMLSelectElement;
+    const memberLevelOption = leftSelect.querySelector(
+      'option[value="memberLevel"]',
+    ) as HTMLOptionElement;
+    expect(memberLevelOption).toBeTruthy();
+    expect(memberLevelOption.textContent).toBe(
+      'step3.fieldsSection.fields.memberLevel',
+    );
+  });
+
+  it.each(NON_STAMP_CARD_TYPES)(
+    'memberLevel option label keeps the original memberLevel key for non-stamp cardType="%s"',
+    (cardType) => {
+      useCardBuilderStore.getState().setCardType(cardType);
+      render(<Step3CardFields />);
+      const leftSelect = screen.getByLabelText(
+        'step3.fieldsSection.leftField',
+      ) as HTMLSelectElement;
+      const memberLevelOption = leftSelect.querySelector(
+        'option[value="memberLevel"]',
+      ) as HTMLOptionElement;
+      expect(memberLevelOption).toBeTruthy();
+      expect(memberLevelOption.textContent).toBe(
+        'step3.fieldsSection.fields.memberLevel',
+      );
+    },
+  );
+
+  it('only memberLevel option is relabeled on stamp_card; other common fields keep their original keys', () => {
+    useCardBuilderStore.getState().setCardType('stamp_card');
+    render(<Step3CardFields />);
+    const leftSelect = screen.getByLabelText(
+      'step3.fieldsSection.leftField',
+    ) as HTMLSelectElement;
+
+    // Sanity sweep: every OTHER common field's option text uses its
+    // canonical labelKey (no accidental cascade).
+    const cases: ReadonlyArray<{ key: string; labelKey: string }> = [
+      { key: 'phone', labelKey: 'step3.fieldsSection.fields.phone' },
+      { key: 'email', labelKey: 'step3.fieldsSection.fields.email' },
+      { key: 'birthday', labelKey: 'step3.fieldsSection.fields.birthday' },
+      { key: 'visitCount', labelKey: 'step3.fieldsSection.fields.visitCount' },
+      { key: 'memberName', labelKey: 'step3.fieldsSection.fields.memberName' },
+    ];
+    for (const { key, labelKey } of cases) {
+      const opt = leftSelect.querySelector(
+        `option[value="${key}"]`,
+      ) as HTMLOptionElement;
+      expect(opt).toBeTruthy();
+      expect(opt.textContent).toBe(labelKey);
+    }
+  });
+
+  it('switching cardType from stamp_card back to a non-stamp cardType restores the original memberLevel label (reactive)', () => {
+    // 1. Start as stamp_card → memberLevel option renders with memberLevelStamp.
+    useCardBuilderStore.getState().setCardType('stamp_card');
+    render(<Step3CardFields />);
+    const leftSelect = screen.getByLabelText(
+      'step3.fieldsSection.leftField',
+    ) as HTMLSelectElement;
+    const memberLevelOption = leftSelect.querySelector(
+      'option[value="memberLevel"]',
+    ) as HTMLOptionElement;
+    expect(memberLevelOption.textContent).toBe(
+      'step3.fieldsSection.fields.memberLevelStamp',
+    );
+
+    // 2. Switch to cashback_card → label reverts to the original memberLevel key.
+    act(() => {
+      useCardBuilderStore.getState().setCardType('cashback_card');
+    });
+    // Re-query after the act() commit.
+    const leftSelectAfter = screen.getByLabelText(
+      'step3.fieldsSection.leftField',
+    ) as HTMLSelectElement;
+    const memberLevelOptionAfter = leftSelectAfter.querySelector(
+      'option[value="memberLevel"]',
+    ) as HTMLOptionElement;
+    expect(memberLevelOptionAfter.textContent).toBe(
+      'step3.fieldsSection.fields.memberLevel',
+    );
+  });
+});

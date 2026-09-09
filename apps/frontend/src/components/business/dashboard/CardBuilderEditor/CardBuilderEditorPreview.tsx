@@ -48,6 +48,11 @@ export function CardBuilderEditorPreview({
     // Step 3 — 集點印章（對應 templateSettings.stampGridRows / stampIconId）
     stampGridRows,
     stampIconId,
+    // Step 6 — 集點卡邏輯（對應 templateSettings.rewardName）
+    // 2026-09-10 stamp card member-level → reward refactor: this value
+    // surfaces as the preview's `memberLevel` slot value when cardType is
+    // `stamp_card`.
+    rewardName,
     // Step 4 — 卡片資訊（對應 templateSettings.description / backFields / links）
     description,
     backFields,
@@ -87,6 +92,7 @@ export function CardBuilderEditorPreview({
             rightField={rightField}
             stampGridRows={stampGridRows}
             stampIconId={stampIconId}
+            rewardName={rewardName}
             description={description}
             backFields={backFields}
             links={links}

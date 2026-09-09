@@ -26,6 +26,7 @@ export function PreviewWrapper({
   rightField,
   stampGridRows,
   stampIconId,
+  rewardName,
   description,
   backFields,
   links,
@@ -51,6 +52,7 @@ export function PreviewWrapper({
             rightField={rightField}
             stampGridRows={stampGridRows}
             stampIconId={stampIconId}
+            rewardName={rewardName}
             description={description}
             backFields={backFields}
             links={links}
@@ -77,6 +79,7 @@ export function PreviewWrapper({
       rightField={rightField}
       stampGridRows={stampGridRows}
       stampIconId={stampIconId}
+      rewardName={rewardName}
       description={description}
       backFields={backFields}
       links={links}

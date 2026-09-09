@@ -26,6 +26,9 @@ export function AccrualThresholdField({ showValidation }: AccrualThresholdFieldP
   const stampsPerVisitStamps = useCardBuilderStore((s) => s.stampsPerVisitStamps);
   const stampsPerSpendAmount = useCardBuilderStore((s) => s.stampsPerSpendAmount);
   const stampsPerSpendStamps = useCardBuilderStore((s) => s.stampsPerSpendStamps);
+  // 2026-09-10 currency-aware rendering: TWD keeps suffix 元消費, ZAR
+  // uses prefix R with no suffix. Mirrors PointsPerSpendField pattern.
+  const currency = useCardBuilderStore((s) => s.currency);
   const setStampsPerVisitCount = useCardBuilderStore((s) => s.setStampsPerVisitCount);
   const setStampsPerVisitStamps = useCardBuilderStore((s) => s.setStampsPerVisitStamps);
   const setStampsPerSpendAmount = useCardBuilderStore((s) => s.setStampsPerSpendAmount);
@@ -127,6 +130,15 @@ export function AccrualThresholdField({ showValidation }: AccrualThresholdFieldP
   // per_spend
   const showError =
     showValidation && (stampsPerSpendAmount === null || stampsPerSpendStamps === null);
+
+  // 2026-09-10 currency-aware per-spend amount label.
+  // TWD (zh-TW) renders as a suffix after the input; ZAR renders as a
+  // prefix before the input. The English TWD case also uses suffix.
+  const isZAR = currency === 'ZAR';
+  const perSpendAmountText = isZAR
+    ? t('step6.stamp.accrualThreshold.perSpendAmountLabelZAR')
+    : t('step6.stamp.accrualThreshold.perSpendAmountLabelTWD');
+
   return (
     <section className="flex min-w-0 flex-col gap-2">
       <header className="flex flex-col gap-1">
@@ -143,6 +155,11 @@ export function AccrualThresholdField({ showValidation }: AccrualThresholdFieldP
 
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center gap-2">
+          {isZAR && (
+            <span className="shrink-0 text-sm text-muted-foreground">
+              {perSpendAmountText}
+            </span>
+          )}
           <input
             id="step6-stamps-per-spend-amount"
             type="number"
@@ -157,7 +174,7 @@ export function AccrualThresholdField({ showValidation }: AccrualThresholdFieldP
             }}
             placeholder="100"
             min={0.01}
-            aria-label={t('step6.stamp.accrualThreshold.perSpendAmountLabel')}
+            aria-label={perSpendAmountText}
             aria-invalid={showError}
             className={`
               flex h-10 w-full min-w-0 rounded-md border bg-background px-3 py-2 text-sm
@@ -168,9 +185,11 @@ export function AccrualThresholdField({ showValidation }: AccrualThresholdFieldP
               ${showError ? 'border-destructive' : 'border-input'}
             `}
           />
-          <span className="shrink-0 text-sm text-muted-foreground">
-            {t('step6.stamp.accrualThreshold.perSpendAmountLabel')}
-          </span>
+          {!isZAR && (
+            <span className="shrink-0 text-sm text-muted-foreground">
+              {perSpendAmountText}
+            </span>
+          )}
           <span className="shrink-0 text-sm text-muted-foreground">=</span>
           <input
             id="step6-stamps-per-spend-stamps"

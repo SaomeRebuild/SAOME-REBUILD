@@ -20,8 +20,16 @@ export function RewardTypeField({ showValidation }: RewardTypeFieldProps) {
   const { t } = useTranslation('cardEditor');
   const rewardType = useCardBuilderStore((s) => s.rewardType);
   const setRewardType = useCardBuilderStore((s) => s.setRewardType);
+  // 2026-09-10 currency-aware hint rendering for amount_off.
+  const currency = useCardBuilderStore((s) => s.currency);
 
   const showError = showValidation && rewardType === null;
+  // 2026-09-10: amount_off hint switches between TWD / ZAR variants.
+  // percent_off hint is currency-agnostic so it stays on the old key.
+  const amountHintKey =
+    currency === 'ZAR'
+      ? 'step6.stamp.rewardTypeAmountHintZAR'
+      : 'step6.stamp.rewardTypeAmountHintTWD';
 
   return (
     <section className="flex min-w-0 flex-col gap-2">
@@ -89,7 +97,7 @@ export function RewardTypeField({ showValidation }: RewardTypeFieldProps) {
             id="step6-reward-type-hint"
             className="text-xs text-muted-foreground"
           >
-            {t('step6.stamp.rewardTypeAmountHint')}
+            {t(amountHintKey)}
           </p>
         )}
         {rewardType === 'percent_off' && (

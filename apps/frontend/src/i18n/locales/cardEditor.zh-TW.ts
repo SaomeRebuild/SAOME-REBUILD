@@ -112,6 +112,9 @@ export default {
         phone: '電話',
         email: 'E-mail',
         memberLevel: '會員等級',
+        // Stamp Card 限定覆寫：選 stamp_card 時「會員等級」option 顯示為「獎勵」
+        // （per 2026-09-10 stamp card member-level → reward refactor）
+        memberLevelStamp: '獎勵',
         birthday: '生日',
         visitCount: '拜訪次數',
         memberName: '會員姓名',
@@ -273,13 +276,18 @@ export default {
       rewardTypeTitle: '獎勵類型',
       rewardTypePlaceholder: '請選擇獎勵類型',
       rewardTypeAmount: '訂單折抵現金',
-      rewardTypeAmountHint: '例如：消費滿額可折抵 10 元',
+      // 2026-09-10 currency-aware hint: ZAR prefix (R10) vs TWD suffix (10元)
+      rewardTypeAmountHintTWD: '例如：消費滿額可折抵 10 元',
+      rewardTypeAmountHintZAR: '例如：消費滿額可折抵 R10',
       rewardTypePercent: '訂單折抵百分比',
       rewardTypePercentHint: '例如：集滿可享 8% 折扣',
       rewardValueLabel: '獎勵數量',
       rewardValuePlaceholderAmount: '輸入折抵金額，例如 10',
       rewardValuePlaceholderPercent: '輸入折抵百分比，例如 8',
-      rewardValueAmountUnit: '元',
+      // 2026-09-10 currency-aware unit (replaces single `rewardValueAmountUnit`).
+      // zh-TW: TWD 後綴元 (10元), ZAR 前綴R (R10).
+      rewardValueAmountUnitTWD: '元',
+      rewardValueAmountUnitZAR: 'R',
       rewardValuePercentUnit: '%',
       rewardValueEmptyError: '請輸入獎勵數量',
       rewardValueInvalidError: '請輸入有效的數字',
@@ -288,6 +296,10 @@ export default {
       maxDiscountTitle: '最高折抵金額',
       maxDiscountDescription: '當選擇「折抵百分比」時，可設定每筆消費的最高折抵上限。',
       maxDiscountPlaceholder: '例如：50（留空表示無上限）',
+      // 2026-09-10 currency-aware max discount unit (replaces inline `rewardValueAmountUnit`).
+      // zh-TW: TWD 後綴元, ZAR 前綴R.
+      maxDiscountUnitTWD: '元',
+      maxDiscountUnitZAR: 'R',
       maxDiscountOptional: '（選填，留空表示無上限）',
       maxDiscountHelper: '設定上限可避免大筆消費時折扣金額過高，確保店家利潤。',
       maxDiscountZeroIsNoCap: '輸入 0 = 無上限',
@@ -298,7 +310,14 @@ export default {
         perVisitStampsLabel: '個蓋章',
         perVisitHelper: '每 N 次拜訪可獲得 M 個蓋章。',
         perSpendTitle: '消費門檻',
-        perSpendAmountLabel: '元消費',
+        // 2026-09-10 currency-aware per-spend amount label.
+        // TWD uses suffix 元消費; ZAR uses prefix R with empty suffix
+        // (the verb complement 消費 is dropped because in ZAR locale
+        // the prefix-R syntax makes the verb complement redundant).
+        // Component code decides whether to render the prefix / suffix
+        // span based on store.currency — see AccrualThresholdField.tsx.
+        perSpendAmountLabelTWD: '元消費',
+        perSpendAmountLabelZAR: 'R',
         perSpendStampsLabel: '個蓋章',
         perSpendHelper: '每消費 N 元可獲得 M 個蓋章。',
         requiredError: '請輸入門檻值',
@@ -307,14 +326,19 @@ export default {
         amountMinError: '消費金額需大於 0',
       },
       // 預覽說明（StampCardLogicPreview 用）
+      // 2026-09-10 i18n refactor: {{amount}} / {{cap}} are pre-formatted
+      // with the currency unit at the correct position (suffix 元 for
+      // zh-TW TWD, prefix R / NT$ for everything else) before being
+      // interpolated. Templates provide ONLY locale-correct phrasing —
+      // no currency symbols embedded here. Mirrors REWARD preview.
       preview: {
         modeUnknown: '請選擇蓋章方式',
         rewardUnknown: '請填寫獎勵名稱',
-        amountReward: '${{amount}} 元折價',
-        percentReward: '{{percent}}% 折扣',
-        amountWithCap: '${{amount}} 元折價，最高折抵 ${{cap}} 元',
-        percentWithCap: '{{percent}}% 折扣，最高折抵 ${{cap}} 元',
-        percentNoCap: '{{percent}}% 折扣，無折抵上限',
+        amountReward: '{{amount}}折價',
+        percentReward: '{{percent}}%折扣',
+        amountWithCap: '{{amount}}折價，最高折抵 {{cap}}',
+        percentWithCap: '{{percent}}%折扣，最高折抵 {{cap}}',
+        percentNoCap: '{{percent}}%折扣，無折抵上限',
         template: '集滿 {{total}} 個印章可兌換 {{reward}}',
         templateWithCap: '集滿 {{total}} 個印章可兌換 {{reward}}',
         stampUnit: '個印章',

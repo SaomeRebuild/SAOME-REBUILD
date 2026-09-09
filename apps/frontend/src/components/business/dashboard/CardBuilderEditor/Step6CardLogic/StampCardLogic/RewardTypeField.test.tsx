@@ -107,12 +107,21 @@ describe('RewardTypeField (Step 6 section 3)', () => {
     expect(useCardBuilderStore.getState().maxDiscountAmount).toBeNull();
   });
 
-  it('shows amount_off hint when rewardType is amount_off', () => {
-    useCardBuilderStore.setState({ rewardType: 'amount_off' });
+  it('shows amount_off hint for TWD (default currency)', () => {
+    useCardBuilderStore.setState({ rewardType: 'amount_off', currency: 'TWD' });
     render(<RewardTypeField showValidation={false} />);
 
-    expect(screen.getByText('step6.stamp.rewardTypeAmountHint')).toBeInTheDocument();
+    expect(screen.getByText('step6.stamp.rewardTypeAmountHintTWD')).toBeInTheDocument();
     expect(screen.queryByText('step6.stamp.rewardTypePercentHint')).not.toBeInTheDocument();
+  });
+
+  // 2026-09-10 currency-aware hint: ZAR shows the R-prefixed hint.
+  it('shows amount_off hint for ZAR (prefix-R variant)', () => {
+    useCardBuilderStore.setState({ rewardType: 'amount_off', currency: 'ZAR' });
+    render(<RewardTypeField showValidation={false} />);
+
+    expect(screen.getByText('step6.stamp.rewardTypeAmountHintZAR')).toBeInTheDocument();
+    expect(screen.queryByText('step6.stamp.rewardTypeAmountHintTWD')).not.toBeInTheDocument();
   });
 
   it('shows percent_off hint when rewardType is percent_off', () => {
@@ -120,14 +129,16 @@ describe('RewardTypeField (Step 6 section 3)', () => {
     render(<RewardTypeField showValidation={false} />);
 
     expect(screen.getByText('step6.stamp.rewardTypePercentHint')).toBeInTheDocument();
-    expect(screen.queryByText('step6.stamp.rewardTypeAmountHint')).not.toBeInTheDocument();
+    expect(screen.queryByText('step6.stamp.rewardTypeAmountHintTWD')).not.toBeInTheDocument();
+    expect(screen.queryByText('step6.stamp.rewardTypeAmountHintZAR')).not.toBeInTheDocument();
   });
 
   it('does not show any hint when rewardType is null', () => {
     useCardBuilderStore.setState({ rewardType: null });
     render(<RewardTypeField showValidation={false} />);
 
-    expect(screen.queryByText('step6.stamp.rewardTypeAmountHint')).not.toBeInTheDocument();
+    expect(screen.queryByText('step6.stamp.rewardTypeAmountHintTWD')).not.toBeInTheDocument();
+    expect(screen.queryByText('step6.stamp.rewardTypeAmountHintZAR')).not.toBeInTheDocument();
     expect(screen.queryByText('step6.stamp.rewardTypePercentHint')).not.toBeInTheDocument();
   });
 

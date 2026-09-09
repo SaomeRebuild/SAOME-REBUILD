@@ -19,7 +19,7 @@ export default {
   fieldPreview: {
     phone: { label: '電話', value: '+8869XXXXXXXX' },
     email: { label: 'E-mail', value: 'hi@saome.org' },
-    memberLevel: { label: '會員等級', value: '金級' },
+    memberLevel: { label: '會員等級', value: '金級', stampLabel: '獎勵' },
     birthday: { label: '生日', value: '05/11/1999' },
     visitCount: { label: '拜訪次數', value: '5 次' },
     memberName: { label: '會員姓名', value: '王大明' },

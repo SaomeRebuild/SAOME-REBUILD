@@ -3,9 +3,16 @@
  *
  * Composes a human-readable sentence describing the stamp card reward rule.
  * Example outputs:
- *   - "集滿 10 個印章可兌換 $10 元折價"
- *   - "集滿 10 個印章可兌換 8% 折扣，最高折抵 $50 元"
+ *   - "集滿 10 個印章可兌換 10元折價"
+ *   - "集滿 10 個印章可兌換 R10折價"
+ *   - "集滿 15 個印章可兌換 8%折扣，最高折抵 R50"
  *   - "請選擇蓋章方式"
+ *
+ * 2026-09-10 currency-aware preview: amount / cap are pre-formatted with
+ * the currency unit at the correct position (suffix 元 for zh-TW TWD,
+ * prefix R / NT$ for everything else) before being interpolated into the
+ * locale template. The template then provides ONLY locale-correct
+ * phrasing — no currency symbols embedded. Mirrors REWARD preview.
  *
  * This is purely a UI preview — it does NOT call any API or persist data.
  * The preview text is computed from store values and i18n template strings.
@@ -23,26 +30,44 @@ interface StampCardLogicPreviewProps {
 }
 
 export function StampCardLogicPreview({ stampTotal }: StampCardLogicPreviewProps) {
-  const { t } = useTranslation('cardEditor');
+  const { t, i18n } = useTranslation('cardEditor');
   const accrualMode = useCardBuilderStore((s) => s.stampAccrualMode);
   const rewardName = useCardBuilderStore((s) => s.rewardName);
   const rewardType = useCardBuilderStore((s) => s.rewardType);
   const rewardValue = useCardBuilderStore((s) => s.rewardValue);
   const maxDiscountAmount = useCardBuilderStore((s) => s.maxDiscountAmount);
+  // 2026-09-10 currency-aware preview formatting.
+  const currency = useCardBuilderStore((s) => s.currency);
+
+  // 2026-09-10: pre-format numeric amounts with currency unit at the
+  // correct position. ZAR always prefix (R50). TWD zh-TW: suffix (50元).
+  // TWD en: prefix (NT$50). Mirrors RewardCardLogicPreview.formatAmount.
+  const isZAR = currency === 'ZAR';
+  const isZhLocale = (i18n.language ?? '').startsWith('zh');
+  const unitTWD = t('step6.stamp.rewardValueAmountUnitTWD');
+  const unitZAR = t('step6.stamp.rewardValueAmountUnitZAR');
+  const formatAmount = (value: number): string => {
+    if (isZAR) return `${unitZAR}${value}`;
+    return isZhLocale ? `${value}${unitTWD}` : `${unitTWD}${value}`;
+  };
 
   // Build the reward display string based on current selections
   const buildRewardStr = (): string => {
     if (!rewardName.trim()) return rewardName; // empty → placeholder shown separately
 
     if (rewardType === 'amount_off' && rewardValue !== null && rewardValue > 0) {
-      return t('step6.stamp.preview.amountReward', { amount: rewardValue });
+      // 2026-09-10: pre-format amount with currency unit before passing
+      // to i18n template. Template provides only locale phrasing.
+      return t('step6.stamp.preview.amountReward', {
+        amount: formatAmount(rewardValue),
+      });
     }
 
     if (rewardType === 'percent_off' && rewardValue !== null && rewardValue > 0) {
       if (maxDiscountAmount !== null && maxDiscountAmount > 0) {
         return t('step6.stamp.preview.percentWithCap', {
           percent: rewardValue,
-          cap: maxDiscountAmount,
+          cap: formatAmount(maxDiscountAmount),
         });
       }
       return t('step6.stamp.preview.percentNoCap', { percent: rewardValue });
