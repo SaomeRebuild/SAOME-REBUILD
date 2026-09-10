@@ -37,19 +37,23 @@ vi.mock('@/assets/icons/stamps/manifest', () => ({
 }));
 
 /**
- * Override the strip's bounding-rect width. jsdom defaults to 1024px-wide
+ * Override the strip's bounding-rect width and height. jsdom defaults to 1024px-wide
  * viewports and 0-width elements; we need to inject a realistic width
  * so the useLayoutEffect measurement picks up a non-zero value.
+ *
+ * 2026-09-10 regression fix: the strip now uses `aspect-ratio: 1860/738`
+ * instead of a fixed height class. The stub must return a width AND a height
+ * that satisfy the 1860/738 ratio so that both `stripWidth` and the
+ * visual strip height are realistic.
  */
 function stubStripWidth(width: number) {
   const original = HTMLElement.prototype.getBoundingClientRect;
   HTMLElement.prototype.getBoundingClientRect = function () {
     const rect = original.call(this);
-    // Only override the top-level strip div. StampGridPreview (nested)
-    // keeps the original rect so its inner cell math uses the same
-    // measurement we just stubbed.
-    if (this.getAttribute('data-testid') !== 'strip-content' && this.style.backgroundColor === 'rgb(31, 41, 55)') {
-      return { ...rect, width, height: rect.height || 120 };
+    // Match the strip root by its fixed background color.
+    // Strip now uses `aspect-ratio: 1860/738` so height = width * 738/1860.
+    if (this.style.backgroundColor === 'rgb(31, 41, 55)') {
+      return { ...rect, width, height: Math.round(width * (738 / 1860)) };
     }
     return rect;
   };

@@ -18,25 +18,22 @@
  * BACKGROUND IMAGE: This component owns the card background image.
  * The container has `position: relative` + `overflow-hidden` so the
  * absolutely-positioned `<img>` (background) and overlay div are
- * CONSTRAINED to the strip area (h-[100px] / h-[120px]). They do NOT
- * leak up into the header or down into the body.
+ * CONSTRAINED to the strip area. They do NOT leak up into the header or
+ * down into the body.
  *
- * Strip 背景策略（自 2026-09-03 cycle）：
- * - Strip 永遠是深灰黑色 (`#1f2937`) — 不跟 color picker 改變。
- *   這是固定視覺，模仿 Apple Wallet 的彩色 hero strip。
- * - 上傳背景圖 → 圖片 `absolute inset-0 object-cover` 滿版蓋住深灰。
- *   `overflow-hidden` 確保圖片不會溢出 strip 邊界。
+ * STRIP ASPECT RATIO (2026-09-10 regression fix):
+ *   The strip MUST maintain the PassCreator background image's 1860×738
+ *   (≈ 2.52:1) aspect ratio so the hero image displays correctly.
+ *   Previously the strip used a fixed height (h-[100px] / h-[120px]) which
+ *   caused the strip to appear squished (too short) at wider preview widths.
+ *
+ *   Fix: replace the hard-coded pixel height with CSS `aspect-ratio: 1860/738`.
+ *   This keeps the strip's height proportional to its width at all container
+ *   sizes. `stripHeight` (for StampGridPreview) is derived from the measured
+ *   `stripWidth` using the same ratio so the grid cells scale correctly.
  *
  * `rgba(0,0,0,0.35)` overlay 永遠渲染，確保白字在 strip 區域可讀
  * （圖片之上額外暗化，避免彩色圖片破壞文字對比）。
- *
- * 寬度測量（2026-09-04 stamp correction）：
- * - Strip 內部的 stamp grid 在不同 container 寬度下應等比縮放；之前只
- *   傳 `stripHeight`，grid 因此 fallback 到 `DEFAULT_STRIP_WIDTH = 256`
- *   的 cell size，可能在窄卡片（如手機 bottom sheet）低估寬度並裁切 icon。
- * - 改用 `useLayoutEffect` + `ResizeObserver` 取得實際的 strip container
- *   寬度，並傳給 StampGridPreview；SSR / 量測失敗時 fallback 到
- *   DEFAULT_STRIP_WIDTH 以維持既有行為。
  */
 import { CreditCard } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -93,7 +90,6 @@ export function PassCardPreviewStrip({
 
   // Dark semi-transparent overlay ensures text readability over any card background.
   const overlayColor = 'rgba(0, 0, 0, 0.35)';
-  const stripHeight = compact ? 100 : 120;
 
   // Measure the actual rendered strip width so the stamp grid can scale to
   // the available space (instead of guessing 256px). ResizeObserver keeps the
@@ -116,15 +112,30 @@ export function PassCardPreviewStrip({
     return () => observer.disconnect();
   }, []);
 
+  /**
+   * STRIP ASPECT RATIO (2026-09-10 regression fix):
+   * The strip MUST maintain the PassCreator background image's 1860×738
+   * (≈ 2.52:1) aspect ratio so the hero image displays correctly at
+   * ALL preview container widths — not just a fixed 100px / 120px height.
+   *
+   * CSS `aspect-ratio: 1860/738` enforces the ratio visually. `stripHeight`
+   * (for StampGridPreview) is derived from the measured `stripWidth`
+   * using the same ratio so the grid cells scale consistently.
+   *
+   * The `compact` prop still controls icon size and text size within the
+   * strip, but NOT the strip height itself (now ratio-driven).
+   */
+  const STRIP_HEIGHT_RATIO = 738 / 1860; // 0.3968 (PassCreator bg image spec)
+
+  // Derive stripHeight in pixels for StampGridPreview. Uses the measured
+  // stripWidth (ResizeObserver), or falls back to DEFAULT_STRIP_WIDTH (SSR).
+  const stripHeight = Math.round(stripWidth * STRIP_HEIGHT_RATIO);
+
   return (
     <div
       ref={stripRef}
-      className={
-        compact
-          ? 'relative mx-0 mt-2 flex h-[100px] overflow-hidden text-center'
-          : 'relative mx-0 mt-4 flex h-[120px] overflow-hidden text-center'
-      }
-      style={{ backgroundColor: STRIP_BACKGROUND_COLOR }}
+      className="relative mx-0 mt-2 overflow-hidden text-center"
+      style={{ backgroundColor: STRIP_BACKGROUND_COLOR, aspectRatio: '1860 / 738' }}
       data-strip-width={stripWidth}
     >
       {/* 背景圖（覆蓋 strip 整個區域；因父容器有 overflow-hidden,
