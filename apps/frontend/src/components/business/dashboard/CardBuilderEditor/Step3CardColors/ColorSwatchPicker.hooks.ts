@@ -1,44 +1,14 @@
 /**
- * ColorSwatchPicker — shared hooks
+ * ColorSwatchPicker — shared hooks (popover-specific)
+ *
+ * `useIsMobile` lives in `src/hooks/useIsMobile.ts` and is imported directly
+ * from there. The remaining hooks below are popover-specific (outside-click
+ * + Escape-key handling), so they stay co-located with the picker.
  *
  * @module components/business/dashboard/CardBuilderEditor/Step3CardColors/ColorSwatchPicker.hooks
  */
 
-import { useEffect, useState, useRef, type RefObject } from 'react';
-
-/**
- * useIsMobile — reactive viewport-width check.
- *
- * Listens to `(max-width: breakpoint - 1)` matchMedia so the component
- * re-renders when the user rotates their device or resizes the window.
- *
- * Why one less than the breakpoint: Tailwind's `sm:` covers ≥ 640px
- * (Rule 014). `max-width: 639px` therefore means "strictly below sm",
- * which matches the mobile / desktop split used throughout the app
- * (see MobilePreviewPanel.tsx which uses `lg:hidden`).
- *
- * SSR / non-DOM guard: returns `false` until first effect runs, so the
- * first paint matches the SSR snapshot (no layout shift).
- */
-export function useIsMobile(breakpointPx: number = 640): boolean {
-  const [isMobile, setIsMobile] = useState<boolean>(false);
-
-  useEffect(() => {
-    const query = `(max-width: ${breakpointPx - 1}px)`;
-    const mql = window.matchMedia(query);
-    // Set initial value from the live media query so the first effect
-    // tick reflects the real viewport (not just the SSR-safe default).
-    setIsMobile(mql.matches);
-
-    function handleChange(e: MediaQueryListEvent) {
-      setIsMobile(e.matches);
-    }
-    mql.addEventListener('change', handleChange);
-    return () => mql.removeEventListener('change', handleChange);
-  }, [breakpointPx]);
-
-  return isMobile;
-}
+import { useEffect, useRef, type RefObject } from 'react';
 
 /**
  * Detect clicks outside the returned ref's element AND outside any additional

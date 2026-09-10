@@ -221,11 +221,24 @@ export function PassCardPreviewBody({
     ? 'text-[11px] font-medium truncate'
     : 'text-sm font-medium';
 
+  // BARCODE PLACEMENT — 2026-09-10 第五次修正:
+  //   把 body 改成 `flex-1`,讓中間空白被 body 內部吃掉,footer 自然被擠到
+  //   卡片底邊。這比繼續壓 footer 的 pb 更貼近真實 Apple Wallet pass
+  //   (上半部資訊 + 底邊 barcode,中間留白是設計語言,不是 bug)。
+  //   為什麼 flex-1 對:card 內層是 `flex flex-col`,沒有 flex-1 的話所有
+  //   子元素都按 natural height 堆疊,footer 會停在 body 後面(離卡片底邊
+  //   還有 264px 空白)。body 加 flex-1 後,中間空白被 body 內部吃掉,
+  //   body 內部 content(label/value)因 flex-col 預設 justify-start
+  //   黏在 body 頂部 = strip 下方,footer 自然被推到卡片底邊。
+  //   維持不變:mt-4 gap from strip,px-4,gap-2 內部間距,footer 的 pt-1 pb-1。
+  //
+  //   2026-09-10 第六次修正: 移除上下兩條 1px `bg-neutral-200` 分隔線。
+  //   真實 Apple Wallet pass 的 secondary field rows 之間沒有分隔線 —
+  //   純粹是白底 label/value,視覺層級由 typography hierarchy（label 10px
+  //   vs value 14px/font-medium）撐出來。h-px 元素直接從 DOM 移除，比
+  //   改成 bg-transparent 更乾淨（無意義的 1px 元素）。
   return (
-    <div className={compact ? 'mt-2 flex flex-col gap-1 px-2' : 'mt-4 flex flex-col gap-2 px-4'}>
-      {/* 分隔線 - Apple Pass 風格 (非文字 span, 不套 textColor) */}
-      <div className="h-px w-full bg-neutral-200" />
-
+    <div className={compact ? 'mt-2 flex flex-1 flex-col gap-1 px-2' : 'mt-4 flex flex-1 flex-col gap-2 px-4'}>
       {/* 左右欄位 — 兩欄並排 (flex-row)，每欄 L & V 垂直排列 (flex-col)。
           對應 PassCreator secondary field 格式：左欄 [label / value]、右欄 [label / value]。 */}
       <div className={compact ? 'flex flex-row items-start justify-between gap-3 py-0.5' : 'flex flex-row items-start justify-between gap-4 py-1'}>
@@ -266,8 +279,9 @@ export function PassCardPreviewBody({
         </div>
       </div>
 
-      {/* 底部分隔線 (非文字 span, 不套 textColor) */}
-      <div className="h-px w-full bg-neutral-200" />
+      {/* 移除底部分隔線 (2026-09-10 第六次修正)
+          真實 Apple Wallet pass 的 footer 沒有上方分隔線 — barcode 區塊
+          直接接在 body 後面。 */}
     </div>
   );
 }

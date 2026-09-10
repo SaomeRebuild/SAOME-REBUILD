@@ -15,7 +15,7 @@
  *   a shared `Step3*Picker.hooks.ts` — but not before.
  */
 import { useLayoutEffect, useState, type RefObject } from 'react';
-import { useIsMobile } from '../Step3CardColors/ColorSwatchPicker.hooks';
+import { useIsMobile } from '@/hooks/useIsMobile';
 
 /**
  * Popover width — shared between the dialog body (StampIconPicker.tsx) and

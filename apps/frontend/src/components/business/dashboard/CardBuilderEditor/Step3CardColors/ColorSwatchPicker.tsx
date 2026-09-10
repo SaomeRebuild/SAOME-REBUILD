@@ -30,7 +30,8 @@ import { createPortal } from 'react-dom';
 import { ChevronDown, X } from 'lucide-react';
 import { HexColorPicker } from 'react-colorful';
 import type { ColorSwatchPickerProps } from './ColorSwatchPicker.types';
-import { useClickOutside, useEscapeKey, useIsMobile } from './ColorSwatchPicker.hooks';
+import { useClickOutside, useEscapeKey } from './ColorSwatchPicker.hooks';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { ColorSwatchPalette } from './ColorSwatchPalette';
 import { validateColor } from '@saome/shared/logic/color';
 

@@ -14,6 +14,13 @@
  *   and forwards it to StampGridPreview. This test exercises that
  *   measurement by stubbing `getBoundingClientRect` to return narrow /
  *   wide widths and asserting the cell size changes accordingly.
+ *
+ * Proportional height (2026-09-10):
+ *   Strip height is now `stripWidth × 0.32` (padding-bottom: 32%) instead
+ *   of a fixed `h-[100px]` / `h-[120px]`. This maintains the 1860×738 strip
+ *   ratio proportionally across all container widths. Cell-size tests
+ *   (wide vs narrow, 1 vs 4 rows) still hold because the proportional
+ *   height scales the height-bound cell size in the same way across all widths.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';

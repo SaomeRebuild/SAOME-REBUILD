@@ -48,15 +48,20 @@ export function PassCardPreview({
   return (
     <div
       className={cn(
-        'relative w-full overflow-hidden rounded-[12px] border border-neutral-200 bg-white shadow-[0_4px_16px_rgba(0,0,0,0.15)]',
-        'dark:border-neutral-700 dark:shadow-[0_4px_16px_rgba(0,0,0,0.5)]',
+        // 2026-09-10: outer border 改成 transparent — 真實 Apple Wallet pass
+        // 沒有 card-level 外框（卡本體直接疊在 phone 背景上）。Preview 環境
+        // 的「卡片邊界」視覺由父層 `<aside>` 的虛線 border + bg-card 提供，
+        // 所以這裡的內層 border 不需要可見。改 transparent 保留 box，
+        // 方便未來若要再加回 outline（例如 hover 狀態）不用改 DOM。
+        'relative w-full overflow-hidden rounded-[12px] border border-transparent bg-white shadow-[0_4px_16px_rgba(0,0,0,0.15)]',
+        'dark:shadow-[0_4px_16px_rgba(0,0,0,0.5)]',
         // Back side (2026-09-05): fill PhoneFrame content area instead of
         // a single 375:503 card aspect-ratio. The PhoneFrame's own
         // overflow-y-auto handles vertical scrolling when content overflows.
         side === 'back' && 'h-full',
         className
       )}
-      style={side === 'back' ? undefined : { aspectRatio: '375 / 503' }}
+      style={side === 'back' ? undefined : { aspectRatio: '375 / 600' }}
       {...props}
     >
       {/* 卡片本體 — 套用 backgroundColor 到整個 card body（replaces bg-white）。

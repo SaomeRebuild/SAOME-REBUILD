@@ -16,10 +16,23 @@
  * across both modes — only the inner content layer branches.
  *
  * BACKGROUND IMAGE: This component owns the card background image.
- * The container has `position: relative` + `overflow-hidden` so the
- * absolutely-positioned `<img>` (background) and overlay div are
- * CONSTRAINED to the strip area (h-[100px] / h-[120px]). They do NOT
- * leak up into the header or down into the body.
+ * The container uses `paddingBottom: '32%'` for proportional height and
+ * `overflow: hidden` so the absolutely-positioned `<img>` (background) and
+ * overlay div are CONSTRAINED to the strip area and do NOT leak up into
+ * the header or down into the body.
+ *
+ * STRIP PROPORTIONAL HEIGHT (2026-09-10 fix):
+ *   The strip previously used fixed `h-[100px]` (compact) / `h-[120px]` (non-compact)
+ *   heights. On desktop, the card container is constrained to `max-w-sm` (384px) and
+ *   scales proportionally via `aspectRatio: '375 / 503'`, but the strip stayed at the
+ *   same absolute height — making the strip look squashed.
+ *
+ *   Solution: `paddingBottom: '32%'` makes strip height = 32% of its own rendered
+ *   width. This maintains the 1860×738 strip ratio proportionally:
+ *     375px width → 120px strip  (120/375 = 32%, matches original non-compact)
+ *     300px width →  96px strip  (proportionally scaled)
+ *     600px width → 192px strip  (proportionally scaled)
+ *     256px width →  82px strip  (proportionally scaled, matches compact at 256px)
  *
  * Strip 背景策略（自 2026-09-03 cycle）：
  * - Strip 永遠是深灰黑色 (`#1f2937`) — 不跟 color picker 改變。
@@ -34,9 +47,10 @@
  * - Strip 內部的 stamp grid 在不同 container 寬度下應等比縮放；之前只
  *   傳 `stripHeight`，grid 因此 fallback 到 `DEFAULT_STRIP_WIDTH = 256`
  *   的 cell size，可能在窄卡片（如手機 bottom sheet）低估寬度並裁切 icon。
- * - 改用 `useLayoutEffect` + `ResizeObserver` 取得實際的 strip container
- *   寬度，並傳給 StampGridPreview；SSR / 量測失敗時 fallback 到
+ * - `useLayoutEffect` + `ResizeObserver` 取得實際的 strip container 寬度，
+ *   並傳給 StampGridPreview；SSR / 量測失敗時 fallback 到
  *   DEFAULT_STRIP_WIDTH 以維持既有行為。
+ * - 同時計算 `stripHeight = stripWidth × 0.32`，用於 StampGridPreview。
  */
 import { CreditCard } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -72,6 +86,9 @@ interface PassCardPreviewStripProps {
 /** Strip 固定背景色 — 永遠深灰黑色，不跟 color picker 改變 */
 const STRIP_BACKGROUND_COLOR = '#1f2937';
 
+/** Strip 高度 = 寬度的 32%（保持 1860×738 比例） */
+const STRIP_HEIGHT_RATIO = 0.32;
+
 /** Card types that render the stamp grid instead of the default hero. */
 function isStampCardType(cardType: CardType | null | undefined): boolean {
   return cardType === 'stamp_card' || cardType === 'multipass';
@@ -93,7 +110,6 @@ export function PassCardPreviewStrip({
 
   // Dark semi-transparent overlay ensures text readability over any card background.
   const overlayColor = 'rgba(0, 0, 0, 0.35)';
-  const stripHeight = compact ? 100 : 120;
 
   // Measure the actual rendered strip width so the stamp grid can scale to
   // the available space (instead of guessing 256px). ResizeObserver keeps the
@@ -116,18 +132,26 @@ export function PassCardPreviewStrip({
     return () => observer.disconnect();
   }, []);
 
+  // Proportional strip height = 32% of rendered width (maintains 1860×738 ratio)
+  const stripHeight = stripWidth * STRIP_HEIGHT_RATIO;
+
   return (
     <div
       ref={stripRef}
       className={
         compact
-          ? 'relative mx-0 mt-2 flex h-[100px] overflow-hidden text-center'
-          : 'relative mx-0 mt-4 flex h-[120px] overflow-hidden text-center'
+          ? 'relative mx-0 mt-2 overflow-hidden text-center'
+          : 'relative mx-0 mt-4 overflow-hidden text-center'
       }
-      style={{ backgroundColor: STRIP_BACKGROUND_COLOR }}
+      // paddingBottom: '32%' creates proportional height from the container's
+      // own rendered width. The strip scales with the card container width.
+      style={{
+        backgroundColor: STRIP_BACKGROUND_COLOR,
+        paddingBottom: '32%',
+      }}
       data-strip-width={stripWidth}
     >
-      {/* 背景圖（覆蓋 strip 整個區域；因父容器有 overflow-hidden,
+      {/* 背景圖（覆蓋 strip 整個區域；因父容器有 overflow-hidden，
           不會溢出到 header / body） */}
       {backgroundImage && (
         <img
@@ -145,9 +169,9 @@ export function PassCardPreviewStrip({
         aria-hidden="true"
       />
 
-      {/* 內層內容：透明、置中、padding 8px — 兩種 render mode 共用 */}
+      {/* 內層內容：絕對定位滿版、置中、padding 8px — 兩種 render mode 共用 */}
       <div
-        className="relative flex h-full w-full items-center justify-center"
+        className="absolute inset-0 flex items-center justify-center"
         style={{ padding: STRIP_INNER_PADDING }}
         data-testid="strip-content"
       >

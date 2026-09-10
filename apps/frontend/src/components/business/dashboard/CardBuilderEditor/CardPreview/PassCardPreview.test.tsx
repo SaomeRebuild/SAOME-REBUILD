@@ -49,7 +49,7 @@ describe('PassCardPreview', () => {
     const { container } = render(<PassCardPreview name="測試卡片" />);
     const card = container.firstChild as HTMLElement;
     expect(card).toBeInTheDocument();
-    expect(card.style.aspectRatio).toBe('375 / 503');
+    expect(card.style.aspectRatio).toBe('375 / 600');
   });
 
   it('renders holder name on front side', () => {
@@ -82,10 +82,12 @@ describe('PassCardPreview', () => {
     // Strip is FIXED dark grey (#1f2937 → rgb(31, 41, 55)), NOT the picker color.
     // This is intentional: strip mimics Apple Wallet hero strip which does
     // not follow the card body color picker.
+    // 2026-09-10: strip now uses paddingBottom: '32%' instead of h-[100px]/h-[120px].
+    // Identify by: relative class + inline paddingBottom: '32%' + backgroundColor.
     const strip = Array.from(container.querySelectorAll('div')).find(
       (el) =>
         el.className.includes('relative') &&
-        (el.className.includes('h-[100px]') || el.className.includes('h-[120px]')),
+        el.style.paddingBottom === '32%',
     ) as HTMLElement;
     expect(strip).toBeInTheDocument();
     expect(strip.style.backgroundColor).toBe('rgb(31, 41, 55)');
@@ -173,9 +175,7 @@ describe('PassCardPreview', () => {
     );
     // Scope check: Body's left label and right value spans should both have
     // inline style.color = textColor. We count all spans with inline textColor
-    // and verify at least 4 (header name + card type badge + body label + body
-    // value; the strip's name span also picks up textColor = 5 total).
-    // The Footer's barcode value (text-[8px] text-neutral-500) is INTENTIONALLY
+    // The Footer's barcode value (mt-2 text-sm text-neutral-500) is INTENTIONALLY
     // outside the textColor scope (per Step 3 plan 2026-09-03), so it should
     // NOT have inline color.
     const coloredSpans = Array.from(container.querySelectorAll('span')).filter((el) =>
@@ -202,11 +202,10 @@ describe('PassCardPreview', () => {
     const directImg = cardRoot.querySelector(':scope > img[src="https://example.com/bg.jpg"]');
     expect(directImg).toBeNull();
 
-    // The bg img must live inside the strip
+    // The bg img must live inside the strip.
+    // 2026-09-10: strip now uses paddingBottom: '32%' instead of h-[100px]/h-[120px].
     const strip = Array.from(container.querySelectorAll('div')).find(
-      (el) => el.className.includes('relative') && (
-        el.className.includes('h-[100px]') || el.className.includes('h-[120px]')
-      )
+      (el) => el.className.includes('relative') && el.style.paddingBottom === '32%'
     ) as HTMLElement;
     expect(strip).toBeInTheDocument();
     const stripImg = strip.querySelector('img[src="https://example.com/bg.jpg"]') as HTMLImageElement;
@@ -224,10 +223,9 @@ describe('PassCardPreview', () => {
     // background image is constrained to the strip area only. Previously
     // the strip was `static`, so the absolute overlay escaped upward into
     // the header.
+    // 2026-09-10: strip now uses paddingBottom: '32%' instead of h-[100px]/h-[120px].
     const strip = Array.from(container.querySelectorAll('div')).find(
-      (el) => el.className.includes('relative') && (
-        el.className.includes('h-[100px]') || el.className.includes('h-[120px]')
-      )
+      (el) => el.className.includes('relative') && el.style.paddingBottom === '32%'
     ) as HTMLElement;
     expect(strip).toBeInTheDocument();
     expect(strip.className).toContain('relative');
@@ -238,12 +236,9 @@ describe('PassCardPreview', () => {
     const { container } = render(
       <PassCardPreview name="測試卡片" />
     );
-    // The strip always renders its dark overlay (rgba(0,0,0,0.35)) so the
-    // card name + icon are readable regardless of the card's background.
+    // 2026-09-10: strip now uses paddingBottom: '32%' instead of h-[100px]/h-[120px].
     const stripDiv = Array.from(container.querySelectorAll('div')).find(
-      (el) => el.className.includes('relative') && (
-        el.className.includes('h-[100px]') || el.className.includes('h-[120px]')
-      )
+      (el) => el.className.includes('relative') && el.style.paddingBottom === '32%'
     ) as HTMLElement;
     expect(stripDiv).toBeInTheDocument();
     // The overlay is the absolute child with aria-hidden="true" and the
@@ -253,6 +248,21 @@ describe('PassCardPreview', () => {
     ) as HTMLElement;
     expect(overlay).toBeInTheDocument();
     expect(overlay.style.backgroundColor).toBe('rgba(0, 0, 0, 0.35)');
+  });
+
+  // ─── QR code 包裝容器 — 直角方框 (2026-09-10) ───
+  // 真實 Apple Wallet 的 QR code 是直角方框，不是圓角。回歸防護：
+  // QR code 容器不得有 `rounded-lg / rounded-md / rounded / rounded-sm` 任何圓角 class。
+  it('QR code wrapper has NO rounded-* class (regression 2026-09-10)', () => {
+    const { container } = render(<PassCardPreview name="測試卡片" side="front" />);
+    // 找白底 QR code 包裝：bg-white + border-transparent + p-1 + flex items-center justify-center
+    // 2026-09-10 第六次修正：border-neutral-200 → border-transparent（移除可見邊框，
+    // 對齊真實 Apple Wallet pass 的無邊框 QR code 視覺，bg-white 仍保留給相機讀取）。
+    const qrWrapper = container.querySelector(
+      'div.bg-white.border-transparent.p-1',
+    ) as HTMLElement;
+    expect(qrWrapper).toBeInTheDocument();
+    expect(qrWrapper.className).not.toMatch(/\brounded-/);
   });
 
   // ─── PassCreator Label/Value regression (2026-09-04 v2 plan) ───
@@ -291,10 +301,10 @@ describe('PassCardPreview', () => {
     expect(card.className).toContain('w-full');
   });
 
-  it('front side still has aspectRatio 375/503 (regression guard)', () => {
+  it('front side still has aspectRatio 375/600 (regression guard)', () => {
     const { container } = render(<PassCardPreview name="X" side="front" />);
     const card = container.firstChild as HTMLElement;
-    expect(card.style.aspectRatio).toBe('375 / 503');
+    expect(card.style.aspectRatio).toBe('375 / 600');
   });
 });
 
