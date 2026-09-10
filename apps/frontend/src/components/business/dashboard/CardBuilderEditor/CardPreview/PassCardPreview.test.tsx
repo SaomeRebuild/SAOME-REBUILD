@@ -82,10 +82,10 @@ describe('PassCardPreview', () => {
     // Strip is FIXED dark grey (#1f2937 → rgb(31, 41, 55)), NOT the picker color.
     // This is intentional: strip mimics Apple Wallet hero strip which does
     // not follow the card body color picker.
-    // 2026-09-10: strip now uses `aspect-ratio: 1860/738` instead of
-    // fixed h-[100px]/h-[120px]; identify by fixed background color instead.
     const strip = Array.from(container.querySelectorAll('div')).find(
-      (el) => el.style.backgroundColor === 'rgb(31, 41, 55)',
+      (el) =>
+        el.className.includes('relative') &&
+        (el.className.includes('h-[100px]') || el.className.includes('h-[120px]')),
     ) as HTMLElement;
     expect(strip).toBeInTheDocument();
     expect(strip.style.backgroundColor).toBe('rgb(31, 41, 55)');
@@ -193,7 +193,7 @@ describe('PassCardPreview', () => {
     const { container } = render(
       <PassCardPreview name="測試卡片" backgroundImage="https://example.com/bg.jpg" />
     );
-    // The background image lives INSIDE the strip element (now aspect-ratio-driven).
+    // The background image lives INSIDE the strip element (h-[100px]).
     // The outer card root (with aspect-ratio) does NOT have an <img> as a
     // DIRECT child anymore — the previous bug was the bg image being placed
     // at the outer container, which then visually covered the header / body.
@@ -202,9 +202,11 @@ describe('PassCardPreview', () => {
     const directImg = cardRoot.querySelector(':scope > img[src="https://example.com/bg.jpg"]');
     expect(directImg).toBeNull();
 
-    // The bg img must live inside the strip (identified by fixed bg color).
+    // The bg img must live inside the strip
     const strip = Array.from(container.querySelectorAll('div')).find(
-      (el) => el.style.backgroundColor === 'rgb(31, 41, 55)',
+      (el) => el.className.includes('relative') && (
+        el.className.includes('h-[100px]') || el.className.includes('h-[120px]')
+      )
     ) as HTMLElement;
     expect(strip).toBeInTheDocument();
     const stripImg = strip.querySelector('img[src="https://example.com/bg.jpg"]') as HTMLImageElement;
@@ -223,7 +225,9 @@ describe('PassCardPreview', () => {
     // the strip was `static`, so the absolute overlay escaped upward into
     // the header.
     const strip = Array.from(container.querySelectorAll('div')).find(
-      (el) => el.style.backgroundColor === 'rgb(31, 41, 55)',
+      (el) => el.className.includes('relative') && (
+        el.className.includes('h-[100px]') || el.className.includes('h-[120px]')
+      )
     ) as HTMLElement;
     expect(strip).toBeInTheDocument();
     expect(strip.className).toContain('relative');
@@ -237,7 +241,9 @@ describe('PassCardPreview', () => {
     // The strip always renders its dark overlay (rgba(0,0,0,0.35)) so the
     // card name + icon are readable regardless of the card's background.
     const stripDiv = Array.from(container.querySelectorAll('div')).find(
-      (el) => el.style.backgroundColor === 'rgb(31, 41, 55)',
+      (el) => el.className.includes('relative') && (
+        el.className.includes('h-[100px]') || el.className.includes('h-[120px]')
+      )
     ) as HTMLElement;
     expect(stripDiv).toBeInTheDocument();
     // The overlay is the absolute child with aria-hidden="true" and the
