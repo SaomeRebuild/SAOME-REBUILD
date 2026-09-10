@@ -41,6 +41,24 @@
  *     pure UI override — the underlying `leftField / rightField` value
  *     stored as `'memberLevel'` is unchanged, and the backend schema is
  *     not modified (per Rule 019 § 4.1).
+ *
+ * Reward card member-level → reward override (2026-09-10, ext):
+ *   - Same label override as stamp_card: when `cardType === 'reward_card'`
+ *     AND the picked field is `'memberLevel'`, the slot renders as
+ *       label = "獎勵" / "Reward" (`fieldPreview.memberLevel.stampLabel`)
+ *       value = `firstRewardTierName` from the editor store (Step 6
+ *               `rewardTiers[0].name` input — first row only)
+ *     so the live preview reflects the user's first reward tier name.
+ *   - When `firstRewardTierName` is the empty string / undefined (user has
+ *     not yet added any tier or the first tier's name is blank), the value
+ *     renders as `''` — matching the stamp_card empty-string UX.
+ *   - Differs from stamp_card ONLY in the value source: stamp reads
+ *     `rewardName` (top-level string); reward reads `firstRewardTierName`
+ *     (first element of the `rewardTiers[]` array). Same label, same
+ *     fallback-to-empty-string contract, same backend schema (the
+ *     `leftField / rightField` CardFieldKey is unchanged).
+ *   - The override is INTENTIONALLY NOT applied to `multipass` (per
+ *     user-confirmed scope: stamp_card + reward_card only).
  */
 import { useTranslation } from 'react-i18next';
 import type { CardFieldKey } from '@saome/shared/constants/card-fields';
@@ -67,10 +85,11 @@ interface PassCardPreviewBodyProps {
   stampGridRows?: StampGridRows;
   /**
    * Current `cardType` from the editor store. Used to override the
-   * `memberLevel` preview slot when cardType is `'stamp_card'` (see module
-   * docblock § "Stamp card member-level → reward override"). Optional —
-   * when omitted, `resolveSlot` falls through to the default label/value
-   * path so non-stamp contexts (TemplateCardPreview, etc.) keep working.
+   * `memberLevel` preview slot when cardType is `'stamp_card'` or
+   * `'reward_card'` (see module docblock § "Stamp / Reward card
+   * member-level → reward override"). Optional — when omitted,
+   * `resolveSlot` falls through to the default label/value path so
+   * non-stamp contexts (TemplateCardPreview, etc.) keep working.
    */
   cardType?: CardType | null;
   /**
@@ -80,6 +99,17 @@ interface PassCardPreviewBodyProps {
    * empty string, the preview renders an empty value (per user-confirmed UX).
    */
   rewardName?: string;
+  /**
+   * First reward tier name from the editor store (Step 6 `rewardTiers[0].name`).
+   * Surfaced as the preview `value` when `cardType === 'reward_card'` AND the
+   * picked field is `'memberLevel'`. Optional — when omitted / empty / when
+   * `rewardTiers` is empty, the preview renders an empty value (matches the
+   * stamp_card empty-string UX). Differs from `rewardName` only in the data
+   * source: reward_card has a multi-tier structure so we read the FIRST tier's
+   * name instead of a top-level string.
+   * (2026-09-10 reward card member-level → reward refactor extension.)
+   */
+  firstRewardTierName?: string;
 }
 
 /**
@@ -90,13 +120,15 @@ interface PassCardPreviewBodyProps {
  *   1. `!field`                  → placeholder (左欄位 / 右欄位)
  *   2. `stamp_card + memberLevel` → stamp-card override (label = stampLabel,
  *                                   value = rewardName ?? '')
- *   3. `totalStamps`             → rows × STAMPS_PER_ROW interpolation
- *   4. default                   → `fieldPreview.{key}.label` + `.value`
+ *   3. `reward_card + memberLevel` → reward-card override (label = stampLabel,
+ *                                   value = firstRewardTierName ?? '')
+ *   4. `totalStamps`             → rows × STAMPS_PER_ROW interpolation
+ *   5. default                   → `fieldPreview.{key}.label` + `.value`
  *
- * The stamp-card branch is checked BEFORE the `totalStamps` branch because
- * `memberLevel` is a `common`-group field and could conceptually appear
- * alongside `totalStamps` in the two slots; the stamp override is the more
- * specific case.
+ * The stamp/reward-card branches are checked BEFORE the `totalStamps`
+ * branch because `memberLevel` is a `common`-group field and could
+ * conceptually appear alongside `totalStamps` in the two slots; the
+ * member-level override is the more specific case.
  */
 function resolveSlot(
   t: (key: string, opts?: Record<string, unknown>) => string,
@@ -104,6 +136,7 @@ function resolveSlot(
   stampGridRows: StampGridRows | undefined,
   cardType: CardType | null | undefined,
   rewardName: string | undefined,
+  firstRewardTierName: string | undefined,
 ): { label: string; value: string } {
   if (!field) {
     return { label: t('fieldLabelLeft'), value: t('fieldLabelRight') };
@@ -112,13 +145,24 @@ function resolveSlot(
   // Stamp card override: the `memberLevel` slot becomes a "Reward" slot
   // (label = stampLabel) whose value reflects whatever the user typed in
   // the Step 6 reward-name input. Per user-confirmed UX, an empty
-  // `rewardName` renders as an empty string rather than falling back to
-  // the demo "金級" / "Gold" string — this avoids showing a stale preview
+  // `rewardName` renders as an empty string rather than to the
+  // demo "金級" / "Gold" string — this avoids showing a stale preview
   // before the user has typed anything.
   if (cardType === 'stamp_card' && field === 'memberLevel') {
     return {
       label: t('fieldPreview.memberLevel.stampLabel'),
       value: rewardName ?? '',
+    };
+  }
+
+  // Reward card override: same label as stamp_card ("Reward"), but the
+  // value source is the FIRST row of the Step 6 `rewardTiers` array
+  // instead of a top-level string. Empty / undefined / no-tiers → empty
+  // string (matches stamp_card empty-input UX).
+  if (cardType === 'reward_card' && field === 'memberLevel') {
+    return {
+      label: t('fieldPreview.memberLevel.stampLabel'),
+      value: firstRewardTierName ?? '',
     };
   }
 
@@ -147,12 +191,27 @@ export function PassCardPreviewBody({
   stampGridRows,
   cardType,
   rewardName,
+  firstRewardTierName,
 }: PassCardPreviewBodyProps) {
   const { t } = useTranslation('passCard');
 
   // Demo label/value 配對（PassCreator Label + Value 格式）
-  const leftPreview = resolveSlot(t, leftField, stampGridRows, cardType, rewardName);
-  const rightPreview = resolveSlot(t, rightField, stampGridRows, cardType, rewardName);
+  const leftPreview = resolveSlot(
+    t,
+    leftField,
+    stampGridRows,
+    cardType,
+    rewardName,
+    firstRewardTierName,
+  );
+  const rightPreview = resolveSlot(
+    t,
+    rightField,
+    stampGridRows,
+    cardType,
+    rewardName,
+    firstRewardTierName,
+  );
 
   // PassCreator typography: label 永遠比 value 小。
   //   非 compact：label 10px / value 14px（差 4px，1.4x 視覺層級）

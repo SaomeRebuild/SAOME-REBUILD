@@ -26,17 +26,21 @@
  *                Stamp-specific data (point balance, stamp progress, etc.)
  *                is meaningless on non-stamp cards, so these options are
  *                hidden rather than rendered as a confusing placeholder.
+ *   - 'reward' : only cardType === 'reward_card' sees this option.
+ *                Reward-specific data (points to next tier, current point
+ *                balance) is meaningless on non-reward cards.
  *
  * The `group` discriminator is the single source of truth for the
  * conditional filter: `Step3CardFields` reads `group` and filters
  * declaratively, so adding a new field requires editing only this file.
  */
-export type CardFieldGroup = 'common' | 'stamp';
+export type CardFieldGroup = 'common' | 'stamp' | 'reward';
 
 /**
  * Canonical field keys. Order is user-visible in the dropdown for common
  * keys; stamp-group keys are appended after the common keys (and only shown
- * when cardType ∈ {stamp_card, multipass}).
+ * when cardType ∈ {stamp_card, multipass}); reward-group keys are appended
+ * last (only shown when cardType === 'reward_card').
  *
  * IMPORTANT: Adding a new key requires syncing:
  *   1. cardFieldKeySchema in packages/shared/schemas/card.ts (auto-derived
@@ -56,6 +60,16 @@ export const CARD_FIELD_KEYS = [
   'availableRewards',
   'totalStamps',
   'stampsRemaining',
+  // ── reward: only reward_card ──────────────────────────────────────────
+  // 2026-09-10 reward_card Step 3 display-field extension:
+  //   pointsToNextTier — 到下一階還差 / Points to Next Tier
+  //   currentPoints    — 已累積點數 / Current Points
+  // The label / value for the preview-only demo are static strings defined
+  // in passCard.{zh-TW,en}.ts (matching the existing phone/email pattern).
+  // Real values will be sourced from the member row once PassCreator is
+  // wired (same as other demo fields).
+  'pointsToNextTier',
+  'currentPoints',
 ] as const;
 
 export type CardFieldKey = (typeof CARD_FIELD_KEYS)[number];
@@ -68,6 +82,7 @@ export interface CardFieldDefinition {
    * Which card types see this option in the Step 3 selector.
    * - 'common' : always shown
    * - 'stamp'  : only shown when cardType ∈ {stamp_card, multipass}
+   * - 'reward' : only shown when cardType === 'reward_card'
    */
   group: CardFieldGroup;
 }
@@ -94,4 +109,11 @@ export const CARD_FIELDS: readonly CardFieldDefinition[] = [
   { key: 'availableRewards', group: 'stamp', labelKey: 'step3.fieldsSection.fields.availableRewards' },
   { key: 'totalStamps',      group: 'stamp', labelKey: 'step3.fieldsSection.fields.totalStamps' },
   { key: 'stampsRemaining',  group: 'stamp', labelKey: 'step3.fieldsSection.fields.stampsRemaining' },
+  // ── reward: only reward_card (2026-09-10) ──────────────────────────────
+  // Display-field extension for the Reward Card tier system. Preview values
+  // are static demo strings (see passCard.{zh-TW,en}.ts fieldPreview);
+  // real values will be sourced from the member row once PassCreator is
+  // wired (same deferred path as phone / email / visitCount).
+  { key: 'pointsToNextTier', group: 'reward', labelKey: 'step3.fieldsSection.fields.pointsToNextTier' },
+  { key: 'currentPoints',    group: 'reward', labelKey: 'step3.fieldsSection.fields.currentPoints' },
 ];

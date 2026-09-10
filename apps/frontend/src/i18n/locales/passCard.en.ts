@@ -28,6 +28,12 @@ export default {
     availableRewards: { label: 'Available Rewards', value: '2 times' },
     totalStamps: { label: 'Total Stamps', value: '3 / {{rows}}' },
     stampsRemaining: { label: 'Stamps Remaining', value: '6 stamps' },
+    // Reward-only preview fields — only shown in the dropdown for reward_card.
+    // (2026-09-10 reward card display-field extension)
+    // values are static demo strings, matching the phone/email/visitCount pattern.
+    // Will be sourced from member rows once PassCreator is wired.
+    pointsToNextTier: { label: 'Points to Next Tier', value: '123 pts' },
+    currentPoints: { label: 'Current Points', value: '23 pts' },
   },
   // ===== Balance preview — only shown for stamp_card / reward_card / cashback_card =====
   // When Step 1 picks one of these 3 card types, PassCardPreviewHeader's right-side

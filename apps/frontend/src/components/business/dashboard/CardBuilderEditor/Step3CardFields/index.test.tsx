@@ -275,9 +275,10 @@ describe('Step3CardFields — conditional visibility (stamp_card / multipass)', 
    */
 
   // Card types we expect to be filtered to the 6 common fields.
+  // Excludes reward_card (which now shows 6 common + 2 reward = 8 options)
+  // — see the dedicated reward_card group describe block below.
   const NON_STAMP_CARD_TYPES = [
     'cashback_card',
-    'reward_card',
     'membership_card',
     'discount_card',
     'coupon_card',
@@ -285,6 +286,7 @@ describe('Step3CardFields — conditional visibility (stamp_card / multipass)', 
   ] as const;
 
   const STAMP_KEYS = ['availableRewards', 'totalStamps', 'stampsRemaining'] as const;
+  const REWARD_KEYS = ['pointsToNextTier', 'currentPoints'] as const;
 
   it.each(NON_STAMP_CARD_TYPES)(
     'each <select> has 7 options for non-stamp cardType="%s" (no stamp-group options)',
@@ -302,6 +304,11 @@ describe('Step3CardFields — conditional visibility (stamp_card / multipass)', 
       expect(rightSelect.options).toHaveLength(7);
       // No stamp keys rendered
       for (const key of STAMP_KEYS) {
+        expect(leftSelect.querySelector(`option[value="${key}"]`)).toBeNull();
+        expect(rightSelect.querySelector(`option[value="${key}"]`)).toBeNull();
+      }
+      // No reward keys rendered (2026-09-10 reward_card display-field extension)
+      for (const key of REWARD_KEYS) {
         expect(leftSelect.querySelector(`option[value="${key}"]`)).toBeNull();
         expect(rightSelect.querySelector(`option[value="${key}"]`)).toBeNull();
       }
@@ -324,6 +331,11 @@ describe('Step3CardFields — conditional visibility (stamp_card / multipass)', 
       expect(leftSelect.querySelector(`option[value="${key}"]`)).toBeTruthy();
       expect(rightSelect.querySelector(`option[value="${key}"]`)).toBeTruthy();
     }
+    // Reward keys must NOT be shown for stamp_card (scoped to reward_card only)
+    for (const key of REWARD_KEYS) {
+      expect(leftSelect.querySelector(`option[value="${key}"]`)).toBeNull();
+      expect(rightSelect.querySelector(`option[value="${key}"]`)).toBeNull();
+    }
   });
 
   it('each <select> has 10 options for cardType="multipass" (1 placeholder + 6 common + 3 stamp)', () => {
@@ -340,6 +352,11 @@ describe('Step3CardFields — conditional visibility (stamp_card / multipass)', 
     for (const key of STAMP_KEYS) {
       expect(leftSelect.querySelector(`option[value="${key}"]`)).toBeTruthy();
       expect(rightSelect.querySelector(`option[value="${key}"]`)).toBeTruthy();
+    }
+    // Reward keys must NOT be shown for multipass (scoped to reward_card only)
+    for (const key of REWARD_KEYS) {
+      expect(leftSelect.querySelector(`option[value="${key}"]`)).toBeNull();
+      expect(rightSelect.querySelector(`option[value="${key}"]`)).toBeNull();
     }
   });
 
@@ -382,23 +399,145 @@ describe('Step3CardFields — conditional visibility (stamp_card / multipass)', 
     ).toBeNull();
   });
 
-  it('filterCARD_FIELDS_BY_CARD_TYPE helper: returns 6 common fields for null, non-stamp, or unmatched cardType; returns all 9 for stamp_card/multipass', () => {
+  it('filterCARD_FIELDS_BY_CARD_TYPE helper: returns 6 common fields for null and non-stamp, non-reward cardTypes; 8 for reward_card; 9 for stamp_card/multipass; 11 for all groups combined (none)', () => {
     // Pure-function assertion — bypasses React entirely. Keeps the filter
     // contract pinned independently of any rendering quirks.
+    //
+    // Updated 2026-09-10 (reward_card display-field extension):
+    //   - null / non-stamp / non-reward cardType → 6 common
+    //   - reward_card → 6 common + 2 reward = 8
+    //   - stamp_card / multipass → 6 common + 3 stamp = 9
     expect(filterCARD_FIELDS_BY_CARD_TYPE(null)).toHaveLength(6);
     expect(filterCARD_FIELDS_BY_CARD_TYPE('cashback_card')).toHaveLength(6);
     expect(filterCARD_FIELDS_BY_CARD_TYPE('gift_card')).toHaveLength(6);
+    expect(filterCARD_FIELDS_BY_CARD_TYPE('reward_card')).toHaveLength(8);
     expect(filterCARD_FIELDS_BY_CARD_TYPE('stamp_card')).toHaveLength(9);
     expect(filterCARD_FIELDS_BY_CARD_TYPE('multipass')).toHaveLength(9);
 
     // Sanity: the helper returns the same key set as CARD_FIELDS when given
-    // a stamp cardType — no entries are dropped by mistake.
-    const allKeys = filterCARD_FIELDS_BY_CARD_TYPE('stamp_card').map((f) => f.key).sort();
-    expect(allKeys).toEqual([...CARD_FIELDS].map((f) => f.key).sort());
+    // a cardType that lights up every group — none such cardType exists
+    // today (stamp + reward groups are mutually exclusive at the
+    // `cardType` level), so we verify the sum of entries matches the
+    // CARD_FIELDS source array to catch any accidental drops.
+    expect(filterCARD_FIELDS_BY_CARD_TYPE('stamp_card').length +
+           filterCARD_FIELDS_BY_CARD_TYPE('reward_card').length -
+           // subtract 6 common counted twice
+           6).toEqual([...CARD_FIELDS].length);
   });
 });
 
-describe('Step3CardFields — stamp_card "會員等級" → "獎勵" option label override (2026-09-10)', () => {
+describe('Step3CardFields — reward_card "到下一階還差 / 已累積點數" display fields (2026-09-10)', () => {
+  /**
+   * 2026-09-10 reward card display-field extension:
+   *   Two new options are shown when cardType === 'reward_card':
+   *     - pointsToNextTier (到下一階還差 / Points to Next Tier)
+   *     - currentPoints    (已累積點數 / Current Points)
+   *
+   *   The options are tagged `group: 'reward'` in CARD_FIELDS and are only
+   *   visible for reward_card (NOT for stamp_card / multipass / others).
+   *   Real values will be sourced from member rows once PassCreator is
+   *   wired (matches the deferred path of phone / email / visitCount).
+   *
+   *   Scope mirrors the Step 6 RewardTierRow dispatcher
+   *   (`Step6CardLogic.tsx`) which also restricts to `reward_card` only.
+   */
+
+  const REWARD_KEYS = ['pointsToNextTier', 'currentPoints'] as const;
+
+  it('each <select> has 9 options for cardType="reward_card" (1 placeholder + 6 common + 2 reward)', () => {
+    useCardBuilderStore.getState().setCardType('reward_card');
+    render(<Step3CardFields />);
+    const leftSelect = screen.getByLabelText(
+      'step3.fieldsSection.leftField',
+    ) as HTMLSelectElement;
+    const rightSelect = screen.getByLabelText(
+      'step3.fieldsSection.rightField',
+    ) as HTMLSelectElement;
+    // 1 placeholder + 6 common + 2 reward = 9
+    expect(leftSelect.options).toHaveLength(9);
+    expect(rightSelect.options).toHaveLength(9);
+    for (const key of REWARD_KEYS) {
+      expect(leftSelect.querySelector(`option[value="${key}"]`)).toBeTruthy();
+      expect(rightSelect.querySelector(`option[value="${key}"]`)).toBeTruthy();
+    }
+  });
+
+  it('reward-group options render with the new i18n keys (pointsToNextTier / currentPoints)', () => {
+    useCardBuilderStore.getState().setCardType('reward_card');
+    render(<Step3CardFields />);
+    const leftSelect = screen.getByLabelText(
+      'step3.fieldsSection.leftField',
+    ) as HTMLSelectElement;
+
+    const cases: ReadonlyArray<{ key: string; labelKey: string }> = [
+      {
+        key: 'pointsToNextTier',
+        labelKey: 'step3.fieldsSection.fields.pointsToNextTier',
+      },
+      {
+        key: 'currentPoints',
+        labelKey: 'step3.fieldsSection.fields.currentPoints',
+      },
+    ];
+    for (const { key, labelKey } of cases) {
+      const opt = leftSelect.querySelector(
+        `option[value="${key}"]`,
+      ) as HTMLOptionElement;
+      expect(opt, `option for ${key} should exist`).toBeTruthy();
+      // vi.mock('react-i18next') returns the key path verbatim — assert
+      // against the key path (same pattern as the stamp_card override test).
+      expect(opt.textContent).toBe(labelKey);
+    }
+  });
+
+  it('selecting pointsToNextTier on the left writes leftField="pointsToNextTier" to the store', () => {
+    useCardBuilderStore.getState().setCardType('reward_card');
+    render(<Step3CardFields />);
+    const leftSelect = screen.getByLabelText(
+      'step3.fieldsSection.leftField',
+    ) as HTMLSelectElement;
+
+    fireEvent.change(leftSelect, { target: { value: 'pointsToNextTier' } });
+
+    const state = useCardBuilderStore.getState();
+    expect(state.leftField).toBe('pointsToNextTier');
+    expect(state.rightField).toBeNull();
+  });
+
+  it('switching cardType from reward_card to stamp_card hides the reward options but PRESERVES a previously-picked reward leftField value (no silent data loss)', () => {
+    // 1. User picks reward_card, then picks pointsToNextTier on the left.
+    useCardBuilderStore.getState().setCardType('reward_card');
+    useCardBuilderStore.getState().setLeftField('pointsToNextTier');
+    render(<Step3CardFields />);
+
+    const leftSelect = screen.getByLabelText(
+      'step3.fieldsSection.leftField',
+    ) as HTMLSelectElement;
+    expect(leftSelect.value).toBe('pointsToNextTier');
+    expect(leftSelect.options).toHaveLength(9);
+
+    // 2. User changes cardType to stamp_card — store value is preserved,
+    //    but the dropdown option disappears (since 'pointsToNextTier' is no
+    //    longer in `availableFields`). Re-check the store rather than the DOM.
+    act(() => {
+      useCardBuilderStore.getState().setCardType('stamp_card');
+    });
+
+    expect(useCardBuilderStore.getState().leftField).toBe('pointsToNextTier');
+    // Re-query after the act() commit.
+    const leftSelect2 = screen.getByLabelText(
+      'step3.fieldsSection.leftField',
+    ) as HTMLSelectElement;
+    expect(leftSelect2.options).toHaveLength(10); // stamp_card branch
+    expect(
+      leftSelect2.querySelector<HTMLOptionElement>(
+        'option[value="pointsToNextTier"]',
+      ),
+    ).toBeNull();
+  });
+});
+
+describe('Step3CardFields — stamp_card / reward_card "會員等級" → "獎勵" option label override (2026-09-10)', () => {
   /**
    * 2026-09-10 stamp card member-level → reward refactor:
    *   When cardType === 'stamp_card', the option whose `value` is
@@ -410,11 +549,16 @@ describe('Step3CardFields — stamp_card "會員等級" → "獎勵" option labe
    *   CardFieldKey contract is preserved — backend / shared schema
    *   unchanged per Rule 019 § 4.1).
    *
+   * 2026-09-10 reward card extension:
+   *   The same override now applies to `reward_card` (per user-confirmed
+   *   scope: `stamp_card + reward_card` share the rename; the value
+   *   source differs — stamp reads top-level `rewardName`, reward reads
+   *   `rewardTiers[0].name` — but the label override is identical).
+   *
    *   For `multipass` (which shares the same STAMP_CARD_TYPES filter for
    *   the stamp-only field group) the label is INTENTIONALLY NOT
    *   overridden — `multipass` keeps "會員等級" because the user's UX
-   *   intent was scoped to `stamp_card` only (user-confirmed scope:
-   *   `stamp_only`).
+   *   intent was scoped to `stamp_card` and `reward_card` only.
    *
    *   Tests rely on `vi.mock('react-i18next')` returning the key path
    *   verbatim, so we assert against the i18n key path rather than the
@@ -424,10 +568,10 @@ describe('Step3CardFields — stamp_card "會員等級" → "獎勵" option labe
 
   // Card types we expect to NOT trigger the memberLevel → memberLevelStamp
   // override. Mirrors the set used by the conditional-visibility describe
-  // block above (kept local to avoid coupling two describe blocks).
-  const NON_STAMP_CARD_TYPES = [
+  // block above EXCEPT `reward_card` is now REMOVED (it gets the override).
+  // Kept local to avoid coupling two describe blocks.
+  const NON_OVERRIDE_CARD_TYPES = [
     'cashback_card',
-    'reward_card',
     'membership_card',
     'discount_card',
     'coupon_card',
@@ -453,7 +597,28 @@ describe('Step3CardFields — stamp_card "會員等級" → "獎勵" option labe
     expect(memberLevelOption.value).toBe('memberLevel');
   });
 
-  it('memberLevel option label keeps the original memberLevel key when cardType="multipass" (scope = stamp_card only)', () => {
+  it('memberLevel option label uses memberLevelStamp i18n key when cardType="reward_card" (2026-09-10 ext)', () => {
+    // 2026-09-10 reward card member-level → reward refactor: reward_card
+    // now shares the same label override as stamp_card. The value source
+    // differs (firstRewardTierName instead of rewardName) but the
+    // dropdown label is identical.
+    useCardBuilderStore.getState().setCardType('reward_card');
+    render(<Step3CardFields />);
+    const leftSelect = screen.getByLabelText(
+      'step3.fieldsSection.leftField',
+    ) as HTMLSelectElement;
+    const memberLevelOption = leftSelect.querySelector(
+      'option[value="memberLevel"]',
+    ) as HTMLOptionElement;
+    expect(memberLevelOption).toBeTruthy();
+    expect(memberLevelOption.textContent).toBe(
+      'step3.fieldsSection.fields.memberLevelStamp',
+    );
+    // Option value is still 'memberLevel' — CardFieldKey contract preserved.
+    expect(memberLevelOption.value).toBe('memberLevel');
+  });
+
+  it('memberLevel option label keeps the original memberLevel key when cardType="multipass" (scope = stamp_card + reward_card only)', () => {
     useCardBuilderStore.getState().setCardType('multipass');
     render(<Step3CardFields />);
     const leftSelect = screen.getByLabelText(
@@ -468,8 +633,8 @@ describe('Step3CardFields — stamp_card "會員等級" → "獎勵" option labe
     );
   });
 
-  it.each(NON_STAMP_CARD_TYPES)(
-    'memberLevel option label keeps the original memberLevel key for non-stamp cardType="%s"',
+  it.each(NON_OVERRIDE_CARD_TYPES)(
+    'memberLevel option label keeps the original memberLevel key for non-stamp, non-reward cardType="%s"',
     (cardType) => {
       useCardBuilderStore.getState().setCardType(cardType);
       render(<Step3CardFields />);
@@ -511,7 +676,7 @@ describe('Step3CardFields — stamp_card "會員等級" → "獎勵" option labe
     }
   });
 
-  it('switching cardType from stamp_card back to a non-stamp cardType restores the original memberLevel label (reactive)', () => {
+  it('switching cardType from stamp_card back to a non-override cardType restores the original memberLevel label (reactive)', () => {
     // 1. Start as stamp_card → memberLevel option renders with memberLevelStamp.
     useCardBuilderStore.getState().setCardType('stamp_card');
     render(<Step3CardFields />);
@@ -530,6 +695,35 @@ describe('Step3CardFields — stamp_card "會員等級" → "獎勵" option labe
       useCardBuilderStore.getState().setCardType('cashback_card');
     });
     // Re-query after the act() commit.
+    const leftSelectAfter = screen.getByLabelText(
+      'step3.fieldsSection.leftField',
+    ) as HTMLSelectElement;
+    const memberLevelOptionAfter = leftSelectAfter.querySelector(
+      'option[value="memberLevel"]',
+    ) as HTMLOptionElement;
+    expect(memberLevelOptionAfter.textContent).toBe(
+      'step3.fieldsSection.fields.memberLevel',
+    );
+  });
+
+  it('switching cardType from reward_card back to a non-override cardType restores the original memberLevel label (reactive)', () => {
+    // 2026-09-10 reward card extension: same reactive-restoration contract
+    // as stamp_card. reward_card → cashback_card should revert the label.
+    useCardBuilderStore.getState().setCardType('reward_card');
+    render(<Step3CardFields />);
+    const leftSelect = screen.getByLabelText(
+      'step3.fieldsSection.leftField',
+    ) as HTMLSelectElement;
+    const memberLevelOption = leftSelect.querySelector(
+      'option[value="memberLevel"]',
+    ) as HTMLOptionElement;
+    expect(memberLevelOption.textContent).toBe(
+      'step3.fieldsSection.fields.memberLevelStamp',
+    );
+
+    act(() => {
+      useCardBuilderStore.getState().setCardType('cashback_card');
+    });
     const leftSelectAfter = screen.getByLabelText(
       'step3.fieldsSection.leftField',
     ) as HTMLSelectElement;

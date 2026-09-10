@@ -37,6 +37,7 @@ export function PassCardPreview({
   stampGridRows,
   stampIconId,
   rewardName,
+  firstRewardTierName,
   description,
   backFields,
   links,
@@ -112,6 +113,7 @@ export function PassCardPreview({
               stampGridRows={stampGridRows}
               cardType={cardType}
               rewardName={rewardName}
+              firstRewardTierName={firstRewardTierName}
             />
 
             {/* Footer / Barcode */}

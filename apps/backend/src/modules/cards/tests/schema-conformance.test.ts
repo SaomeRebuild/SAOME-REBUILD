@@ -13,7 +13,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { templateSettingsSchema as localTemplateSettingsSchema } from '../schemas/request';
-import { templateSettingsSchema as sharedTemplateSettingsSchema } from '@saome/shared/schemas';
+import { templateSettingsSchema as sharedTemplateSettingsSchema, cardFieldKeySchema } from '@saome/shared/schemas/card';
 
 describe('schema conformance (shared vs backend cards/templateSettingsSchema)', () => {
   it('local schema has the same keys as the shared schema', () => {
@@ -317,5 +317,57 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
   it('shared maxDiscountAmount rejects negative numbers', () => {
     const field = sharedTemplateSettingsSchema.shape.maxDiscountAmount;
     expect(() => field.parse(-1)).toThrow();
+  });
+
+  // ===== Step 3 — reward_card display-field extension (Rule 019 § 4.1, 2026-09-10) =====
+  // Two new keys (`pointsToNextTier`, `currentPoints`) added to CARD_FIELD_KEYS
+  // to support the reward card Step 3 dropdown options ("到下一階還差" /
+  // "已累積點數"). The keys are stored in the existing `leftField` /
+  // `rightField` JSONB columns — NO DB migration is required (the column is
+  // a string column; the zod enum is the contract layer).
+  //
+  // The conformance test pins that:
+  //   1. cardFieldKeySchema (derived from CARD_FIELD_KEYS) accepts the new keys
+  //   2. The new keys survive a roundtrip through the local backend schema
+  //      (i.e. leftField/rightField can carry them).
+
+  it('cardFieldKeySchema accepts new reward_card keys (pointsToNextTier, currentPoints)', () => {
+    expect(cardFieldKeySchema.parse('pointsToNextTier')).toBe('pointsToNextTier');
+    expect(cardFieldKeySchema.parse('currentPoints')).toBe('currentPoints');
+  });
+
+  it('shared leftField/rightField accept the new reward_card keys (Rule 019 § 4.1)', () => {
+    const leftField = sharedTemplateSettingsSchema.shape.leftField;
+    const rightField = sharedTemplateSettingsSchema.shape.rightField;
+    expect(leftField.parse('pointsToNextTier')).toBe('pointsToNextTier');
+    expect(rightField.parse('currentPoints')).toBe('currentPoints');
+  });
+
+  it('local leftField/rightField accept the new reward_card keys (4-layer sync — Layer 2)', () => {
+    const leftField = localTemplateSettingsSchema.shape.leftField;
+    const rightField = localTemplateSettingsSchema.shape.rightField;
+    expect(leftField.parse('pointsToNextTier')).toBe('pointsToNextTier');
+    expect(rightField.parse('currentPoints')).toBe('currentPoints');
+  });
+
+  it('cardFieldKeySchema rejects unknown keys (drift guard)', () => {
+    // Pin that the enum is closed — new keys must be added explicitly via
+    // CARD_FIELD_KEYS. A typo or accidental key in a payload should fail
+    // loud at parse-time, not silently round-trip.
+    expect(() => cardFieldKeySchema.parse('points_remaining')).toThrow();
+    expect(() => cardFieldKeySchema.parse('')).toThrow();
+  });
+
+  it('full templateSettings accepts reward_card with both new keys set', () => {
+    // End-to-end happy path: a reward_card draft with both reward display
+    // fields picked survives the shared schema parse. Mirrors what
+    // `cardService.update` would receive from the workspace onSave handler.
+    const payload = {
+      cardType: 'reward_card',
+      leftField: 'pointsToNextTier',
+      rightField: 'currentPoints',
+    };
+    expect(sharedTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
+    expect(localTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
   });
 });

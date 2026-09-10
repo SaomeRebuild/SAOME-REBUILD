@@ -63,6 +63,17 @@ export interface PreviewWrapperProps {
    */
   rewardName?: string;
   /**
+   * First reward tier name from the editor store (Step 6
+   * `rewardTiers[0].name`). Forwarded to PassCardPreviewBody so the
+   * `memberLevel` slot surfaces as a "獎勵" preview with this value when
+   * cardType is `reward_card`. Differs from `rewardName` only in the data
+   * source: reward_card reads the first row of the multi-tier array instead
+   * of a top-level string. Empty / undefined / no-tiers → empty string in
+   * the preview (matches stamp_card empty-input UX).
+   * (2026-09-10 reward card member-level → reward refactor extension.)
+   */
+  firstRewardTierName?: string;
+  /**
    * 卡片描述（背面 Section 1）。對應 templateSettings.description。
    * Step 4 card-info 2026-09-04。
    */

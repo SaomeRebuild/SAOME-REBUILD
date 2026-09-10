@@ -33,10 +33,27 @@ export const STAMP_CARD_TYPES: ReadonlySet<CardType> = new Set<CardType>([
 ]);
 
 /**
+ * Card types for which the reward-only display fields (pointsToNextTier /
+ * currentPoints) are shown in the dropdown.
+ *
+ * Scope is intentionally narrower than STAMP_CARD_TYPES: only
+ * `reward_card` gets the points-related fields. `multipass` does NOT
+ * share this group even though it shares the stamp-only group — the two
+ * systems (stamps vs points) are conceptually distinct and the user's
+ * UX intent was confirmed to keep the reward fields scoped to
+ * `reward_card` only (matches the Step 6 RewardTierRow dispatcher guard
+ * at `Step6CardLogic.tsx`).
+ */
+export const REWARD_CARD_TYPES: ReadonlySet<CardType> = new Set<CardType>([
+  'reward_card',
+]);
+
+/**
  * Decide which `CARD_FIELDS` entries are visible for the given card type.
  *
  * - 'common' group fields are always shown.
  * - 'stamp' group fields are shown only when cardType ∈ STAMP_CARD_TYPES.
+ * - 'reward' group fields are shown only when cardType ∈ REWARD_CARD_TYPES.
  *
  * The function is pure and exported so the conformance test
  * (`Step3CardFields/index.test.tsx`) can assert the filter directly
@@ -48,7 +65,11 @@ export function filterCARD_FIELDS_BY_CARD_TYPE(
   cardType: CardType | null,
 ): readonly CardFieldDefinition[] {
   const showStampGroup = cardType !== null && STAMP_CARD_TYPES.has(cardType);
+  const showRewardGroup = cardType !== null && REWARD_CARD_TYPES.has(cardType);
   return CARD_FIELDS.filter(
-    (f) => f.group === 'common' || showStampGroup,
+    (f) =>
+      f.group === 'common' ||
+      (f.group === 'stamp' && showStampGroup) ||
+      (f.group === 'reward' && showRewardGroup),
   );
 }

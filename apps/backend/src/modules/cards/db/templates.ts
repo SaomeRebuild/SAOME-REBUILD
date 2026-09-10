@@ -6,6 +6,16 @@
  */
 
 import type { Sql } from '@/shared/db/client';
+import type { CardFieldKey } from '@saome/shared/constants/card-fields';
+
+// Re-export so existing callers (e.g. services/cardService.ts) that import
+// `CardFieldKey` from this module keep working. The local definition is
+// sourced from the shared constant so it auto-conforms when
+// `CARD_FIELD_KEYS` is extended (Rule 019 § 4.1 layer 3 of 4 — Layer 1
+// is `CARD_FIELD_KEYS`, Layer 2 is `cardFieldKeySchema` derived via
+// `z.enum([...CARD_FIELD_KEYS])`, Layer 3 is this re-exported type, Layer
+// 4 is the service signature which uses `TemplateSettings.leftField`).
+export type { CardFieldKey };
 
 export interface TemplatesRow {
   id: string;
@@ -39,14 +49,15 @@ export type CardType =
  * `CARD_FIELD_KEYS` in packages/shared/constants/card-fields.ts. This is
  * the DB-layer interface (Rule 019 § 4.1, layer 3 of 4) so service param
  * types and JSONB column contracts pick up the same value set.
+ *
+ * 2026-09-10: this used to be a hand-maintained union literal (only the
+ * 6 common keys were listed). That was a drift risk — every time
+ * `CARD_FIELD_KEYS` was extended (stamp 3 keys, reward 2 keys), the
+ * hand-maintained union silently diverged. Now sourced from
+ * `@saome/shared/constants/card-fields::CardFieldKey` so the type
+ * auto-conforms. Re-exported via `export type { CardFieldKey }` near the
+ * top of this file to keep the public surface unchanged.
  */
-export type CardFieldKey =
-  | 'phone'
-  | 'email'
-  | 'memberLevel'
-  | 'birthday'
-  | 'visitCount'
-  | 'memberName';
 
 /**
  * Template settings — flat JSONB structure.

@@ -70,6 +70,9 @@ export default defineWorkersConfig({
       '@saome/shared/types': path.resolve(__dirname, '../../packages/shared/types/index.ts'),
       '@saome/shared/logic/': path.resolve(__dirname, '../../packages/shared/logic/'),
       '@saome/shared/logic': path.resolve(__dirname, '../../packages/shared/logic/index.ts'),
+      // Specific entries (with subpath) MUST come BEFORE the generic ones
+      // (Rule 016: vite alias is prefix-matching, first match wins).
+      '@saome/shared/constants/card-fields': path.resolve(__dirname, '../../packages/shared/constants/card-fields.ts'),
       '@saome/shared/constants/': path.resolve(__dirname, '../../packages/shared/constants/'),
       '@saome/shared/constants': path.resolve(__dirname, '../../packages/shared/constants/index.ts'),
     },

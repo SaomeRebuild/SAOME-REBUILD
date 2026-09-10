@@ -53,6 +53,13 @@ export function CardBuilderEditorPreview({
     // surfaces as the preview's `memberLevel` slot value when cardType is
     // `stamp_card`.
     rewardName,
+    // Step 6 — 獎勵卡邏輯（對應 templateSettings.rewardTiers[0].name）
+    // 2026-09-10 reward card member-level → reward refactor extension:
+    // this value surfaces as the preview's `memberLevel` slot value when
+    // cardType is `reward_card`. We read the FIRST tier's name only
+    // (the user said "只取第一個ROW的資料"); empty / undefined when
+    // no tiers have been added yet.
+    rewardTiers,
     // Step 4 — 卡片資訊（對應 templateSettings.description / backFields / links）
     description,
     backFields,
@@ -63,6 +70,12 @@ export function CardBuilderEditorPreview({
   const backgroundImageUrl = backgroundImage && cardId
     ? `${api.baseUrl}${api.paths.cardImage(cardId, 'background')}?token=${encodeURIComponent(getAccessToken() ?? '')}&v=${backgroundImageVersion}`
     : undefined;
+
+  // 從 rewardTiers 取第一個 row 的 name 作為 reward_card 的 "獎勵" preview value.
+  // 2026-09-10 reward card member-level → reward refactor: reward_card
+  // memberLevel 選項的預覽值從第一個 tier 的 name 而非 top-level 字串讀取。
+  // (Empty rewardTiers → undefined → PassCardPreviewBody fallback to ''.)
+  const firstRewardTierName = rewardTiers.length > 0 ? rewardTiers[0]?.name : undefined;
 
   return (
     <aside className={`
@@ -93,6 +106,7 @@ export function CardBuilderEditorPreview({
             stampGridRows={stampGridRows}
             stampIconId={stampIconId}
             rewardName={rewardName}
+            firstRewardTierName={firstRewardTierName}
             description={description}
             backFields={backFields}
             links={links}

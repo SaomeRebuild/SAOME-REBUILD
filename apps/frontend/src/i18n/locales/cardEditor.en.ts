@@ -123,6 +123,11 @@ export default {
         availableRewards: 'Available Rewards',
         totalStamps: 'Total Stamps',
         stampsRemaining: 'Stamps Remaining',
+        // Reward-only fields — only shown for reward_card (2026-09-10 reward card
+        // display-field extension). Points-related data is meaningless on
+        // non-reward cards.
+        pointsToNextTier: 'Points to Next Tier',
+        currentPoints: 'Current Points',
       },
     },
     // ===== Stamp grid — added 2026-09-04 =====

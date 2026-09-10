@@ -122,6 +122,9 @@ export default {
         availableRewards: '可用獎勵',
         totalStamps: '總印章數',
         stampsRemaining: '還差幾個章',
+        // 獎勵卡專用欄位 — 僅在 reward_card 顯示（2026-09-10 reward card display-field extension）
+        pointsToNextTier: '到下一階還差',
+        currentPoints: '已累積點數',
       },
     },
     // ===== Stamp grid (集點印章) — added 2026-09-04 =====

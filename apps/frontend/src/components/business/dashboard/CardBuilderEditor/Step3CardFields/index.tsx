@@ -96,26 +96,49 @@ interface FieldSelectProps {
   availableFields: readonly CardFieldDefinition[];
   /**
    * Current `cardType` from the store (Step 1 selection). Used to override
-   * the option label for `memberLevel` when cardType === 'stamp_card':
-   * the dropdown option reads "獎勵" instead of "會員等級", and the live
-   * preview's label/value follow the same cardType-driven path
-   * (PassCardPreviewBody.tsx). For all other cardTypes (incl. `multipass`),
-   * the original "會員等級" label is preserved. (2026-09-10 stamp card
-   * member-level → reward refactor.)
+   * the option label for `memberLevel` when cardType is `stamp_card` or
+   * `reward_card`: the dropdown option reads "獎勵" instead of "會員等級",
+   * and the live preview's label/value follow the same cardType-driven
+   * path (PassCardPreviewBody.tsx).
+   *   - stamp_card:  value source = top-level `rewardName` (Step 6 input).
+   *   - reward_card: value source = `rewardTiers[0].name` (first row of the
+   *     multi-tier structure).
+   *   For all other cardTypes (incl. `multipass`), the original "會員等級"
+   *   label is preserved.
+   * (2026-09-10 stamp card member-level → reward refactor, extended
+   *  2026-09-10 reward card to share the same override scope.)
    */
   cardType?: CardType | null;
 }
 
 /**
  * Resolve the i18n labelKey for a `CardFieldDefinition` in the dropdown.
- * The only conditional override today is `memberLevel` → `memberLevelStamp`
- * when cardType is stamp_card; every other field uses its canonical
- * `field.labelKey`. Keeping this helper local (rather than baking the
- * conditional into the map() below) keeps the override auditable in one
- * place and avoids drift if a future field needs the same treatment.
+ *
+ * The conditional override applies when `cardType ∈ {stamp_card,
+ * reward_card}` AND the field is `memberLevel`: the option renders as
+ * "獎勵" / "Reward" instead of "會員等級" / "Member Level".
+ *
+ * Scope rationale:
+ *   - stamp_card: memberLevel semantically represents "single reward tier
+ *     name" (Step 6 `rewardName` input) — the rename avoids confusing the
+ *     user about a hierarchy that does not exist on stamp cards.
+ *   - reward_card: memberLevel semantically represents "first reward tier
+ *     name" (Step 6 `rewardTiers[0].name` input) — same UX intent as
+ *     stamp_card, but the data source is the first row of the multi-tier
+ *     structure instead of a top-level string.
+ *   - multipass: keeps "會員等級" / "Member Level" — multipass is a
+ *     collection of stamp cards, not a reward system, so the original
+ *     label is preserved (user-confirmed scope).
+ *
+ * Keeping this helper local (rather than baking the conditional into the
+ * map() below) keeps the override auditable in one place and avoids drift
+ * if a future field needs the same treatment.
  */
 function resolveOptionLabelKey(field: CardFieldDefinition, cardType?: CardType | null): string {
-  if (field.key === 'memberLevel' && cardType === 'stamp_card') {
+  if (
+    field.key === 'memberLevel' &&
+    (cardType === 'stamp_card' || cardType === 'reward_card')
+  ) {
     return 'step3.fieldsSection.fields.memberLevelStamp';
   }
   return field.labelKey;

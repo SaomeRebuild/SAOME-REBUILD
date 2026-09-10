@@ -550,5 +550,225 @@ describe('PassCardPreviewBody — stamp_card member-level → reward override (2
   });
 });
 
+describe('PassCardPreviewBody — reward_card member-level → reward override (2026-09-10 ext)', () => {
+  /**
+   * 2026-09-10 reward card member-level → reward refactor extension.
+   *
+   * Mirrors the stamp_card override above: when `cardType === 'reward_card'`
+   * AND the picked field is `'memberLevel'`, the slot must render as a
+   * 2-line pair:
+   *   label = `fieldPreview.memberLevel.stampLabel` (same as stamp_card —
+   *         "獎勵" / "Reward")
+   *   value = `firstRewardTierName` (the user's Step 6 `rewardTiers[0].name`
+   *         input — first row only, per user-confirmed scope).
+   *
+   * Differs from the stamp_card override only in the data source:
+   *   - stamp_card reads top-level `rewardName` (single string).
+   *   - reward_card reads `firstRewardTierName` (first element of the
+   *     multi-tier array — handled by the parent component, the body only
+   *     receives the resolved string).
+   *
+   * All other cardTypes (incl. `multipass`) MUST keep the original
+   * memberLevel label/value behavior. The override is INTENTIONALLY scoped
+   * to `reward_card` only (user-confirmed scope: `stamp_card + reward_card`
+   * share the label, but multipass is not a reward system).
+   *
+   * Empty / undefined `firstRewardTierName` renders as an empty string —
+   * no fallback to the demo "金級" / "Gold" placeholder.
+   */
+
+  function buildTSpy() {
+    // Variadic spy — captured calls include both the key (positional 0)
+    // and the opts object (positional 1, when present).
+    return vi.fn((...args: unknown[]) => args[0] as string);
+  }
+
+  function mockUseTranslationOnce(spy: ReturnType<typeof buildTSpy>) {
+    vi.mocked(useTranslation).mockReturnValueOnce({ t: spy } as unknown as ReturnType<typeof useTranslation>);
+  }
+
+  it('reward_card + leftField="memberLevel" + firstRewardTierName="oijo" → label uses stampLabel key, value equals firstRewardTierName', () => {
+    const tSpy = buildTSpy();
+    mockUseTranslationOnce(tSpy);
+    render(
+      <PassCardPreviewBody
+        leftField="memberLevel"
+        cardType="reward_card"
+        firstRewardTierName="oijo"
+      />,
+    );
+
+    // Label must use the stamp-specific key (shared with stamp_card).
+    expect(tSpy).toHaveBeenCalledWith('fieldPreview.memberLevel.stampLabel');
+    // The original memberLevel.label key MUST NOT be called for the label
+    // (the override is exclusive — only stampLabel, not both).
+    const labelCalls = tSpy.mock.calls.filter(
+      (call) => call[0] === 'fieldPreview.memberLevel.label',
+    );
+    expect(labelCalls).toHaveLength(0);
+
+    // Value: firstRewardTierName is passed through verbatim (NOT routed through t()).
+    expect(screen.getByText('oijo')).toBeInTheDocument();
+  });
+
+  it('reward_card + rightField="memberLevel" + firstRewardTierName="1000點折抵10%" → right slot renders the override', () => {
+    const tSpy = buildTSpy();
+    mockUseTranslationOnce(tSpy);
+    render(
+      <PassCardPreviewBody
+        rightField="memberLevel"
+        cardType="reward_card"
+        firstRewardTierName="1000點折抵10%"
+      />,
+    );
+
+    expect(tSpy).toHaveBeenCalledWith('fieldPreview.memberLevel.stampLabel');
+    expect(screen.getByText('1000點折抵10%')).toBeInTheDocument();
+  });
+
+  it('reward_card + leftField="memberLevel" + firstRewardTierName="" → value renders as empty string (no demo fallback)', () => {
+    const tSpy = buildTSpy();
+    mockUseTranslationOnce(tSpy);
+    render(
+      <PassCardPreviewBody
+        leftField="memberLevel"
+        cardType="reward_card"
+        firstRewardTierName=""
+      />,
+    );
+
+    // Label still uses stampLabel.
+    expect(tSpy).toHaveBeenCalledWith('fieldPreview.memberLevel.stampLabel');
+
+    // Value: an empty string. We assert by NOT finding the demo fallback
+    // "金級" / "Gold" text. The DOM should contain an empty <span> for
+    // the value side.
+    const allSpans = Array.from(document.querySelectorAll('span'));
+    const emptyValueSpans = allSpans.filter((span) => span.textContent === '');
+    expect(emptyValueSpans.length).toBeGreaterThanOrEqual(1);
+    // And we must NOT find the demo "金級" / "Gold" value text.
+    const demoValueCalls = tSpy.mock.calls.filter(
+      (call) => call[0] === 'fieldPreview.memberLevel.value',
+    );
+    expect(demoValueCalls).toHaveLength(0);
+  });
+
+  it('reward_card + leftField="memberLevel" without firstRewardTierName → empty string fallback (no demo fallback)', () => {
+    const tSpy = buildTSpy();
+    mockUseTranslationOnce(tSpy);
+    render(
+      <PassCardPreviewBody
+        leftField="memberLevel"
+        cardType="reward_card"
+      />,
+    );
+
+    // Label still uses stampLabel.
+    expect(tSpy).toHaveBeenCalledWith('fieldPreview.memberLevel.stampLabel');
+
+    // firstRewardTierName was not provided — falls back to '' (matches the
+    // empty-input UX). The demo "金級" / "Gold" MUST NOT be surfaced.
+    const demoValueCalls = tSpy.mock.calls.filter(
+      (call) => call[0] === 'fieldPreview.memberLevel.value',
+    );
+    expect(demoValueCalls).toHaveLength(0);
+  });
+
+  it('non-reward cardType + leftField="memberLevel" + firstRewardTierName="oijo" → original memberLevel.label / .value (no reward override)', () => {
+    // cashback_card MUST NOT trigger the reward-card override — even when
+    // firstRewardTierName is provided. The override is scoped to
+    // cardType === 'reward_card' only.
+    const tSpy = buildTSpy();
+    mockUseTranslationOnce(tSpy);
+    render(
+      <PassCardPreviewBody
+        leftField="memberLevel"
+        cardType="cashback_card"
+        firstRewardTierName="oijo"
+      />,
+    );
+
+    // Original label key MUST be called.
+    expect(tSpy).toHaveBeenCalledWith('fieldPreview.memberLevel.label');
+    // Original value key MUST be called (the demo "金級" / "Gold" string).
+    expect(tSpy).toHaveBeenCalledWith('fieldPreview.memberLevel.value');
+    // stampLabel MUST NOT be called for non-reward card types.
+    const stampLabelCalls = tSpy.mock.calls.filter(
+      (call) => call[0] === 'fieldPreview.memberLevel.stampLabel',
+    );
+    expect(stampLabelCalls).toHaveLength(0);
+    // And firstRewardTierName is NOT surfaced in the DOM.
+    expect(screen.queryByText('oijo')).toBeNull();
+  });
+
+  it('multipass + leftField="memberLevel" + firstRewardTierName="oijo" → original memberLevel.label / .value (scope = reward_card ONLY)', () => {
+    // multipass shares the STAMP_CARD_TYPES filter with stamp_card but
+    // the memberLevel override is INTENTIONALLY scoped to
+    // {stamp_card, reward_card} only — multipass keeps "會員等級".
+    const tSpy = buildTSpy();
+    mockUseTranslationOnce(tSpy);
+    render(
+      <PassCardPreviewBody
+        leftField="memberLevel"
+        cardType="multipass"
+        firstRewardTierName="oijo"
+      />,
+    );
+
+    expect(tSpy).toHaveBeenCalledWith('fieldPreview.memberLevel.label');
+    expect(tSpy).toHaveBeenCalledWith('fieldPreview.memberLevel.value');
+    const stampLabelCalls = tSpy.mock.calls.filter(
+      (call) => call[0] === 'fieldPreview.memberLevel.stampLabel',
+    );
+    expect(stampLabelCalls).toHaveLength(0);
+    expect(screen.queryByText('oijo')).toBeNull();
+  });
+
+  it('reward_card + leftField="phone" + firstRewardTierName="oijo" → phone field is NOT overridden (override is memberLevel-specific)', () => {
+    // The override only applies to memberLevel — other common fields keep
+    // their canonical fieldPreview.{key}.label + .value rendering.
+    const tSpy = buildTSpy();
+    mockUseTranslationOnce(tSpy);
+    render(
+      <PassCardPreviewBody
+        leftField="phone"
+        cardType="reward_card"
+        firstRewardTierName="oijo"
+      />,
+    );
+
+    expect(tSpy).toHaveBeenCalledWith('fieldPreview.phone.label');
+    expect(tSpy).toHaveBeenCalledWith('fieldPreview.phone.value');
+    // stampLabel MUST NOT be called for non-memberLevel fields.
+    const stampLabelCalls = tSpy.mock.calls.filter(
+      (call) => call[0] === 'fieldPreview.memberLevel.stampLabel',
+    );
+    expect(stampLabelCalls).toHaveLength(0);
+    // firstRewardTierName is NOT surfaced for phone.
+    expect(screen.queryByText('oijo')).toBeNull();
+  });
+
+  it('stamp_card + firstRewardTierName is IGNORED (only reward_card reads it)', () => {
+    // The stamp_card override uses `rewardName` (top-level string), not
+    // `firstRewardTierName`. Verify firstRewardTierName is NOT surfaced
+    // for stamp_card — this pins the contract that each card type has a
+    // distinct value source.
+    const tSpy = buildTSpy();
+    mockUseTranslationOnce(tSpy);
+    render(
+      <PassCardPreviewBody
+        leftField="memberLevel"
+        cardType="stamp_card"
+        rewardName="10元折價"
+        firstRewardTierName="WRONG_VALUE_SHOULD_NOT_SHOW"
+      />,
+    );
+
+    // Stamp_card reads rewardName, not firstRewardTierName.
+    expect(screen.getByText('10元折價')).toBeInTheDocument();
+    expect(screen.queryByText('WRONG_VALUE_SHOULD_NOT_SHOW')).toBeNull();
+  });
+});
+
 // Pull in useTranslation so the tests above can `vi.mocked` it.
 import { useTranslation } from 'react-i18next';

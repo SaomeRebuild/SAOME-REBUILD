@@ -28,6 +28,12 @@ export default {
     availableRewards: { label: '可用獎勵', value: '2 次' },
     totalStamps: { label: '總印章數', value: '3/{{rows}}' },
     stampsRemaining: { label: '還差幾個章', value: '6個' },
+    // 獎勵卡專用欄位預覽 — 僅在 reward_card 時顯示於下拉選單
+    // (2026-09-10 reward card display-field extension)
+    // value 為靜態 demo，與 phone/email/visitCount 等其他 demo 欄位對齊。
+    // 實作 PassCreator 整合後將從 member row 取真實點數。
+    pointsToNextTier: { label: '到下一階還差', value: '123點' },
+    currentPoints: { label: '已累積點數', value: '23點' },
   },
   // ===== 餘額預覽 — 僅在 stamp_card / reward_card / cashback_card 顯示 =====
   // Step 1 選這 3 種卡時，PassCardPreviewHeader 的右側卡種 pill 會被替換成兩行垂直區塊。
