@@ -34,6 +34,13 @@ export default {
     // Will be sourced from member rows once PassCreator is wired.
     pointsToNextTier: { label: 'Points to Next Tier', value: '123 pts' },
     currentPoints: { label: 'Current Points', value: '23 pts' },
+    // Cashback-only preview fields — only shown in the dropdown for cashback_card (2026-09-12).
+    // Cashback is spend-based, NOT point-based, so the English label drops
+    // "Points" → "Amount to Next Tier". Values are static demo strings; ZAR
+    // prefix (R562) is applied dynamically by PassCardPreviewBody. The user's
+    // locale rule for ZAR: symbol in front, amount behind (e.g. "R562").
+    pointsToNextTierCashback: { label: 'Amount to Next Tier', value: 'R562' },
+    accumulatedSpendCashback: { label: 'Accumulated Spending', value: 'R3301' },
   },
   // ===== Balance preview — only shown for stamp_card / reward_card / cashback_card =====
   // When Step 1 picks one of these 3 card types, PassCardPreviewHeader's right-side

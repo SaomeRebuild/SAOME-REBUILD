@@ -125,6 +125,9 @@ export default {
         // 獎勵卡專用欄位 — 僅在 reward_card 顯示（2026-09-10 reward card display-field extension）
         pointsToNextTier: '到下一階還差',
         currentPoints: '已累積點數',
+        // 現金回饋卡專用欄位 — 僅在 cashback_card 顯示（2026-09-12）
+        pointsToNextTierCashback: '到下個層級還差',
+        accumulatedSpendCashback: '已累積消費',
       },
     },
     // ===== Stamp grid (集點印章) — added 2026-09-04 =====

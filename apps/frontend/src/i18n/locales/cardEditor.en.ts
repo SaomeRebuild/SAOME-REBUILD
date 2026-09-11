@@ -128,6 +128,12 @@ export default {
         // non-reward cards.
         pointsToNextTier: 'Points to Next Tier',
         currentPoints: 'Current Points',
+        // Cashback-only fields — only shown for cashback_card (2026-09-12).
+        // Cashback uses spending amount, NOT points — so the label drops
+        // "Points" to match the cashback business logic (spend-based tier).
+        // (2026-09-12 cashback field copy fix.)
+        pointsToNextTierCashback: 'Amount to Next Tier',
+        accumulatedSpendCashback: 'Accumulated Spending',
       },
     },
     // ===== Stamp grid — added 2026-09-04 =====

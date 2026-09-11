@@ -34,6 +34,11 @@ export default {
     // 實作 PassCreator 整合後將從 member row 取真實點數。
     pointsToNextTier: { label: '到下一階還差', value: '123點' },
     currentPoints: { label: '已累積點數', value: '23點' },
+    // 現金回饋卡專用欄位預覽 — 僅在 cashback_card 時顯示於下拉選單（2026-09-12）
+    // value 為靜態 demo，spend 金額使用與 TWD 一致的格式（阿拉伯數字 + 元後綴），
+    // ZAR 前綴（R562）由 PassCardPreviewBody 動態處理，見 Step 6 preview body。
+    pointsToNextTierCashback: { label: '到下個層級還差', value: '562元' },
+    accumulatedSpendCashback: { label: '已累積消費', value: '3301元' },
   },
   // ===== 餘額預覽 — 僅在 stamp_card / reward_card / cashback_card 顯示 =====
   // Step 1 選這 3 種卡時，PassCardPreviewHeader 的右側卡種 pill 會被替換成兩行垂直區塊。
