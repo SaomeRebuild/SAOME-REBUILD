@@ -34,7 +34,7 @@
  * conditional filter: `Step3CardFields` reads `group` and filters
  * declaratively, so adding a new field requires editing only this file.
  */
-export type CardFieldGroup = 'common' | 'stamp' | 'reward';
+export type CardFieldGroup = 'common' | 'stamp' | 'reward' | 'cashback';
 
 /**
  * Canonical field keys. Order is user-visible in the dropdown for common
@@ -70,6 +70,17 @@ export const CARD_FIELD_KEYS = [
   // wired (same as other demo fields).
   'pointsToNextTier',
   'currentPoints',
+  // ── cashback: only cashback_card ─────────────────────────────────────
+  // 2026-09-12 cashback card Step 3 display-field extension:
+  //   pointsToNextTierCashback — 到下個層級還差 / Amount to Next Tier
+  //   accumulatedSpendCashback — 已累積消費 / Accumulated Spending
+  // Cashback fields are semantically distinct from reward_card fields
+  // (spend amounts vs. points), so they use separate keys rather than
+  // overloading the existing points keys. The English label deliberately
+  // drops "Points" because cashback is spend-based, not point-based.
+  // (2026-09-12 copy fix: "Points to Next Tier" → "Amount to Next Tier".)
+  'pointsToNextTierCashback',
+  'accumulatedSpendCashback',
 ] as const;
 
 export type CardFieldKey = (typeof CARD_FIELD_KEYS)[number];
@@ -80,9 +91,10 @@ export interface CardFieldDefinition {
   labelKey: string;
   /**
    * Which card types see this option in the Step 3 selector.
-   * - 'common' : always shown
-   * - 'stamp'  : only shown when cardType ∈ {stamp_card, multipass}
-   * - 'reward' : only shown when cardType === 'reward_card'
+   * - 'common'  : always shown
+   * - 'stamp'   : only shown when cardType ∈ {stamp_card, multipass}
+   * - 'reward'  : only shown when cardType === 'reward_card'
+   * - 'cashback': only shown when cardType === 'cashback_card'
    */
   group: CardFieldGroup;
 }
@@ -116,4 +128,11 @@ export const CARD_FIELDS: readonly CardFieldDefinition[] = [
   // wired (same deferred path as phone / email / visitCount).
   { key: 'pointsToNextTier', group: 'reward', labelKey: 'step3.fieldsSection.fields.pointsToNextTier' },
   { key: 'currentPoints',    group: 'reward', labelKey: 'step3.fieldsSection.fields.currentPoints' },
+  // ── cashback: only cashback_card (2026-09-12) ───────────────────────
+  // Display-field extension for the Cashback Card tier system. Preview values
+  // are static demo strings (see passCard.{zh-TW,en}.ts fieldPreview);
+  // real values will be sourced from the member row once PassCreator is
+  // wired (same deferred path as phone / email / visitCount).
+  { key: 'pointsToNextTierCashback',   group: 'cashback', labelKey: 'step3.fieldsSection.fields.pointsToNextTierCashback' },
+  { key: 'accumulatedSpendCashback',   group: 'cashback', labelKey: 'step3.fieldsSection.fields.accumulatedSpendCashback' },
 ];
