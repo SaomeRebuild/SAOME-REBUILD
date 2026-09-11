@@ -211,6 +211,30 @@ export const templateSettingsSchema = z.object({
     )
     .max(5)
     .optional(),
+  // ===== Step 6 — Cashback 卡 (2026-09-11, cashback_card only) =====
+  // Mirrors `shared/templateSettingsSchema.cashbackTiers`.
+  // Simplest of the Step 6 sub-modules: each tier is a flat rule of
+  // "cumulative spend → cashback %". No earning-mode switch and no
+  // point accrual. Single source of truth:
+  //   - packages/shared/schemas/card.ts (Rule 019 § 4.1 layer 1)
+  //   - packages/shared/constants/cashback-card.ts (bounds)
+  //
+  // thresholdSpend = 0 is legitimate (= default tier, everyone qualifies).
+  // Sort order (thresholdSpend ASC, 0 first) is enforced by the frontend
+  // store; backend only validates structure and bounds.
+  cashbackTiers: z
+    .array(
+      z.object({
+        /** 回饋等級名稱. Required, max 40 chars. */
+        name: z.string().min(1).max(40),
+        /** 累積消費門檻. 0 = 預設 tier (人人享有). */
+        thresholdSpend: z.number().min(0),
+        /** 回饋%數, 整數 [1, 100]. */
+        cashbackPercent: z.number().int().min(1).max(100),
+      }),
+    )
+    .max(5)
+    .optional(),
 });
 
 export type TemplateSettings = z.infer<typeof templateSettingsSchema>;

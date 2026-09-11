@@ -280,6 +280,39 @@ export interface TemplateSettings {
     pointsPerSpendAmount?: number | null;
     pointsPerSpendPoints?: number | null;
   }>;
+  // ===== Step 6 — Cashback 卡 (Rule 019 § 4.1, layer 3 of 4) =====
+  // Mirrors `shared/templateSettingsSchema.cashbackTiers`.
+  // Step 6 plan 2026-09-11: third card-type-specific logic editor (after
+  // stamp_card and reward_card). Simplest of the three: each tier is a
+  // flat rule of "cumulative spend → cashback %". No earning-mode switch
+  // and no point accrual (the result IS a percentage discount).
+  //
+  // Differs from reward_card structurally:
+  //   - No `earningMode` (cashback is always spend-driven).
+  //   - No `rewardType / rewardValue / maxDiscountAmount` — cashback is a
+  //     direct % rebate.
+  //   - `thresholdSpend` = 0 IS a legitimate "default tier" (everyone
+  //     qualifies without needing to accumulate spending). This is the key
+  //     semantic distinction from reward_card.
+  //
+  // Frontend store enforces sort order (thresholdSpend ASC, 0 first);
+  // backend only validates structure and bounds. Capped at 5 tiers per
+  // MAX_CASHBACK_TIERS in packages/shared/constants/cashback-card.ts.
+  /**
+   * 現金回饋級距陣列（最多 5 組）.
+   * Mirrors mu-plugins cashback-tier structure.
+   *
+   * Each tier shape:
+   *   - `name` (1..40 chars): tier name shown on the pass.
+   *   - `thresholdSpend` (≥ 0): cumulative spending required to qualify.
+   *       0 = default tier (everyone qualifies without accumulation).
+   *   - `cashbackPercent` (1..100 integer): cashback percentage.
+   */
+  cashbackTiers?: Array<{
+    name: string;
+    thresholdSpend: number;
+    cashbackPercent: number;
+  }>;
   [key: string]: unknown;
 }
 
