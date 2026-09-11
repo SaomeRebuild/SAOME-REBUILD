@@ -4,9 +4,8 @@
 
 import { Hono } from 'hono';
 import type { HonoEnv } from '@/shared/types/bindings';
-import { getDb } from '@/shared/db/client';
+import { getDbForRequest } from '@/shared/db/client';
 import { requireAuth, getAuthenticatedUser } from '@/shared/middleware/auth';
-import { findTenantById } from '@/modules/auth/db/tenants';
 import { ValidationError, NotFoundError } from '@/shared/lib/saomeError';
 import { updateTemplateSchema } from '../schemas/request';
 import { updateTemplateService } from '../services/cardService';
@@ -15,14 +14,14 @@ export const updateCardRoute = new Hono<HonoEnv>()
   .use('*', requireAuth)
   .put('/:id', async (c) => {
     const user = getAuthenticatedUser(c);
-    const sql = await getDb(c.env.HYPERDRIVE);
+    const sql = await getDbForRequest(c);
     const templateId = c.req.param('id');
 
-    // Get tenant ID for the authenticated user
-    const tenant = user.tenantId ? await findTenantById(sql, user.tenantId) : null;
-    if (!tenant) {
+    // Trust JWT tenantId directly — per decision 2026-09-09-jwt-tenant-id-trust.md
+    if (!user.tenantId) {
       throw new NotFoundError('common.error.notFound', 'Tenant not found');
     }
+    const tenantId = user.tenantId;
 
     // Parse and validate request body
     const body = await c.req.json().catch(() => ({}));
@@ -41,7 +40,7 @@ export const updateCardRoute = new Hono<HonoEnv>()
     const result = await updateTemplateService(
       sql,
       templateId,
-      tenant.id,
+      tenantId,
       name,
       cardType,
       settings,

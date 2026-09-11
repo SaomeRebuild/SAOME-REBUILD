@@ -6,9 +6,8 @@
 
 import { Hono } from 'hono';
 import type { HonoEnv } from '@/shared/types/bindings';
-import { getDb } from '@/shared/db/client';
+import { getDbForRequest } from '@/shared/db/client';
 import { requireAuth, getAuthenticatedUser } from '@/shared/middleware/auth';
-import { findTenantById } from '@/modules/auth/db/tenants';
 import { NotFoundError } from '@/shared/lib/saomeError';
 import { touchTemplateService } from '../services/cardService';
 
@@ -16,16 +15,16 @@ export const touchCardRoute = new Hono<HonoEnv>()
   .use('*', requireAuth)
   .patch('/:id/touch', async (c) => {
     const user = getAuthenticatedUser(c);
-    const sql = await getDb(c.env.HYPERDRIVE);
+    const sql = await getDbForRequest(c);
     const templateId = c.req.param('id');
 
-    // Get tenant ID for the authenticated user
-    const tenant = user.tenantId ? await findTenantById(sql, user.tenantId) : null;
-    if (!tenant) {
+    // Trust JWT tenantId directly — per decision 2026-09-09-jwt-tenant-id-trust.md
+    if (!user.tenantId) {
       throw new NotFoundError('common.error.notFound', 'Tenant not found');
     }
+    const tenantId = user.tenantId;
 
-    const result = await touchTemplateService(sql, templateId, tenant.id);
+    const result = await touchTemplateService(sql, templateId, tenantId);
     return c.json(result);
   });
 

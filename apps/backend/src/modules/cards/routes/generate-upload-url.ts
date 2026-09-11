@@ -18,9 +18,8 @@
 import { Hono } from 'hono';
 import { AwsClient } from 'aws4fetch';
 import type { HonoEnv } from '@/shared/types/bindings';
-import { getDb } from '@/shared/db/client';
+import { getDbForRequest } from '@/shared/db/client';
 import { requireAuth, getAuthenticatedUser } from '@/shared/middleware/auth';
-import { findTenantById } from '@/modules/auth/db/tenants';
 import { findTemplateById } from '../db/templates';
 import { NotFoundError, ValidationError } from '@/shared/lib/saomeError';
 import { z } from 'zod';
@@ -43,14 +42,14 @@ export const generateUploadUrlRoute = new Hono<HonoEnv>()
   .use('*', requireAuth)
   .post('/:id/generate-upload-url', async (c) => {
     const user = getAuthenticatedUser(c);
-    const sql = await getDb(c.env.HYPERDRIVE);
+    const sql = await getDbForRequest(c);
     const templateId = c.req.param('id');
 
-    // Get tenant ID for the authenticated user (via JWT claim + PK lookup)
-    const tenant = user.tenantId ? await findTenantById(sql, user.tenantId) : null;
-    if (!tenant) {
+    // Trust JWT tenantId directly — per decision 2026-09-09-jwt-tenant-id-trust.md
+    if (!user.tenantId) {
       throw new NotFoundError('common.error.notFound', 'Tenant not found');
     }
+    const tenantId = user.tenantId;
 
     // Parse and validate request body
     const body = await c.req.json().catch(() => ({}));
@@ -67,7 +66,7 @@ export const generateUploadUrlRoute = new Hono<HonoEnv>()
 
     // Ownership check: ensure the template belongs to the tenant
     const template = await findTemplateById(sql, templateId);
-    if (!template || template.tenant_id !== tenant.id) {
+    if (!template || template.tenant_id !== tenantId) {
       throw new NotFoundError('common.error.notFound', 'Template not found');
     }
 
@@ -84,7 +83,7 @@ export const generateUploadUrlRoute = new Hono<HonoEnv>()
     const cardImageType: CardImageType = imageType as CardImageType;
 
     // Build the R2 key: {tenant_id}/{template_id}/{image_filename}
-    const key = buildImageKey(tenant.id, templateId, cardImageType);
+    const key = buildImageKey(tenantId, templateId, cardImageType);
 
     // Create AWS client for R2 (S3-compatible API)
     const r2Client = new AwsClient({

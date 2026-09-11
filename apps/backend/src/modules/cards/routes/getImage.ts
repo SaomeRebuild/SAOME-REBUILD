@@ -12,9 +12,8 @@
 
 import { Hono } from 'hono';
 import type { HonoEnv } from '@/shared/types/bindings';
-import { getDb } from '@/shared/db/client';
+import { getDbForRequest } from '@/shared/db/client';
 import { requireAuth, getAuthenticatedUser } from '@/shared/middleware/auth';
-import { findTenantById } from '@/modules/auth/db/tenants';
 import { findTemplateById } from '../db/templates';
 import { NotFoundError, SaomeError } from '@/shared/lib/saomeError';
 import { z } from 'zod';
@@ -28,8 +27,14 @@ export const getImageRoute = new Hono<HonoEnv>()
   .use('*', requireAuth)
   .get('/:id/image/:type', async (c) => {
     const user = getAuthenticatedUser(c);
-    const sql = await getDb(c.env.HYPERDRIVE);
+    const sql = await getDbForRequest(c);
     const { id: templateId, type: imageType } = c.req.param();
+
+    // Trust JWT tenantId directly — per decision 2026-09-09-jwt-tenant-id-trust.md
+    if (!user.tenantId) {
+      throw new NotFoundError('common.error.notFound');
+    }
+    const tenantId = user.tenantId;
 
     // Validate params
     const parsed = paramsSchema.safeParse({ id: templateId, type: imageType });
@@ -43,16 +48,11 @@ export const getImageRoute = new Hono<HonoEnv>()
       throw new NotFoundError('common.error.notFound');
     }
 
-    const tenant = user.tenantId ? await findTenantById(sql, user.tenantId) : null;
-    if (!tenant) {
-      throw new NotFoundError('common.error.notFound');
-    }
-
-    if (template.tenant_id !== tenant.id) {
+    if (template.tenant_id !== tenantId) {
       console.log('[getImage] OWNERSHIP CHECK FAIL:', {
         templateTenantId: template.tenant_id,
-        currentTenantId: tenant.id,
-        match: template.tenant_id === tenant.id,
+        currentTenantId: tenantId,
+        match: template.tenant_id === tenantId,
       });
       throw new NotFoundError('common.error.notFound');
     }
@@ -99,7 +99,7 @@ export const getImageRoute = new Hono<HonoEnv>()
     }
 
     console.log('[getImage] templateId:', templateId);
-    console.log('[getImage] tenantId:', tenant.id);
+    console.log('[getImage] tenantId:', tenantId);
     console.log('[getImage] template.tenant_id:', template.tenant_id);
     console.log('[getImage] settings keys:', Object.keys(settings));
     console.log('[getImage] imageType:', imageType, '→ field:', field);
@@ -111,7 +111,7 @@ export const getImageRoute = new Hono<HonoEnv>()
       return c.json({
         debug: {
           templateId,
-          tenantId: tenant.id,
+          tenantId,
           templateTenantId: template.tenant_id,
           field,
           settingsKeys: Object.keys(settings),

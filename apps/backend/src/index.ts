@@ -27,6 +27,7 @@ import { Hono } from 'hono';
 import type { HonoEnv } from '@/shared/types/bindings';
 import { corsMiddleware } from '@/shared/middleware/cors';
 import { requestIdMiddleware } from '@/shared/middleware/requestId';
+import { sqlCountMiddleware } from '@/shared/middleware/sqlCount';
 import { errorHandler } from '@/shared/middleware/errorHandler';
 import { ensureCorsOnResponse } from '@/shared/middleware/runtimeCors';
 import { authModule } from '@/modules/auth';
@@ -48,6 +49,13 @@ export const app = new Hono<HonoEnv>();
 // Global middleware stack (order matters)
 app.use('*', corsMiddleware);
 app.use('*', requestIdMiddleware);
+// sqlCountMiddleware: Phase 3 (Hyperdrive query spike observability).
+// Mounted AFTER requestId so the structured `[sql-count]` log line can
+// reference the request id. Reads the per-request Sql counter attached
+// by `getDbForRequest(c)` and emits a structured log for Cloudflare tail
+// aggregation. See runs/improvements/feedback/20260911-hyperdrive-query-spike-investigation.md
+// § 9 follow-up.
+app.use('*', sqlCountMiddleware);
 
 // Error handler
 app.onError(errorHandler);

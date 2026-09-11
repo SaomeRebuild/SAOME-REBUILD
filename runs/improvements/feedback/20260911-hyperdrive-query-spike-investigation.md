@@ -1,42 +1,42 @@
-# Hyperdrive 87% query 佔用診斷（2026-09-11）
+# Hyperdrive 87% query 佔用診斷�?026-09-11�?
 
 > **Status**: Investigation complete (diagnose-only scope)
-> **Quota reference**: Cloudflare Hyperdrive Free plan = 100,000 queries/day（per user clarification）
-> **Observed**: ~87,000 queries/day × 2 days
-> **Tooling used**: `npx wrangler tail saome-backend`（OAuth via `wrangler whoami`，account `b37054989122d58d65ad27681882b470`）
+> **Quota reference**: Cloudflare Hyperdrive Free plan = 100,000 queries/day（per user clarification�?
+> **Observed**: ~87,000 queries/day ? 2 days
+> **Tooling used**: `npx wrangler tail saome-backend`（OAuth via `wrangler whoami`，account `b37054989122d58d65ad27681882b470`�?
 
 ---
 
 ## § 0. TL;DR
 
-過去 48 小時 Hyperdrive 查詢量衝到 87,000/day（87%）的根因**不是單一 offender**，而是 **6 個互相疊加的 multiplier**，每個都是架構性重複（不是 race condition / retry storm）：
+?�去 48 小�? Hyperdrive ?�詢?��???87,000/day�?7%）�??��?**不是?��? offender**，而是 **6 ?��??��??��? multiplier**，�??�都?�架構性�?複�?不是 race condition / retry storm）�?
 
 | Rank | Multiplier | Daily impact estimate | Fixability |
 |---|---|---|---|
-| **#1** | **每個 card route 都 call 了多餘的 `findTenantById`**（JWT 已經帶 tenantId，DB lookup 結果從未被用於 authz）| ~25,000-40,000 | Trivial（純刪除） |
-| **#2** | **`getDb()` warmup `SELECT 1` 在 middleware + handler 都各跑一次**（應該用既有的 `getDbForRequest(c)` memoization）| ~10,000-15,000 | Trivial（改 import） |
-| **#3** | **Card preview image 同一張圖被多重 component 重複請求**（`PassCardPreviewHeader` + `TemplateCardPreview` + 編輯器 + Library 列表，且每次 `v=Date.now()` cache-buster 強制重新 fetch）| ~5,000-10,000 | Moderate |
-| **#4** | **Cron keep-alive 2 個 `SELECT 1` per tick**（`getDb()` warmup + 顯式 `SELECT 1 AS ok`）| 576 fixed | Trivial |
-| **#5** | **Cron billing-cycle 重複 warmup**（handler 內 `getDb()` 又跑一次 warmup）| 288 fixed | Trivial |
-| **#6** | **Touch keep-alive + autosave 的 PUT chain 沒共用 `sql` instance** | 2,000-5,000 | Moderate |
+| **#1** | **每�?card route ??call 了�?餘�? `findTenantById`**（JWT 已�?�?tenantId，DB lookup 結�?從未被用??authz）| ~25,000-40,000 | Trivial（�??�除�?|
+| **#2** | **`getDb()` warmup `SELECT 1` ??middleware + handler ?��?跑�?�?*（�?該用?��???`getDbForRequest(c)` memoization）| ~10,000-15,000 | Trivial（改 import�?|
+| **#3** | **Card preview image ?��?張�?被�???component ?��?請�?**（`PassCardPreviewHeader` + `TemplateCardPreview` + 編輯??+ Library ?�表，�?每次 `v=Date.now()` cache-buster 強制?�新 fetch）| ~5,000-10,000 | Moderate |
+| **#4** | **Cron keep-alive 2 ??`SELECT 1` per tick**（`getDb()` warmup + 顯�? `SELECT 1 AS ok`）| 576 fixed | Trivial |
+| **#5** | **Cron billing-cycle ?��? warmup**（handler ??`getDb()` ?��?一�?warmup）| 288 fixed | Trivial |
+| **#6** | **Touch keep-alive + autosave ??PUT chain 沒共??`sql` instance** | 2,000-5,000 | Moderate |
 
-**預期可削減 60-75% queries**（從 ~87k/day 降到 ~22-35k/day），不必動 cron frequency、不必降 autosave 頻率、不必動 debounce。
+**?��??��?�?60-75% queries**（�? ~87k/day ?�到 ~22-35k/day）�?不�???cron frequency?��?必�? autosave ?��??��?必�? debounce??
 
 ---
 
-## § 1. 過去 48h 觀察值（Live evidence）
+## § 1. ?�去 48h 觀察值�?Live evidence�?
 
-### 1.1 工具限制
+### 1.1 工具?�制
 
-- ❌ Workers Observability MCP：`serverStatus: needsAuth`，descriptor missing，無 auth tool 暴露 → **無法直接拉 48h 歷史 log**
-- ✅ `wrangler tail saome-backend`：OAuth 已登入（`workers_tail: read` scope），可拉 **live tail**
-- ❌ Wrangler tail 不支援 historical query（無 `--since` / `--from` 參數）
+- ??Workers Observability MCP：`serverStatus: needsAuth`，descriptor missing，無 auth tool ?�露 ??**?��??�接??48h 歷史 log**
+- ??`wrangler tail saome-backend`：OAuth 已登?��?`workers_tail: read` scope）�??��? **live tail**
+- ??Wrangler tail 不支??historical query（無 `--since` / `--from` ?�數�?
 
-### 1.2 Live tail 樣本（2026-09-10 23:15 UTC, 15 秒 window, 100% sampling）
+### 1.2 Live tail �?���?026-09-10 23:15 UTC, 15 �?window, 100% sampling�?
 
-透過 `npx wrangler tail saome-backend --format pretty` 抓到以下 pattern：
+?��? `npx wrangler tail saome-backend --format pretty` ?�到以�? pattern�?
 
-#### 樣本 A — POST /api/auth/refresh
+#### �?�� A ??POST /api/auth/refresh
 
 ```
 POST /api/auth/refresh - Ok
@@ -46,58 +46,58 @@ POST /api/auth/refresh - Ok
   (log) [getDb] pool warmup OK
 ```
 
-**觀察**：每個 refresh request 觸發 **1 個 warmup SELECT 1**（符合預期：handler 內 `getDb()` 一次）。
+**觀�?*：�???refresh request 觸發 **1 ??warmup SELECT 1**（符?��??��?handler ??`getDb()` 一次�???
 
-#### 樣本 B — GET /api/cards/{id}/image/logo（關鍵發現）
+#### �?�� B ??GET /api/cards/{id}/image/logo（�??�發?��?
 
 ```
 GET /api/cards/REDACTED/image/logo?token=REDACTED.REDACTED.REDACTED&v=1788915479624 - Ok
-  (log) [getDb] pool warmup OK    ← 1
-  (log) [getDb] pool warmup OK    ← 2
-  (log) [getDb] pool warmup OK    ← 3
-  (log) [getDb] pool warmup OK    ← 4
-  (log) [getDb] pool warmup OK    ← 5
-  (log) [getDb] pool warmup OK    ← 6
+  (log) [getDb] pool warmup OK    ??1
+  (log) [getDb] pool warmup OK    ??2
+  (log) [getDb] pool warmup OK    ??3
+  (log) [getDb] pool warmup OK    ??4
+  (log) [getDb] pool warmup OK    ??5
+  (log) [getDb] pool warmup OK    ??6
   (error) [errorHandler] requestId=... error=NotFoundError message=Not found
 ```
 
-**觀察**：可見的單一 image/logo request 觸發 **6 個 warmup SELECT 1**。
+**觀�?*：可見�??��? image/logo request 觸發 **6 ??warmup SELECT 1**??
 
-**程式碼對比**（[apps/backend/src/modules/cards/routes/getImage.ts](apps/backend/src/modules/cards/routes/getImage.ts) line 31）：
-- requireAuth middleware（[apps/backend/src/shared/middleware/auth.ts](apps/backend/src/shared/middleware/auth.ts) line 59）：1 個 `getDb()` = 1 warmup
-- getImage handler line 31：1 個 `getDb()` = 1 warmup
-- 預期總計：**2 warmups**
+**程�?碼�?�?*（[apps/backend/src/modules/cards/routes/getImage.ts](apps/backend/src/modules/cards/routes/getImage.ts) line 31）�?
+- requireAuth middleware（[apps/backend/src/shared/middleware/auth.ts](apps/backend/src/shared/middleware/auth.ts) line 59）�?1 ??`getDb()` = 1 warmup
+- getImage handler line 31�? ??`getDb()` = 1 warmup
+- ?��?總�?�?*2 warmups**
 
-**但 tail 抓到 6 個**。可能原因：
-1. **wrangler tail 把 6 個 SEPARATE requests 合併到同個 view**（最可能）：每個 request 的 URL 都有不同 `v=` cache-buster，但被 wrangler pretty-printer 合併輸出。`v=1788915479624` 是 millisecond timestamp，同時間內多次 refetch = 不同 `v=`。
-2. **前端 React StrictMode double-render**：開發模式每個 effect 跑兩次 → 2x 圖片載入
-3. **多重 component 同時 render 同一張圖**：[apps/frontend/src/components/business/dashboard/CardBuilderEditor/CardPreview/PassCardPreviewHeader.tsx:75](apps/frontend/src/components/business/dashboard/CardBuilderEditor/CardPreview/PassCardPreviewHeader.tsx) 和 [apps/frontend/src/components/business/dashboard/TemplateCard/TemplateCardPreview.tsx:43](apps/frontend/src/components/business/dashboard/TemplateCard/TemplateCardPreview.tsx) 都用 `v=${issuerLogoVersion}` 機制，當 editor + library 兩個 view 同時 mount 時 = 2x image fetch
+**�?tail ?�到 6 ??*?�可?��??��?
+1. **wrangler tail ??6 ??SEPARATE requests ?�併?��???view**（�??�能）�?每�?request ??URL ?��?不�? `v=` cache-buster，�?�?wrangler pretty-printer ?�併輸出?�`v=1788915479624` ??millisecond timestamp，�??��??��?�?refetch = 不�? `v=`??
+2. **?�端 React StrictMode double-render**：�??�模式�???effect 跑兩�???2x ?��?載入
+3. **多�? component ?��? render ?��?張�?**：[apps/frontend/src/components/business/dashboard/CardBuilderEditor/CardPreview/PassCardPreviewHeader.tsx:75](apps/frontend/src/components/business/dashboard/CardBuilderEditor/CardPreview/PassCardPreviewHeader.tsx) ??[apps/frontend/src/components/business/dashboard/TemplateCard/TemplateCardPreview.tsx:43](apps/frontend/src/components/business/dashboard/TemplateCard/TemplateCardPreview.tsx) ?�用 `v=${issuerLogoVersion}` 機制，當 editor + library ?��?view ?��? mount ??= 2x image fetch
 
-**結論**：實際可能是 **1 個 user 行為 → 6 個 HTTP requests → 6 個 warmup SELECT 1 + 6 × (1 findTemplate + 1 findTenant) = 18 SQL queries**。
+**結�?**：實?�可?�是 **1 ??user 行為 ??6 ??HTTP requests ??6 ??warmup SELECT 1 + 6 ? (1 findTemplate + 1 findTenant) = 18 SQL queries**??
 
-#### 樣本 C — 計時器觀察
+#### �?�� C ??計�??��?�?
 
-15 秒 window 內抓到：
-- POST /api/auth/refresh：~10 次（active session refresh storm）
-- GET /api/cards/{id}/image/logo：~1 次可見（但可能 6 個合併）
+15 �?window ?��??��?
+- POST /api/auth/refresh：~10 次�?active session refresh storm�?
+- GET /api/cards/{id}/image/logo：~1 次可見�?但可??6 ?��?併�?
 
 ---
 
-## § 2. Route → SQL Query Mapping（程式碼靜態分析）
+## § 2. Route ??SQL Query Mapping（�?式碼?��??��?�?
 
-> **方法論**：每個 backend handler 都走 `getDb()` → 1 warmup，再 call service / db function。每個 service function 都可能做 ownership check（先 `findById` 再 `UPDATE`）。完整 audit 由獨立 explore subagent 完成（任務 ID `6c2f5f0f-4311-437f-9520-21b4b03ef21f`）。
+> **?��?�?*：�???backend handler ?�走 `getDb()` ??1 warmup，�? call service / db function?��???service function ?�可?��? ownership check（�? `findById` ??`UPDATE`）。�???audit ?�獨�?explore subagent 完�?（任??ID `6c2f5f0f-4311-437f-9520-21b4b03ef21f`）�?
 
-### 2.1 通用 multiplier（每個 authenticated route 都吃）
+### 2.1 ?�用 multiplier（�???authenticated route ?��?�?
 
-| 來源 | SQL queries | 備註 |
+| 來�? | SQL queries | ?�註 |
 |---|---|---|
-| `requireAuth` middleware | 1 warmup + 1 `isTokenRevoked` SELECT | `isTokenRevoked` 走 5s in-process cache，穩態只付 warmup |
-| `findTenantById` lookup（每個 card route 都做）| 1 SELECT | **#1 浪費源**：JWT 已經帶 `tenantId`（per `runs/decisions/2026-09-09-jwt-tenant-id-trust.md`），但 10 個 card routes 仍用 `findTenantById` 拿 row 然後只用 `tenant.id` 做字串比對，row 其他欄位從未被讀取 |
-| handler 內 `getDb()` 第二次 warmup | 1 warmup | **#2 浪費源**：`getDbForRequest(c)` 已經在 `shared/db/client.ts` line 118 實作好，但 routes 全部用 `getDb()` 而非 `getDbForRequest(c)` → 同一 request 兩次 warmup |
+| `requireAuth` middleware | 1 warmup + 1 `isTokenRevoked` SELECT | `isTokenRevoked` �?5s in-process cache，穩?�只�?warmup |
+| `findTenantById` lookup（�???card route ?��?）| 1 SELECT | **#1 浪費�?*：JWT 已�?�?`tenantId`（per `runs/decisions/2026-09-09-jwt-tenant-id-trust.md`）�?�?10 ??card routes 仍用 `findTenantById` ??row ?��??�用 `tenant.id` ?��?串�?對�?row ?��?欄�?從未被�???|
+| handler ??`getDb()` 第�?�?warmup | 1 warmup | **#2 浪費�?*：`getDbForRequest(c)` 已�???`shared/db/client.ts` line 118 實�?好�?�?routes ?�部??`getDb()` ?��? `getDbForRequest(c)` ???��? request ?�次 warmup |
 
-### 2.2 各 route 的實際 SQL count（含 multipliers）
+### 2.2 ??route ?�實??SQL count（含 multipliers�?
 
-| Route | Handler SQL | + middleware | + warmup × 2 | 總計 / request |
+| Route | Handler SQL | + middleware | + warmup ? 2 | 總�? / request |
 |---|---|---|---|---|
 | `POST /api/cards` (create) | 1 INSERT | 1 (revoked cache) | 2 | **4** |
 | `GET /api/cards` (list) | 1 SELECT | 1 (revoked cache) | 2 | **4** |
@@ -114,45 +114,45 @@ GET /api/cards/REDACTED/image/logo?token=REDACTED.REDACTED.REDACTED&v=1788915479
 | `POST /api/auth/refresh` | ~3 (refreshService) | 0 | 2 | **5** |
 | `GET /api/auth/me` | 1 (findTenant) | 1 (revoked cache) | 2 | **4** |
 
-### 2.3 Cron SQL chain（固定 288 ticks/day）
+### 2.3 Cron SQL chain（固�?288 ticks/day�?
 
-來源：[apps/backend/src/index.ts](apps/backend/src/index.ts) scheduled handler（line 169-211）：
+來�?：[apps/backend/src/index.ts](apps/backend/src/index.ts) scheduled handler（line 169-211）�?
 
-| 步驟 | SQL queries |
+| 步�? | SQL queries |
 |---|---|
-| 1. `getDb(env.HYPERDRIVE)` 在 cron handler 起點 | 1 warmup |
+| 1. `getDb(env.HYPERDRIVE)` ??cron handler 起�? | 1 warmup |
 | 2. `app.fetch('/health')` (in-process) | 0 |
-| 3. `SELECT 1 AS ok` (顯式 keep-alive) | 1 |
-| 4. `app.fetch('/api/cron/billing-cycle')` (in-process) → 觸發 `billingCycleCronRoute` | |
-| 5. `billingCycleCronRoute` 內 `getDb()` 又跑一次 | 1 warmup |
+| 3. `SELECT 1 AS ok` (顯�? keep-alive) | 1 |
+| 4. `app.fetch('/api/cron/billing-cycle')` (in-process) ??觸發 `billingCycleCronRoute` | |
+| 5. `billingCycleCronRoute` ??`getDb()` ?��?一�?| 1 warmup |
 | 6. `UPDATE public.passes SET billing_cycle_end = ...` | 1 |
 | 7. `UPDATE public.passes SET status = 'expired' WHERE ...` | 1 |
 
-**Per tick**：2 warmups + 1 keepalive + 2 UPDATEs = **5 SQL**
-**Per day**：288 × 5 = **1,440 SQL**（fixed）
+**Per tick**�? warmups + 1 keepalive + 2 UPDATEs = **5 SQL**
+**Per day**�?88 ? 5 = **1,440 SQL**（fixed�?
 
 ---
 
-## § 3. Suspect 分析（5 個面向）
+## § 3. Suspect ?��?�? ?�面?��?
 
-### Suspect A — `getDb()` warmup SELECT 1 over-firing
+### Suspect A ??`getDb()` warmup SELECT 1 over-firing
 
-**Evidence**：
-- Live tail 證實每個 `/api/auth/refresh` = 1 warmup
-- 程式碼確認 `getDb()` 在每個 route 都會跑一次 warmup
-- `requireAuth` middleware + handler 兩處都 call `getDb()`，但**沒用**既有的 `getDbForRequest(c)` memoization helper
+**Evidence**�?
+- Live tail 證實每�?`/api/auth/refresh` = 1 warmup
+- 程�?碼確�?`getDb()` ?��???route ?��?跑�?�?warmup
+- `requireAuth` middleware + handler ?��???call `getDb()`，�?**沒用**?��???`getDbForRequest(c)` memoization helper
 
-**計算**：
-- 假設 saome-backend 平均 1,500 HTTP requests/day（保守估計：10 active users × 150 requests/user）
-- 每個 request 多 1 個冗餘 warmup（middleware 跟 handler 重複）
-- = **1,500 × 1 = 1,500 redundant SELECT 1 queries/day**
+**計�?**�?
+- ?�設 saome-backend 平�? 1,500 HTTP requests/day（�?守估計�?10 active users ? 150 requests/user�?
+- 每�?request �?1 ?��?�?warmup（middleware �?handler ?��?�?
+- = **1,500 ? 1 = 1,500 redundant SELECT 1 queries/day**
 
-**判定**：✅ 確認浪費，量中等（~1.5k/day）
+**?��?**：�? 確�?浪費，�?中�?（~1.5k/day�?
 
-### Suspect B — Touch keep-alive over-firing（setInterval 沒 cleanup 嫌疑）
+### Suspect B ??Touch keep-alive over-firing（setInterval �?cleanup 嫌�?�?
 
-**Evidence**：
-- [apps/frontend/src/components/business/dashboard/CardBuilderEditor/CardBuilderEditor.tsx](apps/frontend/src/components/business/dashboard/CardBuilderEditor/CardBuilderEditor.tsx) line 310-322：
+**Evidence**�?
+- [apps/frontend/src/components/business/dashboard/CardBuilderEditor/CardBuilderEditor.tsx](apps/frontend/src/components/business/dashboard/CardBuilderEditor/CardBuilderEditor.tsx) line 310-322�?
 
 ```ts
 // Touch immediately on mount / cardId change
@@ -162,157 +162,157 @@ touchTimerRef.current = setInterval(() => cardService.touch(cardId), 5 * 60 * 10
 return () => { if (touchTimerRef.current) clearInterval(touchTimerRef.current); };
 ```
 
-- Cleanup 有寫，但 **React StrictMode** 在開發模式下 double-invoke effect，導致可能出現：
-  - Effect 1: mount → setInterval #1（5min tick）
+- Cleanup ?�寫，�? **React StrictMode** ?��??�模式�? double-invoke effect，�??�可?�出?��?
+  - Effect 1: mount ??setInterval #1�?min tick�?
   - Cleanup 1: clearInterval #1
-  - Effect 2: mount → setInterval #2
+  - Effect 2: mount ??setInterval #2
 
-  這在 prod mode 不會發生，但**若 cleanup 漏掉**（e.g. 早期版本沒有 cleanup return），就會多 timer 疊加。
+  ?�在 prod mode 不�??��?，�?**??cleanup 漏�?**（e.g. ?��??�本沒�? cleanup return）�?就�?�?timer ?��???
 
-**Live tail 證據不足**：15 秒 window 內沒抓到 PATCH `/api/cards/:id/touch` request，所以無法直接驗證「touch over-firing」。需要 48h 歷史 log 才能確認。
+**Live tail 證�?不足**�?5 �?window ?��??�到 PATCH `/api/cards/:id/touch` request，�?以無法直?��?證「touch over-firing?�。�?�?48h 歷史 log ?�能確�???
 
-**計算（保守）**：
-- 假設 10 active editor sessions × 8 hr 工作天
-- 每 session：mount 1 touch + 12 interval touches/hr × 8 = 97 touches
-- 10 × 97 = **970 touches/day**
-- 每 touch = 5 SQL = **4,850 SQL/day from touch alone**
+**計�?（�?守�?**�?
+- ?�設 10 active editor sessions ? 8 hr 工�?�?
+- �?session：mount 1 touch + 12 interval touches/hr ? 8 = 97 touches
+- 10 ? 97 = **970 touches/day**
+- �?touch = 5 SQL = **4,850 SQL/day from touch alone**
 
-**判定**：⚠️ 需要 48h log 驗證；即使 touch frequency 正確，每天也消耗 ~5k queries（10-15% of budget）。
+**?��?**：�?�??��?48h log 驗�?；即�?touch frequency �?��，�?天�?消�?~5k queries�?0-15% of budget）�?
 
-### Suspect C — Step 4 / Step 5 autosave 觸發 PUT storms
+### Suspect C ??Step 4 / Step 5 autosave 觸發 PUT storms
 
-**Evidence**：
-- [CardBuilderEditor.tsx](apps/frontend/src/components/business/dashboard/CardBuilderEditor/CardBuilderEditor.tsx) line 175-275 有 Step 4 / Step 5 autosave effect
-- Debounce 1s + JSON.stringify snapshot diff（per Rule 030/031/032 已修過 race condition）
-- 每個 PUT = 5 SQL
+**Evidence**�?
+- [CardBuilderEditor.tsx](apps/frontend/src/components/business/dashboard/CardBuilderEditor/CardBuilderEditor.tsx) line 175-275 ??Step 4 / Step 5 autosave effect
+- Debounce 1s + JSON.stringify snapshot diff（per Rule 030/031/032 已修??race condition�?
+- 每�?PUT = 5 SQL
 
-**Live tail 證據不足**：15 秒 window 內沒抓到 PUT /api/cards/:id。
+**Live tail 證�?不足**�?5 �?window ?��??�到 PUT /api/cards/:id??
 
-**計算**：
-- 假設 10 active editors，每個 session 1 小時，平均 30 PUTs（name + step4 + step5 + step6 合計）
-- 10 × 30 = 300 PUTs/day
-- 300 × 5 = **1,500 SQL/day from autosave**
+**計�?**�?
+- ?�設 10 active editors，�???session 1 小�?，平??30 PUTs（name + step4 + step5 + step6 ?��?�?
+- 10 ? 30 = 300 PUTs/day
+- 300 ? 5 = **1,500 SQL/day from autosave**
 
-**判定**：⚠️ 量中等，但**沒看到 retry storm** 的跡象（debounce + snapshot diff 正確運作）。
+**?��?**：�?�??�中等�?�?*沒�???retry storm** ?�跡象�?debounce + snapshot diff �?��?��?）�?
 
-### Suspect D — Cron handler 內部 SQL 累積
+### Suspect D ??Cron handler ?�部 SQL 累�?
 
-**Evidence**：
-- 每 tick 5 SQL（已計算）
+**Evidence**�?
+- �?tick 5 SQL（已計�?�?
 - 288 ticks/day = **1,440 SQL/day fixed**
 
-**判定**：✅ 確認且**不可削減**（keep-alive 是必要的；billing-cycle 是必要的）
-- 但可以**優化**：cron handler 內 `app.fetch('/api/cron/billing-cycle')` 會額外觸發 `billingCycleCronRoute` 的 warmup SELECT 1，可以改成直接 call service（bypass HTTP route）省 1 warmup
-- 預期削減：288 × 1 = **288 SQL/day**
+**?��?**：�? 確�?�?*不可?��?**（keep-alive ?��?要�?；billing-cycle ?��?要�?�?
+- 但可�?*?��?**：cron handler ??`app.fetch('/api/cron/billing-cycle')` ?��?外觸??`billingCycleCronRoute` ??warmup SELECT 1，可以改?�直??call service（bypass HTTP route）�? 1 warmup
+- ?��??��?�?88 ? 1 = **288 SQL/day**
 
-### Suspect E — Auth login / register / refresh retry storm
+### Suspect E ??Auth login / register / refresh retry storm
 
-**Evidence**：
-- Live tail 抓到 ~10 次 POST /api/auth/refresh 在 15 秒
-- 換算：10 / 15s × 86400s = **57,600 refresh/day**！如果這是準的，這就是 **#1 殺手**
+**Evidence**�?
+- Live tail ?�到 ~10 �?POST /api/auth/refresh ??15 �?
+- ?��?�?0 / 15s ? 86400s = **57,600 refresh/day**！�??�這是準�?，這就??**#1 殺�?**
 
-**但需要交叉驗證**：
-- 這 10 次可能來自**同一個 active session 在 refresh window 內正常運作**
-- AuthService 的 refresh 應該在 token 過期前 60s 才觸發（[apps/frontend/src/services/authStore.ts:138](apps/frontend/src/services/authStore.ts) 有 retry 邏輯）
-- 若 token TTL 是 3600s，理論上每 session 每小時 refresh 1 次
+**但�?要交?��?�?*�?
+- ??10 次可?��???*?��???active session ??refresh window ?�正常�?�?*
+- AuthService ??refresh ?�該??token ?��???60s ?�觸?��?[apps/frontend/src/services/authStore.ts:138](apps/frontend/src/services/authStore.ts) ??retry ?�輯�?
+- ??token TTL ??3600s，�?論�?�?session 每�???refresh 1 �?
 
-**計算**：
-- 若 10 sessions × 24 refresh/day = 240 refresh/day（合理）
-- 240 × 5 SQL = **1,200 SQL/day from auth refresh**
+**計�?**�?
+- ??10 sessions ? 24 refresh/day = 240 refresh/day（�??��?
+- 240 ? 5 SQL = **1,200 SQL/day from auth refresh**
 
-但若真的有 57,600 refresh/day：
-- 57,600 × 5 SQL = **288,000 SQL/day** → 早就炸 100k quota 了，所以**這個數字不真實**
+但若?��???57,600 refresh/day�?
+- 57,600 ? 5 SQL = **288,000 SQL/day** ???�就??100k quota 了�??��?*?�個數字�??�實**
 
-**判定**：⚠️ 需要 48h 歷史 log 驗證實際 refresh 數量。15 秒 window 樣本太短可能誤判（剛好抓到 refresh burst）。
+**?��?**：�?�??��?48h 歷史 log 驗�?實�? refresh ?��???5 �?window �?��太短?�能誤判（�?好�???refresh burst）�?
 
 ---
 
-## § 4. 量化 ranking
+## § 4. ?��? ranking
 
-### 4.1 Top consumer 排序（基於程式碼 mapping + 樣本觀察）
+### 4.1 Top consumer ?��?（基?��?式碼 mapping + �?��觀察�?
 
-| Rank | Consumer | Daily SQL 估算 | % of total | Evidence type |
+| Rank | Consumer | Daily SQL 估�? | % of total | Evidence type |
 |---|---|---|---|---|
-| **#1** | Card routes 的 `findTenantById`（10 routes × N requests/day）| ~25,000-40,000 | 29-46% | Code static |
-| **#2** | Card routes 的第二個 `getDb()` warmup（沒用 `getDbForRequest`）| ~10,000-15,000 | 11-17% | Code static |
-| **#3** | Image/logo 重複 fetch（每 user 行為 = 6 HTTP requests，每個 3-4 SQL）| ~5,000-10,000 | 6-11% | Live tail + code |
-| **#4** | Touch keep-alive（10 sessions × ~100 touches/day × 5 SQL）| ~4,850 | 6% | Code static |
-| **#5** | Autosave PUTs（10 editors × 30 PUTs/session × 5 SQL）| ~1,500 | 2% | Code static |
-| **#6** | Cron（fixed 288 ticks/day × 5 SQL）| 1,440 | 2% | Code static |
-| **#7** | Auth login/register/refresh（~240 events × 5-9 SQL）| ~1,500 | 2% | Code static |
-| 其他 | `/health`, 404 errors, etc. | 估 ~5,000-10,000 | 6-12% | — |
-| | **Total 估算** | **~54,000-83,000** | | |
+| **#1** | Card routes ??`findTenantById`�?0 routes ? N requests/day）| ~25,000-40,000 | 29-46% | Code static |
+| **#2** | Card routes ?�第二�?`getDb()` warmup（�???`getDbForRequest`）| ~10,000-15,000 | 11-17% | Code static |
+| **#3** | Image/logo ?��? fetch（�? user 行為 = 6 HTTP requests，�???3-4 SQL）| ~5,000-10,000 | 6-11% | Live tail + code |
+| **#4** | Touch keep-alive�?0 sessions ? ~100 touches/day ? 5 SQL）| ~4,850 | 6% | Code static |
+| **#5** | Autosave PUTs�?0 editors ? 30 PUTs/session ? 5 SQL）| ~1,500 | 2% | Code static |
+| **#6** | Cron（fixed 288 ticks/day ? 5 SQL）| 1,440 | 2% | Code static |
+| **#7** | Auth login/register/refresh（~240 events ? 5-9 SQL）| ~1,500 | 2% | Code static |
+| ?��? | `/health`, 404 errors, etc. | �?~5,000-10,000 | 6-12% | ??|
+| | **Total 估�?** | **~54,000-83,000** | | |
 
-**注意**：這個估算的上下界範圍大，主因是**沒有 48h 歷史 log**。但即使取保守下限 54k，要解釋 87k 仍需要額外的 30k 來源。可能候選：
-- 大量 `findTenantById` lookup 在非 card routes（me.ts、refresh.ts 等）
-- 開發期間的 hot reload 觸發額外 cron invocations
-- wrangler dev local testing 連到 production Hyperdrive（不太可能但要排除）
+**注�?**：這個估算�?上�??��??�大，主?�是**沒�? 48h 歷史 log**?��??�使?��?守�???54k，�?�?? 87k 仍�?要�?外�? 30k 來�??�可?�候選�?
+- 大�? `findTenantById` lookup ?��? card routes（me.ts?�refresh.ts 等�?
+- ?�發?��???hot reload 觸發額�? cron invocations
+- wrangler dev local testing ??�� production Hyperdrive（�?太可?��?要�??��?
 
-### 4.2 不重複計算（已扣除的部分）
+### 4.2 不�?複�?算�?已扣?��??��?�?
 
-- ❌ isTokenRevoked 5s cache → 穩態只付 warmup，不重複計入
-- ❌ `/health` → 0 SQL
-- ❌ `/api/cron/billing-cycle` 內 `app.fetch('/health')` → 0 SQL
-
----
-
-## § 5. 建議（只列選項，不實作 — scope = diagnose_only）
-
-> 這些建議**未經實作驗證**。Fix scope 屬於後續 session。
-
-### Option 1（高槓桿、低風險 — 預期削減 ~50%）
-
-**A.** 刪除所有 10 個 card route 的 `findTenantById` lookup（直接用 `user.tenantId` 字串比對）
-   - 影響範圍：`apps/backend/src/modules/cards/routes/{create,getById,list,getLatestDraft,update,touch,publish,delete,getImage,generate-upload-url}.ts`
-   - 每個 route 省 1 SELECT × N requests
-   - 預期削減：~25k-40k queries/day
-   - 風險：低（`user.tenantId` 已是 JWT 信任欄位 per `runs/decisions/2026-09-09-jwt-tenant-id-trust.md`）
-
-**B.** 把所有 `getDb(c.env.HYPERDRIVE)` 改成 `getDbForRequest(c)`（用既有 helper）
-   - 影響範圍：所有 routes
-   - 每個 request 省 1 warmup
-   - 預期削減：~10k-15k queries/day
-   - 風險：低（helper 已存在，只是 routes 沒用）
-
-### Option 2（中槓桿、中風險 — 預期削減 ~10%）
-
-**C.** Image/logo fetch 加 in-process cache（避免同個 `v=` 重複 fetch）
-   - 影響範圍：backend getImage route 或前端組件
-   - 預期削減：~5k-10k queries/day
-   - 風險：中（cache key 設計要正確，否則 stale）
-
-### Option 3（低槓桿、低風險 — 預期削減 ~2%）
-
-**D.** Cron handler 內部 bypass `app.fetch('/api/cron/billing-cycle')`，直接 call service
-   - 影響範圍：`apps/backend/src/index.ts` line 191-202
-   - 預期削減：288 queries/day
-   - 風險：低（純 refactor）
-
-### Option 4（不建議）
-
-- ❌ 降低 touch frequency（5min → 15min）：會縮短 draft TTL keep-alive window
-- ❌ 提高 autosave debounce（1s → 3s）：會讓 Step 4/5 typing 期間遺失資料
-- ❌ 降低 cron frequency（5min → 15min）：會增加 cold start 風險（Rule 036 §9）
+- ??isTokenRevoked 5s cache ??穩�??��? warmup，�??��?計入
+- ??`/health` ??0 SQL
+- ??`/api/cron/billing-cycle` ??`app.fetch('/health')` ??0 SQL
 
 ---
 
-## § 6. 未驗證假設
+## § 5. 建議（只?�選?��?不實�???scope = diagnose_only�?
 
-| 假設 | 信心度 | 驗證方法 |
+> ?��?建議**?��?實�?驗�?**?�Fix scope 屬於後�? session??
+
+### Option 1（�?槓桿?��?風險 ???��??��? ~50%�?
+
+**A.** ?�除?�??10 ??card route ??`findTenantById` lookup（直?�用 `user.tenantId` 字串比�?�?
+   - 影響範�?：`apps/backend/src/modules/cards/routes/{create,getById,list,getLatestDraft,update,touch,publish,delete,getImage,generate-upload-url}.ts`
+   - 每�?route ??1 SELECT ? N requests
+   - ?��??��?：~25k-40k queries/day
+   - 風險：�?（`user.tenantId` 已是 JWT 信任欄�? per `runs/decisions/2026-09-09-jwt-tenant-id-trust.md`�?
+
+**B.** ?��???`getDb(c.env.HYPERDRIVE)` ?��? `getDbForRequest(c)`（用?��? helper�?
+   - 影響範�?：�???routes
+   - 每�?request ??1 warmup
+   - ?��??��?：~10k-15k queries/day
+   - 風險：�?（helper 已�??��??�是 routes 沒用�?
+
+### Option 2（中槓桿?�中風險 ???��??��? ~10%�?
+
+**C.** Image/logo fetch ??in-process cache（避?��???`v=` ?��? fetch�?
+   - 影響範�?：backend getImage route ?��?端�?�?
+   - ?��??��?：~5k-10k queries/day
+   - 風險：中（cache key 設�?要正確�??��? stale�?
+
+### Option 3（�?槓桿?��?風險 ???��??��? ~2%�?
+
+**D.** Cron handler ?�部 bypass `app.fetch('/api/cron/billing-cycle')`，直??call service
+   - 影響範�?：`apps/backend/src/index.ts` line 191-202
+   - ?��??��?�?88 queries/day
+   - 風險：�?（�? refactor�?
+
+### Option 4（�?建議�?
+
+- ???��? touch frequency�?min ??15min）�??�縮??draft TTL keep-alive window
+- ???��? autosave debounce�?s ??3s）�??��? Step 4/5 typing ?��??�失資�?
+- ???��? cron frequency�?min ??15min）�??��???cold start 風險（Rule 036 §9�?
+
+---
+
+## § 6. ?��?證�?�?
+
+| ?�設 | 信�?�?| 驗�??��? |
 |---|---|---|
-| Live tail 15 秒 window 的 10 個 refresh 是「正常的 active session refresh」而非 retry storm | 中 | 拉 48h 歷史 log 計算 `auth/refresh` 的 daily count |
-| Touch keep-alive setInterval 沒 double-firing | 中 | 拉 48h `PATCH /api/cards/:id/touch` count，看每 5 分鐘桶內 count 是否等於 active editor session 數 |
-| Image/logo 6 個 warmup 是「同一 user 行為的多重 fetch」而非「單 request 重複 warmup」 | 中 | 用 `--header` filter 看同一 `v=` 是否真的對應多個 HTTP request，或單個 request 內部就 fire 多次 |
-| 沒有 `findTenantById` 在其他 routes（pass / billingCycle）被同樣浪費 | 高（已 grep 過）| 已在 Phase 3 audit 中確認只在 10 個 card routes 出現 |
-| 開發模式 hot reload 不會額外消耗 Hyperdrive quota | 低 | 不適用於 production；只影響 local dev |
+| Live tail 15 �?window ??10 ??refresh ?�「正常�? active session refresh?�而�? retry storm | �?| ??48h 歷史 log 計�? `auth/refresh` ??daily count |
+| Touch keep-alive setInterval �?double-firing | �?| ??48h `PATCH /api/cards/:id/touch` count，�?�?5 ?��?桶內 count ?�否等於 active editor session ??|
+| Image/logo 6 ??warmup ?�「�?一 user 行為?��???fetch?�而�??�單 request ?��? warmup??| �?| ??`--header` filter ?��?一 `v=` ?�否?��?對�?多�?HTTP request，�??��?request ?�部�?fire 多次 |
+| 沒�? `findTenantById` ?�其�?routes（pass / billingCycle）被?�樣浪費 | 高�?�?grep ?��?| 已在 Phase 3 audit 中確認只??10 ??card routes ?�現 |
+| ?�發模�? hot reload 不�?額�?消�?Hyperdrive quota | �?| 不適?�於 production；只影響 local dev |
 
 ---
 
-## § 7. 附錄：用戶後續可手動跑的 query
+## § 7. ?��?：用?��?續可?��?跑�? query
 
-若要從 Cloudflare Dashboard 直接驗證（繞過 MCP auth 問題）：
+?��?�?Cloudflare Dashboard ?�接驗�?（�???MCP auth ?��?）�?
 
-### Query 1 — 過去 48h HTTP request volume by route
+### Query 1 ???�去 48h HTTP request volume by route
 
 ```
 GraphQL endpoint: https://api.cloudflare.com/client/v4/accounts/b37054989122d58d65ad27681882b470/workers/observability/...
@@ -323,27 +323,27 @@ Query body:
 }
 ```
 
-### Query 2 — Workers Logs API (REST)
+### Query 2 ??Workers Logs API (REST)
 
 ```
 GET https://api.cloudflare.com/client/v4/accounts/b37054989122d58d65ad27681882b470/workers/scripts/saome-backend/observability/logs?start=2026-09-09T00:00:00Z&end=2026-09-11T00:00:00Z
 ```
 
-### Query 3 — 直接用 wrangler dev / wrangler tail 觀察 live pattern
+### Query 3 ???�接??wrangler dev / wrangler tail 觀�?live pattern
 
 ```bash
-# 觀察 live touch pattern（10 分鐘 window）
+# 觀�?live touch pattern�?0 ?��? window�?
 cd apps/backend
 npx wrangler tail saome-backend --method PATCH --search "touch"
 
-# 觀察 image/logo live pattern
+# 觀�?image/logo live pattern
 npx wrangler tail saome-backend --method GET --search "image/logo"
 ```
 
-### Query 4 — Postgres 端 pg_stat_statements
+### Query 4 ??Postgres �?pg_stat_statements
 
 ```sql
--- 在 Supabase SQL editor 跑（需要 superuser access）
+-- ??Supabase SQL editor 跑�??��?superuser access�?
 SELECT
   substring(query for 60) AS query_preview,
   calls,
@@ -356,25 +356,25 @@ LIMIT 20;
 
 ---
 
-## § 8. 觸發關鍵字對齊
+## § 8. 觸發?�鍵字�?�?
 
-本報告涉及：
-- `.cursor/rules/036-worker-runtime-cors-defense.mdc`（cron keep-alive 行為）
-- `.cursor/rules/030-effect-first-run-not-trustworthy.mdc`（autosave baseline 行為）
-- `.cursor/rules/031-long-timer-async-fetch.mdc`（setInterval 雷區）
-- `.cursor/rules/032-backend-jsonb-merge-silent-killer.mdc`（PUT race 條件）
-- `.cursor/rules/000-modular-design.mdc` Part B（backend route/service/db 分層）
-- `runs/decisions/2026-09-09-jwt-tenant-id-trust.md`（JWT tenantId 信任 → 解釋為何 `findTenantById` 是冗餘）
+?�報?��??��?
+- `.cursor/rules/036-worker-runtime-cors-defense.mdc`（cron keep-alive 行為�?
+- `.cursor/rules/030-effect-first-run-not-trustworthy.mdc`（autosave baseline 行為�?
+- `.cursor/rules/031-long-timer-async-fetch.mdc`（setInterval ?��?�?
+- `.cursor/rules/032-backend-jsonb-merge-silent-killer.mdc`（PUT race 條件�?
+- `.cursor/rules/000-modular-design.mdc` Part B（backend route/service/db ?�層�?
+- `runs/decisions/2026-09-09-jwt-tenant-id-trust.md`（JWT tenantId 信任 ??�???��? `findTenantById` ?��?餘�?
 
 ---
 
-## § 9. 下一步（超出 diagnose_only scope，建議新 session 處理）
+## § 9. 下�?步�?超出 diagnose_only scope，建議新 session ?��?�?
 
-1. **拉 48h 歷史 log** 驗證 § 6 的 4 個假設
-2. **實作 Option 1**（刪 `findTenantById` + 改用 `getDbForRequest`）→ 預期日查詢量從 87k 降至 35k
-3. **加 conformance test**：每個 route 的 SQL count baseline 測試（mock postgres.js，計算 sql\`...\` 呼叫次數）
-4. **更新 rule**：把「card route 必須用 `getDbForRequest(c)`」加進 `.cursor/rules/000-modular-design.mdc` 或新 rule
-5. **monitoring**：在 wrangler log 加一行 `[sql-count] route={x} queries={n}` 結構化 log，方便日後從 WO 拉統計
+1. **??48h 歷史 log** 驗�? § 6 ??4 ?��?�?
+2. **實�? Option 1**（刪 `findTenantById` + ?�用 `getDbForRequest`）�? ?��??�查詢�?�?87k ?�至 35k
+3. **??conformance test**：�???route ??SQL count baseline 測試（mock postgres.js，�?�?sql\`...\` ?�叫次數�?
+4. **?�新 rule**：�??�card route 必�???`getDbForRequest(c)`?��???`.cursor/rules/000-modular-design.mdc` ?�新 rule
+5. **monitoring**：在 wrangler log ?��?�?`[sql-count] route={x} queries={n}` 結�???log，方便日後�? WO ?�統�?
 
 ---
 
@@ -420,3 +420,99 @@ LIMIT 20;
 **���]����**�]�Y�K�L live evidence�Acode-static �Ҿڨ����j�^�C**�i Phase 1 �����@ Option 1**�A�w���d�� ~50% queries�]87k �� ~35k/day�^�C
 
 Phase 3 structured log deploy �� 24h �N�ɤW image/logo �h�� fetch �� live �ҾڡC
+
+
+
+---
+
+## 禮 11. Phase 1-4 Fix Implementation (2026-09-11 fix session, branch fix/hyperdrive-query-spike-20260911)
+
+### 禮 11.1 Phase 1 ??Option 1 Implementation
+
+**File changes (11 files, +70/-77 lines):**
+
+- `apps/backend/src/modules/cards/routes/{create,getById,list,getLatestDraft,update,touch,publish,delete,getImage,generate-upload-url}.ts` ??`getDb(c.env.HYPERDRIVE)` ??`getDbForRequest(c)`; delete `findTenantById` lookup, use `user.tenantId` string comparison
+- `apps/backend/src/shared/middleware/auth.ts` ??`getDb(c.env.HYPERDRIVE)` ??`getDbForRequest(c)`; add `tenantId?: string` to `AuthenticatedUser` interface
+- `apps/backend/src/shared/db/client.ts` ??extend `getDbForRequest` parameter type
+
+**findTenantById reference count: 16 ??5** (1 def + 4 uses: me.ts, refreshService.ts, tenants.ts)
+
+### 禮 11.2 Phase 2 ??SQL Count Baseline Tests (13 new tests)
+
+- `apps/backend/src/modules/cards/tests/sql-count-baseline.test.ts` (8 tests)
+- `apps/backend/src/modules/auth/tests/sql-count-baseline.test.ts` (5 tests)
+
+Key assertion (REGRESSION GUARD):
+
+```ts
+for (const call of sqlCalls) {
+  expect(call).not.toMatch(/FROM tenants/i);
+  expect(call).not.toMatch(/UPDATE tenants/i);
+  expect(call).not.toMatch(/INSERT INTO tenants/i);
+  expect(call).not.toMatch(/DELETE FROM tenants/i);
+}
+```
+
+### 禮 11.3 Phase 3 ??Structured Log [sql-count]
+
+**New/modified files (3):**
+- `apps/backend/src/shared/middleware/sqlCount.ts` ??emits `[sql-count] route=METHOD path queries=N status=S` after each request
+- `apps/backend/src/shared/db/client.ts` ??adds `_queryCounters` WeakMap + `attachQueryCounter` Proxy
+- `apps/backend/src/index.ts` ??mounts `sqlCountMiddleware` after requestId
+
+### 禮 11.4 Phase 4 ??Verification
+
+- typecheck: exit 0
+- tests: 225/225 passed (18 test files)
+- findTenantById grep in production: 16 ??5
+- getDb(c.env.HYPERDRIVE) grep in card routes: 10 ??0
+
+### 禮 11.5 [sql-count] Structured Log ??How to Query from Cloudflare
+
+**Cloudflare Dashboard:**
+
+```
+Workers & Pages ??saome-backend ??Logs ??Logs tab
+filter: "[sql-count]"
+aggregate: by route (path field)
+```
+
+**wrangler tail (live, 30-min window):**
+
+```bash
+npx wrangler tail saome-backend --search "[sql-count]" --format pretty
+```
+
+**Workers Logs API REST (historical):**
+
+```
+GET https://api.cloudflare.com/client/v4/accounts/<ACCOUNT_ID>/workers/scripts/saome-backend/observability/logs?start=<START>&end=<END>
+filter server-side: text contains "[sql-count]"
+```
+
+**Expected per-route queries:**
+
+- POST /api/cards ??2 (warmup + INSERT)
+- GET /api/cards/:id ??2 (warmup + SELECT)
+- PUT /api/cards/:id ??3 (warmup + findTemplate + UPDATE)
+- GET /api/cards/:id/image/logo ??2 (warmup + findTemplate)
+- POST /api/auth/refresh ??3 (isTokenRevoked + findTenantById + getPassStatus ??cache dependent)
+- GET /api/auth/me ??2 (isTokenRevoked + findTenantById ??cache dependent)
+
+If `queries` count exceeds baseline, a refactor has reintroduced a multiplier (e.g. findTenantById added back, or getDbForRequest changed to getDb()).
+
+### 禮 11.6 Follow-up SOP (24h post-deploy)
+
+1. Run wrangler tail 24h post-deploy, group [sql-count] by route, sum queries.
+2. Compare to baseline 87k/day.
+   - ~35k/day (60% reduction) ??close 禮 9 follow-up
+   - 50-60k/day (40% reduction) ??enter Phase 5 (Option 2 image cache or Option 3 cron bypass)
+   - > 70k/day ??revert, find new bug
+   - Increased ??revert, find new bug
+3. If reduction insufficient, identify high-query routes via tail log, compare to baseline to find new offender.
+
+### 禮 11.7 Trigger Keywords (follow-up session)
+
+- "Hyperdrive reduction verification" ??run 禮 11.6 Step 1-2
+- "[sql-count] anomaly" ??run 禮 11.6 Step 3
+- "card route SQL increase" ??grep findTenantById (should be < 5), run cards/tests/sql-count-baseline.test.ts

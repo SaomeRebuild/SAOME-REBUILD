@@ -10,13 +10,24 @@ import type { Context, MiddlewareHandler } from 'hono';
 import type { HonoEnv } from '@/shared/types/bindings';
 import { verifyToken } from '@/shared/lib/jwt';
 import { AuthError, ForbiddenError } from '@/shared/lib/saomeError';
-import { getDb } from '@/shared/db/client';
+import { getDbForRequest } from '@/shared/db/client';
 import { isTokenRevoked } from '@/modules/auth/db/revokedTokens';
 
 export interface AuthenticatedUser {
   id: string;
   email: string;
   role: 'tenant' | 'admin';
+  /**
+   * Tenant ID carried in the verified JWT payload (Phase 3.2 — see
+   * `runs/decisions/2026-09-09-jwt-tenant-id-trust.md`). Trusted as the
+   * source of truth for tenant-scoped queries; no DB lookup needed.
+   *
+   * Type is optional to preserve the contract for callers that build an
+   * AuthenticatedUser manually without going through `requireAuth` (none
+   * today, but the test mocks do). Route handlers MUST treat this as
+   * present and gate on `!user.tenantId`.
+   */
+  tenantId?: string;
 }
 
 export const AUTH_USER_KEY = 'user' as const;
@@ -56,7 +67,12 @@ export const requireAuth: MiddlewareHandler<HonoEnv> = async (c, next) => {
 
   // Phase 2.2 (2026-09-05): check server-side revocation list. Cached
   // in-process (5s) so this is one DB hit per cold start, then free.
-  const sql = await getDb(c.env.HYPERDRIVE);
+  // Use getDbForRequest(c) so this `isTokenRevoked` SELECT shares the
+  // same per-request Sql instance as the downstream handler (Phase 1.1
+  // hyperdrive-query-spike fix — eliminates the redundant warmup
+  // SELECT 1 that `getDb()` would have triggered if the handler also
+  // called `getDb()`).
+  const sql = await getDbForRequest(c);
   if (await isTokenRevoked(sql, payload.jti)) {
     throw new AuthError('auth.error.tokenRevoked', 'Token has been revoked');
   }
