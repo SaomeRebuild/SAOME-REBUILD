@@ -473,6 +473,48 @@ export default {
         rewardValueRequired: 'Please enter the reward value',
       },
     },
+    // ===== Cashback card (2026-09-11) =====
+    // Points earned on spending, usable on next purchase (Cashback effect).
+    // Up to 5 tiers, each with name + thresholdSpend (0 allowed) + cashbackPercent (1-100).
+    cashback: {
+      intro: 'Set the cashback tiers for this card',
+      introHint: 'Members earn cashback % based on cumulative spending. Up to 5 tiers.',
+      tiersTitle: 'Cashback Tiers',
+      tiersHint: 'Define cashback % for each spending tier. Up to 5 tiers.',
+      addTier: 'Add Cashback Tier',
+      removeTier: 'Remove',
+      maxTiersReached: 'Maximum 5 tiers reached',
+      tier: {
+        nameTitle: 'Tier Name',
+        namePlaceholder: 'e.g. VIP, Gold Member',
+        nameCounter: '{{count}} / 40',
+        nameRequiredError: 'Please enter a tier name',
+        thresholdTitle: 'Cumulative Spending',
+        thresholdHelper: 'Members must spend N to qualify for this tier. Enter 0 = everyone qualifies.',
+        thresholdUnitTWD: 'NT$',
+        thresholdUnitZAR: 'R',
+        thresholdPlaceholder: 'e.g. 1000 (0 = no threshold)',
+        thresholdInvalidError: 'Threshold cannot be negative',
+        thresholdZeroHint: 'Enter 0 = no threshold, everyone qualifies',
+        percentTitle: 'Cashback %',
+        percentPlaceholder: 'e.g. 5',
+        percentUnit: '%',
+        percentRequiredError: 'Please enter cashback %',
+        percentInvalidError: 'Cashback % must be an integer between 1 and 100',
+        percentTooLargeError: 'Cashback % cannot exceed 100',
+      },
+      preview: {
+        tierUnknown: 'Please add at least one cashback tier',
+        noThreshold: 'Earn {{percent}}% cashback on every purchase',
+        withThreshold: 'Spend {{amount}} to earn {{percent}}% cashback',
+      },
+      validation: {
+        tierRequired: 'Please add at least one cashback tier',
+        tierNameRequired: 'Tier name is required',
+        thresholdInvalid: 'Cumulative spending cannot be negative',
+        percentInvalid: 'Cashback % must be an integer between 1 and 100',
+      },
+    },
   },
   // Step 7: Customize Table Card
   step7: {

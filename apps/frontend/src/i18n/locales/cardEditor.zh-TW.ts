@@ -472,6 +472,48 @@ export default {
         rewardValueRequired: '請輸入獎勵值',
       },
     },
+    // ===== Cashback 卡 (2026-09-11) =====
+    // 消費時產生點數，點數可在下次消費中使用，產生 Cashback 效果。
+    // 最多 5 組 tier，每個 tier 含 name + thresholdSpend (0允許) + cashbackPercent (1-100).
+    cashback: {
+      intro: '設定此現金回饋卡的回饋級距',
+      introHint: '會員依累計消費金額享有不同%數的現金回饋，最多可設定 5 組級距。',
+      tiersTitle: '現金回饋級距',
+      tiersHint: '設定會員依累計消費金額可享的回饋%數。最多可設定 5 組。',
+      addTier: '新增回饋級距',
+      removeTier: '移除',
+      maxTiersReached: '已達最高 5 組級距',
+      tier: {
+        nameTitle: '回饋等級',
+        namePlaceholder: '例如：VIP、金卡會員',
+        nameCounter: '{{count}} / 40',
+        nameRequiredError: '請輸入回饋等級名稱',
+        thresholdTitle: '累積消費',
+        thresholdHelper: '需累計消費滿 N 元才可享此級距回饋。輸入 0 = 不需累計，人人享有。',
+        thresholdUnitTWD: '元',
+        thresholdUnitZAR: 'R',
+        thresholdPlaceholder: '例如：1000（輸入 0 表示不需累計）',
+        thresholdInvalidError: '累積消費不可為負數',
+        thresholdZeroHint: '輸入 0 = 不需累計，人人有此回饋',
+        percentTitle: '回饋%',
+        percentPlaceholder: '例如：5',
+        percentUnit: '%',
+        percentRequiredError: '請輸入回饋%',
+        percentInvalidError: '回饋%需為 1-100 之間的整數',
+        percentTooLargeError: '回饋%不能超過 100',
+      },
+      preview: {
+        tierUnknown: '請新增至少一組現金回饋級距',
+        noThreshold: '不限消費金額享 {{percent}}% 現金回饋',
+        withThreshold: '累計消費滿 {{amount}} 享 {{percent}}% 現金回饋',
+      },
+      validation: {
+        tierRequired: '請至少新增 1 組現金回饋級距',
+        tierNameRequired: '回饋等級為必填欄位',
+        thresholdInvalid: '累積消費不可為負數',
+        percentInvalid: '回饋%需為 1-100 之間的整數',
+      },
+    },
   },
   // Step 7: 客製化桌牌
   step7: {
