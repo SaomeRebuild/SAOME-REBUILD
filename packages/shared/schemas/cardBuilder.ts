@@ -90,6 +90,40 @@ export const cardTypeExtensions = {
       .max(5)
       .optional(),
   }),
+  /**
+   * Cashback card (現金回饋卡) — Step 6 Cashback 卡實作 (2026-09-11).
+   * Simplest of the Step 6 sub-modules: each tier is a flat rule of
+   * "cumulative spend → cashback %". No earning-mode switch and no point
+   * accrual (the result IS a percentage discount).
+   *
+   * Differs from reward_card structurally:
+   *   - No "earningMode" (cashback is always spend-driven).
+   *   - No "rewardType / rewardValue / maxDiscountAmount" — cashback is a
+   *     direct % rebate.
+   *   - thresholdSpend = 0 IS a legitimate "default tier" (everyone
+   *     qualifies without needing to accumulate spending).
+   *
+   * Mirrors mu-plugins cashback-tier structure. See
+   * `packages/shared/constants/cashback-card.ts` for bounds and
+   * `shared/templateSettingsSchema.cashbackTiers` for full schema.
+   */
+  cashback_card: z.object({
+    // ===== Step 6 — 現金回饋卡邏輯 (2026-09-11) =====
+    /** 現金回饋級距陣列 (最多 5 組). */
+    cashbackTiers: z
+      .array(
+        z.object({
+          /** 回饋等級名稱. Required. */
+          name: z.string().min(1).max(40),
+          /** 累積消費門檻. 0 = 預設 tier, 人人享有. */
+          thresholdSpend: z.number().min(0),
+          /** 回饋%數, 整數 [1, 100]. */
+          cashbackPercent: z.number().int().min(1).max(100),
+        }),
+      )
+      .max(5)
+      .optional(),
+  }),
   multipass: z.object({
     stampGridRows: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).optional(),
     stampIconId: z.string().optional(),

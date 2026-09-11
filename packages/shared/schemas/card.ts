@@ -351,6 +351,46 @@ export const templateSettingsSchema = z.object({
     )
     .max(5)
     .optional(),
+  // ===== Step 6 — Cashback 卡 (2026-09-11, cashback_card only) =====
+  // Mirrors mu-plugins cashback-tier structure. The simplest of the Step 6
+  // sub-modules: each tier is a flat rule of "cumulative spend → cashback %",
+  // with NO earning-mode switch and NO point accrual (the result IS a
+  // percentage discount).
+  //
+  // Differs from reward_card structurally:
+  //   - No "earningMode" field (cashback is always spend-driven).
+  //   - No "rewardType / rewardValue" (cashback is always a percentage).
+  //   - No "maxDiscountAmount" (cashback is a direct % rebate, not a cap'd
+  //     discount).
+  //   - thresholdSpend = 0 IS a legitimate "default tier" (everyone qualifies
+  //     without needing to accumulate spending). This is intentional and
+  //     distinguishes cashback from reward_card where threshold > 0 always.
+  //
+  // Cross-references:
+  //   - packages/shared/constants/cashback-card.ts (single source of truth)
+  //   - packages/shared/schemas/cardBuilder.ts (cardTypeExtensions.cashback_card)
+  //   - apps/backend/src/modules/cards/schemas/request.ts (mirror)
+  //   - apps/backend/src/modules/cards/db/templates.ts (TemplateSettings interface)
+  /**
+   * 現金回饋級距陣列 (最多 5 組).
+   * 每個 tier 包含 name + thresholdSpend + cashbackPercent.
+   *
+   * 排序由前端 store 負責（thresholdSpend ASC，threshold=0 在最前）;
+   * 後端只驗證結構與範圍，不強制排序。
+   */
+  cashbackTiers: z
+    .array(
+      z.object({
+        /** 回饋等級名稱 (例: "VIP", "金卡會員"). Required. */
+        name: z.string().min(1).max(40),
+        /** 累積消費門檻 (in store currency units). 0 = 預設 tier, 人人享有. */
+        thresholdSpend: z.number().min(0),
+        /** 回饋%數, 整數 [1, 100]. */
+        cashbackPercent: z.number().int().min(1).max(100),
+      }),
+    )
+    .max(5)
+    .optional(),
 });
 
 export type TemplateSettings = z.infer<typeof templateSettingsSchema>;
