@@ -21,6 +21,7 @@ import { PassCardPreviewFooter } from './PassCardPreviewFooter';
 import { PassCardPreviewBack } from './PassCardPreviewBack';
 import { PassCardPreviewStrip } from './PassCardPreviewStrip';
 import { cn } from '@/lib/utils';
+import { useCardBuilderStore } from '../CardBuilderEditor.store';
 
 export function PassCardPreview({
   name,
@@ -45,6 +46,14 @@ export function PassCardPreview({
   compact = false,
   ...props
 }: PassCardPreviewProps) {
+  // cashbackTiers from store: used to derive firstCashbackTierName for the
+  // cashback_card memberLevel → reward override in PassCardPreviewBody.
+  // The parent (CardBuilderEditorWorkspace) does NOT pass firstCashbackTierName
+  // as a prop, so we always derive it here from the store. This is the
+  // single source of truth for the cashback_card preview value.
+  // (2026-09-12 cashback card member-level → reward refactor.)
+  const cashbackTiers = useCardBuilderStore((s) => s.cashbackTiers);
+  const firstCashbackTierName = cashbackTiers?.[0]?.name ?? '';
   return (
     <div
       className={cn(
@@ -119,6 +128,7 @@ export function PassCardPreview({
               cardType={cardType}
               rewardName={rewardName}
               firstRewardTierName={firstRewardTierName}
+              firstCashbackTierName={firstCashbackTierName}
             />
 
             {/* Footer / Barcode */}

@@ -33,13 +33,16 @@ export interface PassCardPreviewProps extends HTMLAttributes<HTMLDivElement> {
    *   - `PassCardPreviewStrip` — stamp grid icon row when
    *     `cardType ∈ {stamp_card, multipass}`.
    *   - `PassCardPreviewBody` — `memberLevel` slot becomes "獎勵 / Reward"
-   *     when cardType ∈ {stamp_card, reward_card}:
-   *       * stamp_card  → label = stampLabel, value = `rewardName`
+   *     when cardType ∈ {stamp_card, reward_card, cashback_card}:
+   *       * stamp_card    → label = stampLabel, value = `rewardName`
    *                        (Step 6 top-level `rewardName` input).
-   *       * reward_card → label = stampLabel, value = `firstRewardTierName`
+   *       * reward_card   → label = stampLabel, value = `firstRewardTierName`
    *                        (Step 6 `rewardTiers[0].name` — first row only).
+   *       * cashback_card  → label = stampLabel, value = `firstCashbackTierName`
+   *                        (Step 6 `cashbackTiers[0].name` — first row only).
    *     (2026-09-10 stamp card member-level → reward refactor; extended
-   *     2026-09-10 to also cover reward_card.)
+   *     2026-09-10 to also cover reward_card; extended 2026-09-12 to
+   *     also cover cashback_card.)
    */
   cardType?: CardType | null;
   /** 發卡機構標誌（可選，URL 或 SVG） */
@@ -103,6 +106,18 @@ export interface PassCardPreviewProps extends HTMLAttributes<HTMLDivElement> {
    * (2026-09-10 reward card member-level → reward refactor extension.)
    */
   firstRewardTierName?: string;
+  /**
+   * First cashback tier name from the editor store (Step 6
+   * `cashbackTiers[0].name`). Surfaced as the preview `value` for the
+   * `memberLevel` slot when `cardType === 'cashback_card'`. Optional — when
+   * omitted / empty / when the tier array is empty, the preview renders an
+   * empty value (matches stamp_card / reward_card empty-input UX). Differs
+   * from `rewardName` / `firstRewardTierName` only in the data source:
+   * cashback_card uses a multi-tier structure, so the value reads the
+   * FIRST tier's name instead of a top-level string.
+   * (2026-09-12 cashback card member-level → reward refactor.)
+   */
+  firstCashbackTierName?: string;
   /**
    * 卡片描述（背面 Section 1）。對應 templateSettings.description。
    * Step 4 card-info 2026-09-04。空字串或 undefined 時，預覽顯示 placeholder。
