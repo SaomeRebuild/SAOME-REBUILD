@@ -178,13 +178,16 @@ describe('CardBuilderEditorWorkspace — Step 6 (2026-09-07 stamp card logic int
     expect(onStepChange).toHaveBeenCalledWith(5);
   });
 
-  it('Next button is ALWAYS enabled for non-stamp card types (ComingSoon, always valid)', () => {
-    useCardBuilderStore.setState({ cardType: 'cashback_card' });
+  it('Next button is ALWAYS enabled for ComingSoon card types (always valid)', () => {
+    // 2026-09-11: cashback_card is now a fully implemented card type
+    // (CashbackCardLogic), so it's no longer in the ComingSoon branch.
+    // Use membership_card which is still ComingSoon.
+    useCardBuilderStore.setState({ cardType: 'membership_card' });
     render(
       <CardBuilderEditorWorkspace
         step={6}
         onStepChange={vi.fn()}
-        cardType="cashback_card"
+        cardType="membership_card"
         cardId="test-id"
         onCardTypeChange={vi.fn()}
         onSave={vi.fn()}
@@ -249,6 +252,8 @@ describe('CardBuilderEditorWorkspace — Step 6 (2026-09-07 stamp card logic int
       stampsPerSpendStamps: null,
       earningMode: null,
       rewardTiers: [],
+      // Cashback (2026-09-11) — not applicable for stamp_card, always sent empty.
+      cashbackTiers: [],
     });
 
     expect(onStepChange).toHaveBeenCalledWith(7);
@@ -304,6 +309,8 @@ describe('CardBuilderEditorWorkspace — Step 6 (2026-09-07 stamp card logic int
       // always sent (null for stamp_card since reward fields don't apply).
       earningMode: null,
       rewardTiers: [],
+      // Cashback (2026-09-11) — not applicable for stamp_card, always sent empty.
+      cashbackTiers: [],
     });
 
     expect(onStepChange).toHaveBeenCalledWith(7);
@@ -356,6 +363,8 @@ describe('CardBuilderEditorWorkspace — Step 6 (2026-09-07 stamp card logic int
       // 2026-09-09 mixed refactor: top-level earningMode (reward_card)
       earningMode: null,
       rewardTiers: [],
+      // Cashback (2026-09-11) — not applicable for stamp_card, always sent empty.
+      cashbackTiers: [],
     });
 
     expect(onStepChange).toHaveBeenCalledWith(7);
@@ -452,6 +461,8 @@ describe('CardBuilderEditorWorkspace — Step 6 (2026-09-07 stamp card logic int
           pointsPerSpendPoints: 1,
         },
       ],
+      // Cashback (2026-09-11) — not applicable for reward_card, always sent empty.
+      cashbackTiers: [],
     });
 
     expect(onStepChange).toHaveBeenCalledWith(7);
@@ -524,5 +535,192 @@ describe('CardBuilderEditorWorkspace — Step 6 (2026-09-07 stamp card logic int
       />,
     );
     expect(screen.getByText('step1.next')).toBeDisabled();
+  });
+
+  // ===== isCashbackStep6Valid tests (2026-09-11 Cashback card) =====
+  // Mirrors the isRewardStep6Valid tests pattern. Each tier has 3 fields:
+  //   name (required) + thresholdSpend (0..999_999_999) + cashbackPercent (1..100).
+  it('cashback_card: Next disabled when cashbackTiers is empty', () => {
+    useCardBuilderStore.setState({
+      cardType: 'cashback_card',
+      cashbackTiers: [],
+    });
+    render(
+      <CardBuilderEditorWorkspace
+        step={6}
+        onStepChange={vi.fn()}
+        cardType="cashback_card"
+        cardId="cb-empty"
+        onCardTypeChange={vi.fn()}
+        onSave={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('step1.next')).toBeDisabled();
+  });
+
+  it('cashback_card: Next disabled when tier name is empty', () => {
+    useCardBuilderStore.setState({
+      cardType: 'cashback_card',
+      cashbackTiers: [
+        { id: 't-1', name: '', thresholdSpend: 0, cashbackPercent: 5 },
+      ],
+    });
+    render(
+      <CardBuilderEditorWorkspace
+        step={6}
+        onStepChange={vi.fn()}
+        cardType="cashback_card"
+        cardId="cb-noname"
+        onCardTypeChange={vi.fn()}
+        onSave={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('step1.next')).toBeDisabled();
+  });
+
+  it('cashback_card: Next enabled for default tier (thresholdSpend=0) with name + valid percent', () => {
+    useCardBuilderStore.setState({
+      cardType: 'cashback_card',
+      cashbackTiers: [
+        { id: 't-1', name: '一般會員', thresholdSpend: 0, cashbackPercent: 1 },
+      ],
+    });
+    render(
+      <CardBuilderEditorWorkspace
+        step={6}
+        onStepChange={vi.fn()}
+        cardType="cashback_card"
+        cardId="cb-default"
+        onCardTypeChange={vi.fn()}
+        onSave={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('step1.next')).not.toBeDisabled();
+  });
+
+  it('cashback_card: Next enabled for multi-tier (sorted ASC by thresholdSpend)', () => {
+    useCardBuilderStore.setState({
+      cardType: 'cashback_card',
+      cashbackTiers: [
+        { id: 't-1', name: '一般', thresholdSpend: 0, cashbackPercent: 1 },
+        { id: 't-2', name: '銀卡', thresholdSpend: 1000, cashbackPercent: 3 },
+        { id: 't-3', name: '金卡', thresholdSpend: 5000, cashbackPercent: 5 },
+      ],
+    });
+    render(
+      <CardBuilderEditorWorkspace
+        step={6}
+        onStepChange={vi.fn()}
+        cardType="cashback_card"
+        cardId="cb-multi"
+        onCardTypeChange={vi.fn()}
+        onSave={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('step1.next')).not.toBeDisabled();
+  });
+
+  it('cashback_card: Next disabled when cashbackPercent < 1', () => {
+    useCardBuilderStore.setState({
+      cardType: 'cashback_card',
+      cashbackTiers: [
+        { id: 't-1', name: 'X', thresholdSpend: 0, cashbackPercent: 0 },
+      ],
+    });
+    render(
+      <CardBuilderEditorWorkspace
+        step={6}
+        onStepChange={vi.fn()}
+        cardType="cashback_card"
+        cardId="cb-pct-zero"
+        onCardTypeChange={vi.fn()}
+        onSave={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('step1.next')).toBeDisabled();
+  });
+
+  it('cashback_card: Next disabled when cashbackPercent > 100', () => {
+    useCardBuilderStore.setState({
+      cardType: 'cashback_card',
+      cashbackTiers: [
+        { id: 't-1', name: 'X', thresholdSpend: 0, cashbackPercent: 150 },
+      ],
+    });
+    render(
+      <CardBuilderEditorWorkspace
+        step={6}
+        onStepChange={vi.fn()}
+        cardType="cashback_card"
+        cardId="cb-pct-high"
+        onCardTypeChange={vi.fn()}
+        onSave={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('step1.next')).toBeDisabled();
+  });
+
+  it('cashback_card: handleNext forwards sanitized cashbackTiers (sorted ASC by thresholdSpend)', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    useCardBuilderStore.setState({
+      cardType: 'cashback_card',
+      // Note: deliberately unsorted — store sorts ASC on save.
+      cashbackTiers: [
+        { id: 't-1', name: '金卡', thresholdSpend: 5000, cashbackPercent: 5 },
+        { id: 't-2', name: '銀卡', thresholdSpend: 1000, cashbackPercent: 3 },
+        { id: 't-3', name: '一般', thresholdSpend: 0, cashbackPercent: 1 },
+      ],
+    });
+
+    const onStepChange = vi.fn();
+    render(
+      <CardBuilderEditorWorkspace
+        step={6}
+        onStepChange={onStepChange}
+        cardType="cashback_card"
+        cardId="cb-save"
+        onCardTypeChange={vi.fn()}
+        onSave={onSave}
+        onBack={vi.fn()}
+      />,
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByText('step1.next'));
+
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalledTimes(1);
+    });
+
+    expect(onSave).toHaveBeenCalledWith('cb-save', {
+      // Stamp fields (not applicable for cashback_card)
+      stampAccrualMode: null,
+      rewardName: '',
+      rewardType: null,
+      rewardValue: null,
+      maxDiscountAmount: null,
+      stampsPerVisitCount: null,
+      stampsPerVisitStamps: null,
+      stampsPerSpendAmount: null,
+      stampsPerSpendStamps: null,
+      // Reward fields (not applicable for cashback_card)
+      earningMode: null,
+      rewardTiers: [],
+      // 2026-09-11: Cashback tiers sorted ASC by thresholdSpend;
+      // 'id' is stripped (UI-only React key, not part of contract).
+      cashbackTiers: [
+        { name: '一般', thresholdSpend: 0, cashbackPercent: 1 },
+        { name: '銀卡', thresholdSpend: 1000, cashbackPercent: 3 },
+        { name: '金卡', thresholdSpend: 5000, cashbackPercent: 5 },
+      ],
+    });
+
+    expect(onStepChange).toHaveBeenCalledWith(7);
   });
 });

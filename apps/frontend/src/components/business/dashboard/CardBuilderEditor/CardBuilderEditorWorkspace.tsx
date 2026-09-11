@@ -159,14 +159,28 @@ export function CardBuilderEditorWorkspace({
    *       rewardTiers.length ≥ 1 with each tier identity complete
    *         (name.trim() !== '' && threshold > 0 && rewardType !== null
    *          && rewardValue > 0)
+   *
+   *   - cashback_card (2026-09-11):
+   *       cashbackTiers.length ≥ 1
+   *       each tier: name.trim() !== ''
+   *               && 0 ≤ thresholdSpend ≤ CASHBACK_THRESHOLD_MAX
+   *               && 1 ≤ cashbackPercent ≤ 100
    */
   function isStep6Valid(): boolean {
     const cardTypeValue = useCardBuilderStore.getState().cardType;
-    if (cardTypeValue !== 'stamp_card' && cardTypeValue !== 'multipass' && cardTypeValue !== 'reward_card') {
+    if (
+      cardTypeValue !== 'stamp_card' &&
+      cardTypeValue !== 'multipass' &&
+      cardTypeValue !== 'reward_card' &&
+      cardTypeValue !== 'cashback_card'
+    ) {
       return true;
     }
     if (cardTypeValue === 'reward_card') {
       return isRewardStep6Valid();
+    }
+    if (cardTypeValue === 'cashback_card') {
+      return isCashbackStep6Valid();
     }
     // stamp_card / multipass path
     const {
@@ -270,6 +284,33 @@ export function CardBuilderEditorWorkspace({
         }
       }
       // based_on_points: no extra per-tier checks needed.
+      return true;
+    });
+  }
+
+  /**
+   * CASHBACK 卡 Step 6 validation (2026-09-11).
+   *
+   * Mirrors packages/shared/constants/cashback-card.ts bounds:
+   *   - cashbackTiers.length ≥ 1
+   *   - each tier: name.trim() !== ''
+   *           && 0 ≤ thresholdSpend ≤ CASHBACK_THRESHOLD_MAX (=999_999_999)
+   *           && 1 ≤ cashbackPercent ≤ 100 (integer)
+   *
+   * thresholdSpend = 0 is a LEGITIMATE value (default tier, everyone
+   * qualifies). Validation only checks the upper bound.
+   */
+  function isCashbackStep6Valid(): boolean {
+    const { cashbackTiers } = useCardBuilderStore.getState();
+
+    if (!cashbackTiers || cashbackTiers.length === 0) return false;
+
+    return cashbackTiers.every((tier) => {
+      if (tier.name.trim() === '') return false;
+      if (tier.thresholdSpend < 0 || tier.thresholdSpend > 999_999_999) return false;
+      if (tier.cashbackPercent < 1 || tier.cashbackPercent > 100) return false;
+      // cashbackPercent must be an integer.
+      if (!Number.isInteger(tier.cashbackPercent)) return false;
       return true;
     });
   }
@@ -427,6 +468,7 @@ export function CardBuilderEditorWorkspace({
             stampsPerSpendStamps,
             earningMode,
             rewardTiers,
+            cashbackTiers,
           } = useCardBuilderStore.getState();
           // Strip `id` field from each reward tier before sending to backend
           // (id is a UI-only React key, not part of the data contract).
@@ -444,6 +486,17 @@ export function CardBuilderEditorWorkspace({
             pointsPerSpendAmount: tier.pointsPerSpendAmount ?? null,
             pointsPerSpendPoints: tier.pointsPerSpendPoints ?? null,
           }));
+          // 2026-09-11 Cashback: strip `id` from each cashback tier too.
+          // Sort by thresholdSpend ASC (threshold=0 first = default tier)
+          // so the persisted array matches the UI sort order.
+          const sanitizedCashbackTiers = cashbackTiers
+            .slice()
+            .sort((a, b) => a.thresholdSpend - b.thresholdSpend)
+            .map((tier) => ({
+              name: tier.name,
+              thresholdSpend: tier.thresholdSpend,
+              cashbackPercent: tier.cashbackPercent,
+            }));
           await onSave(cardId, {
             stampAccrualMode,
             rewardName,
@@ -463,6 +516,10 @@ export function CardBuilderEditorWorkspace({
             // per-tier earn rate fields (no per-tier earningMode).
             earningMode,
             rewardTiers: sanitizedRewardTiers,
+            // CASHBACK 卡 (2026-09-11) — only meaningful for cashback_card,
+            // but always sent so the DB always reflects the current store
+            // state. loadSettings coerces non-matching values back to [].
+            cashbackTiers: sanitizedCashbackTiers,
           });
           console.log('[handleNext] Step 6 card logic saved', {
             stampAccrualMode,
@@ -476,6 +533,7 @@ export function CardBuilderEditorWorkspace({
             stampsPerSpendStamps,
             earningMode,
             rewardTiers: sanitizedRewardTiers,
+            cashbackTiers: sanitizedCashbackTiers,
           });
         } catch (err) {
           // Don't block step transition — let the user proceed and retry later.
