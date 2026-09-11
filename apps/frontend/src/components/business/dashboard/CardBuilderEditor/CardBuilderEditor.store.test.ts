@@ -645,3 +645,203 @@ describe('CardBuilderEditor.store — Step 4 card-info state (2026-09-04)', () =
     expect(s.links).toEqual([]);
   });
 });
+
+// =============================================================================
+// Cashback Card Logic store tests (Step 6 — 2026-09-11)
+// =============================================================================
+//
+// Covers the cashback sub-module of Step 6 (cashback_card):
+//   - addCashbackTier / removeCashbackTier / updateCashbackTier / sortCashbackTiers
+//   - loadSettings defensive parsing of `cashbackTiers`
+//   - reset() returns to empty array
+//
+// Mirrors packages/shared/constants/cashback-card.ts source-of-truth bounds.
+// =============================================================================
+
+describe('CardBuilderEditor.store — Cashback Card Logic state (Step 6, 2026-09-11)', () => {
+  beforeEach(() => {
+    useCardBuilderStore.getState().reset();
+  });
+
+  describe('addCashbackTier', () => {
+    it('appends a new tier with default values', () => {
+      useCardBuilderStore.getState().addCashbackTier();
+      const s = useCardBuilderStore.getState();
+      expect(s.cashbackTiers.length).toBe(1);
+      expect(s.cashbackTiers[0]).toMatchObject({
+        name: '',
+        thresholdSpend: 0,
+        cashbackPercent: 1,
+      });
+      expect(typeof s.cashbackTiers[0].id).toBe('string');
+      expect(s.cashbackTiers[0].id.length).toBeGreaterThan(0);
+    });
+
+    it('is no-op when at MAX_CASHBACK_TIERS=5', () => {
+      // Add 5 tiers
+      for (let i = 0; i < 5; i++) {
+        useCardBuilderStore.getState().addCashbackTier();
+      }
+      expect(useCardBuilderStore.getState().cashbackTiers.length).toBe(5);
+
+      // 6th add is a no-op
+      useCardBuilderStore.getState().addCashbackTier();
+      expect(useCardBuilderStore.getState().cashbackTiers.length).toBe(5);
+    });
+  });
+
+  describe('removeCashbackTier', () => {
+    it('removes the matching tier by id', () => {
+      useCardBuilderStore.getState().addCashbackTier();
+      useCardBuilderStore.getState().addCashbackTier();
+      const [first, second] = useCardBuilderStore.getState().cashbackTiers;
+      useCardBuilderStore.getState().removeCashbackTier(first.id);
+      const remaining = useCardBuilderStore.getState().cashbackTiers;
+      expect(remaining.length).toBe(1);
+      expect(remaining[0].id).toBe(second.id);
+    });
+
+    it('does not auto-refill when the last tier is removed', () => {
+      useCardBuilderStore.getState().addCashbackTier();
+      const [only] = useCardBuilderStore.getState().cashbackTiers;
+      useCardBuilderStore.getState().removeCashbackTier(only.id);
+      expect(useCardBuilderStore.getState().cashbackTiers).toEqual([]);
+    });
+  });
+
+  describe('updateCashbackTier', () => {
+    let tierId: string;
+
+    beforeEach(() => {
+      useCardBuilderStore.getState().addCashbackTier();
+      tierId = useCardBuilderStore.getState().cashbackTiers[0].id;
+    });
+
+    it('updates name field', () => {
+      useCardBuilderStore.getState().updateCashbackTier(tierId, { name: 'VIP' });
+      expect(useCardBuilderStore.getState().cashbackTiers[0].name).toBe('VIP');
+    });
+
+    it('truncates name to CASHBACK_TIER_NAME_MAX_LENGTH=40', () => {
+      const long = 'A'.repeat(100);
+      useCardBuilderStore.getState().updateCashbackTier(tierId, { name: long });
+      expect(useCardBuilderStore.getState().cashbackTiers[0].name.length).toBe(40);
+    });
+
+    it('accepts thresholdSpend = 0 (legitimate default tier)', () => {
+      useCardBuilderStore.getState().updateCashbackTier(tierId, { thresholdSpend: 1000 });
+      useCardBuilderStore.getState().updateCashbackTier(tierId, { thresholdSpend: 0 });
+      expect(useCardBuilderStore.getState().cashbackTiers[0].thresholdSpend).toBe(0);
+    });
+
+    it('rejects thresholdSpend < 0 (keeps previous value)', () => {
+      useCardBuilderStore.getState().updateCashbackTier(tierId, { thresholdSpend: 1000 });
+      useCardBuilderStore.getState().updateCashbackTier(tierId, { thresholdSpend: -1 });
+      expect(useCardBuilderStore.getState().cashbackTiers[0].thresholdSpend).toBe(1000);
+    });
+
+    it('rejects thresholdSpend > CASHBACK_THRESHOLD_MAX', () => {
+      useCardBuilderStore
+        .getState()
+        .updateCashbackTier(tierId, { thresholdSpend: 999_999_999_999 });
+      expect(useCardBuilderStore.getState().cashbackTiers[0].thresholdSpend).toBe(
+        999_999_999,
+      );
+    });
+
+    it('rejects cashbackPercent > CASHBACK_PERCENT_MAX=100', () => {
+      useCardBuilderStore.getState().updateCashbackTier(tierId, { cashbackPercent: 101 });
+      // unchanged from default (1)
+      expect(useCardBuilderStore.getState().cashbackTiers[0].cashbackPercent).toBe(1);
+    });
+
+    it('rejects cashbackPercent < CASHBACK_PERCENT_MIN=1', () => {
+      useCardBuilderStore.getState().updateCashbackTier(tierId, { cashbackPercent: 50 });
+      useCardBuilderStore.getState().updateCashbackTier(tierId, { cashbackPercent: 0 });
+      // unchanged from 50 — but 0 is below min so rejected
+      expect(useCardBuilderStore.getState().cashbackTiers[0].cashbackPercent).toBe(50);
+    });
+
+    it('rounds cashbackPercent to integer', () => {
+      useCardBuilderStore.getState().updateCashbackTier(tierId, { cashbackPercent: 7.6 });
+      expect(useCardBuilderStore.getState().cashbackTiers[0].cashbackPercent).toBe(8);
+    });
+  });
+
+  describe('sortCashbackTiers', () => {
+    it('orders tiers by thresholdSpend ASC (threshold=0 first)', () => {
+      useCardBuilderStore.getState().addCashbackTier();
+      useCardBuilderStore.getState().addCashbackTier();
+      useCardBuilderStore.getState().addCashbackTier();
+      const [t1, t2, t3] = useCardBuilderStore.getState().cashbackTiers;
+
+      // Set thresholds: t1=5000, t2=0, t3=1000
+      useCardBuilderStore.getState().updateCashbackTier(t1.id, { thresholdSpend: 5000 });
+      useCardBuilderStore.getState().updateCashbackTier(t2.id, { thresholdSpend: 0 });
+      useCardBuilderStore.getState().updateCashbackTier(t3.id, { thresholdSpend: 1000 });
+
+      useCardBuilderStore.getState().sortCashbackTiers();
+      const sorted = useCardBuilderStore.getState().cashbackTiers;
+      expect(sorted.map((t) => t.thresholdSpend)).toEqual([0, 1000, 5000]);
+    });
+  });
+
+  describe('loadSettings — defensive parsing of cashbackTiers', () => {
+    it('rebuilds tiers from a valid array', () => {
+      useCardBuilderStore.getState().loadSettings({
+        cashbackTiers: [
+          { name: 'Gold', thresholdSpend: 5000, cashbackPercent: 10 },
+          { name: 'Default', thresholdSpend: 0, cashbackPercent: 1 },
+        ],
+      });
+      const s = useCardBuilderStore.getState();
+      expect(s.cashbackTiers.length).toBe(2);
+      // Sorted ASC so threshold=0 (Default) comes first
+      expect(s.cashbackTiers[0].name).toBe('Default');
+      expect(s.cashbackTiers[0].thresholdSpend).toBe(0);
+      expect(s.cashbackTiers[1].name).toBe('Gold');
+    });
+
+    it('preserves existing state when cashbackTiers is missing', () => {
+      useCardBuilderStore.getState().addCashbackTier();
+      const before = useCardBuilderStore.getState().cashbackTiers;
+      useCardBuilderStore.getState().loadSettings({ name: 'X' });
+      const after = useCardBuilderStore.getState().cashbackTiers;
+      expect(after).toEqual(before);
+    });
+
+    it('falls back to defaults for malformed tier entries', () => {
+      useCardBuilderStore.getState().loadSettings({
+        cashbackTiers: [
+          // name is not a string → ''
+          // thresholdSpend is negative → 0
+          // cashbackPercent is out of range → 1
+          { name: 123 as unknown as string, thresholdSpend: -5, cashbackPercent: 999 },
+        ],
+      });
+      const tier = useCardBuilderStore.getState().cashbackTiers[0];
+      expect(tier.name).toBe('');
+      expect(tier.thresholdSpend).toBe(0);
+      expect(tier.cashbackPercent).toBe(1);
+    });
+
+    it('caps array length at MAX_CASHBACK_TIERS=5', () => {
+      const long = Array.from({ length: 10 }, (_, i) => ({
+        name: `T${i}`,
+        thresholdSpend: i * 100,
+        cashbackPercent: 1,
+      }));
+      useCardBuilderStore.getState().loadSettings({ cashbackTiers: long });
+      expect(useCardBuilderStore.getState().cashbackTiers.length).toBe(5);
+    });
+  });
+
+  describe('reset()', () => {
+    it('returns cashbackTiers to empty array', () => {
+      useCardBuilderStore.getState().addCashbackTier();
+      useCardBuilderStore.getState().addCashbackTier();
+      useCardBuilderStore.getState().reset();
+      expect(useCardBuilderStore.getState().cashbackTiers).toEqual([]);
+    });
+  });
+});

@@ -2,8 +2,9 @@
  * Step6CardLogic — Generic dispatcher.
  *
  * Routes to the appropriate card-type-specific logic sub-module.
- * Implemented: `stamp_card` / `multipass` (StampCardLogic) and
- *              `reward_card` (RewardCardLogic).
+ * Implemented: `stamp_card` / `multipass` (StampCardLogic),
+ *              `reward_card` (RewardCardLogic),
+ *              `cashback_card` (CashbackCardLogic).
  * All other card types render a ComingSoon placeholder.
  *
  * Architecture (Rule 000 § A.1 L2 結構):
@@ -14,12 +15,14 @@
  * History:
  *   - 2026-09-07: First sub-module = StampCardLogic (集點卡).
  *   - 2026-09-09: Second sub-module = RewardCardLogic (獎勵卡).
+ *   - 2026-09-11: Third sub-module = CashbackCardLogic (現金回饋卡).
  */
 
 import { useTranslation } from 'react-i18next';
 import { useCardBuilderStore } from '../CardBuilderEditor.store';
 import { StampCardLogic } from './StampCardLogic';
 import { RewardCardLogic } from './RewardCardLogic';
+import { CashbackCardLogic } from './CashbackCardLogic';
 import { Step6CardLogicComingSoon } from './Step6CardLogicComingSoon';
 import type { Step6CardLogicProps } from './Step6CardLogic.types';
 
@@ -29,6 +32,7 @@ import type { Step6CardLogicProps } from './Step6CardLogic.types';
  * cardType === null (no type selected yet) → ComingSoon
  * cardType === 'stamp_card' | 'multipass' → StampCardLogic (集點卡)
  * cardType === 'reward_card'              → RewardCardLogic (獎勵卡)
+ * cardType === 'cashback_card'            → CashbackCardLogic (現金回饋卡)
  * Other card types → ComingSoon (not yet implemented)
  */
 export function Step6CardLogic({ showValidation }: Step6CardLogicProps) {
@@ -68,6 +72,20 @@ export function Step6CardLogic({ showValidation }: Step6CardLogicProps) {
           <p className="text-xs text-muted-foreground">{t('step6.reward.introHint')}</p>
         </div>
         <RewardCardLogic showValidation={showValidation} />
+      </div>
+    );
+  }
+
+  // cashback_card → tier-based % cashback editor (2026-09-11).
+  if (cardType === 'cashback_card') {
+    return (
+      <div className="flex min-w-0 flex-col gap-6">
+        {/* Step 6 hero intro — cashback-card-specific copy */}
+        <div className="flex flex-col gap-1.5 rounded-lg border border-dashed border-border bg-muted/30 p-4">
+          <p className="text-sm font-medium text-foreground">{t('step6.cashback.intro')}</p>
+          <p className="text-xs text-muted-foreground">{t('step6.cashback.introHint')}</p>
+        </div>
+        <CashbackCardLogic showValidation={showValidation} />
       </div>
     );
   }

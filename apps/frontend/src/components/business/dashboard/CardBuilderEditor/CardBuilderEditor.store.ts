@@ -30,10 +30,17 @@ import {
   POINTS_PER_SPEND_MIN_AMOUNT,
   POINTS_PER_SPEND_MIN_POINTS,
   MAX_DISCOUNT_AMOUNT_MIN,
+  MAX_CASHBACK_TIERS,
+  CASHBACK_TIER_NAME_MAX_LENGTH,
+  CASHBACK_PERCENT_MIN,
+  CASHBACK_PERCENT_MAX,
+  CASHBACK_THRESHOLD_MIN,
+  CASHBACK_THRESHOLD_MAX,
   type AccrualMode,
   type RewardType,
   type EarningMode,
   type RewardTierShape,
+  type CashbackTierShape,
 } from '@saome/shared/constants';
 import type { LocationInput } from '@saome/shared/logic/locations';
 import { normalizeHex } from '@saome/shared/logic/color';
@@ -443,6 +450,38 @@ interface CardBuilderState {
   /** 依 threshold 由小到大排序（存檔前自動呼叫). */
   sortRewardTiers: () => void;
 
+  // ===== Step 6 — Cashback 卡邏輯 (2026-09-11, cashback_card only) =====
+  // UI dispatcher (`Step6CardLogic`) conditionally renders cashback-card editor
+  // when `cardType === 'cashback_card'`. Simplest of the three Step 6
+  // sub-modules: each tier is a flat rule of "cumulative spend → cashback %".
+  // No earning-mode switch, no point accrual, no rewardType/rewardValue
+  // (the result IS a percentage discount).
+  //
+  // Differs from reward_card:
+  //   - No `earningMode` (cashback is always spend-driven).
+  //   - No `rewardType / rewardValue / maxDiscountAmount`.
+  //   - thresholdSpend = 0 IS a legitimate "default tier" (everyone qualifies
+  //     without needing to accumulate spending).
+  //
+  // Guards:
+  //   - `addCashbackTier` is no-op at MAX_CASHBACK_TIERS=5 (matches backend schema cap).
+  //   - `removeCashbackTier` does NOT auto-refill (0-tier is valid for draft).
+  //   - `updateCashbackTier` rejects name > CASHBACK_TIER_NAME_MAX_LENGTH chars.
+  //   - `updateCashbackTier` rejects cashbackPercent < CASHBACK_PERCENT_MIN or > CASHBACK_PERCENT_MAX.
+  //   - `updateCashbackTier` rejects thresholdSpend < 0 (but allows 0 as legitimate default).
+  //   - `sortCashbackTiers` orders by thresholdSpend ASC (threshold=0 first).
+  /** 現金回饋級距陣列（最多 5 組）. Empty array = 尚未新增 tier. */
+  cashbackTiers: Array<CashbackTierShape & { id: string }>;
+
+  /** 新增一組空白現金回饋級距. 在 MAX_CASHBACK_TIERS=5 時為 no-op. */
+  addCashbackTier: () => void;
+  /** 移除指定 id 的現金回饋級距. 不會自動 refill. */
+  removeCashbackTier: (id: string) => void;
+  /** 更新指定 id 的現金回饋級距（partial patch）. */
+  updateCashbackTier: (id: string, patch: Partial<CashbackTierShape>) => void;
+  /** 依 thresholdSpend 由小到大排序（存檔前自動呼叫，threshold=0 在最前). */
+  sortCashbackTiers: () => void;
+
   /**
    * 從既有 template 的 settings 載入 store.
    *
@@ -649,6 +688,10 @@ const initialState = {
   // null inside each new tier — the user fills them after picking the mode.
   earningMode: null,
   rewardTiers: [],
+  // ===== Step 6 — Cashback 卡邏輯 (2026-09-11) =====
+  // cashbackTiers is empty array (user adds tiers via "新增回饋級距" button).
+  // Each tier: name + thresholdSpend (0 allowed = default tier) + cashbackPercent.
+  cashbackTiers: [],
 };
 
 /**
@@ -1052,6 +1095,89 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
       rewardTiers: [...state.rewardTiers].sort((a, b) => a.threshold - b.threshold),
     })),
 
+  // ===== Step 6 — Cashback 卡邏輯 setters (2026-09-11) =====
+  /**
+   * 新增一組空白 cashbackTier. 在 MAX_CASHBACK_TIERS=5 時為 no-op.
+   * 用 crypto.randomUUID() 當 id.
+   */
+  addCashbackTier: () =>
+    set((state) => {
+      if (state.cashbackTiers.length >= MAX_CASHBACK_TIERS) return {};
+      const newTier: CashbackTierShape & { id: string } = {
+        id:
+          typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : `cashback-tier-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        name: '',
+        thresholdSpend: 0,
+        cashbackPercent: 1,
+      };
+      return { cashbackTiers: [...state.cashbackTiers, newTier] };
+    }),
+  /** 移除指定 id 的 cashbackTier. 不會自動 refill. */
+  removeCashbackTier: (id) =>
+    set((state) => ({
+      cashbackTiers: state.cashbackTiers.filter((tier) => tier.id !== id),
+    })),
+  /**
+   * 更新指定 id 的 cashbackTier（partial patch）.
+   * Guards:
+   *   - name: slice to CASHBACK_TIER_NAME_MAX_LENGTH
+   *   - thresholdSpend: reject < 0 (allow 0 = legitimate default)
+   *   - cashbackPercent: reject < 1 or > 100, integer
+   */
+  updateCashbackTier: (id, patch) =>
+    set((state) => ({
+      cashbackTiers: state.cashbackTiers.map((tier) => {
+        if (tier.id !== id) return tier;
+        const next = { ...tier, ...patch };
+        // Guard: name length
+        if (patch.name !== undefined) {
+          next.name = String(patch.name).slice(0, CASHBACK_TIER_NAME_MAX_LENGTH);
+        }
+        // Guard: thresholdSpend >= 0 (allow 0 as legitimate default)
+        if (patch.thresholdSpend !== undefined) {
+          if (
+            typeof patch.thresholdSpend === 'number' &&
+            Number.isFinite(patch.thresholdSpend) &&
+            patch.thresholdSpend >= CASHBACK_THRESHOLD_MIN
+          ) {
+            next.thresholdSpend = Math.min(
+              Math.round(patch.thresholdSpend),
+              CASHBACK_THRESHOLD_MAX,
+            );
+          } else {
+            next.thresholdSpend = tier.thresholdSpend;
+          }
+        }
+        // Guard: cashbackPercent ∈ [1, 100] integer
+        if (patch.cashbackPercent !== undefined) {
+          if (
+            patch.cashbackPercent === null ||
+            (typeof patch.cashbackPercent === 'number' &&
+              Number.isFinite(patch.cashbackPercent) &&
+              patch.cashbackPercent >= CASHBACK_PERCENT_MIN &&
+              patch.cashbackPercent <= CASHBACK_PERCENT_MAX)
+          ) {
+            next.cashbackPercent =
+              patch.cashbackPercent === null
+                ? 1
+                : Math.round(patch.cashbackPercent);
+          } else {
+            next.cashbackPercent = tier.cashbackPercent;
+          }
+        }
+        return next;
+      }),
+    })),
+  /** 依 thresholdSpend 由小到大排序（存檔前自動呼叫，threshold=0 在最前). */
+  sortCashbackTiers: () =>
+    set((state) => ({
+      cashbackTiers: [...state.cashbackTiers].sort(
+        (a, b) => a.thresholdSpend - b.thresholdSpend,
+      ),
+    })),
+
   loadSettings: (settings) => {
     // Bug #8.5 defensive: settings may be object / JSON string / array-of-partials
     // (legacy corruption). unwrapCardSettings handles all cases.
@@ -1352,6 +1478,45 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
           }
           // Sort by threshold ascending for stable display order after load.
           return trimmed.sort((a, b) => a.threshold - b.threshold);
+        })(),
+        // ===== Step 6 — Cashback 卡 loadSettings (2026-09-11) =====
+        // Defensive parse of `resolved.cashbackTiers` array.
+        // Each tier: { name, thresholdSpend (>=0), cashbackPercent (1-100) }.
+        // Sorts by thresholdSpend ASC (threshold=0 first = default tier).
+        cashbackTiers: (() => {
+          const raw = resolved?.cashbackTiers;
+          if (!Array.isArray(raw)) return state.cashbackTiers;
+          const trimmed: Array<CashbackTierShape & { id: string }> = [];
+          for (const entry of raw.slice(0, MAX_CASHBACK_TIERS)) {
+            if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+            const obj = entry as Record<string, unknown>;
+            const name =
+              typeof obj.name === 'string'
+                ? obj.name.slice(0, CASHBACK_TIER_NAME_MAX_LENGTH)
+                : '';
+            const thresholdSpend =
+              typeof obj.thresholdSpend === 'number' &&
+              Number.isFinite(obj.thresholdSpend) &&
+              obj.thresholdSpend >= CASHBACK_THRESHOLD_MIN
+                ? Math.min(Math.round(obj.thresholdSpend), CASHBACK_THRESHOLD_MAX)
+                : 0;
+            const cashbackPercent =
+              typeof obj.cashbackPercent === 'number' &&
+              Number.isFinite(obj.cashbackPercent) &&
+              obj.cashbackPercent >= CASHBACK_PERCENT_MIN &&
+              obj.cashbackPercent <= CASHBACK_PERCENT_MAX
+                ? Math.round(obj.cashbackPercent)
+                : 1;
+            const id =
+              typeof obj.id === 'string'
+                ? obj.id
+                : typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+                ? crypto.randomUUID()
+                : `cashback-tier-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+            trimmed.push({ id, name, thresholdSpend, cashbackPercent });
+          }
+          // Sort by thresholdSpend ASC (threshold=0 first = default tier).
+          return trimmed.sort((a, b) => a.thresholdSpend - b.thresholdSpend);
         })(),
       };
     });
