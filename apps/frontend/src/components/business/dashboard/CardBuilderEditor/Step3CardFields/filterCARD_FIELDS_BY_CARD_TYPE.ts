@@ -49,6 +49,19 @@ export const REWARD_CARD_TYPES: ReadonlySet<CardType> = new Set<CardType>([
 ]);
 
 /**
+ * Card types for which the cashback-only display fields
+ * (pointsToNextTierCashback / accumulatedSpendCashback) are shown in the
+ * dropdown.
+ *
+ * Cashback-specific data (spend to next tier, accumulated spend) is
+ * meaningless on non-cashback cards, so these options are hidden rather than
+ * rendered as a confusing placeholder.
+ */
+export const CASHBACK_CARD_TYPES: ReadonlySet<CardType> = new Set<CardType>([
+  'cashback_card',
+]);
+
+/**
  * Decide which `CARD_FIELDS` entries are visible for the given card type.
  *
  * - 'common' group fields are always shown.
@@ -66,10 +79,12 @@ export function filterCARD_FIELDS_BY_CARD_TYPE(
 ): readonly CardFieldDefinition[] {
   const showStampGroup = cardType !== null && STAMP_CARD_TYPES.has(cardType);
   const showRewardGroup = cardType !== null && REWARD_CARD_TYPES.has(cardType);
+  const showCashbackGroup = cardType !== null && CASHBACK_CARD_TYPES.has(cardType);
   return CARD_FIELDS.filter(
     (f) =>
       f.group === 'common' ||
       (f.group === 'stamp' && showStampGroup) ||
-      (f.group === 'reward' && showRewardGroup),
+      (f.group === 'reward' && showRewardGroup) ||
+      (f.group === 'cashback' && showCashbackGroup),
   );
 }

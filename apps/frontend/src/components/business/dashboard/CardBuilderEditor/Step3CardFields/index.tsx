@@ -96,17 +96,18 @@ interface FieldSelectProps {
   availableFields: readonly CardFieldDefinition[];
   /**
    * Current `cardType` from the store (Step 1 selection). Used to override
-   * the option label for `memberLevel` when cardType is `stamp_card` or
-   * `reward_card`: the dropdown option reads "獎勵" instead of "會員等級",
+   * the option label for `memberLevel` when cardType is `stamp_card`,
+   * `reward_card`, or `cashback_card`: the dropdown option reads
+   * "獎勵" / "Reward" instead of "會員等級" / "Member Level",
    * and the live preview's label/value follow the same cardType-driven
    * path (PassCardPreviewBody.tsx).
-   *   - stamp_card:  value source = top-level `rewardName` (Step 6 input).
-   *   - reward_card: value source = `rewardTiers[0].name` (first row of the
-   *     multi-tier structure).
-   *   For all other cardTypes (incl. `multipass`), the original "會員等級"
-   *   label is preserved.
-   * (2026-09-10 stamp card member-level → reward refactor, extended
-   *  2026-09-10 reward card to share the same override scope.)
+   *   - stamp_card:    value source = top-level `rewardName` (Step 6 input).
+   *   - reward_card:   value source = `rewardTiers[0].name` (first row).
+   *   - cashback_card: value source = `cashbackTiers[0].name` (first row).
+   *   For all other cardTypes (incl. `multipass`), the original
+   *   "會員等級" / "Member Level" label is preserved.
+   * (2026-09-10 stamp/reward card member-level → reward refactor, extended
+   *  2026-09-12 cashback_card to share the same override scope.)
    */
   cardType?: CardType | null;
 }
@@ -137,7 +138,7 @@ interface FieldSelectProps {
 function resolveOptionLabelKey(field: CardFieldDefinition, cardType?: CardType | null): string {
   if (
     field.key === 'memberLevel' &&
-    (cardType === 'stamp_card' || cardType === 'reward_card')
+    (cardType === 'stamp_card' || cardType === 'reward_card' || cardType === 'cashback_card')
   ) {
     return 'step3.fieldsSection.fields.memberLevelStamp';
   }
