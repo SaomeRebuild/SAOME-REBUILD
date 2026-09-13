@@ -69,6 +69,13 @@ vi.mock('react-i18next', () => ({
   useTranslation: vi.fn(() => ({ t: vi.fn((key: string) => key) })),
 }));
 
+// Mock Step4CardInfo so its internal sub-components don't leak into these
+// validation-focused tests. The mocked component just renders a marker so
+// we can still observe the parent's `disabled` state on the Next button.
+vi.mock('./Step4CardInfo/Step4CardInfo', () => ({
+  Step4CardInfo: () => <div data-testid="step4-cardinfo-mock" />,
+}));
+
 const baseProps = {
   step: 3 as const,
   onStepChange: vi.fn(),
@@ -134,5 +141,132 @@ describe('CardBuilderEditorWorkspace — Step 3 (BackgroundUploader plan 2026-09
     expect(
       screen.queryByText('step3.backgroundSection.title'),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe('CardBuilderEditorWorkspace — isStep4Valid membership_card bypass (2026-09-13)', () => {
+  /**
+   * Plan: membership_card_conditional_ui_hide (2026-09-13).
+   *
+   * `isStep4Valid()` is the gate for the Step 4 "下一步" button. When
+   * cardType === 'membership_card', the BackFieldsField is hidden (the
+   * user cannot fill it in), so the validator must skip the backFields
+   * check — otherwise the user would be stuck on Step 4 because the
+   * default backFields row is `[{ label: '', value: '' }]`, which fails
+   * the "value non-empty" rule.
+   *
+   * Approach: render the workspace at step 4, set the store state,
+   * then assert the disabled state of the Next button. The Step4CardInfo
+   * sub-tree is mocked away (see top-of-file) so only the validation
+   * logic matters here.
+   */
+
+  beforeEach(() => {
+    useCardBuilderStore.getState().reset();
+  });
+
+  it('enables the Next button for membership_card when description is filled (backFields default empty is OK)', () => {
+    useCardBuilderStore.setState({
+      cardType: 'membership_card',
+      description: 'Hello',
+      // backFields stays at the reset default [{ label: '', value: '' }].
+    });
+    render(
+      <CardBuilderEditorWorkspace
+        {...{ ...baseProps, step: 4 as const, cardType: 'membership_card' as const }}
+      />,
+    );
+    // The Next button has the i18n text "step1.next" (translated by mock
+    // as the key path).
+    const nextButton = screen.getByRole('button', { name: /step1\.next/ });
+    expect(nextButton).not.toBeDisabled();
+  });
+
+  it('still requires description for membership_card (regression — description is always required)', () => {
+    useCardBuilderStore.setState({
+      cardType: 'membership_card',
+      description: '',
+    });
+    render(
+      <CardBuilderEditorWorkspace
+        {...{ ...baseProps, step: 4 as const, cardType: 'membership_card' as const }}
+      />,
+    );
+    const nextButton = screen.getByRole('button', { name: /step1\.next/ });
+    expect(nextButton).toBeDisabled();
+  });
+
+  it('still requires valid backFields for stamp_card (regression — non-membership cards still enforce)', () => {
+    useCardBuilderStore.setState({
+      cardType: 'stamp_card',
+      description: 'Hello',
+      // backFields stays at reset default [{ label: '', value: '' }].
+    });
+    render(
+      <CardBuilderEditorWorkspace
+        {...{ ...baseProps, step: 4 as const, cardType: 'stamp_card' as const }}
+      />,
+    );
+    const nextButton = screen.getByRole('button', { name: /step1\.next/ });
+    expect(nextButton).toBeDisabled();
+  });
+
+  it('still requires valid backFields for reward_card (regression guard)', () => {
+    useCardBuilderStore.setState({
+      cardType: 'reward_card',
+      description: 'Hello',
+    });
+    render(
+      <CardBuilderEditorWorkspace
+        {...{ ...baseProps, step: 4 as const, cardType: 'reward_card' as const }}
+      />,
+    );
+    const nextButton = screen.getByRole('button', { name: /step1\.next/ });
+    expect(nextButton).toBeDisabled();
+  });
+
+  it('still requires valid backFields for cashback_card (regression guard)', () => {
+    useCardBuilderStore.setState({
+      cardType: 'cashback_card',
+      description: 'Hello',
+    });
+    render(
+      <CardBuilderEditorWorkspace
+        {...{ ...baseProps, step: 4 as const, cardType: 'cashback_card' as const }}
+      />,
+    );
+    const nextButton = screen.getByRole('button', { name: /step1\.next/ });
+    expect(nextButton).toBeDisabled();
+  });
+
+  it('enables Next for stamp_card when description + backFields are valid (regression)', () => {
+    useCardBuilderStore.setState({
+      cardType: 'stamp_card',
+      description: 'Hello',
+      backFields: [{ label: 'Phone', value: '02-1234-5678' }],
+    });
+    render(
+      <CardBuilderEditorWorkspace
+        {...{ ...baseProps, step: 4 as const, cardType: 'stamp_card' as const }}
+      />,
+    );
+    const nextButton = screen.getByRole('button', { name: /step1\.next/ });
+    expect(nextButton).not.toBeDisabled();
+  });
+
+  it('enables Next for membership_card even when backFields has empty value (the bypass)', () => {
+    useCardBuilderStore.setState({
+      cardType: 'membership_card',
+      description: 'Hello',
+      // Explicit empty-value backFields row — would fail for non-membership.
+      backFields: [{ label: '', value: '' }],
+    });
+    render(
+      <CardBuilderEditorWorkspace
+        {...{ ...baseProps, step: 4 as const, cardType: 'membership_card' as const }}
+      />,
+    );
+    const nextButton = screen.getByRole('button', { name: /step1\.next/ });
+    expect(nextButton).not.toBeDisabled();
   });
 });

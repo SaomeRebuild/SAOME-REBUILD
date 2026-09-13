@@ -251,6 +251,8 @@ describe('CardBuilderEditorWorkspace — Step 6 (2026-09-07 stamp card logic int
       stampsPerSpendAmount: null,
       stampsPerSpendStamps: null,
       earningMode: null,
+      hasExpiry: false,
+      membershipTiers: [],
       rewardTiers: [],
       // Cashback (2026-09-11) — not applicable for stamp_card, always sent empty.
       cashbackTiers: [],
@@ -308,6 +310,8 @@ describe('CardBuilderEditorWorkspace — Step 6 (2026-09-07 stamp card logic int
       // 2026-09-09 mixed refactor: top-level earningMode (reward_card) is
       // always sent (null for stamp_card since reward fields don't apply).
       earningMode: null,
+      hasExpiry: false,
+      membershipTiers: [],
       rewardTiers: [],
       // Cashback (2026-09-11) — not applicable for stamp_card, always sent empty.
       cashbackTiers: [],
@@ -362,6 +366,8 @@ describe('CardBuilderEditorWorkspace — Step 6 (2026-09-07 stamp card logic int
       stampsPerSpendStamps: 1,
       // 2026-09-09 mixed refactor: top-level earningMode (reward_card)
       earningMode: null,
+      hasExpiry: false,
+      membershipTiers: [],
       rewardTiers: [],
       // Cashback (2026-09-11) — not applicable for stamp_card, always sent empty.
       cashbackTiers: [],
@@ -439,6 +445,10 @@ describe('CardBuilderEditorWorkspace — Step 6 (2026-09-07 stamp card logic int
       // per-tier earn rate fields (inline). NO per-tier earningMode —
       // the backend schema dropped that field.
       earningMode: 'based_on_spending',
+      // 2026-09-13 membership card — not applicable for reward_card,
+      // always sent empty.
+      hasExpiry: false,
+      membershipTiers: [],
       rewardTiers: [
         {
           name: '500點折抵5%',
@@ -473,6 +483,8 @@ describe('CardBuilderEditorWorkspace — Step 6 (2026-09-07 stamp card logic int
     useCardBuilderStore.setState({
       cardType: 'reward_card',
       earningMode: null,
+      hasExpiry: false,
+      membershipTiers: [],
       rewardTiers: [
         { id: 'tier-1', name: '500點', threshold: 500, rewardType: 'amount_off', rewardValue: 50, maxDiscountAmount: null, pointsPerVisit: null, pointsPerSpendAmount: null, pointsPerSpendPoints: null },
       ],
@@ -711,6 +723,8 @@ describe('CardBuilderEditorWorkspace — Step 6 (2026-09-07 stamp card logic int
       stampsPerSpendStamps: null,
       // Reward fields (not applicable for cashback_card)
       earningMode: null,
+      hasExpiry: false,
+      membershipTiers: [],
       rewardTiers: [],
       // 2026-09-11: Cashback tiers sorted ASC by thresholdSpend;
       // 'id' is stripped (UI-only React key, not part of contract).

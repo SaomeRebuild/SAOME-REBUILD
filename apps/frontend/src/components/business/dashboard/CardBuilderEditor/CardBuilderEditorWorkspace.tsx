@@ -49,7 +49,10 @@ export function CardBuilderEditorWorkspace({
   function getStep2Values() {
     const store = useCardBuilderStore.getState();
     return {
-      storeName: store.storeName,
+      // 2026-09-13 semantic swap: storeName (settings.storeName, JSONB) is
+      // now `cardName` (templates.name, SQL column, top-level payload).
+      cardName: store.cardName,
+      logoText: store.logoText,
       issuerName: store.issuerName,
     };
   }
@@ -73,8 +76,16 @@ export function CardBuilderEditorWorkspace({
    */
 
   function isStep2Valid() {
-    const { storeName, issuerName } = getStep2Values();
-    return Boolean(storeName.trim() && issuerName.trim());
+    // 2026-09-13 swap: Block on Card Name (`cardName`) AND Logo Text
+    // (`logoText`) — both are required for the user to advance past
+    // Step 2 cleanly. `issuerName` is still required too.
+    //   - Card Name = record name (SQL column). Mandatory so the template
+    //     shows up labeled in the user's library.
+    //   - Logo Text = pass header text (JSONB). Mandatory so the previewed
+    //     pass has visible identity.
+    //   - Issuer Name = `issuerName` from settings (unchanged).
+    const { cardName, logoText, issuerName } = getStep2Values();
+    return Boolean(cardName.trim() && logoText.trim() && issuerName.trim());
   }
 
   /**
@@ -84,12 +95,26 @@ export function CardBuilderEditorWorkspace({
    *   - `links` is OPTIONAL — invalid format does NOT block "Next". The
    *     LinkRow still shows the destructive border + i18n error inline so
    *     the user can spot the issue and fix it without losing progress.
+   *
+   * 2026-09-13 membership_card bypass: when `cardType === 'membership_card'`,
+   * BackFieldsField is hidden (see plan `membership_card_conditional_ui_hide`).
+   * The default `backFields` row is `[{ label: '', value: '' }]`, which would
+   * otherwise fail validation and trap the user on Step 4. Skip the
+   * backFields check entirely for membership_card — only `description`
+   * must be valid. The mirror lives in `Step4CardInfo/Step4CardInfo.tsx`,
+   * which gates the JSX render of `<BackFieldsField />` on the same flag.
    */
   function isStep4Valid() {
+    const cardTypeValue = useCardBuilderStore.getState().cardType;
     const { description, backFields } = useCardBuilderStore.getState();
-    return (
+    const descriptionOk =
       description.trim().length > 0 &&
-      description.length <= DESCRIPTION_MAX_LENGTH &&
+      description.length <= DESCRIPTION_MAX_LENGTH;
+    if (cardTypeValue === 'membership_card') {
+      return descriptionOk;
+    }
+    return (
+      descriptionOk &&
       backFields.length >= BACK_FIELDS_MIN &&
       backFields.every((f) => f.value.trim().length > 0)
     );
@@ -138,7 +163,8 @@ export function CardBuilderEditorWorkspace({
 
   /**
    * Step 6 validation (Rule 019):
-   *   - Non stamp_card / multipass / reward_card → always valid (ComingSoon, no fields).
+   *   - Non stamp_card / multipass / reward_card / cashback_card / membership_card
+   *     → always valid (ComingSoon, no fields).
    *   - stamp_card / multipass → all 4 reward fields required:
    *       stampAccrualMode !== null
    *       rewardName.trim().length > 0
@@ -165,6 +191,15 @@ export function CardBuilderEditorWorkspace({
    *       each tier: name.trim() !== ''
    *               && 0 ≤ thresholdSpend ≤ CASHBACK_THRESHOLD_MAX
    *               && 1 ≤ cashbackPercent ≤ 100
+   *
+   *   - membership_card (2026-09-13):
+   *       isPaid === false    → always valid (free membership card, no fields).
+   *       isPaid === true     → membershipTiers.length ≥ 1
+   *                              each tier: name.trim() !== ''
+   *                              when hasExpiry=true:
+   *                                  durationType !== null
+   *                                  if monthly: monthlyCost >= 0 (and not null)
+   *                                  if yearly:  yearlyCost >= 0 (and not null)
    */
   function isStep6Valid(): boolean {
     const cardTypeValue = useCardBuilderStore.getState().cardType;
@@ -172,7 +207,8 @@ export function CardBuilderEditorWorkspace({
       cardTypeValue !== 'stamp_card' &&
       cardTypeValue !== 'multipass' &&
       cardTypeValue !== 'reward_card' &&
-      cardTypeValue !== 'cashback_card'
+      cardTypeValue !== 'cashback_card' &&
+      cardTypeValue !== 'membership_card'
     ) {
       return true;
     }
@@ -181,6 +217,9 @@ export function CardBuilderEditorWorkspace({
     }
     if (cardTypeValue === 'cashback_card') {
       return isCashbackStep6Valid();
+    }
+    if (cardTypeValue === 'membership_card') {
+      return isMembershipStep6Valid();
     }
     // stamp_card / multipass path
     const {
@@ -221,6 +260,47 @@ export function CardBuilderEditorWorkspace({
     }
     // per_stamp — no threshold fields
     return baseRewardValid;
+  }
+
+  /**
+   * MEMBERSHIP 卡 Step 6 validation (2026-09-13).
+   *
+   * Mirrors packages/shared/constants/membership-card.ts bounds:
+   *   - isPaid === false    → always valid (免費會員卡，無需 Step 6 設定)
+   *   - isPaid === true     → membershipTiers.length ≥ 1
+   *                              each tier: name.trim() !== ''
+   *                              when hasExpiry=true:
+   *                                  durationType !== null
+   *                                  if monthly: monthlyCost ∈ [COST_MIN, COST_MAX]
+   *                                  if yearly:  yearlyCost  ∈ [COST_MIN, COST_MAX]
+   *                              (cost = 0 is allowed = free membership tier.)
+   *
+   * 會員獎勵 sub-rows are NOT validated by Step 6 — they're optional content
+   * that always renders, regardless of validity.
+   */
+  function isMembershipStep6Valid(): boolean {
+    const { isPaid, hasExpiry, membershipTiers } = useCardBuilderStore.getState();
+
+    // Free membership card → no Step 6 fields required.
+    if (!isPaid) return true;
+
+    if (!membershipTiers || membershipTiers.length === 0) return false;
+
+    return membershipTiers.every((tier) => {
+      // Tier identity: name required.
+      if (tier.name.trim() === '') return false;
+      // When hasExpiry=true: durationType + corresponding cost must be set.
+      if (hasExpiry) {
+        if (tier.durationType === null) return false;
+        if (tier.durationType === 'monthly') {
+          if (tier.monthlyCost === null || tier.monthlyCost < 0) return false;
+        }
+        if (tier.durationType === 'yearly') {
+          if (tier.yearlyCost === null || tier.yearlyCost < 0) return false;
+        }
+      }
+      return true;
+    });
   }
 
   /**
@@ -324,17 +404,25 @@ export function CardBuilderEditorWorkspace({
       if (step === 6 && !isStep6Valid()) return;
       if (step === 2 && cardId && onSave) {
         try {
-          const { storeName, issuerName, issuerLogo } = useCardBuilderStore.getState();
+          // 2026-09-13 semantic swap: cardName goes to SQL column
+          // `templates.name` (top-level payload); logoText goes to
+          // `settings.logoText` (JSONB). storeName is gone.
+          const { cardName, logoText, issuerName, issuerLogo } = useCardBuilderStore.getState();
           const { barcodeType, passValidDays, expiryDate, currency, isPaid } = useCardBuilderStore.getState();
           await onSave(cardId, {
-            barcodeType,
-            storeName,
-            issuerName,
-            issuerLogo: issuerLogo || undefined,
-            passValidDays,
-            expiryDate,
-            currency,
-            isPaid,
+            // Top-level SQL column value.
+            name: cardName,
+            settings: {
+              // Logo Text now lives in JSONB settings.logoText (NEW key).
+              logoText,
+              issuerName,
+              issuerLogo: issuerLogo || undefined,
+              barcodeType,
+              passValidDays,
+              expiryDate,
+              currency,
+              isPaid,
+            },
           });
         } catch (err) {
           console.error('[handleNext] onSave failed:', err);
@@ -469,6 +557,8 @@ export function CardBuilderEditorWorkspace({
             earningMode,
             rewardTiers,
             cashbackTiers,
+            hasExpiry,
+            membershipTiers,
           } = useCardBuilderStore.getState();
           // Strip `id` field from each reward tier before sending to backend
           // (id is a UI-only React key, not part of the data contract).
@@ -497,6 +587,19 @@ export function CardBuilderEditorWorkspace({
               thresholdSpend: tier.thresholdSpend,
               cashbackPercent: tier.cashbackPercent,
             }));
+          // 2026-09-13 Membership: strip `id` and per-tier reward `id`s.
+          // membershipTiers carry name + durationType + monthlyCost +
+          // yearlyCost + rewards (each with label + value, no id sent).
+          const sanitizedMembershipTiers = membershipTiers.map((tier) => ({
+            name: tier.name,
+            durationType: tier.durationType,
+            monthlyCost: tier.monthlyCost,
+            yearlyCost: tier.yearlyCost,
+            rewards: (tier.rewards ?? []).map((reward) => ({
+              label: reward.label,
+              value: reward.value,
+            })),
+          }));
           await onSave(cardId, {
             stampAccrualMode,
             rewardName,
@@ -520,6 +623,10 @@ export function CardBuilderEditorWorkspace({
             // but always sent so the DB always reflects the current store
             // state. loadSettings coerces non-matching values back to [].
             cashbackTiers: sanitizedCashbackTiers,
+            // MEMBERSHIP 卡 (2026-09-13) — only meaningful for membership_card,
+            // but always sent so the DB always reflects the current store state.
+            hasExpiry,
+            membershipTiers: sanitizedMembershipTiers,
           });
           console.log('[handleNext] Step 6 card logic saved', {
             stampAccrualMode,
@@ -534,6 +641,8 @@ export function CardBuilderEditorWorkspace({
             earningMode,
             rewardTiers: sanitizedRewardTiers,
             cashbackTiers: sanitizedCashbackTiers,
+            hasExpiry,
+            membershipTiers: sanitizedMembershipTiers,
           });
         } catch (err) {
           // Don't block step transition — let the user proceed and retry later.

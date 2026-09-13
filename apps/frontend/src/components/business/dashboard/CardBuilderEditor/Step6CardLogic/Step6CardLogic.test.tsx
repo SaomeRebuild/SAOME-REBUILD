@@ -26,6 +26,7 @@ vi.mock('react-i18next', () => ({
 let stampCardLogicRenders = 0;
 let rewardCardLogicRenders = 0;
 let cashbackCardLogicRenders = 0;
+let membershipCardLogicRenders = 0;
 let comingSoonRenders = 0;
 
 vi.mock('./StampCardLogic', () => ({
@@ -49,6 +50,13 @@ vi.mock('./CashbackCardLogic', () => ({
   },
 }));
 
+vi.mock('./MembershipCardLogic', () => ({
+  MembershipCardLogic: () => {
+    membershipCardLogicRenders += 1;
+    return <div data-testid="membership-card-logic">MembershipCardLogic</div>;
+  },
+}));
+
 vi.mock('./Step6CardLogicComingSoon', () => ({
   Step6CardLogicComingSoon: ({ cardType }: { cardType: CardType | null }) => {
     comingSoonRenders += 1;
@@ -64,6 +72,7 @@ beforeEach(() => {
   stampCardLogicRenders = 0;
   rewardCardLogicRenders = 0;
   cashbackCardLogicRenders = 0;
+  membershipCardLogicRenders = 0;
   comingSoonRenders = 0;
 });
 
@@ -131,15 +140,16 @@ describe('Step6CardLogic — dispatcher (Rule 000 § A.1)', () => {
     expect(screen.getByTestId('cashback-card-logic')).toBeInTheDocument();
   });
 
-  it('renders ComingSoon for membership_card (not yet supported)', () => {
+  it('renders MembershipCardLogic for membership_card (Step 6 plan 2026-09-13)', () => {
     useCardBuilderStore.setState({ cardType: 'membership_card' });
     render(<Step6CardLogic showValidation={false} />);
 
-    expect(comingSoonRenders).toBe(1);
-    expect(screen.getByTestId('coming-soon')).toHaveAttribute(
-      'data-card-type',
-      'membership_card',
-    );
+    expect(stampCardLogicRenders).toBe(0);
+    expect(rewardCardLogicRenders).toBe(0);
+    expect(cashbackCardLogicRenders).toBe(0);
+    expect(membershipCardLogicRenders).toBe(1);
+    expect(comingSoonRenders).toBe(0);
+    expect(screen.getByTestId('membership-card-logic')).toBeInTheDocument();
   });
 
   it('renders ComingSoon for discount_card, coupon_card, gift_card', () => {
@@ -154,6 +164,7 @@ describe('Step6CardLogic — dispatcher (Rule 000 § A.1)', () => {
       stampCardLogicRenders = 0;
       rewardCardLogicRenders = 0;
       cashbackCardLogicRenders = 0;
+      membershipCardLogicRenders = 0;
       comingSoonRenders = 0;
       cleanup();
       useCardBuilderStore.setState({ cardType });
@@ -162,6 +173,7 @@ describe('Step6CardLogic — dispatcher (Rule 000 § A.1)', () => {
       expect(stampCardLogicRenders).toBe(0);
       expect(rewardCardLogicRenders).toBe(0);
       expect(cashbackCardLogicRenders).toBe(0);
+      expect(membershipCardLogicRenders).toBe(0);
       expect(comingSoonRenders).toBe(1);
       expect(screen.getByTestId('coming-soon')).toHaveAttribute(
         'data-card-type',
