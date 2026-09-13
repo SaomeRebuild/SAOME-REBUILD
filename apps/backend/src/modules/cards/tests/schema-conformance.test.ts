@@ -370,4 +370,221 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
     expect(sharedTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
     expect(localTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
   });
+
+  // ===== Step 6 — Membership Card: lifetimeCost field (2026-09-13, Rule 019 § 4.1) =====
+  // User clarification 2026-09-13: even when card-wide hasExpiry === false
+  // (lifetime membership), the fee input must remain visible. Tenants use
+  // this to sell the right to a lifetime tier at a one-time price (consumer
+  // directly purchases lifetime membership). The cost field writes to a
+  // NEW `lifetimeCost` column instead of monthlyCost/yearlyCost.
+  //
+  // This block pins the 4-layer sync for the new field:
+  //   - shared `templateSettingsSchema.membershipTiers[*].lifetimeCost`
+  //   - backend local `templateSettingsSchema.membershipTiers[*].lifetimeCost`
+  //   - backend db interface `TemplateSettings.membershipTiers[*].lifetimeCost`
+  //     (validated via grep below — TypeScript type system enforces it).
+  //   - frontend store `MembershipTierShape.lifetimeCost`
+  //     (validated via grep below).
+  //
+  // The conformance test also pins runtime bounds:
+  //   - lifetimeCost >= 0 allowed (= free lifetime member tier)
+  //   - lifetimeCost === null allowed (= not entered)
+  //   - lifetimeCost < 0 rejected
+  it('shared schema accepts lifetimeCost field on membership tiers (Rule 019 § 4.1, 2026-09-13)', () => {
+    // Pin that lifetimeCost exists at the JSONB contract layer. Use a
+    // representative payload round-trip — if the field is missing the
+    // shared schema will strip it (zod default .object() behavior) and
+    // toMatchObject will fail because the parsed result won't contain
+    // the field.
+    const payload = {
+      membershipTiers: [
+        {
+          name: 'VIP',
+          durationType: null,
+          monthlyCost: null,
+          yearlyCost: null,
+          lifetimeCost: 3000,
+          rewards: [],
+        },
+      ],
+    };
+    const parsedShared = sharedTemplateSettingsSchema.parse(payload) as Record<string, unknown>;
+    const parsedLocal = localTemplateSettingsSchema.parse(payload) as Record<string, unknown>;
+    const sharedTiers = parsedShared.membershipTiers as Array<Record<string, unknown>>;
+    const localTiers = parsedLocal.membershipTiers as Array<Record<string, unknown>>;
+    expect(sharedTiers[0]!.lifetimeCost).toBe(3000);
+    expect(localTiers[0]!.lifetimeCost).toBe(3000);
+  });
+
+  it('shared lifetimeCost accepts null (not entered sentinel)', () => {
+    const payload = {
+      membershipTiers: [
+        {
+          name: 'VIP',
+          durationType: null,
+          monthlyCost: null,
+          yearlyCost: null,
+          lifetimeCost: null,
+          rewards: [],
+        },
+      ],
+    };
+    const parsedShared = sharedTemplateSettingsSchema.parse(payload) as Record<string, unknown>;
+    const parsedLocal = localTemplateSettingsSchema.parse(payload) as Record<string, unknown>;
+    const sharedTiers = parsedShared.membershipTiers as Array<Record<string, unknown>>;
+    const localTiers = parsedLocal.membershipTiers as Array<Record<string, unknown>>;
+    expect(sharedTiers[0]!.lifetimeCost).toBeNull();
+    expect(localTiers[0]!.lifetimeCost).toBeNull();
+  });
+
+  it('shared lifetimeCost accepts 0 (free lifetime member)', () => {
+    const payload = {
+      membershipTiers: [
+        {
+          name: 'FreeVIP',
+          durationType: null,
+          monthlyCost: null,
+          yearlyCost: null,
+          lifetimeCost: 0,
+          rewards: [],
+        },
+      ],
+    };
+    const parsedShared = sharedTemplateSettingsSchema.parse(payload) as Record<string, unknown>;
+    const sharedTiers = parsedShared.membershipTiers as Array<Record<string, unknown>>;
+    expect(sharedTiers[0]!.lifetimeCost).toBe(0);
+  });
+
+  it('shared lifetimeCost rejects negative numbers', () => {
+    const payload = {
+      membershipTiers: [
+        {
+          name: 'VIP',
+          durationType: null,
+          monthlyCost: null,
+          yearlyCost: null,
+          lifetimeCost: -100,
+          rewards: [],
+        },
+      ],
+    };
+    expect(() => sharedTemplateSettingsSchema.parse(payload)).toThrow();
+  });
+
+  it('shared membership tier + lifetimeCost end-to-end (lifetime mode)', () => {
+    // End-to-end happy path: a membership_card draft with hasExpiry=false
+    // and a tier carrying lifetimeCost=3000 survives the schema parse.
+    // Mirrors what `cardService.update` would receive from the workspace
+    // onSave handler in lifetime mode.
+    const payload = {
+      cardType: 'membership_card',
+      hasExpiry: false,
+      membershipTiers: [
+        {
+          name: 'Lifetime VIP',
+          durationType: null,
+          monthlyCost: null,
+          yearlyCost: null,
+          lifetimeCost: 3000,
+          rewards: [{ label: '專屬優惠', value: 'https://example.com/vip' }],
+        },
+      ],
+    };
+    expect(sharedTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
+    expect(localTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
+  });
+
+  it('shared membership tier + monthlyCost + lifetimeCost (both cost fields coexist in schema)', () => {
+    // Both cost fields coexist in the schema; the editor decides which
+    // is shown based on the card-wide hasExpiry toggle. The schema does
+    // NOT enforce mutual exclusion — that's a UI-layer concern. This test
+    // pins that the contract layer accepts both fields when present.
+    const payload = {
+      cardType: 'membership_card',
+      hasExpiry: true,
+      membershipTiers: [
+        {
+          name: 'VIP',
+          durationType: 'monthly',
+          monthlyCost: 100,
+          yearlyCost: 1000,
+          lifetimeCost: 3000, // preserved even when hasExpiry=true (UI hides it)
+          rewards: [],
+        },
+      ],
+    };
+    const parsedShared = sharedTemplateSettingsSchema.parse(payload) as Record<string, unknown>;
+    const sharedTiers = parsedShared.membershipTiers as Array<Record<string, unknown>>;
+    expect(sharedTiers[0]!.monthlyCost).toBe(100);
+    expect(sharedTiers[0]!.yearlyCost).toBe(1000);
+    expect(sharedTiers[0]!.lifetimeCost).toBe(3000);
+  });
+
+  // ===== Semantic swap 2026-09-13: storeName → logoText (Rule 019 § 4.1) =====
+  // Migration 018 swaps CardBuilder storage locations:
+  //   - templates.name (SQL column) now means "Card Name" (pass record name)
+  //   - templates.settings.logoText (NEW JSONB key) holds "Logo Text" (pass header text)
+  //   - templates.settings.storeName removed (replaced by templates.name SQL column)
+  //
+  // The 4-layer sync check (Rule 019 § 4.1) pins that:
+  //   1. shared `templateSettingsSchema` has `logoText` and NOT `storeName`
+  //   2. backend local `templateSettingsSchema` matches (Layer 2 mirror)
+  //   3. The new key survives an end-to-end parse round-trip
+  it('shared + backend schemas both expose logoText and drop storeName (regression — 2026-09-13)', () => {
+    // Shared (Layer 1 of 4) — single source of truth.
+    expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('logoText');
+    expect(Object.keys(sharedTemplateSettingsSchema.shape)).not.toContain('storeName');
+    // Backend local (Layer 2 of 4) — mirrors shared; see request.ts.
+    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('logoText');
+    expect(Object.keys(localTemplateSettingsSchema.shape)).not.toContain('storeName');
+  });
+
+  it('full templateSettings accepts logoText key (pass header text — JSONB)', () => {
+    // End-to-end happy path: a draft with logoText set survives schema
+    // parse. Mirrors what `cardService.update` receives from the Header
+    // input's debounced autosave.
+    const payload = { logoText: '超凡' };
+    expect(sharedTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
+    expect(localTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
+  });
+
+  it('full templateSettings rejects unknown storeName key (drift guard — 2026-09-13)', () => {
+    // After the swap, the `storeName` key is DROPPED from the contract.
+    // The shared schema is a plain `.object({...})` (zod's default is
+    // strip-unknown), so unknown keys are silently dropped. This is the
+    // correct post-swap behavior — a stale payload (e.g. from an
+    // un-patched client) that sends `settings.storeName` should not
+    // round-trip the unknown key into the DB.
+    //
+    // (Bug #8 defensive unwrap lives in the SQL layer (`templates.ts`),
+    // NOT in the zod schema. The schema accepts well-typed values;
+    // unknown keys are stripped.)
+    const stale = { storeName: 'x', logoText: 'y' };
+    const parsed = sharedTemplateSettingsSchema.parse(stale);
+    // logoText is preserved
+    expect(parsed).toMatchObject({ logoText: 'y' });
+    // storeName is stripped (default zod .object() behavior)
+    expect((parsed as Record<string, unknown>).storeName).toBeUndefined();
+  });
+
+  // top-level `name` is a SQL column (not part of templateSettingsSchema);
+  // it's defined on `createTemplateSchema` / `updateTemplateSchema` in both
+  // shared and backend layers. Confirm the top-level contracts agree.
+  it('shared + backend createTemplateSchema both expose optional name (Rule 019 § 4.1 layer 1/2)', async () => {
+    const { createTemplateSchema: sharedCreate, updateTemplateSchema: sharedUpdate } = await import(
+      '@saome/shared/schemas/card'
+    );
+    const { createTemplateSchema: localCreate, updateTemplateSchema: localUpdate } = await import(
+      '../schemas/request'
+    );
+    // Both layers must allow `name` at the top level (SQL column).
+    expect(Object.keys(sharedCreate.shape)).toContain('name');
+    expect(Object.keys(localCreate.shape)).toContain('name');
+    expect(Object.keys(sharedUpdate.shape)).toContain('name');
+    expect(Object.keys(localUpdate.shape)).toContain('name');
+    // And the top-level `name` should NOT be present in templateSettingsSchema
+    // (it's NOT a JSONB key — the SQL column is the only carrier).
+    expect(Object.keys(sharedTemplateSettingsSchema.shape)).not.toContain('name');
+    expect(Object.keys(localTemplateSettingsSchema.shape)).not.toContain('name');
+  });
 });

@@ -38,11 +38,16 @@ export { cardFieldKeySchema } from '@saome/shared/schemas/card';
  */
 export const templateSettingsSchema = z.object({
   // Step 1
-  name: z.string().optional(),
   cardType: sharedCardTypeSchema.optional(),
   // Step 2
   barcodeType: sharedBarcodeTypeSchema.optional(),
-  storeName: z.string().optional(),
+  /**
+   * Logo Text — text shown on the pass header (next to the issuer logo).
+   * 2026-09-13 semantic swap: this used to be `storeName` (misleading);
+   * the Card Name (pass record name) now lives in the SQL column
+   * `templates.name`. Mirrors shared `templateSettingsSchema.logoText`.
+   */
+  logoText: z.string().optional(),
   issuerName: z.string().optional(),
   passValidDays: z.number().int().positive().nullable().optional(),
   expiryDate: z.string().optional(), // ISO date string
@@ -207,6 +212,53 @@ export const templateSettingsSchema = z.object({
         pointsPerVisit: z.number().int().min(1).nullable().optional(),
         pointsPerSpendAmount: z.number().positive().nullable().optional(),
         pointsPerSpendPoints: z.number().int().min(1).nullable().optional(),
+      }),
+    )
+    .max(5)
+    .optional(),
+  // ===== Step 6 — Membership 卡 (2026-09-13, membership_card only) =====
+  // Mirrors `shared/templateSettingsSchema.membershipTiers` (Rule 019 § 4.1
+  // layer 2 of 4). Card-wide `hasExpiry` toggle + up to MAX_MEMBERSHIP_TIERS=5
+  // membership tiers, each with optional durationType + monthlyCost + yearlyCost
+  // + lifetimeCost + per-tier 會員獎勵 sub-rows (up to MAX_REWARDS_PER_TIER=5).
+  //
+  // 2026-09-13 added lifetimeCost: when card-wide hasExpiry === false (lifetime
+  // membership), tenants can still charge a one-time fee for the lifetime tier.
+  // Cost fields are mutually exclusive based on the card-wide toggle:
+  //   - hasExpiry=true → monthlyCost / yearlyCost are meaningful (lifetimeCost ignored).
+  //   - hasExpiry=false → lifetimeCost is meaningful (monthly/yearly ignored).
+  //
+  // Single source of truth:
+  //   - packages/shared/schemas/card.ts (Rule 019 § 4.1 layer 1)
+  //   - packages/shared/constants/membership-card.ts (bounds)
+  hasExpiry: z.boolean().optional(),
+  membershipTiers: z
+    .array(
+      z.object({
+        /** 等級名稱. Required, 1-40 chars. */
+        name: z.string().min(1).max(40),
+        /** 月/年卡單選. null = 未設定. */
+        durationType: z.enum(['monthly', 'yearly']).nullable().optional(),
+        /** 月費. 0 = 免費. null = 未填. Ignored in lifetime mode (hasExpiry=false). */
+        monthlyCost: z.number().min(0).nullable().optional(),
+        /** 年費. 0 = 免費. null = 未填. Ignored in lifetime mode (hasExpiry=false). */
+        yearlyCost: z.number().min(0).nullable().optional(),
+        /**
+         * 終身會員費用 (僅在 card-wide hasExpiry=false 時有效).
+         * 0 = 免費. null = 未填.
+         * 2026-09-13 新增.
+         */
+        lifetimeCost: z.number().min(0).nullable().optional(),
+        /** 會員獎勵 sub-rows (最多 5 組). */
+        rewards: z
+          .array(
+            z.object({
+              label: z.string().min(1).max(20),
+              value: z.string().min(1).max(80),
+            }),
+          )
+          .max(5)
+          .optional(),
       }),
     )
     .max(5)

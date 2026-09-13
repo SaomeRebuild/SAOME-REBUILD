@@ -8,7 +8,7 @@
  * Why this matters:
  *   The previous SQL was `settings = $1::jsonb` (REPLACE). This caused a critical
  *   data-loss bug: when Step 3 saved only `issuerLogo` + `iconImage`, the rest of
- *   the settings (Step 2's storeName/issuerName/barcodeType/etc.) was wiped.
+ *   the settings (Step 2's logoText/issuerName/barcodeType/etc.) was wiped.
  *
  *   The fix is `settings = settings || $1::jsonb` (MERGE) — PostgreSQL JSONB
  *   concatenation preserves all keys in the left operand and overrides on conflict.
@@ -114,7 +114,7 @@ describe('updateTemplate settings merge behavior (Phase 1 of CardBuilder data-lo
   it('uses JSONB merge operator (||) for settings, not assignment (=)', async () => {
     const { sql, sqlCalls } = createMockSql();
     await updateTemplate(sql, 'test-id', {
-      settings: { storeName: 'New Name' },
+      settings: { logoText: 'New Name' },
     });
 
     expect(sqlCalls.length).toBeGreaterThan(0);
@@ -160,11 +160,11 @@ describe('updateTemplate — cache-busting on iconImage reload', () => {
   it('preserves step-2 fields when step-3 saves only logo+icon (regression test)', async () => {
     // Simulate the exact bug scenario:
     // 1. After Step 1: settings = { cardType: 'stamp_card' }
-    // 2. After Step 2: settings = { cardType: 'stamp_card', storeName: 'X', issuerName: 'Y', ... }
+    // 2. After Step 2: settings = { cardType: 'stamp_card', logoText: 'X', issuerName: 'Y', ... }
     // 3. Step 3 save: PUT /api/cards/{id} with settings = { issuerLogo: '...', iconImage: '...' }
     //    (Step 2 fields NOT included — this is the bug trigger)
     // 4. Backend runs `UPDATE settings = settings || $1::jsonb`
-    //    → settings remains: { cardType, storeName, issuerName, ..., issuerLogo, iconImage }
+    //    → settings remains: { cardType, logoText, issuerName, ..., issuerLogo, iconImage }
     //    (NOT wiped — Step 2 fields survive)
 
     const { sql, sqlCalls } = createMockSql();
@@ -290,7 +290,7 @@ describe('updateTemplate — non-ASCII round-trip (workerd JSON.stringify pitfal
   it('uses sql.json() helper for new payload (no JS-side JSON.stringify) — regression 2026-08-31', async () => {
     const { sql, sqlCalls, jsonCalls } = createMockSql();
     await updateTemplate(sql, 'test-id', {
-      settings: { storeName: '哈', issuerName: '你好世界' },
+      settings: { logoText: '哈', issuerName: '你好世界' },
     });
 
     const outerSql = sqlCalls[0]!.sql;
@@ -313,41 +313,41 @@ describe('updateTemplate — non-ASCII round-trip (workerd JSON.stringify pitfal
   it('preserves Chinese characters in captured payload values (sql.json path)', async () => {
     const { sql, jsonCalls } = createMockSql();
     await updateTemplate(sql, 'test-id', {
-      settings: { storeName: '哈囉世界' },
+      settings: { logoText: '哈囉世界' },
     });
 
-    const jsonValue = getLastJsonValue(jsonCalls) as { storeName: string } | undefined;
+    const jsonValue = getLastJsonValue(jsonCalls) as { logoText: string } | undefined;
     expect(jsonValue).toBeDefined();
-    expect(jsonValue!.storeName).toBe('哈囉世界');
+    expect(jsonValue!.logoText).toBe('哈囉世界');
     // Original UTF-16 chars must NOT be replaced with \uFFFD
-    expect(jsonValue!.storeName).not.toMatch(/\uFFFD/);
+    expect(jsonValue!.logoText).not.toMatch(/\uFFFD/);
   });
 
   it('preserves emoji in description fields (multi-byte UTF-16 + UTF-8 boundary)', async () => {
     const { sql, jsonCalls } = createMockSql();
     await updateTemplate(sql, 'test-id', {
-      settings: { storeName: 'Cafe 🎉' }, // emoji = 4-byte UTF-8
+      settings: { logoText: 'Cafe 🎉' }, // emoji = 4-byte UTF-8
     });
 
-    const jsonValue = getLastJsonValue(jsonCalls) as { storeName: string } | undefined;
+    const jsonValue = getLastJsonValue(jsonCalls) as { logoText: string } | undefined;
     expect(jsonValue).toBeDefined();
-    expect(jsonValue!.storeName).toBe('Cafe 🎉');
+    expect(jsonValue!.logoText).toBe('Cafe 🎉');
   });
 
   it('handles mixed CJK + Latin + emoji payload (real-world stress)', async () => {
     const { sql, jsonCalls } = createMockSql();
     const tricky = {
-      storeName: '東京 Café 🎉 台北',
+      logoText: '東京 Café 🎉 台北',
       description: '中文 mix English 🌟',
       issuerName: '你好世界',
     };
     await updateTemplate(sql, 'test-id', { settings: tricky });
 
     const jsonValue = getLastJsonValue(jsonCalls) as
-      | { storeName: string; description: string; issuerName: string }
+      | { logoText: string; description: string; issuerName: string }
       | undefined;
     expect(jsonValue).toBeDefined();
-    expect(jsonValue!.storeName).toBe(tricky.storeName);
+    expect(jsonValue!.logoText).toBe(tricky.logoText);
     expect(jsonValue!.description).toBe(tricky.description);
     expect(jsonValue!.issuerName).toBe(tricky.issuerName);
   });

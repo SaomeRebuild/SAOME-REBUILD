@@ -62,16 +62,23 @@ export type CardType =
 /**
  * Template settings — flat JSONB structure.
  *
- * Step 1: name, cardType
- * Step 2: barcodeType, storeName, issuerName, passValidDays, expiryDate, currency
+ * Step 1: cardType (also held in SQL column `templates.card_type`).
+ *         Card Name lives in the SQL column `templates.name` — NOT here.
+ * Step 2: barcodeType, logoText (JSONB), issuerName, passValidDays, expiryDate, currency
  * Membership extension: isPaid
  * Step 3-4: TBD (backgroundColor, textColor, etc.)
+ *
+ * 2026-09-13 semantic swap: `storeName` (the Card Name, conceptually) was
+ * misleadingly stored in JSONB; the value actually rendered in the pass
+ * header (Logo Text) was held in the SQL column `templates.name`. After
+ * the swap: `templates.name` = Card Name (pass record name), and
+ * `settings.logoText` = Logo Text (pass header text). See migration 018.
  */
 export interface TemplateSettings {
-  name?: string;
   cardType?: CardType;
   barcodeType?: 'qr_code' | 'pdf_417';
-  storeName?: string;
+  /** Logo Text — shown on the pass header (next to issuer logo). */
+  logoText?: string;
   issuerName?: string;
   passValidDays?: number | null;
   expiryDate?: string;
@@ -280,6 +287,45 @@ export interface TemplateSettings {
     pointsPerSpendAmount?: number | null;
     pointsPerSpendPoints?: number | null;
   }>;
+  // ===== Step 6 — Membership 卡 (Rule 019 § 4.1, layer 3 of 4) =====
+  // Mirrors `shared/templateSettingsSchema.membershipTiers`.
+  // Step 6 plan 2026-09-13: fourth card-type-specific logic editor. Simplest
+  // tier structure: each tier is independent (no threshold / no earning mode).
+  // Up to MAX_MEMBERSHIP_TIERS=5 tiers, each with optional durationType +
+  // monthlyCost + yearlyCost + per-tier 會員獎勵 sub-rows (up to 5 each).
+  /**
+   * Card-wide expiry toggle (2026-09-13). When `false` (default), the
+   * membership tier has no expiry (lifetime membership). When `true`,
+   * each tier must specify `durationType` (monthly / yearly) + the
+   * corresponding cost. Frontend store: `setHasExpiry(false)` ALSO clears
+   * all per-tier `durationType` / `monthlyCost` / `yearlyCost` so no
+   * stale data leaks.
+   */
+  hasExpiry?: boolean;
+  /**
+   * Membership tier array (最多 5 組). Each tier carries:
+   *   - `name` (1..40 chars): tier name shown on the pass.
+   *   - `durationType` ('monthly' | 'yearly' | null): per-tier duration.
+   *       null is legitimate when card-wide `hasExpiry` is false (lifetime).
+   *   - `monthlyCost` (≥ 0 or null): cost when durationType === 'monthly'.
+   *       0 = free member tier. Ignored when hasExpiry === false.
+   *   - `yearlyCost` (≥ 0 or null): cost when durationType === 'yearly'.
+   *       0 = free member tier. Ignored when hasExpiry === false.
+   *   - `lifetimeCost` (≥ 0 or null): cost when card-wide hasExpiry === false.
+   *       0 = free lifetime member. Ignored when hasExpiry === true.
+   *       2026-09-13 新增: 終身會員也需要費用欄位(租戶可一次性收費,
+   *       消費者直接購買終身會員等級的權利). 與 monthly/yearly 互斥.
+   *   - `rewards` (≤ 5 rows): per-tier 會員獎勵 sub-rows. Each row is a
+   *       {label (1..20), value (1..80)} pair.
+   */
+  membershipTiers?: Array<{
+    name: string;
+    durationType?: 'monthly' | 'yearly' | null;
+    monthlyCost?: number | null;
+    yearlyCost?: number | null;
+    lifetimeCost?: number | null;
+    rewards?: Array<{ label: string; value: string }>;
+  }>;
   // ===== Step 6 — Cashback 卡 (Rule 019 § 4.1, layer 3 of 4) =====
   // Mirrors `shared/templateSettingsSchema.cashbackTiers`.
   // Step 6 plan 2026-09-11: third card-type-specific logic editor (after
@@ -409,7 +455,7 @@ export async function findTemplatesByTenantId(
  *
  * IMPORTANT: settings fields are MERGED with existing settings using JSONB's || operator
  * (PostgreSQL JSONB concatenation). This preserves existing fields that are not being
- * updated (e.g., Step 2 only updates storeName/issuerName without wiping Step 1's
+ * updated (e.g., Step 2 only updates logoText/issuerName without wiping Step 1's
  * cardType, and Step 3 only updates issuerLogo/iconImage without wiping Step 2 fields).
  *
  * Implementation note: postgres.js's tagged template injection handles the JSON string
