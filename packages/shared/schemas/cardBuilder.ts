@@ -20,8 +20,11 @@ export const BARCODE_IMAGES = {
 // ===== Extension Pattern：每個卡種的專屬欄位 =====
 
 // Base（所有卡種都要）
+// 2026-09-13 swap: storeName → logoText. The semantic meaning of this field
+// is "Logo Text" (the text shown on the pass header), NOT the pass/store name.
+// The Card Name (pass record name) lives in the SQL column `templates.name`.
 export const baseCardSettingsSchema = z.object({
-  storeName: z.string().min(1),
+  logoText: z.string().min(1),
 });
 
 // ===== Per-card Extensions（等待商業邏輯確認後填入）=====
@@ -54,7 +57,55 @@ export const cardTypeExtensions = {
     stampsPerSpendStamps: z.number().int().min(1).nullable().optional(),
   }),
   gift_card: z.object({}),
-  membership_card: z.object({}),
+  /**
+   * Membership card (會員卡) — Step 6 Membership 卡實作 (2026-09-13).
+   *
+   * Differs structurally from stamp_card / reward_card / cashback_card:
+   *   - Card-wide `hasExpiry` toggle (none / with expiry). When false, the
+   *     tier has no expiry (lifetime membership). When true, each tier
+   *     specifies durationType (monthly / yearly) + corresponding cost.
+   *   - membershipTiers: up to MAX_MEMBERSHIP_TIERS=5 tiers. Each tier
+   *     carries name + durationType + monthlyCost + yearlyCost +
+   *     per-tier 會員獎勵 sub-rows (up to MAX_REWARDS_PER_TIER=5).
+   *   - NO earningMode (no point accrual).
+   *   - NO rewardType / rewardValue (the "reward" is the per-tier rewards
+   *     sub-rows, not a flat value).
+   *   - NO threshold (tiers are independent levels, not cumulative).
+   *
+   * Mirrors `shared/templateSettingsSchema.membershipTiers` (Rule 019 §
+   * 4.1 layer 1).
+   */
+  membership_card: z.object({
+    // ===== Step 6 — 會員卡邏輯 (2026-09-13) =====
+    /** Card-wide expiry toggle. false = lifetime, true = monthly/yearly. */
+    hasExpiry: z.boolean().optional(),
+    /** 會員等級陣列 (最多 5 組). */
+    membershipTiers: z
+      .array(
+        z.object({
+          /** 等級名稱. Required, 1-40 chars. */
+          name: z.string().min(1).max(40),
+          /** 月/年卡單選. null = 未設定. */
+          durationType: z.enum(['monthly', 'yearly']).nullable().optional(),
+          /** 月費. 0 = 免費. null = 未填. */
+          monthlyCost: z.number().min(0).nullable().optional(),
+          /** 年費. 0 = 免費. null = 未填. */
+          yearlyCost: z.number().min(0).nullable().optional(),
+          /** 會員獎勵 sub-rows (最多 5 組). */
+          rewards: z
+            .array(
+              z.object({
+                label: z.string().min(1).max(20),
+                value: z.string().min(1).max(80),
+              }),
+            )
+            .max(5)
+            .optional(),
+        }),
+      )
+      .max(5)
+      .optional(),
+  }),
   /**
    * Reward card (獎勵卡) — Step 6 REWARD 卡實作 (2026-09-09).
    * Differs from stamp_card:

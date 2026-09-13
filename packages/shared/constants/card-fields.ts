@@ -33,6 +33,13 @@
  * The `group` discriminator is the single source of truth for the
  * conditional filter: `Step3CardFields` reads `group` and filters
  * declaratively, so adding a new field requires editing only this file.
+ *
+ * For fields that should be SHOWN everywhere EXCEPT specific card types,
+ * use `CardFieldDefinition.hideOnCardTypes` (declared below) rather than
+ * adding a new group. Example: `memberName` is hidden for `membership_card`
+ * because the pass record name is already surfaced via the SQL column
+ * `templates.name`, so duplicating it as a left/right face field is
+ * redundant. See plan `membership_card_conditional_ui_hide` (2026-09-13).
  */
 export type CardFieldGroup = 'common' | 'stamp' | 'reward' | 'cashback';
 
@@ -83,6 +90,15 @@ export const CARD_FIELD_KEYS = [
   'accumulatedSpendCashback',
 ] as const;
 
+/**
+ * Type-only import for `hideOnCardTypes` typing. Kept as a type-only
+ * import (via `import type`) so this constants module stays runtime-free
+ * and circular-free — `card.ts` does not depend on anything in this file
+ * for runtime, but this file needs the `CardType` union for the new
+ * `hideOnCardTypes` field on `CardFieldDefinition` (2026-09-13).
+ */
+import type { CardType } from '../schemas/card';
+
 export type CardFieldKey = (typeof CARD_FIELD_KEYS)[number];
 
 export interface CardFieldDefinition {
@@ -97,6 +113,27 @@ export interface CardFieldDefinition {
    * - 'cashback': only shown when cardType === 'cashback_card'
    */
   group: CardFieldGroup;
+  /**
+   * Card types for which this option is HIDDEN in the Step 3 selector.
+   *
+   * Inverse of `group`: 'common' fields are normally shown for every card
+   * type, but a field like `memberName` should NOT appear when
+   * `cardType === 'membership_card'` (the pass record name is already
+   * surfaced via the SQL `templates.name` column, so duplicating it on
+   * the card face is redundant — plan `membership_card_conditional_ui_hide`).
+   *
+   * Defaults to `undefined` (= no exclusion). Consumers:
+   *   - `filterCARD_FIELDS_BY_CARD_TYPE` drops entries whose
+   *     `hideOnCardTypes` contains the current cardType.
+   *   - The store keeps the user's stored `leftField` / `rightField` value
+   *     intact (the filter only affects dropdown options, not the
+   *     stored value) — matches the existing stamp_group "no silent data
+   *     loss" convention.
+   *
+   * Optional + readonly tuple. Adding more card-type-specific exclusions
+   * in the future requires editing only this file.
+   */
+  hideOnCardTypes?: readonly CardType[];
 }
 
 /**
@@ -108,6 +145,14 @@ export interface CardFieldDefinition {
  * the namespace boundary explicit at the call site (no `cardEditor.` prefix
  * baked into the constant, which would cause double-prefix drift under
  * rule 023 § Namespace Naming).
+ *
+ * `memberName` carries `hideOnCardTypes: ['membership_card']` (2026-09-13).
+ * The pass record name is already shown via `templates.name` (the
+ * `CardBuilderEditorHeader` logo text is also sourced from
+ * `templates.settings.logoText` — see the 2026-09-13 semantic swap),
+ * so re-surfacing "會員姓名" as a Step 3 face field on a membership
+ * card is redundant. The store value is preserved when switching card
+ * type — only the dropdown option is filtered out.
  */
 export const CARD_FIELDS: readonly CardFieldDefinition[] = [
   // ── common: every card type ────────────────────────────────────────────
@@ -116,7 +161,12 @@ export const CARD_FIELDS: readonly CardFieldDefinition[] = [
   { key: 'memberLevel', group: 'common', labelKey: 'step3.fieldsSection.fields.memberLevel' },
   { key: 'birthday',    group: 'common', labelKey: 'step3.fieldsSection.fields.birthday' },
   { key: 'visitCount',  group: 'common', labelKey: 'step3.fieldsSection.fields.visitCount' },
-  { key: 'memberName',  group: 'common', labelKey: 'step3.fieldsSection.fields.memberName' },
+  {
+    key: 'memberName',
+    group: 'common',
+    labelKey: 'step3.fieldsSection.fields.memberName',
+    hideOnCardTypes: ['membership_card'],
+  },
   // ── stamp: only stamp_card / multipass ─────────────────────────────────
   { key: 'availableRewards', group: 'stamp', labelKey: 'step3.fieldsSection.fields.availableRewards' },
   { key: 'totalStamps',      group: 'stamp', labelKey: 'step3.fieldsSection.fields.totalStamps' },

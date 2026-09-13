@@ -12,6 +12,14 @@
 
 import { z } from 'zod';
 import { CARD_FIELD_KEYS } from '../constants/card-fields';
+import {
+  MAX_MEMBERSHIP_TIERS,
+  MAX_REWARDS_PER_TIER,
+  TIER_NAME_MAX_LENGTH,
+  REWARD_LABEL_MAX_LENGTH,
+  REWARD_VALUE_MAX_LENGTH,
+  COST_MIN,
+} from '../constants/membership-card';
 
 // ===== Card Types =====
 
@@ -76,17 +84,27 @@ export type TemplateStatus = z.infer<typeof templateStatusSchema>;
  * Template settings stored in JSONB.
  * Flat structure — NOT nested.
  *
- * Step 1 fields: name, cardType
- * Step 2 fields: barcodeType, storeName, issuerName, passValidDays, expiryDate, currency
+ * Step 1 fields: cardType (also held in SQL column `templates.card_type`),
+ *                logoText (the text shown on the pass header — visually
+ *                rendered in PassCardPreviewHeader next to the issuer logo).
+ *                Card Name itself lives in the SQL column `templates.name`,
+ *                NOT in this JSONB blob.
+ * Step 2 fields: barcodeType, logoText, issuerName, passValidDays, expiryDate, currency
  * Step 3-4 fields: TBD (backgroundColor, textColor, etc.)
  */
 export const templateSettingsSchema = z.object({
   // Step 1
-  name: z.string().optional(),
   cardType: cardTypeSchema.optional(),
   // Step 2
   barcodeType: barcodeTypeSchema.optional(),
-  storeName: z.string().optional(),
+  /**
+   * Logo Text — the text shown on the pass header (next to the issuer
+   * logo). Semantic swap 2026-09-13: previously stored in the SQL column
+   * `templates.name` under the misleading key `name`; migration 018
+   * swapped it into `settings.logoText`. The Card Name (pass record name,
+   * NOT shown in preview) now lives in the SQL column `templates.name`.
+   */
+  logoText: z.string().optional(),
   issuerName: z.string().optional(),
   passValidDays: z.number().int().positive().nullable().optional(),
   expiryDate: z.string().optional(),
@@ -350,6 +368,93 @@ export const templateSettingsSchema = z.object({
       }),
     )
     .max(5)
+    .optional(),
+  // ===== Step 6 — Membership 卡 (2026-09-13, membership_card only) =====
+  // Mirrors mu-plugins membership-tier structure (see SAOME-Email-Engine
+  // membership-tier handling). The simplest Step 6 sub-module after cashback:
+  // each tier is a paid/free membership level with optional duration +
+  // cost + per-tier 會員獎勵 sub-rows.
+  //
+  // Card-wide `hasExpiry` toggle (added 2026-09-13): all tiers share the
+  // same expiry setting. When false, durationType / monthlyCost / yearlyCost
+  // are hidden from the UI but the underlying schema still accepts them
+  // (they're optional). When true, each tier must have a non-null
+  // durationType + a corresponding non-negative cost.
+  //
+  // Per-tier 會員獎勵 sub-rows: up to MAX_REWARDS_PER_TIER=5 per tier. Each
+  // row is a {label, value} pair (same shape as Step 4 back fields / links).
+  //
+  // Differs structurally from stamp_card / reward_card / cashback_card:
+  //   - NO earningMode switch (membership has no point accrual — the
+  //     member either pays or doesn't).
+  //   - NO rewardType / rewardValue (the "reward" of a membership tier
+  //     IS the per-tier 會員獎勵 sub-rows, not a flat value).
+  //   - NO threshold field (membership tiers are independent levels,
+  //     not cumulative thresholds).
+  //
+  // Cross-references:
+  //   - packages/shared/constants/membership-card.ts (single source of truth)
+  //   - packages/shared/schemas/cardBuilder.ts (cardTypeExtensions.membership_card)
+  //   - apps/backend/src/modules/cards/schemas/request.ts (mirror)
+  //   - apps/backend/src/modules/cards/db/templates.ts (TemplateSettings interface)
+  /**
+   * Card-wide expiry toggle (2026-09-13). When `false` (default), the
+   * membership tier has no expiry (e.g. lifetime VIP). When `true`, each
+   * tier must specify `durationType` (monthly / yearly) + the corresponding
+   * cost. Frontend store: `setHasExpiry(false)` ALSO clears all per-tier
+   * `durationType` / `monthlyCost` / `yearlyCost` so no stale data leaks.
+   */
+  hasExpiry: z.boolean().optional(),
+  /**
+   * Membership tier array (最多 5 組 per MAX_MEMBERSHIP_TIERS).
+   * Each tier carries name + durationType + monthlyCost + yearlyCost +
+   * lifetimeCost + rewards (per-tier 會員獎勵 sub-rows, up to MAX_REWARDS_PER_TIER=5).
+   *
+   * Cost fields are mutually exclusive based on the card-wide `hasExpiry` toggle:
+   *   - hasExpiry=true  → monthlyCost / yearlyCost are meaningful (lifetimeCost ignored).
+   *   - hasExpiry=false → lifetimeCost is meaningful (monthlyCost / yearlyCost ignored).
+   * The store's `setHasExpiry(false)` clears durationType but PRESERVES costs;
+   * `setHasExpiry(true)` keeps the existing lifetimeCost value but it will be hidden
+   * by the editor (defensive: never silently drops user-entered data).
+   */
+  membershipTiers: z
+    .array(
+      z.object({
+        /** 等級名稱 (例: "VIP", "金卡會員"). Required, 1-40 chars. */
+        name: z.string().min(1).max(TIER_NAME_MAX_LENGTH),
+        /** 月/年卡單選. null = 未設定(僅在 card-wide hasExpiry=true 時有效). */
+        durationType: z
+          .enum(['monthly', 'yearly'])
+          .nullable()
+          .optional(),
+        /** 月費. 0 = 免費會員. null = 未填. Ignored in lifetime mode (hasExpiry=false). */
+        monthlyCost: z.number().min(COST_MIN).nullable().optional(),
+        /** 年費. 0 = 免費會員. null = 未填. Ignored in lifetime mode (hasExpiry=false). */
+        yearlyCost: z.number().min(COST_MIN).nullable().optional(),
+        /**
+         * 終身會員費用 (僅在 card-wide hasExpiry=false 時有效).
+         * 0 = 免費終身會員. null = 未填.
+         * Tenants use this field to sell the right to a lifetime tier
+         * (one-time purchase). Hidden by the editor when hasExpiry=true.
+         * 2026-09-13 新增: 與 monthlyCost / yearlyCost 互斥 — 由 card-wide
+         * `hasExpiry` 決定哪組欄位生效.
+         */
+        lifetimeCost: z.number().min(COST_MIN).nullable().optional(),
+        /** 會員獎勵 sub-rows (最多 5 組 per MAX_REWARDS_PER_TIER). */
+        rewards: z
+          .array(
+            z.object({
+              /** Sub-row label (e.g. "專屬優惠"). 1-20 chars. */
+              label: z.string().min(1).max(REWARD_LABEL_MAX_LENGTH),
+              /** Sub-row value (e.g. URL or text). 1-80 chars. */
+              value: z.string().min(1).max(REWARD_VALUE_MAX_LENGTH),
+            }),
+          )
+          .max(MAX_REWARDS_PER_TIER)
+          .optional(),
+      }),
+    )
+    .max(MAX_MEMBERSHIP_TIERS)
     .optional(),
   // ===== Step 6 — Cashback 卡 (2026-09-11, cashback_card only) =====
   // Mirrors mu-plugins cashback-tier structure. The simplest of the Step 6
