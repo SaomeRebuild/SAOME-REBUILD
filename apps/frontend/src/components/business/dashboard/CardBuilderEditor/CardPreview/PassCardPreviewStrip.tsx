@@ -81,6 +81,15 @@ interface PassCardPreviewStripProps {
   stampIconId?: string;
   /** Number of stamp grid rows (1..4). Undefined = no stamp grid. */
   stampGridRows?: StampGridRows;
+  /**
+   * 2026-09-13 membership card: when true, render the membership
+   * label/value pair (會員姓名 / NAME placeholder) instead of the
+   * default CreditCard + name. 2026-09-13 fix: the UserIcon was removed
+   * to align the preview with real Apple Wallet passes, which never
+   * render a user-icon glyph on the strip. The label/value pair alone
+   * is enough context to communicate "this is a member slot".
+   */
+  isMembership?: boolean;
 }
 
 /** Strip 固定背景色 — 永遠深灰黑色，不跟 color picker 改變 */
@@ -102,6 +111,7 @@ export function PassCardPreviewStrip({
   cardType,
   stampIconId,
   stampGridRows,
+  isMembership = false,
 }: PassCardPreviewStripProps) {
   const { t } = useTranslation('passCard');
 
@@ -182,6 +192,47 @@ export function PassCardPreviewStrip({
             stripHeight={stripHeight}
             stripWidth={stripWidth}
           />
+        ) : isMembership ? (
+          // 2026-09-13 membership card: label/value 配對取代預設 icon + name。
+          // 2026-09-13 fix: UserIcon 已移除（真實 Apple Wallet pass 的 strip
+          // 不會出現 user glyph），只保留 label/value 配對。
+          // label/value 從 passCard i18n 取得。
+          <div
+            className={
+              compact
+                ? 'absolute inset-0 flex items-center justify-start gap-2 px-3'
+                : 'absolute inset-0 flex items-center justify-start gap-3 px-4'
+            }
+            data-testid="strip-membership"
+          >
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <span
+                className={
+                  compact
+                    ? 'text-[10px] font-medium leading-tight text-white'
+                    : 'text-xs font-medium text-white'
+                }
+              >
+                {t('fieldPreview.memberName.label')}
+              </span>
+              {/* 2026-09-13 fix (current task): 預設名（王大明 / Thabo Mokoena）
+                  固定來自 i18n，不再被 logoText (`name` prop) 覆寫。logoText 是
+                  pass header 文字（顯示在卡片正面靠近 issuer logo），跟持有人
+                  姓名是不同的語意槽位 — 把 logoText 塞到 strip 持有人欄位會
+                  讓「卡片名稱」跟「會員姓名」看起來一樣，UX 上無法區分。
+                  註：`name` prop 在 isMembership 分支完全沒用，可保留 prop 簽章
+                  以免破壞其他呼叫端，但 strip 內部已不讀它。 */}
+              <span
+                className={
+                  compact
+                    ? 'text-xs font-semibold leading-tight text-white truncate'
+                    : 'text-lg font-semibold text-white truncate'
+                }
+              >
+                {t('fieldPreview.memberName.value')}
+              </span>
+            </div>
+          </div>
         ) : (
           <>
             {/* 卡片圖示 placeholder（icon 預覽在 MediaAssetUploader 面板，不在卡片內） */}

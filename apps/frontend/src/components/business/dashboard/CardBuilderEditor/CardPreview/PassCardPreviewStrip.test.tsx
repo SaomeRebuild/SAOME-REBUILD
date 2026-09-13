@@ -26,6 +26,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { PassCardPreviewStrip } from './PassCardPreviewStrip';
 
+vi.mock('react-i18next', () => ({
+  useTranslation: vi.fn(() => ({
+    t: vi.fn((key: string) => key),
+    i18n: { get language() { return 'zh-TW'; } },
+  })),
+}));
+
 // Stamp icon manifest is mocked so the strip grid (when shown) renders
 // deterministic stubs without depending on real PNG asset URLs.
 vi.mock('@/assets/icons/stamps/manifest', () => ({
@@ -178,5 +185,86 @@ describe('PassCardPreviewStrip — width measurement (2026-09-04 stamp correctio
       expect(size).toBeGreaterThan(0);
       expect(size).toBeLessThan(rows1);
     });
+  });
+});
+
+describe('PassCardPreviewStrip — membership branch (Fix 3 + Fix 4 — 2026-09-13)', () => {
+  beforeEach(() => {
+    stubStripWidth(320);
+  });
+
+  it('renders strip-membership testid when isMembership=true', () => {
+    render(<PassCardPreviewStrip isMembership cardType="membership_card" />);
+    expect(screen.getByTestId('strip-membership')).toBeInTheDocument();
+  });
+
+  it('does NOT render a lucide user-icon SVG when isMembership=true (Fix 3 — 2026-09-13)', () => {
+    // The 2026-09-13 user correction: real Apple Wallet passes never show
+    // a user glyph on the strip. Verify no <svg class="lucide-user"> /
+    // <svg> with aria-hidden inside the strip-membership container.
+    const { container } = render(
+      <PassCardPreviewStrip isMembership cardType="membership_card" />,
+    );
+    const stripMembership = screen.getByTestId('strip-membership');
+    const innerSvgs = stripMembership.querySelectorAll('svg');
+    expect(innerSvgs.length).toBe(0);
+    // Sanity-check: no UserIcon lucide class anywhere in the rendered tree
+    // for the membership branch (the CreditCard default branch should be
+    // the only lucide SVG, and only when isMembership=false).
+    const allUserIcons = container.querySelectorAll('svg.lucide-user');
+    expect(allUserIcons.length).toBe(0);
+  });
+
+  it('renders label and value spans when isMembership=true', () => {
+    render(<PassCardPreviewStrip isMembership cardType="membership_card" />);
+    const stripMembership = screen.getByTestId('strip-membership');
+    // Two text spans: label + value
+    const textSpans = stripMembership.querySelectorAll('span');
+    expect(textSpans.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('uses i18n fieldPreview.memberName.value as fallback when name is empty (Fix 4 — 2026-09-13)', () => {
+    // 2026-09-13 fix: when `name` is empty (default `logoText === ''`),
+    // the strip falls back to the i18n value '王大明' / 'Thabo Mokoena'.
+    // This matches the realistic Pass preview (a real member would have
+    // a stored name; the fallback is the "first-launch empty state").
+    render(<PassCardPreviewStrip isMembership cardType="membership_card" name="" />);
+    const stripMembership = screen.getByTestId('strip-membership');
+    // The mocked useTranslation returns the key verbatim. So the
+    // fallback key 'fieldPreview.memberName.value' must appear inside
+    // the strip-membership container.
+    expect(stripMembership.textContent).toContain('fieldPreview.memberName.value');
+  });
+
+  // 2026-09-13 fix (current task): in the isMembership branch, the strip's
+  // value slot is ALWAYS the i18n `fieldPreview.memberName.value` key (e.g.
+  // 王大明 / Thabo Mokoena) and is NOT derived from the `name` prop. The
+  // `name` prop is the pass header text (logoText) — putting it in the
+  // member name slot would make "Card Name" and "Member Name" visually
+  // identical on the strip, which is wrong UX-wise. The logo text stays
+  // on the header; the strip shows the i18n member name placeholder.
+  it('isMembership branch ignores the `name` prop (logoText stays on header, not on strip) — 2026-09-13 fix', () => {
+    render(
+      <PassCardPreviewStrip
+        isMembership
+        cardType="membership_card"
+        name="Alice Chen"
+      />,
+    );
+    const stripMembership = screen.getByTestId('strip-membership');
+    // The provided `name` ("Alice Chen") must NOT appear on the strip —
+    // it's only on the header / non-membership default branch.
+    expect(stripMembership.textContent).not.toContain('Alice Chen');
+    // The i18n fallback key is always shown in the value slot.
+    expect(stripMembership.textContent).toContain('fieldPreview.memberName.value');
+  });
+
+  it('does NOT render strip-membership when isMembership is omitted/false', () => {
+    // The branch must be opt-in: omitting isMembership falls through to the
+    // default CreditCard hero, even for membership_card type. The preview
+    // wrapper decides when to enable isMembership based on
+    // `isPaid && cardType === 'membership_card'`.
+    render(<PassCardPreviewStrip cardType="membership_card" />);
+    expect(screen.queryByTestId('strip-membership')).toBeNull();
   });
 });

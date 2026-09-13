@@ -39,6 +39,10 @@ export function PassCardPreview({
   stampIconId,
   rewardName,
   firstRewardTierName,
+  firstCashbackTierName,
+  firstMembershipTierName,
+  membershipTiersRewards,
+  isMembership,
   description,
   backFields,
   links,
@@ -52,8 +56,23 @@ export function PassCardPreview({
   // as a prop, so we always derive it here from the store. This is the
   // single source of truth for the cashback_card preview value.
   // (2026-09-12 cashback card member-level → reward refactor.)
+  //
+  // 2026-09-13 (restored): membershipTiers from store, used to derive
+  // firstMembershipTierName for the membership_card memberLevel → first-tier-name
+  // override in PassCardPreviewBody. Same derivation pattern as cashback.
+  // The parent (CardBuilderEditorPreview) does NOT pass firstMembershipTierName
+  // as a prop, so we always derive it here from the store.
   const cashbackTiers = useCardBuilderStore((s) => s.cashbackTiers);
-  const firstCashbackTierName = cashbackTiers?.[0]?.name ?? '';
+  const membershipTiers = useCardBuilderStore((s) => s.membershipTiers);
+  const derivedFirstCashbackTierName = cashbackTiers?.[0]?.name ?? '';
+  const derivedFirstMembershipTierName = membershipTiers?.[0]?.name ?? '';
+  // Prefer caller-provided firstCashbackTierName (when the wrapper passes it
+  // directly); otherwise derive from the store.
+  const effectiveFirstCashbackTierName =
+    firstCashbackTierName ?? derivedFirstCashbackTierName;
+  // Same pattern for membership: prefer caller-provided, fallback to derived.
+  const effectiveFirstMembershipTierName =
+    firstMembershipTierName ?? derivedFirstMembershipTierName;
   return (
     <div
       className={cn(
@@ -84,11 +103,16 @@ export function PassCardPreview({
           // ─── Back Side：完全清除正面殘留 UI ───
           // Step 4 card-info (2026-09-04): pass description / backFields /
           // links through so Section 1 / 4 / 5 reflect the live editor state.
+          // 2026-09-13 membership card: pass membershipTiersRewards +
+          // isMembership through so Section 1.5 (會員獎勵) renders when
+          // appropriate.
           <PassCardPreviewBack
             compact={compact}
             description={description}
             backFields={backFields}
             links={links}
+            membershipTiersRewards={membershipTiersRewards}
+            isMembership={isMembership}
           />
         ) : (
           // ─── Front Side ───
@@ -104,8 +128,9 @@ export function PassCardPreview({
             {/* Strip / Hero — 卡片名稱 + 預設 CreditCard 圖示
                 Strip 內部固定深灰黑色背景（不跟 color picker）,
                 背景圖透過 `position: relative` + `absolute inset-0 object-cover`
-                約束在 h-[100px] / h-[120px] 的 strip 區塊內滿版,
-                不會溢出到 header / body / footer */}
+                約束在 strip 區塊內滿版,不會溢出到 header / body / footer
+                2026-09-13 membership card: pass `isMembership` through to
+                switch the strip layout to UserIcon + label/value pair. */}
             <PassCardPreviewStrip
               name={name}
               backgroundImage={backgroundImage}
@@ -116,6 +141,7 @@ export function PassCardPreview({
               cardType={cardType}
               stampIconId={stampIconId}
               stampGridRows={stampGridRows}
+              isMembership={isMembership}
             />
 
             {/* Body */}
@@ -128,7 +154,8 @@ export function PassCardPreview({
               cardType={cardType}
               rewardName={rewardName}
               firstRewardTierName={firstRewardTierName}
-              firstCashbackTierName={firstCashbackTierName}
+              firstCashbackTierName={effectiveFirstCashbackTierName}
+              firstMembershipTierName={effectiveFirstMembershipTierName}
             />
 
             {/* Footer / Barcode */}

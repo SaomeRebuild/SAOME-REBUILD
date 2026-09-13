@@ -67,14 +67,28 @@ describe('PassCardPreviewBody — demo label/value rendering', () => {
 describe('PassCardPreviewBody — all 6 fields × 2 slots', () => {
   // Parametrize: for each CardFieldKey in both slots, the i18n key path
   // must resolve without drift. Catches missing fieldPreview.{key} entries.
-  it.each(CARD_FIELD_KEYS)('renders leftField="%s" → fieldPreview.%s.label and .value', (key) => {
+  //
+  // 2026-09-13 ZAR pollution fix: the two cashback amount fields
+  // (`pointsToNextTierCashback`, `accumulatedSpendCashback`) are excluded
+  // from this parametrized test because their values live in the
+  // currency-driven `CASHBACK_PREVIEW_AMOUNTS` constant (NOT in i18n).
+  // They have their own dedicated tests in the "cashback-only display
+  // fields" describe block below. Filtering them out here keeps the
+  // "all 6 fields × 2 slots" contract tight: i18n-sourced fields only.
+  const I18N_SOURCED_FIELD_KEYS = CARD_FIELD_KEYS.filter(
+    (key) =>
+      key !== 'pointsToNextTierCashback' &&
+      key !== 'accumulatedSpendCashback',
+  );
+
+  it.each(I18N_SOURCED_FIELD_KEYS)('renders leftField="%s" → fieldPreview.%s.label and .value', (key) => {
     const { unmount } = render(<PassCardPreviewBody leftField={key} />);
     expect(screen.getByText(`fieldPreview.${key}.label`)).toBeInTheDocument();
     expect(screen.getByText(`fieldPreview.${key}.value`)).toBeInTheDocument();
     unmount();
   });
 
-  it.each(CARD_FIELD_KEYS)('renders rightField="%s" → fieldPreview.%s.label and .value', (key) => {
+  it.each(I18N_SOURCED_FIELD_KEYS)('renders rightField="%s" → fieldPreview.%s.label and .value', (key) => {
     const { unmount } = render(<PassCardPreviewBody rightField={key} />);
     expect(screen.getByText(`fieldPreview.${key}.label`)).toBeInTheDocument();
     expect(screen.getByText(`fieldPreview.${key}.value`)).toBeInTheDocument();
@@ -501,21 +515,25 @@ describe('PassCardPreviewBody — stamp_card member-level → reward override (2
     expect(demoValueCalls).toHaveLength(0);
   });
 
-  it('non-stamp cardType + leftField="memberLevel" → original memberLevel.label / .value keys (no stamp override)', () => {
+  it('non-stamp / non-membership cardType + leftField="memberLevel" → original memberLevel.label / .value keys (no stamp override)', () => {
+    // 2026-09-13: membership_card override branch was REMOVED. Now ALL
+    // non-{stamp,reward,cashback} card types — including membership_card —
+    // keep the original memberLevel label/value pair. To test the default
+    // branch (no override), use `discount_card` which is never overridden.
     const tSpy = buildTSpy();
     mockUseTranslationOnce(tSpy);
     render(
       <PassCardPreviewBody
         leftField="memberLevel"
-        cardType="membership_card"
+        cardType="discount_card"
         rewardName="10元折價"
       />,
     );
 
-    // membership_card is not stamp_card → original label/value keys.
+    // discount_card is not in any override list → original label/value keys.
     expect(tSpy).toHaveBeenCalledWith('fieldPreview.memberLevel.label');
     expect(tSpy).toHaveBeenCalledWith('fieldPreview.memberLevel.value');
-    // stampLabel MUST NOT be called for non-stamp card types.
+    // stampLabel MUST NOT be called for non-stamp/membership card types.
     const stampLabelCalls = tSpy.mock.calls.filter(
       (call) => call[0] === 'fieldPreview.memberLevel.stampLabel',
     );
@@ -673,30 +691,110 @@ describe('PassCardPreviewBody — reward_card member-level → reward override (
     expect(demoValueCalls).toHaveLength(0);
   });
 
-  it('non-reward cardType + leftField="memberLevel" + firstRewardTierName="oijo" → original memberLevel.label / .value (no reward override)', () => {
-    // cashback_card now has its OWN override (separate from reward_card's).
-    // Use membership_card as a card type that stays in the default branch.
+  it('non-reward cardType (discount_card) + leftField="memberLevel" + firstMembershipTierName="VIP" → default branch (override = membership_card ONLY)', () => {
+    // 2026-09-13: the membership_card override is INTENTIONALLY scoped
+    // to `membership_card` only. Non-membership card types (incl.
+    // discount_card) keep the default fieldPreview.memberLevel label/value
+    // pair even if firstMembershipTierName is provided (membership override
+    // is a different cardType).
+    const tSpy = buildTSpy();
+    mockUseTranslationOnce(tSpy);
+    render(
+      <PassCardPreviewBody
+        leftField="memberLevel"
+        cardType="discount_card"
+        firstMembershipTierName="VIP"
+      />,
+    );
+
+    // Original label key MUST be called (default branch).
+    expect(tSpy).toHaveBeenCalledWith('fieldPreview.memberLevel.label');
+    // Original value key MUST be called (default branch — no override).
+    expect(tSpy).toHaveBeenCalledWith('fieldPreview.memberLevel.value');
+    // And firstMembershipTierName is NOT surfaced in the DOM (membership
+    // override only fires for membership_card).
+    expect(screen.queryByText('VIP')).toBeNull();
+  });
+
+  it('membership_card + leftField="memberLevel" + firstMembershipTierName="VIP Gold" → uses default memberLevel.label + first tier name (override restored 2026-09-13)', () => {
+    // 2026-09-13 (current task): the membership_card override was
+    // RESTORED. Membership cards now override the left/right memberLevel
+    // slot with the FIRST tier's name (Step 6 `membershipTiers[0].name`).
+    //   - label = `fieldPreview.memberLevel.label` (default "會員等級" /
+    //     "Member Level") — NOT stampLabel (different from
+    //     stamp/reward/cashback)
+    //   - value = `firstMembershipTierName` (the FIRST tier name)
     const tSpy = buildTSpy();
     mockUseTranslationOnce(tSpy);
     render(
       <PassCardPreviewBody
         leftField="memberLevel"
         cardType="membership_card"
-        firstRewardTierName="oijo"
+        firstMembershipTierName="VIP Gold"
       />,
     );
 
-    // Original label key MUST be called.
+    // Default label MUST be called (NOT stampLabel — membership override
+    // uses default label, not the stampLabel used by stamp/reward/cashback).
     expect(tSpy).toHaveBeenCalledWith('fieldPreview.memberLevel.label');
-    // Original value key MUST be called (the demo "金級" / "Gold" string).
-    expect(tSpy).toHaveBeenCalledWith('fieldPreview.memberLevel.value');
-    // stampLabel MUST NOT be called for non-stamp/reward/cashback card types.
+    // Demo value MUST NOT be called (override renders firstMembershipTierName,
+    // not the demo "金級" / "Gold" string).
+    const demoValueCalls = tSpy.mock.calls.filter(
+      (call) => call[0] === 'fieldPreview.memberLevel.value',
+    );
+    expect(demoValueCalls).toHaveLength(0);
+    // stampLabel MUST NOT be called (membership override uses default label).
     const stampLabelCalls = tSpy.mock.calls.filter(
       (call) => call[0] === 'fieldPreview.memberLevel.stampLabel',
     );
     expect(stampLabelCalls).toHaveLength(0);
-    // And firstRewardTierName is NOT surfaced in the DOM.
-    expect(screen.queryByText('oijo')).toBeNull();
+    // The override value MUST be rendered in the DOM.
+    expect(screen.getByText('VIP Gold')).toBeInTheDocument();
+  });
+
+  it('membership_card + leftField="memberLevel" + firstMembershipTierName="" → empty string fallback (no demo fallback)', () => {
+    // Per user-confirmed UX, an empty firstMembershipTierName renders as
+    // an empty string rather than to the demo "金級" / "Gold" string.
+    const tSpy = buildTSpy();
+    mockUseTranslationOnce(tSpy);
+    render(
+      <PassCardPreviewBody
+        leftField="memberLevel"
+        cardType="membership_card"
+        firstMembershipTierName=""
+      />,
+    );
+
+    // Label uses default memberLevel.label (NOT stampLabel).
+    expect(tSpy).toHaveBeenCalledWith('fieldPreview.memberLevel.label');
+
+    // firstMembershipTierName was empty → falls back to '' (no demo
+    // "金級" / "Gold" surfaced).
+    const demoValueCalls = tSpy.mock.calls.filter(
+      (call) => call[0] === 'fieldPreview.memberLevel.value',
+    );
+    expect(demoValueCalls).toHaveLength(0);
+  });
+
+  it('membership_card + leftField="memberLevel" without firstMembershipTierName → empty string fallback', () => {
+    // When firstMembershipTierName is omitted entirely (e.g. caller didn't
+    // pass it), the override branch falls through to '' (no demo fallback).
+    const tSpy = buildTSpy();
+    mockUseTranslationOnce(tSpy);
+    render(
+      <PassCardPreviewBody
+        leftField="memberLevel"
+        cardType="membership_card"
+      />,
+    );
+
+    // Label uses default memberLevel.label.
+    expect(tSpy).toHaveBeenCalledWith('fieldPreview.memberLevel.label');
+    // Demo value MUST NOT be called.
+    const demoValueCalls = tSpy.mock.calls.filter(
+      (call) => call[0] === 'fieldPreview.memberLevel.value',
+    );
+    expect(demoValueCalls).toHaveLength(0);
   });
 
   it('multipass + leftField="memberLevel" + firstRewardTierName="oijo" → original memberLevel.label / .value (scope = reward_card ONLY)', () => {
@@ -899,7 +997,7 @@ describe('PassCardPreviewBody — cashback_card member-level → reward override
   });
 });
 
-describe('PassCardPreviewBody — cashback-only display fields (2026-09-12)', () => {
+describe('PassCardPreviewBody — cashback-only display fields (2026-09-12, refined 2026-09-13)', () => {
   /**
    * Cashback card adds two new display fields accessible in Step 3:
    *   - pointsToNextTierCashback  — 到下個層級還差 / Amount to Next Tier
@@ -910,110 +1008,186 @@ describe('PassCardPreviewBody — cashback-only display fields (2026-09-12)', ()
    * reward_card equivalent (`pointsToNextTier`) still uses "Points to
    * Next Tier" because reward tiers ARE point-based.
    *
-   * These fields use the same `fieldPreview` key convention as all other
-   * fields. The default branch of `resolveSlot` reads `fieldPreview.{key}.label`
-   * + `.value` from i18n — no special override behavior.
+   * 2026-09-13 ZAR pollution fix — currency-driven values:
+   *   The cashback amount values are NOT stored in i18n (label-only there).
+   *   They are sourced from `CASHBACK_PREVIEW_AMOUNTS[currency]` — same
+   *   currency-driven map pattern as `BALANCE_PREVIEW_AMOUNTS` for the
+   *   balance preview block.
+   *
+   *   TWD → "562元" / "3301元" (Han suffix, en-locale-unsafe)
+   *   ZAR → "R562" / "R3301" (no Han, locale en-ZA convention)
+   *
+   *   The body component NEVER routes cashback values through t() —
+   *   they're rendered as raw strings from the constant.
    */
 
-  it('pointsToNextTierCashback renders its label + value on left slot', () => {
+  it('pointsToNextTierCashback renders its label via i18n + value via CASHBACK_PREVIEW_AMOUNTS (TWD)', () => {
+    // The mocked t() returns the i18n key as text, so the label DOM
+    // shows `fieldPreview.pointsToNextTierCashback.label`. The value,
+    // however, comes from the currency-driven constant — NOT t() —
+    // so the value DOM shows the literal string "562元" (TWD) or
+    // "R562" (ZAR). The mock t() cannot intercept the constant lookup.
     const { unmount } = render(
       <PassCardPreviewBody leftField="pointsToNextTierCashback" />,
     );
     expect(screen.getByText('fieldPreview.pointsToNextTierCashback.label')).toBeInTheDocument();
-    expect(screen.getByText('fieldPreview.pointsToNextTierCashback.value')).toBeInTheDocument();
+    expect(screen.getByText('562元')).toBeInTheDocument();
     unmount();
   });
 
-  it('accumulatedSpendCashback renders its label + value on right slot', () => {
+  it('accumulatedSpendCashback renders its label via i18n + value via CASHBACK_PREVIEW_AMOUNTS (TWD)', () => {
     const { unmount } = render(
       <PassCardPreviewBody rightField="accumulatedSpendCashback" />,
     );
     expect(screen.getByText('fieldPreview.accumulatedSpendCashback.label')).toBeInTheDocument();
-    expect(screen.getByText('fieldPreview.accumulatedSpendCashback.value')).toBeInTheDocument();
+    expect(screen.getByText('3301元')).toBeInTheDocument();
+    unmount();
+  });
+
+  it('ZAR currency: cashback values read from CASHBACK_PREVIEW_AMOUNTS.ZAR', () => {
+    useCardBuilderStore.setState({ currency: 'ZAR' });
+
+    const { unmount } = render(
+      <PassCardPreviewBody
+        leftField="pointsToNextTierCashback"
+        rightField="accumulatedSpendCashback"
+      />,
+    );
+    expect(screen.getByText('R562')).toBeInTheDocument();
+    expect(screen.getByText('R3301')).toBeInTheDocument();
+    unmount();
+  });
+
+  it('TWD currency: cashback values read from CASHBACK_PREVIEW_AMOUNTS.TWD (Han suffix)', () => {
+    // Sanity check: TWD keeps the original "562元" format. This is the
+    // regression for the regex-based formatter that previously contaminated
+    // cashback values into "R562".
+    // Note: a previous test may have flipped the store to ZAR via
+    // setState, so we explicitly reset to TWD here to keep the test
+    // self-contained.
+    useCardBuilderStore.setState({ currency: 'TWD' });
+
+    const { unmount } = render(
+      <PassCardPreviewBody
+        leftField="pointsToNextTierCashback"
+        rightField="accumulatedSpendCashback"
+      />,
+    );
+    expect(screen.getByText('562元')).toBeInTheDocument();
+    expect(screen.getByText('3301元')).toBeInTheDocument();
+    // The mock t() returns i18n keys verbatim, so we should NOT see the
+    // bare value key `fieldPreview.pointsToNextTierCashback.value` rendered
+    // (since the body now bypasses t() for cashback amount values).
+    expect(
+      screen.queryByText('fieldPreview.pointsToNextTierCashback.value'),
+    ).toBeNull();
+    expect(
+      screen.queryByText('fieldPreview.accumulatedSpendCashback.value'),
+    ).toBeNull();
     unmount();
   });
 });
 
-describe('PassCardPreviewBody — ZAR currency formatting (2026-09-12)', () => {
+describe('PassCardPreviewBody — ZAR pollution regression (2026-09-13)', () => {
   /**
-   * When `store.currency === 'ZAR'` (selected in Step 2 as the card currency),
-   * all `default` branch preview amount values receive ZAR prefix transformation:
-   *   "562元" → "R562"
-   *   "3301元" → "R3301"
-   * The `R` prefix is placed before the numeric portion with no separator,
-   * matching South African Rand display convention (ISO 4217 / locale en-ZA).
+   * 2026-09-13 ZAR pollution fix: when the user selects ZAR as the card
+   * currency, NON-AMOUNT preview fields must NOT receive any ZAR prefix
+   * transformation. The previous regex-based formatter
+   * (`/\d+/` → prepend "R") contaminated every i18n-sourced value on
+   * every card type, e.g.:
    *
-   * Override branches (stamp_card / reward_card / cashback_card + memberLevel)
-   * read from editor store inputs — their values are NOT processed through the
-   * ZAR formatter. Only i18n-sourced demo values are transformed.
+   *   phone        `+8869XXXXXXXX`     → `R8869XXXXXXXX` ❌
+   *   phone (en)   `+279XXXXXXXXX`    → `R279XXXXXXXXX` ❌
+   *   birthday     `05/11/1999`        → `R05111999` ❌
+   *   visitCount   `5 次`              → `R5` ❌
+   *   totalStamps  `3/{{rows}}`        → `R3` ❌
+   *   stampsRemain `6個`               → `R6` ❌
+   *   pointsToNext `123點`             → `R123` ❌
+   *   currentPoints `23點`             → `R23` ❌
    *
-   * The store mock (set up at the top of this file) defaults to TWD.
-   * Tests that need ZAR call `useCardBuilderStore.setState({ currency: 'ZAR' })`
-   * before rendering.
+   * This describe block pins the fix: only the two cashback amount fields
+   * (`pointsToNextTierCashback` + `accumulatedSpendCashback`) are
+   * currency-driven. Everything else renders verbatim from i18n.
+   *
+   * Note: the mock t() returns i18n keys as strings (e.g.
+   * `fieldPreview.phone.value`). With the regex formatter gone, the body
+   * now passes the raw i18n key through to the DOM, so the rendered value
+   * span text is exactly the i18n key string. We assert:
+   *   - value DOM contains the literal i18n key (NOT a ZAR-prefixed variant)
+   *   - value DOM does NOT contain "R" followed by digits
    */
 
-  it('TWD currency: pointsToNextTierCashback value renders via default i18n path', () => {
-    render(<PassCardPreviewBody leftField="pointsToNextTierCashback" />);
-    expect(screen.getByText('fieldPreview.pointsToNextTierCashback.value')).toBeInTheDocument();
-  });
-
-  it('ZAR currency: pointsToNextTierCashback value renders as "R562" (ZAR prefix applied to i18n value)', () => {
+  it('ZAR + phone field: value renders as raw i18n key, NOT "R8869XXXXXXXX" (regression 2026-09-13)', () => {
     useCardBuilderStore.setState({ currency: 'ZAR' });
 
-    render(<PassCardPreviewBody leftField="pointsToNextTierCashback" />);
-    // The ZAR formatter extracts digits from the i18n value ("562元") and prepends R.
-    // Mock t() returns key as text; the DOM renders "fieldPreview.pointsToNextTierCashback.value".
-    // The actual transformation happens at runtime (not in the mock), so we assert
-    // on the DOM output: the value span text is the ZAR-formatted string.
-    // Since t() returns key, the component computes "R" + "562" = "R562".
-    const valueSpans = Array.from(document.querySelectorAll('span')).filter(
-      (el) => el.textContent?.startsWith('R') || el.textContent === 'fieldPreview.pointsToNextTierCashback.value',
-    );
-    // At least one span should contain the ZAR-formatted value.
-    expect(valueSpans.length).toBeGreaterThanOrEqual(1);
+    const { unmount } = render(<PassCardPreviewBody leftField="phone" />);
+    // Mock t() returns key verbatim. Old behavior: "R8869XXXXXXXX" (regex
+    // extracted digits + prepended R). New behavior: the raw i18n key.
+    expect(screen.getByText('fieldPreview.phone.value')).toBeInTheDocument();
+    expect(screen.queryByText(/^R\d/)).toBeNull();
+    unmount();
   });
 
-  it('ZAR currency: accumulatedSpendCashback value renders as "R3301"', () => {
+  it('ZAR + birthday field: value renders as raw i18n key, NOT "R0511..." (regression)', () => {
     useCardBuilderStore.setState({ currency: 'ZAR' });
 
-    render(<PassCardPreviewBody rightField="accumulatedSpendCashback" />);
-    const valueSpans = Array.from(document.querySelectorAll('span')).filter(
-      (el) => el.textContent?.startsWith('R') || el.textContent === 'fieldPreview.accumulatedSpendCashback.value',
-    );
-    expect(valueSpans.length).toBeGreaterThanOrEqual(1);
+    const { unmount } = render(<PassCardPreviewBody leftField="birthday" />);
+    expect(screen.getByText('fieldPreview.birthday.value')).toBeInTheDocument();
+    expect(screen.queryByText(/^R\d/)).toBeNull();
+    unmount();
   });
 
-  it('ZAR currency: non-amount fields (phone, email, memberName) are NOT affected by ZAR formatter', () => {
-    // The ZAR formatter only processes the raw i18n value when it contains digits.
-    // Fields like phone / email / memberName do not have numeric i18n values,
-    // so they fall through to the rawValue branch and are returned unchanged.
+  it('ZAR + visitCount field: value renders as raw i18n key, NOT "R5" (regression)', () => {
     useCardBuilderStore.setState({ currency: 'ZAR' });
 
-    render(<PassCardPreviewBody leftField="phone" />);
-    // phone.value = "+279XXXXXXXXX" has no digits-match extraction, but the
-    // formatter extracts digits → "R279XXXXXXXXX" (edge case, but safe behavior).
-    // The key assertion is that the phone label + value are still rendered.
-    expect(screen.getByText('fieldPreview.phone.label')).toBeInTheDocument();
+    const { unmount } = render(<PassCardPreviewBody leftField="visitCount" />);
+    expect(screen.getByText('fieldPreview.visitCount.value')).toBeInTheDocument();
+    expect(screen.queryByText(/^R\d/)).toBeNull();
+    unmount();
   });
 
-  it('ZAR currency: cashback_card + memberLevel override value is NOT ZAR-transformed (store input, not i18n)', () => {
-    // Override branch values come from store inputs (firstCashbackTierName),
-    // not from i18n fieldPreview values. The ZAR formatter only runs in the
-    // default branch. The override value should render as-is without transformation.
+  it('ZAR + totalStamps field: i18n interpolation still works (not "R3") (regression)', () => {
     useCardBuilderStore.setState({ currency: 'ZAR' });
 
-    render(
-      <PassCardPreviewBody
-        leftField="memberLevel"
-        cardType="cashback_card"
-        firstCashbackTierName="VIP Gold Tier"
-      />,
-    );
+    const tSpy = vi.fn((...args: unknown[]) => args[0] as string);
+    vi.mocked(useTranslation).mockReturnValueOnce({ t: tSpy } as unknown as ReturnType<typeof useTranslation>);
+    render(<PassCardPreviewBody leftField="totalStamps" stampGridRows={2} />);
 
-    // The override value should render as "VIP Gold Tier" — no R prefix.
-    expect(screen.getByText('VIP Gold Tier')).toBeInTheDocument();
-    // And NOT as "R" + "VIP Gold Tier" (the formatter only applies to default branch).
-    expect(screen.queryByText('R' + 'VIP Gold Tier')).toBeNull();
+    // The body must call t() with the interpolation opts `{ rows: 10 }`
+    // (2 rows × 5 stamps/row = 10). Previously the regex formatter
+    // short-circuited this — but with it gone, the i18n call is preserved.
+    const valueCalls = tSpy.mock.calls.filter((call) => call[1] !== undefined);
+    expect(valueCalls).toHaveLength(1);
+    expect(valueCalls[0]?.[0]).toBe('fieldPreview.totalStamps.value');
+    expect(valueCalls[0]?.[1]).toEqual({ rows: 10 });
+  });
+
+  it('ZAR + pointsToNextTier field (reward card): value renders as raw i18n key, NOT "R123" (regression)', () => {
+    useCardBuilderStore.setState({ currency: 'ZAR' });
+
+    const { unmount } = render(<PassCardPreviewBody leftField="pointsToNextTier" />);
+    expect(screen.getByText('fieldPreview.pointsToNextTier.value')).toBeInTheDocument();
+    expect(screen.queryByText(/^R\d/)).toBeNull();
+    unmount();
+  });
+
+  it('ZAR + stampsRemaining field: value renders as raw i18n key, NOT "R6" (regression)', () => {
+    useCardBuilderStore.setState({ currency: 'ZAR' });
+
+    const { unmount } = render(<PassCardPreviewBody leftField="stampsRemaining" />);
+    expect(screen.getByText('fieldPreview.stampsRemaining.value')).toBeInTheDocument();
+    expect(screen.queryByText(/^R\d/)).toBeNull();
+    unmount();
+  });
+
+  it('TWD + phone field: value renders as raw i18n key (no transformation, sanity baseline)', () => {
+    // Sanity baseline: even under TWD (no formatter ever applied),
+    // the value is the raw i18n key. This pins that the TWD path is
+    // unchanged.
+    const { unmount } = render(<PassCardPreviewBody leftField="phone" />);
+    expect(screen.getByText('fieldPreview.phone.value')).toBeInTheDocument();
+    expect(screen.queryByText(/^R\d/)).toBeNull();
+    unmount();
   });
 });
 

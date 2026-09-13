@@ -74,6 +74,30 @@ export interface PreviewWrapperProps {
    */
   firstRewardTierName?: string;
   /**
+   * First cashback tier name from the editor store (Step 6
+   * `cashbackTiers[0].name`). Forwarded to PassCardPreviewBody so the
+   * `memberLevel` slot surfaces as a "獎勵" preview with this value when
+   * cardType is `cashback_card`. Differs from `rewardName` /
+   * `firstRewardTierName` only in the data source: cashback_card uses a
+   * multi-tier structure. (2026-09-12.)
+   */
+  firstCashbackTierName?: string;
+  /**
+   * 2026-09-13 membership card — 會員獎勵 sub-rows from the first
+   * membership tier (`membershipTiers[0].rewards`). Forwarded to
+   * PassCardPreviewBack as Section 1.5.
+   */
+  membershipTiersRewards?: ReadonlyArray<{ label: string; value: string }>;
+  /**
+   * 2026-09-13 membership card — boolean flag indicating the card is a
+   * paid membership card. Gates:
+   *   - PassCardPreviewStrip: switch to UserIcon + label/value pair
+   *     (replaces default icon + name).
+   *   - PassCardPreviewBack: gate 會員獎勵 Section 1.5 visibility.
+   * Set by CardBuilderEditorPreview from `store.isPaid && cardType === 'membership_card'`.
+   */
+  isMembership?: boolean;
+  /**
    * 卡片描述（背面 Section 1）。對應 templateSettings.description。
    * Step 4 card-info 2026-09-04。
    */

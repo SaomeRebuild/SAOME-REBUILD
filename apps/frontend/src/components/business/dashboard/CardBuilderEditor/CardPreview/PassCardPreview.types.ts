@@ -119,6 +119,35 @@ export interface PassCardPreviewProps extends HTMLAttributes<HTMLDivElement> {
    */
   firstCashbackTierName?: string;
   /**
+   * 2026-09-13 membership card (restored) — First membership tier name
+   * from the editor store (Step 6 `membershipTiers[0].name`). Surfaced as
+   * the preview `value` for the `memberLevel` slot when
+   * `cardType === 'membership_card'`. Optional — when omitted / empty /
+   * when `membershipTiers` is empty, the preview renders an empty value.
+   *
+   * Differs from stamp/reward/cashback:
+   *   - Label uses `fieldPreview.memberLevel.label` (default "會員等級" /
+   *     "Member Level") — NOT `stampLabel`. Membership cards keep their
+   *     tier semantic identity on the label.
+   *   - Value source is the FIRST membership tier's name (mirrors the
+   *     reward_card / cashback_card pattern: read first row's name).
+   */
+  firstMembershipTierName?: string;
+  /**
+   * 2026-09-13 membership card — 會員獎勵 sub-rows from the first
+   * membership tier (`membershipTiers[0].rewards`). Surfaced as a new
+   * Section 1.5 in PassCardPreviewBack when `isMembership` is true.
+   */
+  membershipTiersRewards?: ReadonlyArray<{ label: string; value: string }>;
+  /**
+   * 2026-09-13 membership card — boolean flag forwarded from
+   * CardBuilderEditorPreview. When true, PassCardPreviewStrip switches
+   * from "icon + name" default layout to "User icon + 會員姓名
+   * label/value" pair layout. PassCardPreviewBack uses it to gate the
+   * "會員獎勵" Section 1.5.
+   */
+  isMembership?: boolean;
+  /**
    * 卡片描述（背面 Section 1）。對應 templateSettings.description。
    * Step 4 card-info 2026-09-04。空字串或 undefined 時，預覽顯示 placeholder。
    */

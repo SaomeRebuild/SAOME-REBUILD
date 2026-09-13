@@ -74,19 +74,68 @@
  *     `cashbackTiers[0].name` (cashback) vs `rewardName` (stamp) vs
  *     `rewardTiers[0].name` (reward). Same label, same contract.
  *
- * ZAR currency formatting (2026-09-12):
- *   When `store.currency === 'ZAR'` (selected in Step 2 as the card currency),
- *   all `default` branch field values receive ZAR prefix transformation:
- *     "562元" → "R562", "3301元" → "R3301"
- *   The `R` prefix is placed before the numeric portion with no separator,
- *   matching South African Rand display convention (ISO 4217 / locale en-ZA).
- *   stamp/reward/cashback override branches (which read from editor store
- *   inputs) are NOT affected — only the i18n-sourced demo values are
- *   transformed.
+ * Membership card member-level → first tier name override (2026-09-13, restored):
+ *   - When `cardType === 'membership_card'` AND the picked field is
+ *     `'memberLevel'`, the slot renders as
+ *       label = `fieldPreview.memberLevel.label` (default "會員等級" / "Member Level")
+ *               — NOT stampLabel (different from stamp/reward/cashback)
+ *       value = `firstMembershipTierName` (Step 6 `membershipTiers[0].name`)
+ *     so the live preview reflects the user's first membership tier name
+ *     (per user clarification 2026-09-13: "卡片預覽中的左右欄位會員等級的值
+ *     沒有被step6 第一個row的等級名稱覆蓋" — membership cards need this
+ *     override too).
+ *   - When `firstMembershipTierName` is empty / undefined / no tiers, the
+ *     value renders as `''` — matching stamp/reward/cashback empty-string UX.
+ *   - Differs from stamp/reward/cashback ONLY in the label: uses the default
+ *     memberLevel label ("會員等級" / "Member Level") rather than stampLabel
+ *     ("獎勵" / "Reward"). Reason: membership cards keep the original
+ *     "memberLevel" semantic (it's about tier identity, not reward), so the
+ *     label stays the default. Value source differs (membershipTiers[0].name).
+ *
+ * 2026-09-13 fix (Fix 2): the membership_card override branch has been
+ *   RESTORED (previously REMOVED on 2026-09-13, then re-added per user
+ *   clarification). The override is now scoped ONLY to membership_card:
+ *     - label = `fieldPreview.memberLevel.label` (default "會員等級" / "Member Level")
+ *     - value = `firstMembershipTierName` (the FIRST tier name)
+ *   The membership tier name still lives in the Back-side Section 4
+ *   (會員獎勵 sub-rows from the first tier), but the FRONT-side
+ *   left/right memberLevel slot now ALSO reflects the first tier name.
+ *
+ * Cashback currency-driven amount (2026-09-12, refined 2026-09-13):
+ *   When the picked field is one of the cashback-only amount fields
+ *   (`pointsToNextTierCashback` or `accumulatedSpendCashback`), the
+ *   `value` is sourced from `CASHBACK_PREVIEW_AMOUNTS[currency]` — the
+ *   same currency-driven pattern used by `BALANCE_PREVIEW_AMOUNTS` for
+ *   the balance preview block in `PassCardPreviewHeader`.
+ *   TWD → "562元" / "3301元" (zh-TW) | ZAR → "R562" / "R3301"
+ *   Reason for moving values to shared constants (Rule 023 § 翻譯書寫紀律):
+ *   en translations may not contain Han characters, so "562元" cannot live
+ *   in passCard.en.ts.
+ *
+ * 2026-09-13 ZAR pollution fix — REMOVED regex-based formatter:
+ *   Previously, `resolveSlot` applied a regex-based `R` prefix formatter
+ *   (`/\d+/` → prepend "R") to ALL `default` branch i18n values when
+ *   `currency === 'ZAR'`. This caused wide-spread contamination of every
+ *   non-amount field on every card type:
+ *     phone        `+8869XXXXXXXX`     → `R8869XXXXXXXX`
+ *     birthday     `05/11/1999`        → `R05111999`
+ *     visitCount   `5 次`              → `R5`
+ *     totalStamps  `3/{{rows}}`        → `R3` (interpolation broken)
+ *     stampsRemain `6個`               → `R6`
+ *     pointsToNext `123點`             → `R123`
+ *     currentPoints `23點`             → `R23`
+ *   Now the regex is GONE. The default branch reads `fieldPreview.{key}.value`
+ *   as-is (no ZAR transformation). Only the two cashback amount fields go
+ *   through the currency-driven map; everything else is currency-agnostic
+ *   demo data.
+ *   See plan `zar_preview_field_污染修正_39f87c1e.plan.md` for full root
+ *   cause analysis.
  */
 import { useTranslation } from 'react-i18next';
 import type { CardFieldKey } from '@saome/shared/constants/card-fields';
 import type { CardType } from '@saome/shared/schemas/card';
+import type { Currency } from '@saome/shared/schemas/card';
+import { CASHBACK_PREVIEW_AMOUNTS } from '@saome/shared/constants/cashbackPreviewAmounts';
 import {
   STAMPS_PER_ROW,
   type StampGridRows,
@@ -110,11 +159,11 @@ interface PassCardPreviewBodyProps {
   stampGridRows?: StampGridRows;
   /**
    * Current `cardType` from the editor store. Used to override the
-   * `memberLevel` preview slot when cardType is `'stamp_card'` or
-   * `'reward_card'` (see module docblock § "Stamp / Reward card
-   * member-level → reward override"). Optional — when omitted,
-   * `resolveSlot` falls through to the default label/value path so
-   * non-stamp contexts (TemplateCardPreview, etc.) keep working.
+   * `memberLevel` preview slot when cardType is `'stamp_card'`,
+   * `'reward_card'`, or `'cashback_card'` (see module docblock). Optional
+   * — when omitted, `resolveSlot` falls through to the default
+   * label/value path so non-stamp contexts (TemplateCardPreview, etc.)
+   * keep working.
    */
   cardType?: CardType | null;
   /**
@@ -129,9 +178,7 @@ interface PassCardPreviewBodyProps {
    * Surfaced as the preview `value` when `cardType === 'reward_card'` AND the
    * picked field is `'memberLevel'`. Optional — when omitted / empty / when
    * `rewardTiers` is empty, the preview renders an empty value (matches the
-   * stamp_card empty-string UX). Differs from `rewardName` only in the data
-   * source: reward_card has a multi-tier structure so we read the FIRST tier's
-   * name instead of a top-level string.
+   * stamp_card empty-string UX).
    * (2026-09-10 reward card member-level → reward refactor extension.)
    */
   firstRewardTierName?: string;
@@ -141,12 +188,27 @@ interface PassCardPreviewBodyProps {
    * `cardType === 'cashback_card'` AND the picked field is `'memberLevel'`.
    * Optional — when omitted / empty / when `cashbackTiers` is empty, the
    * preview renders an empty value (matches stamp_card / reward_card
-   * empty-string UX). Differs from `rewardName` / `firstRewardTierName`
-   * only in the data source: cashback_card uses a multi-tier structure,
-   * so the value reads the FIRST tier's name.
+   * empty-string UX).
    * (2026-09-12 cashback card member-level → reward refactor.)
    */
   firstCashbackTierName?: string;
+  /**
+   * First membership tier name from the editor store (Step 6
+   * `membershipTiers[0].name`). Surfaced as the preview `value` when
+   * `cardType === 'membership_card'` AND the picked field is `'memberLevel'`.
+   * Optional — when omitted / empty / when `membershipTiers` is empty, the
+   * preview renders an empty value (matches stamp_card / reward_card /
+   * cashback_card empty-string UX).
+   * (2026-09-13 membership card member-level → first tier name override,
+   * restored after Fix 2.)
+   *
+   * Note: unlike stamp/reward/cashback, the membership override uses
+   * `fieldPreview.memberLevel.label` (default "會員等級" / "Member Level")
+   * as the label, NOT `stampLabel`. Membership cards keep their tier
+   * semantic identity on the front-side label, while the value reflects
+   * the user's first tier name.
+   */
+  firstMembershipTierName?: string;
 }
 
 /**
@@ -154,27 +216,51 @@ interface PassCardPreviewBodyProps {
  * context + cardType.
  *
  * Branch order matters:
- *   1. `!field`                    → placeholder (左欄位 / 右欄位)
- *   2. `stamp_card + memberLevel`  → stamp-card override (label = stampLabel,
- *                                     value = rewardName ?? '')
- *   3. `reward_card + memberLevel` → reward-card override (label = stampLabel,
- *                                     value = firstRewardTierName ?? '')
- *   4. `cashback_card + memberLevel` → cashback-card override (label = stampLabel,
- *                                     value = firstCashbackTierName ?? '')
- *   5. `totalStamps`              → rows × STAMPS_PER_ROW interpolation
- *   6. default                   → `fieldPreview.{key}.label` + formatted `.value`
- *                                     (ZAR amounts receive R-prefix formatting)
+ *   1. `!field`                          → placeholder (左欄位 / 右欄位)
+ *   2. `stamp_card + memberLevel`        → stamp-card override (label = stampLabel,
+ *                                           value = rewardName ?? '')
+ *   3. `reward_card + memberLevel`       → reward-card override (label = stampLabel,
+ *                                           value = firstRewardTierName ?? '')
+ *   4. `cashback_card + memberLevel`     → cashback-card override (label = stampLabel,
+ *                                           value = firstCashbackTierName ?? '')
+ *   5. `membership_card + memberLevel`   → membership-card override (label = default
+ *                                           memberLevel.label, value = firstMembershipTierName ?? '')
+ *   6. `totalStamps`                     → rows × STAMPS_PER_ROW interpolation
+ *   7. cashback amount fields            → currency-driven
+ *                                           (`CASHBACK_PREVIEW_AMOUNTS[currency][field]`)
+ *   8. default                           → `fieldPreview.{key}.label` + `.value`
+ *                                           (NO ZAR formatter — values are demo
+ *                                            data and are NOT currency-dependent)
  *
- * The stamp/reward/cashback-card branches are checked BEFORE the `totalStamps`
- * branch because `memberLevel` is a `common`-group field and could
- * conceptually appear alongside `totalStamps` in the two slots; the
+ * The stamp/reward/cashback/membership-card branches are checked BEFORE the
+ * `totalStamps` branch because `memberLevel` is a `common`-group field and
+ * could conceptually appear alongside `totalStamps` in the two slots; the
  * member-level override is the more specific case.
  *
- * ZAR amount formatting (2026-09-12):
- *   When `isZAR === true`, all `default` branch values receive ZAR prefix
- *   transformation: e.g. `"562元"` → `"R562"`, `"3301元"` → `"R3301"`.
- *   The prefix `R` is placed before the numeric portion with no separator,
- *   matching South African Rand display convention (ISO 4217 / locale en-ZA).
+ * Cashback amount branch (2026-09-13 ZAR pollution fix):
+ *   The two cashback-only display fields (`pointsToNextTierCashback` and
+ *   `accumulatedSpendCashback`) read their value from
+ *   `CASHBACK_PREVIEW_AMOUNTS[currency]` — a currency-driven map (same
+ *   pattern as `BALANCE_PREVIEW_AMOUNTS` for the balance preview block).
+ *   This replaces the previous regex-based `R`-prefix formatter (which
+ *   contaminated every i18n-sourced value on every card type).
+ *
+ * Branch order:
+ *   1. `!field`                          → placeholder (左欄位 / 右欄位)
+ *   2. `stamp_card + memberLevel`        → stamp-card override (label = stampLabel,
+ *                                           value = rewardName ?? '')
+ *   3. `reward_card + memberLevel`       → reward-card override (label = stampLabel,
+ *                                           value = firstRewardTierName ?? '')
+ *   4. `cashback_card + memberLevel`     → cashback-card override (label = stampLabel,
+ *                                           value = firstCashbackTierName ?? '')
+ *   5. `membership_card + memberLevel`   → membership-card override (label = default
+ *                                           memberLevel.label, value = firstMembershipTierName ?? '')
+ *   6. `totalStamps`                     → rows × STAMPS_PER_ROW interpolation
+ *   7. cashback amount fields            → CASHBACK_PREVIEW_AMOUNTS[currency][field]
+ *                                           (currency-driven, like balance preview)
+ *   8. default                           → `fieldPreview.{key}.label` + `.value`
+ *                                           (NO ZAR formatter — values are demo
+ *                                            data and are NOT currency-dependent)
  */
 function resolveSlot(
   t: (key: string, opts?: Record<string, unknown>) => string,
@@ -184,7 +270,8 @@ function resolveSlot(
   rewardName: string | undefined,
   firstRewardTierName: string | undefined,
   firstCashbackTierName: string | undefined,
-  isZAR: boolean,
+  firstMembershipTierName: string | undefined,
+  currency: Currency,
 ): { label: string; value: string } {
   if (!field) {
     return { label: t('fieldLabelLeft'), value: t('fieldLabelRight') };
@@ -224,6 +311,19 @@ function resolveSlot(
     };
   }
 
+  // Membership card override (2026-09-13, restored): the `memberLevel`
+  // slot keeps its DEFAULT label ("會員等級" / "Member Level") — different
+  // from stamp/reward/cashback which use stampLabel ("獎勵" / "Reward").
+  // The value source is the FIRST row of the Step 6 `membershipTiers`
+  // array. Empty / undefined / no-tiers → empty string (matches the
+  // stamp/reward/cashback empty-input UX).
+  if (cardType === 'membership_card' && field === 'memberLevel') {
+    return {
+      label: t('fieldPreview.memberLevel.label'),
+      value: firstMembershipTierName ?? '',
+    };
+  }
+
   if (field === 'totalStamps') {
     // The user picks a row count (1..4); the displayed denominator is the
     // total stamp count = rows × STAMPS_PER_ROW. We pre-multiply here so
@@ -236,20 +336,30 @@ function resolveSlot(
     };
   }
 
-  // Default: read label + value from i18n fieldPreview.{key}, then apply
-  // ZAR prefix formatting if the selected currency is ZAR.
-  // e.g. "562元" → "R562", "3301元" → "R3301"
-  const rawValue = t(`fieldPreview.${field}.value`);
-  const formattedValue = isZAR
-    ? (() => {
-        const numMatch = rawValue.match(/\d+/);
-        return numMatch ? `R${numMatch[0]}` : rawValue;
-      })()
-    : rawValue;
+  // Cashback amount branch (2026-09-13 ZAR pollution fix): the two
+  // cashback-only display fields are currency-driven, NOT i18n-driven.
+  // Their values live in `@saome/shared/constants/cashbackPreviewAmounts.ts`
+  // — same pattern as `BALANCE_PREVIEW_AMOUNTS` for the balance preview
+  // block. This replaces the previous regex-based `R`-prefix formatter
+  // that contaminated every i18n-sourced value on every card type.
+  if (
+    field === 'pointsToNextTierCashback' ||
+    field === 'accumulatedSpendCashback'
+  ) {
+    return {
+      label: t(`fieldPreview.${field}.label`),
+      value: CASHBACK_PREVIEW_AMOUNTS[currency][field],
+    };
+  }
 
+  // Default: read label + value from i18n fieldPreview.{key} verbatim.
+  // Values are demo data and are NOT currency-dependent (phone numbers,
+  // names, dates, counts, etc. have no concept of currency), so we do
+  // NOT apply any ZAR-prefix transformation here. Only the two cashback
+  // amount fields (handled in the branch above) are currency-driven.
   return {
     label: t(`fieldPreview.${field}.label`),
-    value: formattedValue,
+    value: t(`fieldPreview.${field}.value`),
   };
 }
 
@@ -263,14 +373,18 @@ export function PassCardPreviewBody({
   rewardName,
   firstRewardTierName,
   firstCashbackTierName,
+  firstMembershipTierName,
 }: PassCardPreviewBodyProps) {
   const { t } = useTranslation('passCard');
 
-  // ZAR currency awareness: when Step 2 selects ZAR as the card currency,
-  // all preview amount values receive the R-prefix format (R562, R3301).
-  // TWD keeps its original format (562元, 3301元) from i18n fieldPreview.
+  // Currency awareness (2026-09-13 ZAR pollution fix): read the current
+  // card currency from the editor store so the two cashback amount fields
+  // (`pointsToNextTierCashback`, `accumulatedSpendCashback`) can source
+  // their value from `CASHBACK_PREVIEW_AMOUNTS[currency]`. All other
+  // fields are currency-agnostic demo data — they do NOT receive any ZAR
+  // prefix transformation. The previous regex-based formatter (which
+  // contaminated every i18n-sourced value) has been removed.
   const currency = useCardBuilderStore((s) => s.currency);
-  const isZAR = currency === 'ZAR';
 
   // Demo label/value 配對（PassCreator Label + Value 格式）
   const leftPreview = resolveSlot(
@@ -281,7 +395,8 @@ export function PassCardPreviewBody({
     rewardName,
     firstRewardTierName,
     firstCashbackTierName,
-    isZAR,
+    firstMembershipTierName,
+    currency,
   );
   const rightPreview = resolveSlot(
     t,
@@ -291,7 +406,8 @@ export function PassCardPreviewBody({
     rewardName,
     firstRewardTierName,
     firstCashbackTierName,
-    isZAR,
+    firstMembershipTierName,
+    currency,
   );
 
   // PassCreator typography: label 永遠比 value 小。

@@ -23,6 +23,21 @@ interface PassCardPreviewBackProps extends HTMLAttributes<HTMLDivElement> {
   backFields?: ReadonlyArray<LabelValuePair>;
   /** Section 5 — dedicated links (Step 4 card-info 2026-09-04). */
   links?: ReadonlyArray<LabelValuePair>;
+  /**
+   * 2026-09-13 membership card — 會員獎勵 sub-rows from the first tier.
+   * Rendered as Section 4 (取代原本的 Section 1.5) when `isMembership` is true.
+   * Section 4 semantic for membership cards: 「背面欄位」 = 會員獎勵 sub-rows.
+   * Section 1.5 was REMOVED in 2026-09-13 because the description→rewards
+   * ordering was confusing (description should be at the very top, rewards
+   * belong in the back-field area).
+   */
+  membershipTiersRewards?: ReadonlyArray<LabelValuePair>;
+  /**
+   * 2026-09-13 membership card — gates the Section 4 會員獎勵 rendering.
+   * When true, Section 4 renders `membershipTiersRewards` instead of
+   * the regular `backFields`.
+   */
+  isMembership?: boolean;
 }
 
 export function PassCardPreviewBack({
@@ -30,6 +45,8 @@ export function PassCardPreviewBack({
   description,
   backFields,
   links,
+  membershipTiersRewards,
+  isMembership = false,
   className,
   ...props
 }: PassCardPreviewBackProps) {
@@ -45,6 +62,12 @@ export function PassCardPreviewBack({
   const filteredLinks = (links ?? []).filter(
     (row) => row.label.trim() !== '' || row.value.trim() !== '',
   );
+  // 2026-09-13 membership card: filter 會員獎勵 sub-rows the same way.
+  const filteredMembershipRewards = isMembership
+    ? (membershipTiersRewards ?? []).filter(
+        (row) => row.label.trim() !== '' || row.value.trim() !== '',
+      )
+    : [];
 
   return (
     <div
@@ -122,9 +145,65 @@ export function PassCardPreviewBack({
         {t('preview.backSide.removePass')}
       </button>
 
-      {/* Section 4: 背面欄位（Step 4 card-info 2026-09-04） */}
-      <div className="rounded-lg bg-white p-3">
-        {filteredBackFields.length > 0 ? (
+      {/* Section 4: 背面欄位 / 會員獎勵 */}
+      {/* 2026-09-13 fix (current task): 會員卡把「背面欄位」語意改成
+          會員獎勵 sub-rows（從第一個 tier 讀取）。原本是渲染
+          Section 1.5（描述下方）並保留 Section 4 為「條文或連結」，
+          但會員卡沒有獨立「條文」概念，「背面欄位」= 會員獎勵更直觀。
+          Section 1.5 已移除（見上方註解）；當 isMembership=true 時，
+          Section 4 渲染 membershipTiersRewards 並在空狀態顯示
+          `preview.backSide.membershipRewardsEmpty` placeholder。
+          標題用 `membershipRewardsTitle`（「會員獎勵」）；非會員卡保持
+          原樣：渲染 backFields 或 `termsOrLinks` placeholder。 */}
+      <div className="rounded-lg bg-white p-3" data-testid="back-fields-section">
+        {isMembership ? (
+          filteredMembershipRewards.length > 0 ? (
+            <>
+              <h3
+                className={cn(
+                  'mb-2 font-medium text-neutral-700',
+                  compact ? 'text-xs' : 'text-sm'
+                )}
+              >
+                {t('preview.backSide.membershipRewardsTitle')}
+              </h3>
+              <ul className="flex flex-col">
+                {filteredMembershipRewards.map((row, idx) => (
+                  <li
+                    key={idx}
+                    className={cn(
+                      'flex flex-col items-start gap-0.5 py-2 text-neutral-700',
+                      compact ? 'text-xs' : 'text-sm',
+                      idx > 0 && 'border-t border-neutral-200'
+                    )}
+                  >
+                    <span className="text-neutral-500">{row.label}</span>
+                    <span className="whitespace-pre-wrap break-words">{row.value}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <>
+              <h3
+                className={cn(
+                  'mb-2 font-medium text-neutral-700',
+                  compact ? 'text-xs' : 'text-sm'
+                )}
+              >
+                {t('preview.backSide.membershipRewardsTitle')}
+              </h3>
+              <p
+                className={cn(
+                  'text-neutral-500',
+                  compact ? 'text-xs' : 'text-sm'
+                )}
+              >
+                {t('preview.backSide.membershipRewardsEmpty')}
+              </p>
+            </>
+          )
+        ) : filteredBackFields.length > 0 ? (
           <ul className="flex flex-col">
             {filteredBackFields.map((row, idx) => (
               <li

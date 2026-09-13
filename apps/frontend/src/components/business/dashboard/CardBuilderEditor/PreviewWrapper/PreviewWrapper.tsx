@@ -47,6 +47,9 @@ export function PreviewWrapper({
   stampIconId,
   rewardName,
   firstRewardTierName,
+  firstCashbackTierName,
+  membershipTiersRewards,
+  isMembership,
   description,
   backFields,
   links,
@@ -82,6 +85,9 @@ export function PreviewWrapper({
             stampIconId={stampIconId}
             rewardName={rewardName}
             firstRewardTierName={firstRewardTierName}
+            firstCashbackTierName={firstCashbackTierName}
+            membershipTiersRewards={membershipTiersRewards}
+            isMembership={isMembership}
             description={description}
             backFields={backFields}
             links={links}
@@ -115,6 +121,9 @@ export function PreviewWrapper({
       stampIconId={stampIconId}
       rewardName={rewardName}
       firstRewardTierName={firstRewardTierName}
+      firstCashbackTierName={firstCashbackTierName}
+      membershipTiersRewards={membershipTiersRewards}
+      isMembership={isMembership}
       description={description}
       backFields={backFields}
       links={links}
