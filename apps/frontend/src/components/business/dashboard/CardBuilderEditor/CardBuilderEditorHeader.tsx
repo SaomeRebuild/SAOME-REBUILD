@@ -1,6 +1,13 @@
 /**
  * CardBuilderEditorHeader — 上容器：導航列
- * 包含 h1 標題、卡片名稱輸入框、步驟指示器
+ * 包含 h1 標題、Logo Text 輸入框、步驟指示器
+ *
+ * 2026-09-13 semantic swap: the input id="card-name" now binds to the
+ * Logo Text (pass header text shown next to the issuer logo), NOT to
+ * the SQL column `templates.name`. The actual Card Name (record name)
+ * is now edited via the Step 2 `CardNameField` (which writes to the SQL
+ * column top-level). The Header input stays focused on Logo Text — the
+ * most prominent identity element on the pass.
  */
 
 import { useTranslation } from 'react-i18next';
@@ -9,18 +16,33 @@ import { CardBuilderEditorSteps } from './CardBuilderEditorSteps';
 import { Building2 } from 'lucide-react';
 
 interface CardBuilderEditorHeaderProps {
-  name: string;
-  onNameChange: (name: string) => void;
+  /** Logo Text (pass header text). Bound to the input id="logo-text". */
+  logoText: string;
+  onLogoTextChange: (logoText: string) => void;
+  /**
+   * Card Name (pass record name). Displayed in the header sub-line so the
+   * user can see at a glance which template they're editing, but NOT
+   * editable here — the editor is via Step 2's `CardNameField`.
+   */
+  cardName: string;
   step: EditorStep;
   onStepChange: (step: EditorStep) => void;
   completedSteps?: Set<EditorStep>;
-  /** Step 1 的驗證狀態（由 Workspace 計算後傳入） */
+  /**
+   * Step 1 的驗證狀態（由 Workspace 計算後傳入）
+   *
+   * 2026-09-13 swap: blocked-by-empty now keys off Logo Text
+   * (`!logoText.trim()`) because that's what the user MUST fill to advance
+   * past Step 1. Card Name is a Step 2 concern (the workspace allows it
+   * to be edited mid-flow).
+   */
   isStep1Blocked?: boolean;
 }
 
 export function CardBuilderEditorHeader({
-  name,
-  onNameChange,
+  logoText,
+  onLogoTextChange,
+  cardName,
   step,
   onStepChange,
   completedSteps,
@@ -53,17 +75,25 @@ export function CardBuilderEditorHeader({
         />
       </div>
 
-      {/* 第二行：卡片名稱輸入框（獨占一行，不被步驟壓縮） */}
+      {/* Card Name 顯示（唯讀，方便使用者辨識當前模板）.
+          2026-09-13 swap: Card Name 不再綁在 header input。實際編輯在 Step 2。 */}
+      {cardName && (
+        <p className="mb-2 truncate text-xs text-muted-foreground" title={cardName}>
+          {t('cardNameDisplay', { cardName })}
+        </p>
+      )}
+
+      {/* 第二行：Logo Text 輸入框（獨占一行，不被步驟壓縮） */}
       <div className="max-w-md">
-        <label htmlFor="card-name" className="sr-only">
-          {t('cardNameLabel')}
+        <label htmlFor="logo-text" className="sr-only">
+          {t('logoTextLabel')}
         </label>
         <input
-          id="card-name"
+          id="logo-text"
           type="text"
-          value={name}
-          onChange={(e) => onNameChange(e.target.value)}
-          placeholder={t('cardNamePlaceholder')}
+          value={logoText}
+          onChange={(e) => onLogoTextChange(e.target.value)}
+          placeholder={t('logoTextPlaceholder')}
           className="
             w-full rounded-lg border border-border bg-muted px-4 py-2
             text-sm text-foreground placeholder:text-muted-foreground
@@ -71,7 +101,10 @@ export function CardBuilderEditorHeader({
             focus:border-primary focus:outline-none focus:ring-2 focus:ring-ring
           "
         />
-        {/* 卡片名稱必填警示（名稱為空時隨時顯示） */}
+        {/* Logo Text 必填警示（為空時隨時顯示）.
+            2026-09-13 swap: from `nameRequired` to `logoTextRequired` — same
+            shape, new semantic. The alert gates Step 1 "Next" via
+            isStep1Blocked in the parent workspace. */}
         {isStep1Blocked && (
           <p
             className="mt-1.5 flex items-center gap-1.5 text-xs"
@@ -79,7 +112,7 @@ export function CardBuilderEditorHeader({
             role="alert"
           >
             <span aria-hidden="true">⚠</span>
-            {t('step1.nameRequired')}
+            {t('step1.logoTextRequired')}
           </p>
         )}
       </div>

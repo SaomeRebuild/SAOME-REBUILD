@@ -30,9 +30,16 @@ export function CardBuilderEditorPreview({
 }: CardBuilderEditorPreviewProps) {
   const { t } = useTranslation('cardEditor');
 
-  // 從 store 取得卡片資料（issuerName, storeName 不傳入預覽：不需即時預覽）
+  // 從 store 取得卡片資料。
+  // 2026-09-13 semantic swap:
+  //   - `logoText` (NEW) — pass header text shown next to issuer logo.
+  //     Passed to PreviewWrapper as the `name` prop (preview internal
+  //     naming kept `name` for the "card identity on header" slot; the
+  //     semantic content is Logo Text after the swap).
+  //   - `cardName` is NOT forwarded to the preview — Card Name is the
+  //     record name (library label), not shown on the pass itself.
   const {
-    name,
+    logoText,
     cardType,
     issuerLogo,
     holderName,
@@ -60,6 +67,22 @@ export function CardBuilderEditorPreview({
     // (the user said "只取第一個ROW的資料"); empty / undefined when
     // no tiers have been added yet.
     rewardTiers,
+    // Step 6 — Membership 卡邏輯 (2026-09-13, membership_card only):
+    // `membershipTiers[0].rewards` → membershipTiersRewards
+    // (rendered as Section 4 on the back side for membership cards).
+    // 2026-09-13 fix (current task): `name` → firstMembershipTierName override
+    // was REMOVED — membership cards now keep the default
+    // fieldPreview.memberLevel label/value pair (會員等級 / 金級)
+    // instead of being overridden to stampLabel + tier name.
+    // `cardType === 'membership_card'` drives `isMembership` which gates the
+    // strip's label/value pair layout + the back-side 會員獎勵 section.
+    // 2026-09-13 fix (current task): isPaid is NO LONGER part of the
+    // isMembership gate. The strip's 會員姓名/姓名 layout should display
+    // as soon as the user picks `membership_card` — the isPaid flag is
+    // Step 6 logic (whether the membership has paid tiers) and does NOT
+    // affect what the strip shows. isPaid's autosave is handled in
+    // CardBuilderEditor.tsx.
+    membershipTiers,
     // Step 4 — 卡片資訊（對應 templateSettings.description / backFields / links）
     description,
     backFields,
@@ -77,6 +100,24 @@ export function CardBuilderEditorPreview({
   // (Empty rewardTiers → undefined → PassCardPreviewBody fallback to ''.)
   const firstRewardTierName = rewardTiers.length > 0 ? rewardTiers[0]?.name : undefined;
 
+  // 2026-09-13 membership card: membershipTiersRewards → PassCardPreviewBack
+  // Section 4 (取代原本的 Section 1.5 — 背面欄位現在就是會員獎勵的位置)。
+  // The first-tier-name override was REMOVED on 2026-09-13
+  // — membership cards now keep the default
+  // fieldPreview.memberLevel label/value pair ("會員等級" / "金級") instead
+  // of being overridden to "獎勵" + tier name.
+  const membershipTiersRewards =
+    membershipTiers.length > 0 ? membershipTiers[0]?.rewards : undefined;
+
+  // 2026-09-13 membership card: isMembership flag drives strip + back-side
+  // membership layout. Only true when cardType === 'membership_card' (the
+  // strip + back-side treatment is gated by card type alone, NOT by isPaid).
+  // 2026-09-13 fix (current task): isPaid removed from the gate. isPaid is
+  // Step 6 logic (paid tier editor visibility) and should NOT affect the
+  // preview's strip + back-side membership layout. Free membership cards
+  // and paid membership cards both show the same preview chrome.
+  const isMembership = cardType === 'membership_card';
+
   return (
     <aside className={`
       w-full flex-col items-center justify-center gap-4 bg-background p-6
@@ -92,8 +133,13 @@ export function CardBuilderEditorPreview({
       {/* 卡片預覽（手機框架 + 卡片本體） */}
       <div className="flex h-auto w-full max-w-sm items-center justify-center rounded-xl border-2 border-dashed border-border bg-card p-4">
         {cardType ? (
+          // 2026-09-13 swap: `name={name}` → `name={logoText}`. The
+          // PreviewWrapper's `name` prop now receives the Logo Text
+          // (pass header text), not the Card Name. The Card Name
+          // (record name) is not shown in the preview — it lives only
+          // in the user-facing library list.
           <PreviewWrapper
-            name={name}
+            name={logoText}
             cardType={cardType}
             issuerLogo={issuerLogo}
             backgroundImage={backgroundImageUrl}
@@ -107,6 +153,8 @@ export function CardBuilderEditorPreview({
             stampIconId={stampIconId}
             rewardName={rewardName}
             firstRewardTierName={firstRewardTierName}
+            membershipTiersRewards={membershipTiersRewards}
+            isMembership={isMembership}
             description={description}
             backFields={backFields}
             links={links}

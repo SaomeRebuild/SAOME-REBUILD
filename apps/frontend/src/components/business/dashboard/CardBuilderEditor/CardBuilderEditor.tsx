@@ -35,13 +35,15 @@ export function CardBuilderEditor({
 
   // 使用 store 管理卡片編輯器狀態
   const {
-    name,
+    cardName,
+    logoText,
     cardId,
     cardType,
     step,
     completedSteps,
     cardSide,
-    setName,
+    setCardName,
+    setLogoText,
     setStep,
     setCompletedStep,
     setCardSide,
@@ -80,12 +82,22 @@ export function CardBuilderEditor({
           // Step 4 — one loadSettings hydrates both. Flip the settled
           // flag for Step 5 at the same time.
           step5LoadSettledRef.current = true;
+          // 2026-09-13 fix (current task): isPaid autosave uses a
+          // post-load snapshot ref (`isPaidAfterLoadRef`) — read it here
+          // RIGHT AFTER loadSettings so the effect's "post-load baseline"
+          // reflects the hydrated DB value, not the user's pre-loadSettings
+          // accidental toggle. (Refs are not reactive, so the effect won't
+          // naturally re-run between mount and user toggle if isPaid
+          // didn't change reference; capturing here bridges that gap.)
+          isPaidAfterLoadRef.current = useCardBuilderStore.getState().isPaid;
           // cardType 存在 DB card_type 欄位（不在 settings JSONB），需要獨立設定
           if (template.cardType) {
             setCardType(template.cardType);
           }
+          // 2026-09-13 swap: `templates.name` (SQL column) now holds the
+          // Card Name (pass record name). Load via `setCardName`.
           if (template.name) {
-            setName(template.name);
+            setCardName(template.name);
           }
           // issuerName：若 template 沒有值，用 tenant.name 預填
           if (!template.settings.issuerName && authState.tenant?.name) {
@@ -110,23 +122,25 @@ export function CardBuilderEditor({
   }, [templateId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ============================================================
-  // Auto-save: name changes → debounced PUT /cards/:id
+  // Auto-save: Logo Text changes → debounced PUT /cards/:id
   //
-  // Phase 5.1 (2026-09-05): apply baselineArmedRef pattern (Rule 030)
-  // — name auto-save had the same risk as Step 4 autosave: on mount,
-  // `reset()` leaves `name=''`, then `setCardId(xxx)` triggers this
-  // effect. The old `if (name === '') return` early-return guarded
-  // against the empty-name case, but if the user started typing
-  // before `loadSettings` resolved (fast network + early edit), the
-  // new typed value would schedule a 1s timer with `name='new text'`,
-  // then `loadSettings` would overwrite `name` with the DB value
-  // AFTER the timer fired — clobbering the user's edit in DB.
-  // The fix: `step4BaselineArmedRef` (shared with Step 4 below) is
-  // flipped to true inside the outer URL-watching effect's `.then()`
-  // callback after loadSettings completes. While it's still false,
-  // name auto-save is held — preventing the DB-clobber race.
+  // 2026-09-13 semantic swap: the Header input now binds to Logo Text
+  // (pass header text shown next to issuer logo), NOT to the SQL
+  // column `templates.name`. The autosave target is therefore
+  // `settings.logoText` (JSONB key), NOT top-level `name`.
+  //
+  // Card Name autosave: handled by Step 2 onNext (save payload now
+  // includes `name: cardName` at top-level → SQL column `templates.name`).
+  // Since users edit Card Name via the Step 2 CardNameField, mid-typing
+  // edits that don't yet advance past Step 2 aren't autosaved — that's
+  // intentional (Step 2 is gated by validation, so partial Card Name
+  // shouldn't reach DB). Logo Text in the Header has no equivalent
+  // gate because it's the identity anchor for Step 1.
+  //
+  // Phase 5.1 (2026-09-05): apply baselineArmedRef pattern (Rule 030).
+  // Phase 5.2 (2026-09-13): same pattern re-targeted at `logoText`.
   // ============================================================
-  const nameSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const logoTextSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!cardId) return;
@@ -135,20 +149,99 @@ export function CardBuilderEditor({
     // they're on the same outer-fetch timeline.
     if (!step4LoadSettledRef.current) return;
 
-    if (name === '') return; // Don't save empty name
+    if (logoText === '') return; // Don't save empty Logo Text
 
-    // Debounce: save name 1s after user stops typing
-    if (nameSaveTimerRef.current) clearTimeout(nameSaveTimerRef.current);
-    nameSaveTimerRef.current = setTimeout(() => {
-      cardService.update(cardId, { name }).catch((err) => {
-        console.warn('[CardBuilderEditor] name auto-save failed:', err);
+    // Debounce: save Logo Text 1s after user stops typing.
+    // 2026-09-13 swap: target is `settings.logoText`, not top-level `name`.
+    if (logoTextSaveTimerRef.current) clearTimeout(logoTextSaveTimerRef.current);
+    logoTextSaveTimerRef.current = setTimeout(() => {
+      cardService.update(cardId, { settings: { logoText } }).catch((err) => {
+        console.warn('[CardBuilderEditor] logoText auto-save failed:', err);
       });
     }, 1000);
 
     return () => {
-      if (nameSaveTimerRef.current) clearTimeout(nameSaveTimerRef.current);
+      if (logoTextSaveTimerRef.current) clearTimeout(logoTextSaveTimerRef.current);
     };
-  }, [cardId, name]);
+  }, [cardId, logoText]);
+
+  // ============================================================
+  // Auto-save: isPaid toggle (Step 2 需收費 checkbox) → debounced PUT
+  //
+  // 2026-09-13 fix (current task): 原本 isPaid 只在 Step 2 的「下一步」
+  // handleNext 內被送出，使用者切換 checkbox 後若未點 Next 就離開 Step 2，
+  // 變更會丟失。改用與 logoText / Step 4 / Step 5 一樣的
+  // baseline-armed + debounce pattern，讓 checkbox 一變更就 debounce 1s 後
+  // PUT，避免依賴「點 Next 才存」的 UX 假設。
+  //
+  // 共用 step4LoadSettledRef：isPaid 跟 Step 4 都在同一個 outer-fetch timeline
+  // （loadSettings 一次 hydrate 全部 settings），避免引入新 ref 即可保證
+  // fetch 還沒 resolve 時不會 schedule timer 把預設值寫進 DB。
+  // ============================================================
+  const isPaidSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isPaidBaselineArmedRef = useRef(false);
+  // 追蹤「loadSettings 完成後第一次看到的 isPaid 值」當 baseline 對照。
+  // null = loadSettings 還沒完成 / 還沒 snapshot。詳見下方 effect 註解。
+  const isPaidAfterLoadRef = useRef<boolean | null>(null);
+  const isPaid = useCardBuilderStore((s) => s.isPaid);
+
+  // Reset baseline-armed flag + post-load snapshot whenever cardId
+  // changes — a new template session is starting.
+  useEffect(() => {
+    isPaidBaselineArmedRef.current = false;
+    isPaidAfterLoadRef.current = null;
+  }, [cardId]);
+
+  useEffect(() => {
+    if (!cardId) return;
+    // 跟 logoText 一樣守 step4LoadSettledRef：loadSettings 還沒 resolve 前
+    // 不排 timer（預設值 false 寫進 DB 會跟 membership_tiers 等其他欄位
+    // 衝突 — Rule 032 silent overwrite）。
+    if (!step4LoadSettledRef.current) return;
+
+    // 2026-09-13 fix (current task, refined): baseline-arm 用「loadSettings
+    // 完成後第一次看到 isPaid 值」當基準，而不是第一次 effect run。
+    //
+    // 原因：Step 4 / Step 5 的 autosave 依賴 [cardId, description/backFields/
+    // links/...]，loadSettings hydrate 時 description 等會從預設值變成
+    // 真實值，effect 自然 re-run 並 seed baseline。但 isPaid 是 boolean，
+    // loadSettings hydrate 後若 DB 的 isPaid === 預設值 (false)，
+    // React selector 不會 re-render，effect 也不會 re-run，
+    // baselineArmedRef 就停在 false — 第一次 user toggle 會被當成
+    // baseline seed（flip 為 true + return），PUT 永遠不出去。
+    //
+    // 修法：另開一個 `isPaidAfterLoadRef` 追蹤「loadSettings 完成後
+    // 第一次看到的 isPaid 值」。在 effect 內若 loadSettled=true 且
+    // isPaidAfterLoadRef 還是 null，表示 loadSettings 剛完成、還沒
+    // snapshot 此時的值 → 寫進 ref、return。等下一次 effect run（user
+    // toggle 觸發）才會進入真正的 diff 邏輯。
+    if (isPaidAfterLoadRef.current === null) {
+      isPaidAfterLoadRef.current = isPaid;
+      return;
+    }
+
+    // Diff: only schedule when isPaid changes from the post-load baseline.
+    if (isPaid === isPaidAfterLoadRef.current) return;
+    isPaidAfterLoadRef.current = isPaid;
+
+    // Debounce 1s after the user toggles the checkbox. 後端 schema 已允許
+    // `isPaid: z.boolean().optional()`，所以 `false` 也是有效值（不必像
+    // logoText 那樣擋空字串）。
+    if (isPaidSaveTimerRef.current) clearTimeout(isPaidSaveTimerRef.current);
+    isPaidSaveTimerRef.current = setTimeout(() => {
+      // Re-read latest value at fire time (防 closure stale — 跟 Step 4/5
+      // 邏輯對齊：若 user 在 1s debounce 內又 toggle，timer fire 時拿到
+      // 最新值而不是 effect run 時的值）。
+      const finalIsPaid = useCardBuilderStore.getState().isPaid;
+      cardService.update(cardId, { settings: { isPaid: finalIsPaid } }).catch((err) => {
+        console.warn('[CardBuilderEditor] isPaid auto-save failed:', err);
+      });
+    }, 1000);
+
+    return () => {
+      if (isPaidSaveTimerRef.current) clearTimeout(isPaidSaveTimerRef.current);
+    };
+  }, [cardId, isPaid]);
 
   // ============================================================
   // Auto-save: Step 4 fields (description / backFields / links) → debounced PUT.
@@ -433,17 +526,30 @@ export function CardBuilderEditor({
 
     // Read current values directly from store to avoid stale closure
     const currentCardType = useCardBuilderStore.getState().cardType;
-    const currentName = useCardBuilderStore.getState().name;
+    // 2026-09-13 swap: `name` → `cardName` (SQL column) + `logoText` (JSONB).
+    // The create payload now sends `cardName` as top-level `name` so the
+    // SQL column gets the Card Name, and `logoText` in settings so the
+    // JSONB has the pass header text.
+    const currentCardName = useCardBuilderStore.getState().cardName;
+    const currentLogoText = useCardBuilderStore.getState().logoText;
 
     if (newStep === 2 && currentCardType) {
       // Step 1 完成：cardType 已經知道
       if (!cardId) {
-        // 新建：建立草稿（含 cardType）
+        // 新建：建立草稿（含 cardType + Logo Text seed for preview identity）
         try {
           const template = await cardService.create({
-            name: currentName || '未命名卡片',
+            name: currentCardName || '未命名卡片',
             cardType: currentCardType,
-            settings: { isPaid: false },
+            settings: {
+              isPaid: false,
+              // Logo Text defaults to Card Name on first create so the
+              // preview isn't empty — the user can override in the Header
+              // input at any time. Setting it here also means the SQL
+              // `templates.name` value matches the seed value visible in
+              // the preview immediately after Step 1.
+              logoText: currentLogoText || currentCardName || '未命名卡片',
+            },
           });
           setCardId(template.id);
         } catch (err) {
@@ -454,8 +560,10 @@ export function CardBuilderEditor({
         // 繼續：更新既有草稿（從 resume 回來的）
         try {
           await cardService.update(cardId, {
-            name: currentName,
+            name: currentCardName,
             cardType: currentCardType,
+            // logoText handled by the Header autosave effect — only the
+            // cardType and cardName matter at Step 1 completion.
           });
         } catch (err) {
           console.error('Failed to update draft on Step 1 continue:', err);
@@ -485,14 +593,20 @@ export function CardBuilderEditor({
 
       {!isLoading && (
         <>
-        {/* 上容器：導航列 */}
+        {/* 上容器：導航列
+            2026-09-13 swap: Header input now binds to `logoText` (pass
+            header text) instead of `name` (record name). Card Name is
+            shown as a non-editable sub-line under the title. The
+            isStep1Blocked gate keys off `logoText` because that's what
+            must be filled to advance past Step 1 cleanly. */}
         <CardBuilderEditorHeader
-          name={name}
-          onNameChange={setName}
+          logoText={logoText}
+          onLogoTextChange={setLogoText}
+          cardName={cardName}
           step={step}
           onStepChange={handleStepChange}
           completedSteps={completedSteps}
-          isStep1Blocked={!name.trim() || !cardType}
+          isStep1Blocked={!logoText.trim() || !cardType}
         />
 
         {/* 下容器：左右欄位

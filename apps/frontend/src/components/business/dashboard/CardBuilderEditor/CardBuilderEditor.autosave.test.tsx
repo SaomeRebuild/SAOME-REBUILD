@@ -534,6 +534,103 @@ describe('CardBuilderEditor — Step 4 autosave (2026-09-05)', () => {
   });
 });
 
+// ===== Logo Text autosave (2026-09-13 semantic swap) =====
+//
+// 2026-09-13 swap: the Header input now binds to Logo Text (pass header
+// text) — written to `settings.logoText` (JSONB key), NOT top-level
+// `name` (which is now the SQL column holding Card Name).
+//
+// This describe block pins:
+//   - Header logoText edits debounce to a PUT carrying `settings.logoText`
+//     (not top-level `name`).
+//   - Slow-network regression: when getById takes > 1s, the autosave does
+//     NOT fire with the empty default Logo Text before loadSettings lands.
+describe('CardBuilderEditor — Logo Text autosave (2026-09-13 swap)', () => {
+  it('autosaves logoText edits to settings.logoText (not top-level name)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderWithRouter();
+    // Flush microtasks so loadSettings resolves before user edits.
+    await flushLoadSettings();
+
+    act(() => {
+      useCardBuilderStore.getState().setLogoText('My Brand');
+    });
+
+    // No PUT yet — within the 1s debounce window.
+    expect(updateCalls).toHaveLength(0);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1100);
+    });
+
+    await waitFor(() => expect(updateCalls.length).toBeGreaterThanOrEqual(1));
+    const payload = updateCalls[updateCalls.length - 1]!.payload as {
+      name?: string;
+      settings?: { logoText?: string };
+    };
+    // Target key is settings.logoText (NOT top-level name).
+    expect(payload.settings?.logoText).toBe('My Brand');
+    // Top-level `name` MUST NOT be set by the autosave — that's the SQL
+    // column for Card Name, written by Step 2's onNext handler.
+    expect(payload.name).toBeUndefined();
+  });
+
+  it('does NOT autosave empty logoText before async fetch resolves — Logo Text (regression 2026-09-13)', async () => {
+    // Mirrors Step 4 修 3 regression — slow-network scenario where
+    // fetch is slower than debounce. Without baseline-arm + loadSettled,
+    // the Logo Text autosave effect would PUT empty default Logo Text
+    // into DB.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    // Slow fetch (3s) — well past the 1s autosave debounce.
+    const cardService = await import('@/services/cardService');
+    vi.mocked(cardService.cardService.getById).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          setTimeout(
+            () =>
+              resolve({
+                id: 'test-template-id',
+                settings: {
+                  ...FULL_SETTINGS,
+                  logoText: '既有 Logo 文字',
+                },
+                cardType: 'membership_card',
+                name: 'Test Card',
+              } as unknown as Awaited<ReturnType<typeof cardService.cardService.getById>>),
+            3000,
+          );
+        }),
+    );
+
+    renderWithRouter();
+
+    // User types IMMEDIATELY after mount — before fetch resolves.
+    act(() => {
+      useCardBuilderStore.getState().setLogoText('mid-typing');
+    });
+
+    // Drive past the 1s autosave debounce. The fix ensures NO PUT fires
+    // because loadSettings hasn't settled the store yet.
+    await act(async () => {
+      vi.advanceTimersByTime(1100);
+    });
+
+    const callsBeforeSettle = updateCalls.length;
+    expect(callsBeforeSettle).toBe(0);
+
+    // Now let fetch resolve and verify the store hydrates correctly.
+    await act(async () => {
+      vi.advanceTimersByTime(2000); // total ~3100ms — past the 3000ms fetch
+    });
+
+    await waitFor(() => {
+      const s = useCardBuilderStore.getState();
+      expect(s.logoText).toBe('既有 Logo 文字');
+    });
+  });
+});
+
 // ===== Step 5 — 地理位置 + 推播訊息 autosave (2026-09-05) =====
 describe('CardBuilderEditor — Step 5 autosave (2026-09-05)', () => {
   it('autosaves initialMessage after the user pauses typing for 1s', async () => {
@@ -656,6 +753,182 @@ describe('CardBuilderEditor — Step 5 autosave (2026-09-05)', () => {
     await waitFor(() => {
       const s = useCardBuilderStore.getState();
       expect(s.initialMessage).toBe('既有推播訊息');
+    });
+  });
+});
+
+// ===== isPaid autosave (2026-09-13) =====
+//
+// 2026-09-13 fix: the Step 2 「需收費」 checkbox (MembershipExtensionField)
+// now autosaves via a debounced (1s) PUT, matching the logoText / Step 4 /
+// Step 5 patterns. Before this fix, isPaid was only persisted when the
+// user clicked "下一步" — toggling the checkbox then leaving Step 2 lost
+// the change.
+//
+// This describe block pins:
+//   - Toggling isPaid true debounces to a PUT carrying `settings.isPaid: true`.
+//   - Toggling isPaid false (on → off is a real change) also debounces to
+//     a PUT carrying `settings.isPaid: false`.
+//   - Multiple toggles within the debounce window collapse to ONE PUT.
+//   - Slow-network regression: when getById takes > 1s, the autosave does
+//     NOT fire with the default `isPaid: false` before loadSettings lands.
+describe('CardBuilderEditor — isPaid autosave (2026-09-13)', () => {
+  /**
+   * Helper: filter updateCalls to find the autosave that carries the isPaid
+   * payload. Other autosave effects (Step 4 description/backFields/links,
+   * Step 5 geos) may also schedule timers that fire at the same 1s mark;
+   * this filter isolates the call produced by the isPaid autosave effect.
+   */
+  function findIsPaidUpdate() {
+    return updateCalls.find((u) => {
+      const payload = u.payload as { settings?: { isPaid?: boolean } };
+      return payload.settings !== undefined && 'isPaid' in payload.settings;
+    });
+  }
+
+  it('autosaves isPaid=true after the user toggles the checkbox and waits 1s', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderWithRouter();
+    // Flush microtasks so loadSettings resolves before user edits.
+    await flushLoadSettings();
+
+    act(() => {
+      useCardBuilderStore.getState().setIsPaid(true);
+    });
+
+    // No PUT yet — within the 1s debounce window.
+    expect(updateCalls).toHaveLength(0);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1100);
+    });
+
+    await waitFor(() => expect(findIsPaidUpdate()).toBeDefined());
+    const payload = findIsPaidUpdate()!.payload as {
+      settings?: { isPaid?: boolean };
+    };
+    expect(payload.settings?.isPaid).toBe(true);
+  });
+
+  it('autosaves isPaid=false when user un-toggles a previously-paid card', async () => {
+    // Pre-hydrate isPaid=true via loadSettings to simulate a paid card.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const cardService = await import('@/services/cardService');
+    vi.mocked(cardService.cardService.getById).mockImplementationOnce(
+      () =>
+        Promise.resolve({
+          id: 'test-template-id',
+          settings: { ...FULL_SETTINGS, isPaid: true },
+          cardType: 'membership_card',
+          name: 'Test Card',
+        } as unknown as Awaited<ReturnType<typeof cardService.cardService.getById>>),
+    );
+    renderWithRouter();
+    await flushLoadSettings();
+
+    // Sanity: store is now hydrated with isPaid=true.
+    expect(useCardBuilderStore.getState().isPaid).toBe(true);
+
+    // User un-toggles the checkbox.
+    act(() => {
+      useCardBuilderStore.getState().setIsPaid(false);
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(1100);
+    });
+
+    await waitFor(() => expect(findIsPaidUpdate()).toBeDefined());
+    const payload = findIsPaidUpdate()!.payload as {
+      settings?: { isPaid?: boolean };
+    };
+    expect(payload.settings?.isPaid).toBe(false);
+  });
+
+  it('collapses multiple toggles into a single debounced PUT', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderWithRouter();
+    await flushLoadSettings();
+
+    act(() => {
+      useCardBuilderStore.getState().setIsPaid(true);
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(300);
+    });
+    act(() => {
+      useCardBuilderStore.getState().setIsPaid(false);
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(300);
+    });
+    act(() => {
+      useCardBuilderStore.getState().setIsPaid(true);
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(1100);
+    });
+
+    // Filter for isPaid-specific PUTs only — other autosaves may also fire.
+    const isPaidCalls = updateCalls.filter((u) => {
+      const payload = u.payload as { settings?: { isPaid?: boolean } };
+      return payload.settings !== undefined && 'isPaid' in payload.settings;
+    });
+    await waitFor(() => expect(isPaidCalls.length).toBe(1));
+    const payload = isPaidCalls[0]!.payload as {
+      settings?: { isPaid?: boolean };
+    };
+    expect(payload.settings?.isPaid).toBe(true);
+  });
+
+  it('does NOT autosave default isPaid=false before async fetch resolves — isPaid (regression 2026-09-13)', async () => {
+    // Mirrors Step 4 / Step 5 修 3 regression — slow-network scenario where
+    // fetch is slower than debounce. Without baseline-arm + loadSettled guard,
+    // the isPaid autosave effect would PUT default `isPaid: false` into DB
+    // before loadSettings hydrates the actual stored value.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    // Slow fetch (3s) — well past the 1s autosave debounce.
+    const cardService = await import('@/services/cardService');
+    vi.mocked(cardService.cardService.getById).mockImplementationOnce(
+      () =>
+        Promise.resolve({
+          id: 'test-template-id',
+          settings: { ...FULL_SETTINGS, isPaid: true },
+          cardType: 'membership_card',
+          name: 'Test Card',
+        } as unknown as Awaited<ReturnType<typeof cardService.cardService.getById>>),
+    );
+
+    renderWithRouter();
+
+    // User toggles IMMEDIATELY after mount — before fetch resolves.
+    act(() => {
+      useCardBuilderStore.getState().setIsPaid(false);
+    });
+
+    // Drive past the 1s autosave debounce. The fix ensures NO PUT fires
+    // because loadSettings hasn't settled the store yet (step4LoadSettledRef
+    // is still false).
+    await act(async () => {
+      vi.advanceTimersByTime(1100);
+    });
+
+    // No isPaid-bearing PUT should have been issued during the slow-fetch window.
+    const callsBeforeSettle = updateCalls.filter((u) => {
+      const payload = u.payload as { settings?: { isPaid?: boolean } };
+      return payload.settings !== undefined && 'isPaid' in payload.settings;
+    });
+    expect(callsBeforeSettle.length).toBe(0);
+
+    // Now let fetch resolve and verify the store hydrates correctly.
+    await act(async () => {
+      vi.advanceTimersByTime(2000); // total ~3100ms — past the 3000ms fetch
+    });
+
+    await waitFor(() => {
+      const s = useCardBuilderStore.getState();
+      expect(s.isPaid).toBe(true);
     });
   });
 });
