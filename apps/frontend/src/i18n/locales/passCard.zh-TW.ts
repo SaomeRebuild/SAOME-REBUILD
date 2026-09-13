@@ -35,10 +35,18 @@ export default {
     pointsToNextTier: { label: '到下一階還差', value: '123點' },
     currentPoints: { label: '已累積點數', value: '23點' },
     // 現金回饋卡專用欄位預覽 — 僅在 cashback_card 時顯示於下拉選單（2026-09-12）
-    // value 為靜態 demo，spend 金額使用與 TWD 一致的格式（阿拉伯數字 + 元後綴），
-    // ZAR 前綴（R562）由 PassCardPreviewBody 動態處理，見 Step 6 preview body。
-    pointsToNextTierCashback: { label: '到下個層級還差', value: '562元' },
-    accumulatedSpendCashback: { label: '已累積消費', value: '3301元' },
+    // value 不存於此處，由 `@saome/shared/constants/cashbackPreviewAmounts.ts`
+    // 的 currency-driven map 提供（TWD → "562元" / ZAR → "R562"），
+    // PassCardPreviewBody 在 runtime 從 map 讀取。本 locale 只保留 label。
+    // 為什麼 label / value 拆開（Rule 023 § 翻譯書寫紀律）：en 翻譯不能含
+    // Han 字元，"562元" 不能放進 passCard.en.ts。
+    // 2026-09-13 ZAR 污染修正：原本 PassCardPreviewBody 對所有 i18n value
+    // 套用 regex 加 R 前綴，把非金額欄位（電話 +886... → R886...、拜訪
+    // 次數 5 次 → R5 等）污染到所有卡種。Cashback 現在改為 currency-driven
+    // 欄位（跟餘額預覽同一模式，餘額由 PassCardPreviewHeader 對應另一個
+    // shared constant）。
+    pointsToNextTierCashback: { label: '到下個層級還差' },
+    accumulatedSpendCashback: { label: '已累積消費' },
   },
   // ===== 餘額預覽 — 僅在 stamp_card / reward_card / cashback_card 顯示 =====
   // Step 1 選這 3 種卡時，PassCardPreviewHeader 的右側卡種 pill 會被替換成兩行垂直區塊。
@@ -50,5 +58,18 @@ export default {
   //   詳見 plan § 設計決策與 Rule 024 § 業務邏輯在 shared/。
   balancePreview: {
     label: '餘額',
+  },
+  // ===== 會員到期日預覽 — 僅在 membership_card 顯示 =====
+  // Step 1 選 membership_card 時，PassCardPreviewHeader 的右側卡種 pill 會被替換成兩行垂直區塊。
+  //   - label: "會員到期日" (locale-driven，由 i18n 提供)
+  //   - value: 由 store.hasExpiry 決定 — true → 格式化後的 expiryDate
+  //     ("2027.10.23" zh-TW / "10.23.2027" en)；false → "∞" (無限符號)
+  //   日期格式遵循 locale 慣例：
+  //     - zh-TW: YYYY.MM.DD（依 user-confirmed UX）
+  //     - en:    MM.DD.YYYY（US-style 依 user-confirmed UX）
+  //   expiryDate 來自 store.expiryDate (ISO YYYY-MM-DD 字串)。
+  //   當 hasExpiry=true 且 expiryDate 為空時，fallback 到 "—" (placeholder)。
+  memberExpiry: {
+    label: '會員到期日',
   },
 };

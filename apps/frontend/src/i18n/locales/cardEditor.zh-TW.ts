@@ -8,8 +8,16 @@
 export default {
   // 頁面層級
   pageTitle: '卡片建置器',
-  cardNameLabel: '卡片名稱',
-  cardNamePlaceholder: '輸入卡片名稱',
+  // 2026-09-13 semantic swap: `cardNameLabel` / `cardNamePlaceholder` are
+  // removed (Card Name is now edited in Step 2's CardNameField, not the
+  // header). Replaced by:
+  //   - `logoTextLabel` / `logoTextPlaceholder` for the Header input
+  //     (now bound to Logo Text, the pass header text).
+  //   - `cardNameDisplay` for the read-only sub-line under the title
+  //     showing the current Card Name (record name).
+  logoTextLabel: 'Logo 文字',
+  logoTextPlaceholder: '輸入 Logo 文字',
+  cardNameDisplay: '模板：{{cardName}}',
   comingSoon: '即將推出',
 
   // 動作按鈕
@@ -32,9 +40,11 @@ export default {
   },
 
   // Step 1: 卡片類型選擇器
+  // 2026-09-13 swap: `nameRequired` (about the record name) is replaced by
+  // `logoTextRequired` because the Header input now binds to Logo Text.
   step1: {
     title: '選擇卡片類型',
-    nameRequired: '請填寫卡片名稱',
+    logoTextRequired: '請填寫 Logo 文字',
     cardTypes: {
       stamp_card: '集點卡',
       cashback_card: '現金回饋卡',
@@ -56,10 +66,14 @@ export default {
       qrCode: 'QR 碼',
       pdf417: 'PDF 417',
     },
-    storeName: {
-      title: '店名',
-      placeholder: '請輸入店名',
-      required: '店名為必填欄位',
+    // 2026-09-13 swap: `storeName` (店名 / store name) renamed to
+    // `cardName` (卡片名稱 / card name). The field is now persisted to
+    // the SQL column `templates.name` (top-level payload) instead of
+    // `settings.storeName` (JSONB).
+    cardName: {
+      title: '卡片名稱',
+      placeholder: '請輸入卡片名稱',
+      required: '卡片名稱為必填欄位',
     },
     issuerName: {
       title: '發卡機構名稱',
@@ -475,6 +489,72 @@ export default {
         rewardValueRequired: '請輸入獎勵值',
       },
     },
+    // ===== Membership 卡 (2026-09-13) =====
+    // 付費會員卡：卡級「無期限 / 有期限」切換 + 最多 5 組會員等級 +
+    // 每等級最多 5 組會員獎勵 sub-rows.
+    // 免費會員卡（isPaid=false）只顯示「免費會員卡無需付費設定」空狀態.
+    membership: {
+      // 進入 Step 6 時的說明
+      intro: '設定此會員卡的會員等級與付費規則',
+      introHint: '會員可依等級享有不同優惠與專屬獎勵，最多可設定 5 組會員等級。',
+      // ===== 卡級「無期限 / 有期限」切換 =====
+      hasExpiryToggle: '卡片有效期限',
+      hasExpiryOn: '有期限（月/年付費）',
+      hasExpiryOff: '無期限（終身會員）',
+      // ===== 會員等級列表 =====
+      tiersTitle: '會員等級',
+      tiersHint: '設定每個會員等級的費用與獎勵。最多可設定 5 組。',
+      addTier: '新增會員等級',
+      removeTier: '移除',
+      maxTiersReached: '已達最高 5 組等級',
+      // ===== 會員獎勵 sub-rows =====
+      rewardsTitle: '會員獎勵',
+      rewardsHint: '為此會員等級新增專屬獎勵（最多 5 組），將顯示於卡片背面。',
+      rewardsEmpty: '尚未新增會員獎勵',
+      addReward: '新增會員獎勵',
+      removeReward: '移除',
+      maxRewardsReached: '已達最高 5 組獎勵',
+      rewardLabelTitle: '獎勵名稱',
+      rewardLabelPlaceholder: '例如：專屬優惠',
+      rewardValueTitle: '獎勵內容',
+      rewardValuePlaceholder: '例如：https://example.com/vip',
+      // ===== Tier 欄位 =====
+      tier: {
+        nameTitle: '等級名稱',
+        namePlaceholder: '例如：VIP、金卡會員',
+        nameCounter: '{{count}} / 40',
+        nameRequiredError: '請輸入等級名稱',
+        durationTitle: '收費方式',
+        durationMonthly: '月費',
+        durationYearly: '年費',
+        durationRequiredError: '請選擇收費方式',
+        costTitle: '費用',
+        costMonthlyPlaceholder: '例如：100',
+        costYearlyPlaceholder: '例如：1000',
+        // 2026-09-13 currency-aware cost unit (mirrors cashback pattern):
+        // TWD zh-TW: 後綴元, TWD en: 前綴 NT$, ZAR: 前綴 R.
+        costUnitTWD: '元',
+        costUnitZAR: 'R',
+        costZeroIsFree: '輸入 0 = 免費會員',
+        // 2026-09-13 新增: 終身會員費用欄位 (card-wide hasExpiry=false 時使用).
+        // 租戶可透過終身費用讓消費者一次性購買終身會員等級的權利.
+        // 與 monthly/yearly 互斥 — 由 hasExpiry 決定哪組欄位生效.
+        lifetimeCostTitle: '終身費用',
+        lifetimeCostPlaceholder: '例如：3000',
+        lifetimeCostZeroIsFree: '輸入 0 = 免費終身會員',
+      },
+      // ===== Free state (免費會員卡 isPaid=false) =====
+      freeStateTitle: '免費會員卡無需付費設定',
+      freeStateHint: '此卡為免費會員卡，無需設定等級或收費。如需付費會員卡，請至 Step 2 開啟「需收費」選項。',
+      // ===== Validation =====
+      validation: {
+        tierRequired: '請至少新增 1 組會員等級',
+        tierNameRequired: '等級名稱為必填欄位',
+        durationRequired: '請選擇收費方式',
+        costRequired: '請輸入費用',
+        costInvalid: '費用不可為負數',
+      },
+    },
     // ===== Cashback 卡 (2026-09-11) =====
     // 消費時產生點數，點數可在下次消費中使用，產生 Cashback 效果。
     // 最多 5 組 tier，每個 tier 含 name + thresholdSpend (0允許) + cashbackPercent (1-100).
@@ -551,6 +631,11 @@ export default {
       termsOrLinks: '條文或連結',
       linksTitle: '連結',
       linksEmpty: '（尚未加入連結）',
+      // 2026-09-13 membership card Section 4 (取代原本的 Section 1.5)。
+      // 背面欄位現在直接渲染第一個 tier 的會員獎勵 sub-rows。
+      membershipRewardsTitle: '會員獎勵',
+      // 2026-09-13：當會員卡尚未設定任何獎勵時，Section 4 顯示此 placeholder。
+      membershipRewardsEmpty: '尚未新增會員獎勵',
     },
   },
 };

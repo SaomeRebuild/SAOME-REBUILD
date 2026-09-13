@@ -8,8 +8,11 @@
 export default {
   // Page level
   pageTitle: 'Card Builder',
-  cardNameLabel: 'Card Name',
-  cardNamePlaceholder: 'Enter card name',
+  // 2026-09-13 semantic swap: cardNameLabel / cardNamePlaceholder removed;
+  // Header input now binds to Logo Text. Card Name is edited in Step 2.
+  logoTextLabel: 'Logo Text',
+  logoTextPlaceholder: 'Enter logo text',
+  cardNameDisplay: 'Template: {{cardName}}',
   comingSoon: 'Coming soon',
 
   // Action buttons
@@ -32,9 +35,11 @@ export default {
   },
 
   // Step 1: Card type selector
+  // 2026-09-13 swap: nameRequired → logoTextRequired (Header input now
+  // binds to Logo Text, the pass header text).
   step1: {
     title: 'Choose Card Type',
-    nameRequired: 'Please enter a card name',
+    logoTextRequired: 'Please enter logo text',
     cardTypes: {
       stamp_card: 'Stamp Card',
       cashback_card: 'Cashback Card',
@@ -56,10 +61,13 @@ export default {
       qrCode: 'QR Code',
       pdf417: 'PDF 417',
     },
-    storeName: {
-      title: 'Store Name',
-      placeholder: 'Enter store name',
-      required: 'Store name is required',
+    // 2026-09-13 swap: storeName (Store Name) → cardName (Card Name).
+    // Persisted to SQL column `templates.name` instead of
+    // `settings.storeName` (JSONB).
+    cardName: {
+      title: 'Card Name',
+      placeholder: 'Enter card name',
+      required: 'Card name is required',
     },
     issuerName: {
       title: 'Issuer Name',
@@ -479,6 +487,65 @@ export default {
         rewardValueRequired: 'Please enter the reward value',
       },
     },
+    // ===== Membership Card (2026-09-13) =====
+    // Paid membership card: card-wide "no expiry / with expiry" toggle +
+    // up to 5 membership tiers + up to 5 member rewards sub-rows per tier.
+    // Free membership card (isPaid=false) shows only a "free membership
+    // card needs no paid settings" empty state.
+    membership: {
+      intro: 'Configure membership tiers and paid rules',
+      introHint: 'Members enjoy different benefits and exclusive rewards by tier, up to 5 tiers.',
+      hasExpiryToggle: 'Card Expiration',
+      hasExpiryOn: 'With expiry (monthly/yearly)',
+      hasExpiryOff: 'No expiry (lifetime)',
+      tiersTitle: 'Membership Tiers',
+      tiersHint: 'Configure each tier\'s cost and rewards. Up to 5 tiers.',
+      addTier: 'Add Membership Tier',
+      removeTier: 'Remove',
+      maxTiersReached: 'Maximum 5 tiers reached',
+      rewardsTitle: 'Member Rewards',
+      rewardsHint: 'Add exclusive rewards for this tier (up to 5); shown on the back of the card.',
+      rewardsEmpty: 'No rewards added yet',
+      addReward: 'Add Member Reward',
+      removeReward: 'Remove',
+      maxRewardsReached: 'Maximum 5 rewards reached',
+      rewardLabelTitle: 'Reward Title',
+      rewardLabelPlaceholder: 'e.g. VIP Benefit',
+      rewardValueTitle: 'Reward Content',
+      rewardValuePlaceholder: 'e.g. https://example.com/vip',
+      tier: {
+        nameTitle: 'Tier Name',
+        namePlaceholder: 'e.g. VIP, Gold Member',
+        nameCounter: '{{count}} / 40',
+        nameRequiredError: 'Please enter a tier name',
+        durationTitle: 'Duration',
+        durationMonthly: 'Monthly',
+        durationYearly: 'Yearly',
+        durationRequiredError: 'Please select a duration',
+        costTitle: 'Cost',
+        costMonthlyPlaceholder: 'e.g. 100',
+        costYearlyPlaceholder: 'e.g. 1000',
+        costUnitTWD: 'NT$',
+        costUnitZAR: 'R',
+        costZeroIsFree: 'Enter 0 = free member',
+        // 2026-09-13 added: lifetime cost field (card-wide hasExpiry=false).
+        // Tenants use this to sell the right to a lifetime tier at a one-time
+        // price. Mutually exclusive with monthly/yearly — the editor decides
+        // which cost field is rendered based on the hasExpiry toggle.
+        lifetimeCostTitle: 'Lifetime Cost',
+        lifetimeCostPlaceholder: 'e.g. 3000',
+        lifetimeCostZeroIsFree: 'Enter 0 = free lifetime member',
+      },
+      freeStateTitle: 'Free membership card needs no paid settings',
+      freeStateHint: 'This is a free membership card; no tiers or costs required. To configure a paid membership card, enable "Requires payment" in Step 2.',
+      validation: {
+        tierRequired: 'Please add at least one membership tier',
+        tierNameRequired: 'Tier name is required',
+        durationRequired: 'Please select a duration',
+        costRequired: 'Please enter a cost',
+        costInvalid: 'Cost cannot be negative',
+      },
+    },
     // ===== Cashback card (2026-09-11) =====
     // Points earned on spending, usable on next purchase (Cashback effect).
     // Up to 5 tiers, each with name + thresholdSpend (0 allowed) + cashbackPercent (1-100).
@@ -555,6 +622,13 @@ export default {
       termsOrLinks: 'Terms or Links',
       linksTitle: 'Links',
       linksEmpty: '(No links yet)',
+      // 2026-09-13 membership card: Section 4 (replacing the previous
+      // Section 1.5). The back-side fields slot now directly renders
+      // the first tier's member reward sub-rows.
+      membershipRewardsTitle: 'Member Rewards',
+      // 2026-09-13: when the membership card has no rewards yet, Section 4
+      // shows this placeholder.
+      membershipRewardsEmpty: 'No member rewards yet',
     },
   },
 };
