@@ -42,6 +42,8 @@ const alias = [
   { find: /^@saome\/shared\/constants\/card-back-fields$/, replacement: path.resolve(sharedRoot, 'constants/card-back-fields.ts') },
   { find: /^@saome\/shared\/constants\/r2$/, replacement: path.resolve(sharedRoot, 'constants/r2.ts') },
   { find: /^@saome\/shared\/constants\/balancePreview$/, replacement: path.resolve(sharedRoot, 'constants/balancePreview.ts') },
+  { find: /^@saome\/shared\/constants\/cashbackPreviewAmounts$/, replacement: path.resolve(sharedRoot, 'constants/cashbackPreviewAmounts.ts') },
+  { find: /^@saome\/shared\/constants\/membership-card$/, replacement: path.resolve(sharedRoot, 'constants/membership-card.ts') },
   { find: /^@saome\/shared\/constants$/, replacement: path.resolve(sharedRoot, 'constants/index.ts') },
   { find: /^@saome\/shared\/i18n\/detectLanguage$/, replacement: path.resolve(sharedRoot, 'i18n/detectLanguage.ts') },
   { find: /^@saome\/shared\/i18n\/zh-TW$/, replacement: path.resolve(sharedRoot, 'i18n/zh-TW.ts') },
