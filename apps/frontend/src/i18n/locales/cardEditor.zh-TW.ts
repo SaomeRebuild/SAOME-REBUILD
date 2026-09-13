@@ -492,15 +492,26 @@ export default {
     // ===== Membership 卡 (2026-09-13) =====
     // 付費會員卡：卡級「無期限 / 有期限」切換 + 最多 5 組會員等級 +
     // 每等級最多 5 組會員獎勵 sub-rows.
-    // 免費會員卡（isPaid=false）只顯示「免費會員卡無需付費設定」空狀態.
+    // 免費會員卡（isPaid=false）顯示完整編輯器（會員等級 + 到期設定 + 獎勵 sub-rows）。
     membership: {
-      // 進入 Step 6 時的說明
-      intro: '設定此會員卡的會員等級與付費規則',
+      // 進入 Step 6 時的說明（hero intro）
+      // 2026-09-14 改版：依 isPaid 切換 intro/introHint 文案。
+      //   - 付費卡: 「設定此會員卡的會員等級與收費方案」
+      //   - 免費卡: 「設定此免費會員卡的會員等級與有效期限」
+      // 原始 `intro` / `introHint` keys 保留為付費卡的 copy（向後相容），
+      // 新增 `introFree` / `introHintFree` keys 給免費卡。Step6CardLogic
+      // dispatcher 透過 isPaid selector 選擇對應 keys。
+      intro: '設定此會員卡的會員等級與收費方案',
       introHint: '會員可依等級享有不同優惠與專屬獎勵，最多可設定 5 組會員等級。',
+      introFree: '設定此免費會員卡的會員等級與有效期限',
+      introHintFree: '免費會員卡只需設定一組會員等級與有效期限，最多可設定 5 組會員獎勵。',
       // ===== 卡級「無期限 / 有期限」切換 =====
       hasExpiryToggle: '卡片有效期限',
       hasExpiryOn: '有期限（月/年付費）',
       hasExpiryOff: '無期限（終身會員）',
+      // 2026-09-14: free-card 用 hasExpiryOnFree 變體（明確指出「指定到期日」，
+      // 而非付費卡的「月/年付費」）— MembershipHasExpiryToggle 依 isPaid 切換 copy。
+      hasExpiryOnFree: '有期限（指定到期日）',
       // ===== 會員等級列表 =====
       tiersTitle: '會員等級',
       tiersHint: '設定每個會員等級的費用與獎勵。最多可設定 5 組。',
@@ -543,7 +554,33 @@ export default {
         lifetimeCostPlaceholder: '例如：3000',
         lifetimeCostZeroIsFree: '輸入 0 = 免費終身會員',
       },
-      // ===== Free state (免費會員卡 isPaid=false) =====
+      // ===== 免費卡專用區塊 (2026-09-14) =====
+      // 免費會員卡（isPaid=false）專用的 UI 區塊。
+      // 復用既有 membershipTiers[0].name 與 rewards，無需新增欄位。
+      // 額外 3 個 card-level expiry 欄位（membershipExpiryMode /
+      // customExpiryDays / specificExpiryDate）位於 store 層，不另開
+      // tier-level 命名空間。
+      freeTierNameTitle: '會員等級',
+      freeTierNamePlaceholder: '例如：VIP、普通會員',
+      freeTierNameCounter: '{{count}} / 40',
+      freeTierNameRequiredError: '請輸入會員等級名稱',
+
+      freeExpiryModeTitle: '到期設定',
+      freeExpiryModeCustomDays: '自訂期限',
+      freeExpiryModeSpecificDate: '指定日期',
+      freeExpiryModeRequiredError: '請選擇到期設定',
+
+      freeCustomExpiryDaysTitle: '有效天數',
+      freeCustomExpiryDaysPlaceholder: '例如：100',
+      freeCustomExpiryDaysUnit: '天',
+      freeCustomExpiryDaysRangeError: '請輸入 1–3650 之間的天數',
+
+      freeSpecificExpiryDateTitle: '指定到期日',
+      freeSpecificExpiryDatePlaceholder: 'YYYY-MM-DD',
+      freeSpecificExpiryDateRequiredError: '請選擇到期日',
+      freeSpecificExpiryDatePastError: '到期日不可早於今天',
+
+      // ===== Free state（向後相容 2026-09-13 既有翻譯） =====
       freeStateTitle: '免費會員卡無需付費設定',
       freeStateHint: '此卡為免費會員卡，無需設定等級或收費。如需付費會員卡，請至 Step 2 開啟「需收費」選項。',
       // ===== Validation =====
@@ -553,6 +590,12 @@ export default {
         durationRequired: '請選擇收費方式',
         costRequired: '請輸入費用',
         costInvalid: '費用不可為負數',
+        // 2026-09-14: free-card 專用驗證訊息
+        freeTierNameRequired: '請輸入會員等級名稱',
+        freeExpiryModeRequired: '請選擇到期設定',
+        freeCustomExpiryDaysInvalid: '請輸入 1–3650 之間的天數',
+        freeSpecificExpiryDateRequired: '請選擇到期日',
+        freeSpecificExpiryDatePast: '到期日不可早於今天',
       },
     },
     // ===== Cashback 卡 (2026-09-11) =====

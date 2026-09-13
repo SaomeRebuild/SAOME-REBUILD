@@ -40,6 +40,26 @@ export const COST_MIN = 0;
 export const COST_MAX = 9_999_999;
 
 /**
+ * Free-card expiry mode (2026-09-14, 免費會員卡專用).
+ *
+ * `custom_days` — 自訂 N 天後到期 (customExpiryDays)
+ * `specific_date` — 指定到期日 (specificExpiryDate, ISO YYYY-MM-DD)
+ *
+ * 付費會員卡使用既有 `durationType` (monthly / yearly) + `monthlyCost` /
+ * `yearlyCost`,不使用此 enum。
+ *
+ * Mirrors `packages/shared/schemas/card.ts::membershipExpiryMode` zod schema.
+ */
+export const MEMBERSHIP_EXPIRY_MODES = ['custom_days', 'specific_date'] as const;
+export type MembershipExpiryMode = (typeof MEMBERSHIP_EXPIRY_MODES)[number];
+
+/** 自訂天數下限 (1 天). */
+export const CUSTOM_EXPIRY_DAYS_MIN = 1;
+
+/** 自訂天數上限 (10 年 = 3650 天). */
+export const CUSTOM_EXPIRY_DAYS_MAX = 3650;
+
+/**
  * Duration type. `null` represents "未設定" (only meaningful when
  * card-wide `hasExpiry === true`; otherwise both monthly/yearly costs are
  * hidden). Tier carries the duration type so the editor can show

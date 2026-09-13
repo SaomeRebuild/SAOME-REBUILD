@@ -19,6 +19,9 @@ import {
   REWARD_LABEL_MAX_LENGTH,
   REWARD_VALUE_MAX_LENGTH,
   COST_MIN,
+  MEMBERSHIP_EXPIRY_MODES,
+  CUSTOM_EXPIRY_DAYS_MIN,
+  CUSTOM_EXPIRY_DAYS_MAX,
 } from '../constants/membership-card';
 
 // ===== Card Types =====
@@ -456,6 +459,43 @@ export const templateSettingsSchema = z.object({
     )
     .max(MAX_MEMBERSHIP_TIERS)
     .optional(),
+  // ===== Step 6 — Free Membership Card expiry (2026-09-14) =====
+  // 免費會員卡（isPaid=false）專用的卡片級期限欄位。付費會員卡使用
+  // `durationType` + `monthlyCost` / `yearlyCost` 處理期限，故不使用本節欄位。
+  //
+  // 設計區別:
+  // - 付費卡: durationType (monthly/yearly) + 對應 cost = 購買週期後續期/到期
+  // - 免費卡: 自訂 N 天後到期 OR 指定到期日，與購買週期無關
+  //
+  // Mirrors:
+  //   - packages/shared/constants/membership-card.ts (MEMBERSHIP_EXPIRY_MODES 等)
+  //   - apps/backend/src/modules/cards/schemas/request.ts (backend mirror)
+  //   - apps/backend/src/modules/cards/db/templates.ts::TemplateSettings (interface)
+  /**
+   * 免費會員卡專用期限模式（2026-09-14, 免費卡 isPaid=false）.
+   * - 'custom_days': 自訂 N 天後到期（見 membershipCustomExpiryDays）
+   * - 'specific_date': 指定到期日（見 membershipSpecificExpiryDate, ISO YYYY-MM-DD）
+   * null = 未設定（僅在 hasExpiry=true 時需要; hasExpiry=false 時此欄位不生效）。
+   */
+  membershipExpiryMode: z.enum(MEMBERSHIP_EXPIRY_MODES).nullable().optional(),
+  /**
+   * 免費會員卡自訂天數（membershipExpiryMode === 'custom_days' 時使用）。
+   * 整數 [CUSTOM_EXPIRY_DAYS_MIN=1, CUSTOM_EXPIRY_DAYS_MAX=3650（10年）]。
+   * null = 未填。
+   */
+  membershipCustomExpiryDays: z
+    .number()
+    .int()
+    .min(CUSTOM_EXPIRY_DAYS_MIN)
+    .max(CUSTOM_EXPIRY_DAYS_MAX)
+    .nullable()
+    .optional(),
+  /**
+   * 免費會員卡指定到期日（membershipExpiryMode === 'specific_date' 時使用）。
+   * ISO YYYY-MM-DD 字串。null = 未填。
+   * 範圍檢查（min=today）由前端 setter 強制；zod 只驗證格式。
+   */
+  membershipSpecificExpiryDate: z.string().nullable().optional(),
   // ===== Step 6 — Cashback 卡 (2026-09-11, cashback_card only) =====
   // Mirrors mu-plugins cashback-tier structure. The simplest of the Step 6
   // sub-modules: each tier is a flat rule of "cumulative spend → cashback %",

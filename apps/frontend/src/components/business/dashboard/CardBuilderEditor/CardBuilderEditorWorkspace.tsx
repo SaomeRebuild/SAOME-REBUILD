@@ -263,27 +263,70 @@ export function CardBuilderEditorWorkspace({
   }
 
   /**
-   * MEMBERSHIP 卡 Step 6 validation (2026-09-13).
+   * MEMBERSHIP 卡 Step 6 validation (2026-09-13, free-card extended 2026-09-14).
    *
    * Mirrors packages/shared/constants/membership-card.ts bounds:
-   *   - isPaid === false    → always valid (免費會員卡，無需 Step 6 設定)
-   *   - isPaid === true     → membershipTiers.length ≥ 1
-   *                              each tier: name.trim() !== ''
-   *                              when hasExpiry=true:
-   *                                  durationType !== null
-   *                                  if monthly: monthlyCost ∈ [COST_MIN, COST_MAX]
-   *                                  if yearly:  yearlyCost  ∈ [COST_MIN, COST_MAX]
-   *                              (cost = 0 is allowed = free membership tier.)
+   *   - isPaid === false (免費會員卡, 2026-09-14):
+   *       membershipTiers.length ≥ 1 (auto-seeded by setIsPaid(false))
+   *       each tier: name.trim() !== ''
+   *       when hasExpiry=true:
+   *           membershipExpiryMode !== null
+   *           if custom_days:    membershipCustomExpiryDays ∈ [1, 3650]
+   *           if specific_date:  membershipSpecificExpiryDate !== null 且 ≥ today
+   *                              (today-check 由 store/sanitize 層級負責, 此處只驗證 non-null)
+   *       rewards sub-rows are NOT validated (optional content).
+   *
+   *   - isPaid === true (付費會員卡, 既有邏輯):
+   *       membershipTiers.length ≥ 1
+   *       each tier: name.trim() !== ''
+   *       when hasExpiry=true:
+   *           durationType !== null
+   *           if monthly: monthlyCost ∈ [COST_MIN, COST_MAX]
+   *           if yearly:  yearlyCost  ∈ [COST_MIN, COST_MAX]
+   *       (cost = 0 is allowed = free membership tier.)
    *
    * 會員獎勵 sub-rows are NOT validated by Step 6 — they're optional content
    * that always renders, regardless of validity.
    */
   function isMembershipStep6Valid(): boolean {
-    const { isPaid, hasExpiry, membershipTiers } = useCardBuilderStore.getState();
+    const {
+      isPaid,
+      hasExpiry,
+      membershipTiers,
+      membershipExpiryMode,
+      membershipCustomExpiryDays,
+      membershipSpecificExpiryDate,
+    } = useCardBuilderStore.getState();
 
-    // Free membership card → no Step 6 fields required.
-    if (!isPaid) return true;
+    // ===== 免費會員卡 (2026-09-14) =====
+    if (!isPaid) {
+      // 1. 至少 1 個 tier（auto-seed 必跑，理論上一定存在;若不存在則無效）
+      if (!membershipTiers || membershipTiers.length === 0) return false;
 
+      // 2. 第一個 tier 名稱必填
+      if (membershipTiers[0].name.trim() === '') return false;
+
+      // 3. 當 hasExpiry=true: mode 必填 + 對應欄位必填
+      if (hasExpiry) {
+        if (membershipExpiryMode === null) return false;
+        if (membershipExpiryMode === 'custom_days') {
+          if (
+            membershipCustomExpiryDays === null ||
+            membershipCustomExpiryDays < 1 ||
+            membershipCustomExpiryDays > 3650
+          ) {
+            return false;
+          }
+        }
+        if (membershipExpiryMode === 'specific_date') {
+          if (!membershipSpecificExpiryDate) return false;
+        }
+      }
+
+      return true;
+    }
+
+    // ===== 付費會員卡 (既有邏輯) =====
     if (!membershipTiers || membershipTiers.length === 0) return false;
 
     return membershipTiers.every((tier) => {
@@ -559,6 +602,13 @@ export function CardBuilderEditorWorkspace({
             cashbackTiers,
             hasExpiry,
             membershipTiers,
+            // 2026-09-14: Free-card (isPaid=false) expiry fields.
+            // 付費卡不寫這 3 欄位（schema optional 接受 undefined），
+            // 免費卡才寫。
+            isPaid,
+            membershipExpiryMode,
+            membershipCustomExpiryDays,
+            membershipSpecificExpiryDate,
           } = useCardBuilderStore.getState();
           // Strip `id` field from each reward tier before sending to backend
           // (id is a UI-only React key, not part of the data contract).
@@ -627,6 +677,21 @@ export function CardBuilderEditorWorkspace({
             // but always sent so the DB always reflects the current store state.
             hasExpiry,
             membershipTiers: sanitizedMembershipTiers,
+            // ===== Free-card expiry (2026-09-14) =====
+            // Only meaningful for `cardType === 'membership_card' && isPaid === false`.
+            // 其他卡種 或 付費卡 不寫這 3 欄位（schema optional 接受 undefined）。
+            membershipExpiryMode:
+              cardType === 'membership_card' && !isPaid
+                ? membershipExpiryMode
+                : undefined,
+            membershipCustomExpiryDays:
+              cardType === 'membership_card' && !isPaid
+                ? membershipCustomExpiryDays
+                : undefined,
+            membershipSpecificExpiryDate:
+              cardType === 'membership_card' && !isPaid
+                ? membershipSpecificExpiryDate
+                : undefined,
           });
           console.log('[handleNext] Step 6 card logic saved', {
             stampAccrualMode,
@@ -643,6 +708,11 @@ export function CardBuilderEditorWorkspace({
             cashbackTiers: sanitizedCashbackTiers,
             hasExpiry,
             membershipTiers: sanitizedMembershipTiers,
+            // 2026-09-14 free-card logging
+            isPaid,
+            membershipExpiryMode,
+            membershipCustomExpiryDays,
+            membershipSpecificExpiryDate,
           });
         } catch (err) {
           // Don't block step transition — let the user proceed and retry later.

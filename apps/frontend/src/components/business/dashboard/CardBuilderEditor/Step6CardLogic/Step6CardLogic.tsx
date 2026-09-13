@@ -41,6 +41,7 @@ import type { Step6CardLogicProps } from './Step6CardLogic.types';
 export function Step6CardLogic({ showValidation }: Step6CardLogicProps) {
   const { t } = useTranslation('cardEditor');
   const cardType = useCardBuilderStore((s) => s.cardType);
+  const isPaid = useCardBuilderStore((s) => s.isPaid);
 
   // No type selected yet — show a gentle placeholder.
   if (!cardType) {
@@ -94,16 +95,32 @@ export function Step6CardLogic({ showValidation }: Step6CardLogicProps) {
   }
 
   // membership_card → 會員卡邏輯 editor (2026-09-13).
-  // Note: the sub-module itself branches on isPaid — free cards show an
-  // empty state, paid cards show the tier editor. The dispatcher just
-  // delegates; no isPaid check here.
+  // The sub-module itself branches on isPaid — free cards show the full
+  // editor (single tier + hasExpiry toggle + expiry mode + rewards sub-rows),
+  // paid cards show the tier editor. The dispatcher just delegates; no
+  // isPaid check here.
+  //
+  // 2026-09-14: The hero intro copy also branches on isPaid (paid card
+  // uses `intro`/`introHint`; free card uses `introFree`/`introHintFree`).
+  // The previous single `intro`/`introHint` keys were ambiguous for free
+  // cards (mentioned "paid rules" / "付費規則") — the dispatcher now picks
+  // the right key set based on the same `isPaid` selector that the
+  // sub-module uses.
   if (cardType === 'membership_card') {
     return (
       <div className="flex min-w-0 flex-col gap-6">
-        {/* Step 6 hero intro — membership-card-specific copy */}
+        {/* Step 6 hero intro — membership-card copy, branched by isPaid (2026-09-14) */}
         <div className="flex flex-col gap-1.5 rounded-lg border border-dashed border-border bg-muted/30 p-4">
-          <p className="text-sm font-medium text-foreground">{t('step6.membership.intro')}</p>
-          <p className="text-xs text-muted-foreground">{t('step6.membership.introHint')}</p>
+          <p className="text-sm font-medium text-foreground">
+            {isPaid
+              ? t('step6.membership.intro')
+              : t('step6.membership.introFree')}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {isPaid
+              ? t('step6.membership.introHint')
+              : t('step6.membership.introHintFree')}
+          </p>
         </div>
         <MembershipCardLogic showValidation={showValidation} />
       </div>

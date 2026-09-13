@@ -1,33 +1,111 @@
 /**
- * MembershipCardLogicFreeState — Empty state for 免費會員卡.
+ * MembershipCardLogicFreeState — Full editor for 免費會員卡 (2026-09-14).
  *
- * Shown by `MembershipCardLogic` when `isPaid === false`. No editor / no
- * fields — 免費會員卡無需付費設定.
+ * Renders when `cardType === 'membership_card' && isPaid === false`.
+ * Previously a placeholder "免費會員卡無需付費設定" empty state — now a
+ * full editor that lets the tenant configure a free membership card:
  *
- * The hint reminds the user to enable "需收費" in Step 2 if they want to
- * configure paid membership tiers.
+ *   1. Membership tier name (single input, bound to `membershipTiers[0].name`)
+ *      — reuses `MembershipTierNameField` for consistent UX with paid card.
+ *      The preview auto-updates because `PassCardPreviewBody.firstMembershipTierName`
+ *      reads from `membershipTiers[0].name`.
+ *
+ *   2. Card-level hasExpiry toggle (reuses `MembershipHasExpiryToggle`)
+ *      — the toggle text switches based on `isPaid` (free card uses
+ *      "有期限（指定到期日）" instead of "有期限（月/年付費）").
+ *
+ *   3. Expiry mode + custom-days / specific-date inputs
+ *      (only shown when hasExpiry=true).
+ *      - `MembershipExpiryModeField` — radio for custom_days / specific_date
+ *      - `MembershipCustomExpiryDaysField` — shown when mode='custom_days'
+ *      - `MembershipSpecificExpiryDateField` — shown when mode='specific_date'
+ *
+ *   4. Member rewards sub-rows (reuses `MembershipTierRewardList` bound to
+ *      `membershipTiers[0].id`) — same as paid card, but on the only tier.
+ *      Preview Section 1.5 already reads from `membershipTiers[0].rewards`.
+ *
+ * No "remove tier" button — FreeState directly binds `membershipTiers[0]`
+ * without rendering `MembershipTierRow`. Only 1 implicit tier exists for
+ * free cards.
+ *
+ * Store guarantees:
+ *   - `setIsPaid(false)` auto-seeds `membershipTiers[0]` if empty.
+ *   - `setIsPaid(true)` clears the 3 free-card expiry fields.
+ *   - The 3 expiry setters cross-clear the other field on mode change.
  */
 
 import { useTranslation } from 'react-i18next';
-import { InfoIcon } from 'lucide-react';
+import { useCardBuilderStore } from '../../CardBuilderEditor.store';
+import { MembershipTierNameField } from './MembershipTierNameField';
+import { MembershipTierRewardList } from './MembershipTierRewardList';
+import { MembershipHasExpiryToggle } from './MembershipHasExpiryToggle';
+import { MembershipExpiryModeField } from './MembershipExpiryModeField';
+import { MembershipCustomExpiryDaysField } from './MembershipCustomExpiryDaysField';
+import { MembershipSpecificExpiryDateField } from './MembershipSpecificExpiryDateField';
+import type { MembershipCardLogicProps } from './MembershipCardLogic.types';
 
-export function MembershipCardLogicFreeState() {
+export function MembershipCardLogicFreeState({
+  showValidation,
+}: MembershipCardLogicProps) {
   const { t } = useTranslation('cardEditor');
+  const membershipTiers = useCardBuilderStore((s) => s.membershipTiers);
+  const hasExpiry = useCardBuilderStore((s) => s.hasExpiry);
+  const membershipExpiryMode = useCardBuilderStore((s) => s.membershipExpiryMode);
+
+  const freeTier = membershipTiers[0];
+
+  // 2026-09-14 defensive: `setIsPaid(false)` auto-seeds tier[0], so the
+  // editor should always have a tier to bind to. If for some reason the
+  // store has no tier (e.g. legacy data without auto-seed), render a
+  // brief loading hint instead of crashing.
+  if (!freeTier) {
+    return (
+      <section className="flex min-w-0 flex-col items-start gap-3 rounded-lg border border-dashed border-border bg-muted/20 p-6">
+        <p className="text-sm text-muted-foreground">
+          {t('step6.membership.freeStateHint')}
+        </p>
+      </section>
+    );
+  }
 
   return (
-    <section className="flex min-w-0 flex-col items-start gap-3 rounded-lg border border-dashed border-border bg-muted/20 p-6">
-      <div className="flex items-center gap-2">
-        <InfoIcon size={20} aria-hidden="true" className="text-muted-foreground" />
-        <h3
-          className="text-base font-semibold text-foreground"
-          style={{ fontFamily: 'var(--font-family-heading)' }}
-        >
-          {t('step6.membership.freeStateTitle')}
-        </h3>
-      </div>
-      <p className="text-sm text-muted-foreground">
-        {t('step6.membership.freeStateHint')}
-      </p>
-    </section>
+    <div className="flex min-w-0 flex-col gap-6">
+      {/* ===== 區塊 1: 會員等級（單一輸入框） ===== */}
+      <section className="flex min-w-0 flex-col gap-3">
+        <header className="flex flex-col gap-1">
+          <h3
+            className="text-base font-semibold text-foreground"
+            style={{ fontFamily: 'var(--font-family-heading)' }}
+          >
+            {t('step6.membership.freeTierNameTitle')}
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            {t('step6.membership.introHint')}
+          </p>
+        </header>
+        <MembershipTierNameField showValidation={showValidation} tierId={freeTier.id} />
+      </section>
+
+      {/* ===== 區塊 2: 卡片有效期限切換 ===== */}
+      <MembershipHasExpiryToggle showValidation={showValidation} />
+
+      {/* ===== 區塊 3: 當 hasExpiry=true 時顯示 ===== */}
+      {hasExpiry && (
+        <section className="flex min-w-0 flex-col gap-3 border-t border-dashed border-border pt-4">
+          <MembershipExpiryModeField showValidation={showValidation} />
+
+          {/* 對應模式的子輸入欄位 — 透過 membershipExpiryMode 條件渲染 */}
+          {membershipExpiryMode === 'custom_days' && (
+            <MembershipCustomExpiryDaysField showValidation={showValidation} />
+          )}
+          {membershipExpiryMode === 'specific_date' && (
+            <MembershipSpecificExpiryDateField showValidation={showValidation} />
+          )}
+        </section>
+      )}
+
+      {/* ===== 區塊 4: 會員獎勵 sub-rows（復用 MembershipTierRewardList） ===== */}
+      <MembershipTierRewardList showValidation={showValidation} tierId={freeTier.id} />
+    </div>
   );
 }

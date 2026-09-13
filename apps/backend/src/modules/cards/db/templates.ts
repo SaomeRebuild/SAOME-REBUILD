@@ -326,6 +326,37 @@ export interface TemplateSettings {
     lifetimeCost?: number | null;
     rewards?: Array<{ label: string; value: string }>;
   }>;
+  // ===== Step 6 — Free Membership Card expiry (Rule 019 § 4.1, layer 3 of 4) =====
+  // Mirrors `shared/templateSettingsSchema.membershipExpiryMode` /
+  // `membershipCustomExpiryDays` / `membershipSpecificExpiryDate`.
+  // Step 6 plan 2026-09-14: extends membership_card editor with free-card
+  // (isPaid=false) card-level expiry. Differs from paid-card expiry
+  // (durationType + monthlyCost/yearlyCost):
+  //   - Paid card: per-tier durationType (monthly/yearly) + per-tier cost
+  //     tied to the purchase cycle.
+  //   - Free card: card-level expiry mode (custom_days | specific_date)
+  //     + corresponding value, independent of any purchase cycle.
+  //
+  // Frontend store: `setIsPaid(true)` clears these three fields. `setIsPaid(false)`
+  // does NOT auto-populate them — the user picks via the editor.
+  /**
+   * 免費會員卡專用期限模式 (2026-09-14, 僅免費卡 isPaid=false 時生效).
+   * - 'custom_days': 自訂 N 天後到期 (見 membershipCustomExpiryDays)
+   * - 'specific_date': 指定到期日 (見 membershipSpecificExpiryDate, ISO YYYY-MM-DD)
+   * null = 未設定.
+   */
+  membershipExpiryMode?: 'custom_days' | 'specific_date' | null;
+  /**
+   * 免費會員卡自訂天數 (membershipExpiryMode === 'custom_days' 時使用).
+   * 整數 [CUSTOM_EXPIRY_DAYS_MIN=1, CUSTOM_EXPIRY_DAYS_MAX=3650 (10 年)].
+   * null = 未填.
+   */
+  membershipCustomExpiryDays?: number | null;
+  /**
+   * 免費會員卡指定到期日 (membershipExpiryMode === 'specific_date' 時使用).
+   * ISO YYYY-MM-DD 字串. null = 未填.
+   */
+  membershipSpecificExpiryDate?: string | null;
   // ===== Step 6 — Cashback 卡 (Rule 019 § 4.1, layer 3 of 4) =====
   // Mirrors `shared/templateSettingsSchema.cashbackTiers`.
   // Step 6 plan 2026-09-11: third card-type-specific logic editor (after

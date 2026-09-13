@@ -182,7 +182,27 @@ describe('CardBuilderEditorWorkspace — Step 6 (2026-09-07 stamp card logic int
     // 2026-09-11: cashback_card is now a fully implemented card type
     // (CashbackCardLogic), so it's no longer in the ComingSoon branch.
     // Use membership_card which is still ComingSoon.
-    useCardBuilderStore.setState({ cardType: 'membership_card' });
+    //
+    // 2026-09-14: membership_card now has full free-card + paid-card editor,
+    // so we need to put it in a valid state (isPaid=true with valid tier
+    // OR isPaid=false with auto-seeded tier). Use the paid-card path
+    // (isPaid=true) to keep the test simple — that path requires only
+    // name.trim() !== '' on tier[0].
+    useCardBuilderStore.setState({
+      cardType: 'membership_card',
+      isPaid: true,
+      membershipTiers: [
+        {
+          id: 't-1',
+          name: 'VIP',
+          durationType: null,
+          monthlyCost: null,
+          yearlyCost: null,
+          lifetimeCost: 1000,
+          rewards: [],
+        },
+      ],
+    });
     render(
       <CardBuilderEditorWorkspace
         step={6}
@@ -240,6 +260,10 @@ describe('CardBuilderEditorWorkspace — Step 6 (2026-09-07 stamp card logic int
     // (pointsPerVisit / pointsPerSpendAmount / pointsPerSpendPoints)
     // are inline per tier; per-tier `earningMode` is NO LONGER sent
     // (the backend schema no longer carries that field).
+    //
+    // 2026-09-14 free-card extension: when isPaid=true (this test case
+    // is per_stamp — paid card), the 3 free-card fields are sent as
+    // `undefined` (so backend doesn't see them).
     expect(onSave).toHaveBeenCalledWith('test-card-id', {
       stampAccrualMode: 'per_stamp',
       rewardName: '10元折價',
@@ -256,6 +280,10 @@ describe('CardBuilderEditorWorkspace — Step 6 (2026-09-07 stamp card logic int
       rewardTiers: [],
       // Cashback (2026-09-11) — not applicable for stamp_card, always sent empty.
       cashbackTiers: [],
+      // Free-card (2026-09-14) — not applicable when isPaid=true, sent as undefined.
+      membershipExpiryMode: undefined,
+      membershipCustomExpiryDays: undefined,
+      membershipSpecificExpiryDate: undefined,
     });
 
     expect(onStepChange).toHaveBeenCalledWith(7);
@@ -315,6 +343,10 @@ describe('CardBuilderEditorWorkspace — Step 6 (2026-09-07 stamp card logic int
       rewardTiers: [],
       // Cashback (2026-09-11) — not applicable for stamp_card, always sent empty.
       cashbackTiers: [],
+      // Free-card (2026-09-14) — paid card sends undefined
+      membershipExpiryMode: undefined,
+      membershipCustomExpiryDays: undefined,
+      membershipSpecificExpiryDate: undefined,
     });
 
     expect(onStepChange).toHaveBeenCalledWith(7);
@@ -371,6 +403,10 @@ describe('CardBuilderEditorWorkspace — Step 6 (2026-09-07 stamp card logic int
       rewardTiers: [],
       // Cashback (2026-09-11) — not applicable for stamp_card, always sent empty.
       cashbackTiers: [],
+      // Free-card (2026-09-14) — paid card sends undefined
+      membershipExpiryMode: undefined,
+      membershipCustomExpiryDays: undefined,
+      membershipSpecificExpiryDate: undefined,
     });
 
     expect(onStepChange).toHaveBeenCalledWith(7);
@@ -473,6 +509,10 @@ describe('CardBuilderEditorWorkspace — Step 6 (2026-09-07 stamp card logic int
       ],
       // Cashback (2026-09-11) — not applicable for reward_card, always sent empty.
       cashbackTiers: [],
+      // Free-card (2026-09-14) — not applicable for reward_card
+      membershipExpiryMode: undefined,
+      membershipCustomExpiryDays: undefined,
+      membershipSpecificExpiryDate: undefined,
     });
 
     expect(onStepChange).toHaveBeenCalledWith(7);
@@ -733,6 +773,10 @@ describe('CardBuilderEditorWorkspace — Step 6 (2026-09-07 stamp card logic int
         { name: '銀卡', thresholdSpend: 1000, cashbackPercent: 3 },
         { name: '金卡', thresholdSpend: 5000, cashbackPercent: 5 },
       ],
+      // Free-card (2026-09-14) — not applicable for cashback_card
+      membershipExpiryMode: undefined,
+      membershipCustomExpiryDays: undefined,
+      membershipSpecificExpiryDate: undefined,
     });
 
     expect(onStepChange).toHaveBeenCalledWith(7);

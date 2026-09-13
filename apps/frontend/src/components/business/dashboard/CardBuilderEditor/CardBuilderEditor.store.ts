@@ -53,8 +53,12 @@ import {
   REWARD_VALUE_MAX_LENGTH,
   COST_MIN,
   COST_MAX,
+  CUSTOM_EXPIRY_DAYS_MIN,
+  CUSTOM_EXPIRY_DAYS_MAX,
+  MEMBERSHIP_EXPIRY_MODES,
   type MembershipTierShape,
   type MembershipRewardShape,
+  type MembershipExpiryMode,
 } from '@saome/shared/constants/membership-card';
 
 /**
@@ -591,6 +595,50 @@ interface CardBuilderState {
     patch: Partial<Pick<MembershipRewardShape, 'label' | 'value'>>,
   ) => void;
 
+  // ===== Step 6 — Free Membership Card expiry (2026-09-14) =====
+  // Card-level expiry fields used ONLY when `isPaid === false`. Paid cards
+  // rely on per-tier `durationType` + `monthlyCost` / `yearlyCost` instead.
+  // The 3 fields are independent of any tier — they describe the card
+  // itself ("this free card expires on X").
+  //
+  // Data source: passed through `templateSettingsSchema` as JSONB keys
+  // `membershipExpiryMode` / `membershipCustomExpiryDays` /
+  // `membershipSpecificExpiryDate`. Backend mirror lives in
+  // apps/backend/src/modules/cards/schemas/request.ts and
+  // apps/backend/src/modules/cards/db/templates.ts.
+  //
+  // 復用既有 `membershipTiers[0]`（自動 seed by `setIsPaid(false)`）
+  // — 免費卡 Step 6 editor 直接綁定 `membershipTiers[0].name` 與 rewards，
+  // 既有 preview 邏輯（PassCardPreviewBody.firstMembershipTierName +
+  // membershipTiersRewards）零改動直接生效。
+
+  /**
+   * 免費會員卡專用期限模式. null = 未設定.
+   * - 'custom_days': 自訂 N 天後到期（見 membershipCustomExpiryDays）
+   * - 'specific_date': 指定到期日（見 membershipSpecificExpiryDate, ISO YYYY-MM-DD）
+   *
+   * 切換模式時清空對應的另個欄位（避免 stale data）.
+   */
+  membershipExpiryMode: MembershipExpiryMode | null;
+  /**
+   * 免費會員卡自訂天數 (membershipExpiryMode === 'custom_days' 時使用).
+   * 整數 [CUSTOM_EXPIRY_DAYS_MIN=1, CUSTOM_EXPIRY_DAYS_MAX=3650 (10 年)].
+   * null = 未填.
+   */
+  membershipCustomExpiryDays: number | null;
+  /**
+   * 免費會員卡指定到期日 (membershipExpiryMode === 'specific_date' 時使用).
+   * ISO YYYY-MM-DD 字串. null = 未填.
+   */
+  membershipSpecificExpiryDate: string | null;
+
+  /** 設定會員卡專用期限模式. 切換時清空另個對應欄位. */
+  setMembershipExpiryMode: (mode: MembershipExpiryMode | null) => void;
+  /** 設定會員卡自訂天數. clamp 到 [1, 3650], 拒絕非整數. */
+  setMembershipCustomExpiryDays: (days: number | null) => void;
+  /** 設定會員卡指定到期日 (ISO YYYY-MM-DD). null 允許. */
+  setMembershipSpecificExpiryDate: (date: string | null) => void;
+
   /**
    * 從既有 template 的 settings 載入 store.
    *
@@ -949,6 +997,13 @@ const initialState = {
   // empty state and these fields are inert.
   hasExpiry: false,
   membershipTiers: [],
+  // ===== Step 6 — Free Membership Card expiry (2026-09-14) =====
+  // Defaults: all null — user must pick via the editor. Used only when
+  // `isPaid === false`. When `isPaid === true`, `setIsPaid(true)` clears
+  // these three fields (paid card uses per-tier durationType + cost).
+  membershipExpiryMode: null,
+  membershipCustomExpiryDays: null,
+  membershipSpecificExpiryDate: null,
 };
 
 /**
@@ -986,7 +1041,54 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
   setCurrency: (currency) => set({ currency }),
   setLeftField: (leftField) => set({ leftField }),
   setRightField: (rightField) => set({ rightField }),
-  setIsPaid: (isPaid) => set({ isPaid }),
+  /**
+   * 切換會員卡收費狀態 (2026-09-14 free-card 延伸).
+   *
+   * setIsPaid(false) → 自動 seed membershipTiers[0]（若陣列為空）。
+   * FreeState 元件需要綁定 membershipTiers[0].name 與 rewards，沒有
+   * tier 就沒得綁。seed 後 FreeState 元件即可無條件 render。
+   *
+   * setIsPaid(true) → 清空 3 個免費卡專用 expiry 欄位
+   * （membershipExpiryMode / membershipCustomExpiryDays /
+   * membershipSpecificExpiryDate），因為付費卡使用 per-tier durationType
+   * + monthly/yearly cost，不應保留免費卡資料。
+   *
+   * 不影響既有付費卡邏輯：付費卡仍由 setHasExpiry / updateMembershipTier
+   * 處理 expiry 與 cost。
+   */
+  setIsPaid: (isPaid) =>
+    set((state) => {
+      if (isPaid === state.isPaid) return {};
+      if (isPaid === false) {
+        // 切換為免費：seed 一個空白 tier（若還沒有）
+        const next: Partial<CardBuilderState> = { isPaid };
+        if (state.membershipTiers.length === 0) {
+          const newTierId =
+            typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+              ? crypto.randomUUID()
+              : `membership-tier-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+          next.membershipTiers = [
+            {
+              id: newTierId,
+              name: '',
+              durationType: null,
+              monthlyCost: null,
+              yearlyCost: null,
+              lifetimeCost: null,
+              rewards: [],
+            },
+          ];
+        }
+        return next;
+      }
+      // 切換為付費：清空 3 個免費卡專用欄位
+      return {
+        isPaid: true,
+        membershipExpiryMode: null,
+        membershipCustomExpiryDays: null,
+        membershipSpecificExpiryDate: null,
+      };
+    }),
   setStampGridRows: (stampGridRows) => set({ stampGridRows }),
   setStampIconId: (stampIconId) => set({ stampIconId }),
 
@@ -1682,6 +1784,81 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
       }),
     })),
 
+  // ===== Step 6 — Free Membership Card expiry setters (2026-09-14) =====
+  /**
+   * 設定會員卡專用期限模式.
+   * 切換時清空另個對應欄位（避免 stale data）：
+   *   - 切到 'custom_days' → 清空 membershipSpecificExpiryDate
+   *   - 切到 'specific_date' → 清空 membershipCustomExpiryDays
+   *   - 切到 null → 清空兩個欄位
+   *
+   * No-op if mode is unchanged.
+   */
+  setMembershipExpiryMode: (mode) =>
+    set((state) => {
+      if (mode === state.membershipExpiryMode) return {};
+      const next: Partial<CardBuilderState> = { membershipExpiryMode: mode };
+      if (mode === 'custom_days') {
+        // 切到 custom_days：清空 specific_date
+        if (state.membershipSpecificExpiryDate !== null) {
+          next.membershipSpecificExpiryDate = null;
+        }
+      } else if (mode === 'specific_date') {
+        // 切到 specific_date：清空 custom_days
+        if (state.membershipCustomExpiryDays !== null) {
+          next.membershipCustomExpiryDays = null;
+        }
+      } else {
+        // mode === null：清空兩個欄位
+        if (state.membershipCustomExpiryDays !== null) {
+          next.membershipCustomExpiryDays = null;
+        }
+        if (state.membershipSpecificExpiryDate !== null) {
+          next.membershipSpecificExpiryDate = null;
+        }
+      }
+      return next;
+    }),
+
+  /**
+   * 設定會員卡自訂天數.
+   * 守門:
+   *   - null 允許 (= 未填)
+   *   - 拒絕非整數 (NaN / 小數)
+   *   - clamp 到 [CUSTOM_EXPIRY_DAYS_MIN=1, CUSTOM_EXPIRY_DAYS_MAX=3650]
+   */
+  setMembershipCustomExpiryDays: (days) =>
+    set(() => {
+      if (days === null) {
+        return { membershipCustomExpiryDays: null };
+      }
+      if (typeof days !== 'number' || !Number.isFinite(days)) return {};
+      // 拒絕小數（非整數）
+      if (!Number.isInteger(days)) return {};
+      const clamped = Math.max(CUSTOM_EXPIRY_DAYS_MIN, Math.min(days, CUSTOM_EXPIRY_DAYS_MAX));
+      return { membershipCustomExpiryDays: clamped };
+    }),
+
+  /**
+   * 設定會員卡指定到期日 (ISO YYYY-MM-DD).
+   * 守門:
+   *   - null 允許
+   *   - 字串格式檢查: 必須符合 /^\d{4}-\d{2}-\d{2}$/
+   *
+   * 「不早於今天」檢查由 MembershipSpecificExpiryDateField 層級執行（<input type="date" min={today}>）。
+   * store 層只接受合規字串，不主動做日期比較（避免 SSR / timezone 差異）。
+   */
+  setMembershipSpecificExpiryDate: (date) =>
+    set(() => {
+      if (date === null) {
+        return { membershipSpecificExpiryDate: null };
+      }
+      if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return {};
+      }
+      return { membershipSpecificExpiryDate: date };
+    }),
+
   loadSettings: (settings) => {
     // Bug #8.5 defensive: settings may be object / JSON string / array-of-partials
     // (legacy corruption). unwrapCardSettings handles all cases.
@@ -2049,6 +2226,49 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
           resolved?.membershipTiers,
           state.membershipTiers,
         ),
+        // ===== Step 6 — Free Membership Card expiry (2026-09-14) =====
+        // 3 card-level fields, defensive coerce. Each field independently
+        // falls back to current state if not present / not well-typed, so
+        // partial loads don't wipe user-typed values.
+        //
+        // membershipExpiryMode: only 'custom_days' | 'specific_date' | null
+        membershipExpiryMode: (() => {
+          const raw = resolved?.membershipExpiryMode;
+          if (raw === null) return null;
+          if (
+            typeof raw === 'string' &&
+            (MEMBERSHIP_EXPIRY_MODES as readonly string[]).includes(raw)
+          ) {
+            return raw as MembershipExpiryMode;
+          }
+          return state.membershipExpiryMode;
+        })(),
+        // membershipCustomExpiryDays: integer in [1, 3650] or null
+        membershipCustomExpiryDays: (() => {
+          const raw = resolved?.membershipCustomExpiryDays;
+          if (raw === null) return null;
+          if (
+            typeof raw === 'number' &&
+            Number.isInteger(raw) &&
+            raw >= CUSTOM_EXPIRY_DAYS_MIN &&
+            raw <= CUSTOM_EXPIRY_DAYS_MAX
+          ) {
+            return raw;
+          }
+          return state.membershipCustomExpiryDays;
+        })(),
+        // membershipSpecificExpiryDate: ISO YYYY-MM-DD string or null
+        membershipSpecificExpiryDate: (() => {
+          const raw = resolved?.membershipSpecificExpiryDate;
+          if (raw === null) return null;
+          if (
+            typeof raw === 'string' &&
+            /^\d{4}-\d{2}-\d{2}$/.test(raw)
+          ) {
+            return raw;
+          }
+          return state.membershipSpecificExpiryDate;
+        })(),
       };
     });
   },

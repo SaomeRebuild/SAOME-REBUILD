@@ -37,13 +37,194 @@ afterEach(() => {
 });
 
 describe('MembershipCardLogic — main component (Rule 000 § A.1)', () => {
-  it('renders free state when isPaid=false (免費會員卡無需付費設定)', () => {
-    useCardBuilderStore.setState({ isPaid: false });
+  // ===== 2026-09-14 free-card refactor =====
+  // Previously: `isPaid=false` rendered only the "free state" empty hint.
+  // Now: it renders a full editor (MembershipCardLogicFreeState) with
+  // membership tier name + hasExpiry toggle + (optional) expiry mode +
+  // custom-days / specific-date input + member rewards sub-rows.
+  it('renders free-card full editor when isPaid=false (regression — 2026-09-14)', () => {
+    useCardBuilderStore.setState({
+      isPaid: false,
+      // setIsPaid(false) auto-seeds membershipTiers[0] — verify the seed.
+      membershipTiers: [
+        {
+          id: 'free-tier-1',
+          name: '',
+          durationType: null,
+          monthlyCost: null,
+          yearlyCost: null,
+          lifetimeCost: null,
+          rewards: [],
+        },
+      ],
+    });
     render(<MembershipCardLogic showValidation={false} />);
 
-    expect(screen.getByText('step6.membership.freeStateTitle')).toBeInTheDocument();
-    expect(screen.getByText('step6.membership.freeStateHint')).toBeInTheDocument();
-    // HasExpiry toggle MUST NOT render in free state
+    // 免費卡仍顯示會員等級輸入框（綁定 membershipTiers[0].name）
+    expect(
+      screen.getByLabelText('step6.membership.tier.nameTitle'),
+    ).toBeInTheDocument();
+    // hasExpiry toggle 現在於 FreeState 內也顯示（不再是 empty state）
+    expect(screen.getByRole('switch')).toBeInTheDocument();
+    // 會員獎勵 sub-rows 區塊顯示
+    expect(
+      screen.getByText('step6.membership.rewardsTitle'),
+    ).toBeInTheDocument();
+    // "免費會員卡無需付費設定" empty hint 不再出現
+    expect(
+      screen.queryByText('step6.membership.freeStateTitle'),
+    ).toBeNull();
+  });
+
+  it('isPaid=false + hasExpiry=false: does NOT render MembershipExpiryModeField', () => {
+    useCardBuilderStore.setState({
+      isPaid: false,
+      hasExpiry: false,
+      membershipTiers: [
+        {
+          id: 'free-tier-1',
+          name: 'VIP',
+          durationType: null,
+          monthlyCost: null,
+          yearlyCost: null,
+          lifetimeCost: null,
+          rewards: [],
+        },
+      ],
+    });
+    render(<MembershipCardLogic showValidation={false} />);
+
+    // hasExpiry=false → expiry mode selector 不渲染
+    expect(
+      screen.queryByLabelText(
+        'step6.membership.freeExpiryModeTitle',
+      ),
+    ).toBeNull();
+    // custom days / specific date fields 也不渲染
+    expect(
+      screen.queryByLabelText(
+        'step6.membership.freeCustomExpiryDaysTitle',
+      ),
+    ).toBeNull();
+    expect(
+      screen.queryByLabelText(
+        'step6.membership.freeSpecificExpiryDateTitle',
+      ),
+    ).toBeNull();
+  });
+
+  it('isPaid=false + hasExpiry=true + custom_days: renders custom days field, NOT specific date field', () => {
+    useCardBuilderStore.setState({
+      isPaid: false,
+      hasExpiry: true,
+      membershipExpiryMode: 'custom_days',
+      membershipCustomExpiryDays: 100,
+      membershipSpecificExpiryDate: null,
+      membershipTiers: [
+        {
+          id: 'free-tier-1',
+          name: 'VIP',
+          durationType: null,
+          monthlyCost: null,
+          yearlyCost: null,
+          lifetimeCost: null,
+          rewards: [],
+        },
+      ],
+    });
+    render(<MembershipCardLogic showValidation={false} />);
+
+    // hasExpiry=true + custom_days → custom days field 渲染
+    expect(
+      screen.getByLabelText(
+        'step6.membership.freeCustomExpiryDaysTitle',
+      ),
+    ).toBeInTheDocument();
+    // specific date field 不渲染
+    expect(
+      screen.queryByLabelText(
+        'step6.membership.freeSpecificExpiryDateTitle',
+      ),
+    ).toBeNull();
+  });
+
+  it('isPaid=false + hasExpiry=true + specific_date: renders specific date field, NOT custom days field', () => {
+    useCardBuilderStore.setState({
+      isPaid: false,
+      hasExpiry: true,
+      membershipExpiryMode: 'specific_date',
+      membershipCustomExpiryDays: null,
+      membershipSpecificExpiryDate: '2026-12-31',
+      membershipTiers: [
+        {
+          id: 'free-tier-1',
+          name: 'VIP',
+          durationType: null,
+          monthlyCost: null,
+          yearlyCost: null,
+          lifetimeCost: null,
+          rewards: [],
+        },
+      ],
+    });
+    render(<MembershipCardLogic showValidation={false} />);
+
+    // specific date field 渲染
+    expect(
+      screen.getByLabelText(
+        'step6.membership.freeSpecificExpiryDateTitle',
+      ),
+    ).toBeInTheDocument();
+    // custom days field 不渲染
+    expect(
+      screen.queryByLabelText(
+        'step6.membership.freeCustomExpiryDaysTitle',
+      ),
+    ).toBeNull();
+  });
+
+  it('isPaid=false: does NOT render "remove tier" button (no MembershipTierRow)', () => {
+    // 2026-09-14: free-state 不渲染 MembershipTierRow，因此也不會有 "移除" 按鈕。
+    useCardBuilderStore.setState({
+      isPaid: false,
+      membershipTiers: [
+        {
+          id: 'free-tier-1',
+          name: 'VIP',
+          durationType: null,
+          monthlyCost: null,
+          yearlyCost: null,
+          lifetimeCost: null,
+          rewards: [],
+        },
+      ],
+    });
+    render(<MembershipCardLogic showValidation={false} />);
+
+    // "移除" tier button 來自 MembershipTierRow，free state 不渲染
+    expect(screen.queryByText('step6.membership.removeTier')).toBeNull();
+  });
+
+  // ===== 2026-09-14 defensive: FreeState empty-fallback =====
+  // When isPaid=false but membershipTiers is empty (e.g. legacy data
+  // without auto-seed, or test calling raw setState({isPaid: false})
+  // without going through setIsPaid action), FreeState renders an
+  // empty-fallback section that shows ONLY `freeStateHint` (NOT
+  // `freeStateTitle` — the title was removed because it implied "no
+  // need to configure", which is no longer accurate post-refactor).
+  it('FreeState empty-fallback when isPaid=false + no tier seeded (defensive — 2026-09-14)', () => {
+    useCardBuilderStore.setState({ isPaid: false, membershipTiers: [] });
+    render(<MembershipCardLogic showValidation={false} />);
+
+    // Empty-fallback section shows the hint, NOT the legacy empty-state title.
+    expect(
+      screen.getByText('step6.membership.freeStateHint'),
+    ).toBeInTheDocument();
+    // The editor title (which appears in the full-editor path) is NOT shown.
+    expect(
+      screen.queryByText('step6.membership.freeTierNameTitle'),
+    ).toBeNull();
+    // HasExpiry toggle MUST NOT render in empty-fallback path (no tier to bind).
     expect(screen.queryByRole('switch')).toBeNull();
   });
 

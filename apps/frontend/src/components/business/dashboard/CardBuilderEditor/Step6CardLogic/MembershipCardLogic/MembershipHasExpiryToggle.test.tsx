@@ -69,13 +69,37 @@ describe('MembershipHasExpiryToggle — toggle behavior', () => {
     // The toggle simplified to a single background-color swap. Verify that
     // the old thumb track / thumb knob are no longer rendered as children
     // of the switch button.
-    useCardBuilderStore.setState({ hasExpiry: true });
+    // 2026-09-14: paid card uses `hasExpiryOn`; free card uses `hasExpiryOnFree`.
+    // This test verifies the paid-card copy path.
+    useCardBuilderStore.setState({ isPaid: true, hasExpiry: true });
     render(<MembershipHasExpiryToggle showValidation={false} />);
     const toggle = screen.getByRole('switch');
     // The toggle button should contain only ONE inner <span> (the label)
     const innerSpans = toggle.querySelectorAll('span');
     expect(innerSpans.length).toBe(1);
     expect(innerSpans[0]?.textContent).toBe('step6.membership.hasExpiryOn');
+  });
+
+  // ===== 2026-09-14 free-card copy variation =====
+  it('isPaid=false + hasExpiry=true: label is hasExpiryOnFree (regression — 2026-09-14)', () => {
+    useCardBuilderStore.setState({ isPaid: false, hasExpiry: true });
+    render(<MembershipHasExpiryToggle showValidation={false} />);
+    const toggle = screen.getByRole('switch');
+    expect(toggle.textContent).toBe('step6.membership.hasExpiryOnFree');
+  });
+
+  it('isPaid=false + hasExpiry=false: label is hasExpiryOff (shared by both modes)', () => {
+    useCardBuilderStore.setState({ isPaid: false, hasExpiry: false });
+    render(<MembershipHasExpiryToggle showValidation={false} />);
+    const toggle = screen.getByRole('switch');
+    expect(toggle.textContent).toBe('step6.membership.hasExpiryOff');
+  });
+
+  it('isPaid=true + hasExpiry=true: label is hasExpiryOn (paid card copy)', () => {
+    useCardBuilderStore.setState({ isPaid: true, hasExpiry: true });
+    render(<MembershipHasExpiryToggle showValidation={false} />);
+    const toggle = screen.getByRole('switch');
+    expect(toggle.textContent).toBe('step6.membership.hasExpiryOn');
   });
 
   it('click toggles hasExpiry from false → true (and does NOT clear tier fields)', () => {

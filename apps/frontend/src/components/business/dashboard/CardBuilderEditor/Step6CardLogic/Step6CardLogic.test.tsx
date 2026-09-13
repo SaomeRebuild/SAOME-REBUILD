@@ -212,4 +212,28 @@ describe('Step6CardLogic — dispatcher (Rule 000 § A.1)', () => {
     expect(screen.getByText('step6.cashback.intro')).toBeInTheDocument();
     expect(screen.getByText('step6.cashback.introHint')).toBeInTheDocument();
   });
+
+  it('renders paid-card intro for membership_card when isPaid=true (default)', () => {
+    useCardBuilderStore.setState({ cardType: 'membership_card', isPaid: true });
+    render(<Step6CardLogic showValidation={false} />);
+
+    // Default isPaid=true → dispatcher shows paid-card copy.
+    expect(screen.getByText('step6.membership.intro')).toBeInTheDocument();
+    expect(screen.getByText('step6.membership.introHint')).toBeInTheDocument();
+    // Free-card keys must NOT be rendered when paid.
+    expect(screen.queryByText('step6.membership.introFree')).not.toBeInTheDocument();
+    expect(screen.queryByText('step6.membership.introHintFree')).not.toBeInTheDocument();
+  });
+
+  it('renders free-card intro for membership_card when isPaid=false (2026-09-14)', () => {
+    useCardBuilderStore.setState({ cardType: 'membership_card', isPaid: false });
+    render(<Step6CardLogic showValidation={false} />);
+
+    // isPaid=false → dispatcher shows free-card copy (no "付費規則" wording).
+    expect(screen.getByText('step6.membership.introFree')).toBeInTheDocument();
+    expect(screen.getByText('step6.membership.introHintFree')).toBeInTheDocument();
+    // Paid-card keys must NOT be rendered when free.
+    expect(screen.queryByText('step6.membership.intro')).not.toBeInTheDocument();
+    expect(screen.queryByText('step6.membership.introHint')).not.toBeInTheDocument();
+  });
 });

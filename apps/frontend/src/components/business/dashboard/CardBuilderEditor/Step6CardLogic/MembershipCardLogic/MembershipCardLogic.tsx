@@ -39,9 +39,10 @@ import type { MembershipCardLogicProps } from './MembershipCardLogic.types';
 export function MembershipCardLogic({ showValidation }: MembershipCardLogicProps) {
   const isPaid = useCardBuilderStore((s) => s.isPaid);
 
-  // 免費會員卡 → 顯示空狀態，不渲染付費 tier 編輯器。
+  // 免費會員卡 → 顯示完整編輯器（會員等級 + hasExpiry toggle + 獎勵 sub-rows，
+  // 2026-09-14 從空狀態升級為完整編輯器）。
   if (!isPaid) {
-    return <MembershipCardLogicFreeState />;
+    return <MembershipCardLogicFreeState showValidation={showValidation} />;
   }
 
   return (

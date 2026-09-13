@@ -18,6 +18,10 @@ import {
   templateStatusSchema as sharedTemplateStatusSchema,
   cardFieldKeySchema as sharedCardFieldKeySchema,
 } from '@saome/shared/schemas/card';
+import {
+  CUSTOM_EXPIRY_DAYS_MIN,
+  CUSTOM_EXPIRY_DAYS_MAX,
+} from '@saome/shared/constants/membership-card';
 
 // Re-export for consumers of this module
 export { cardTypeSchema } from '@saome/shared/schemas/card';
@@ -263,6 +267,23 @@ export const templateSettingsSchema = z.object({
     )
     .max(5)
     .optional(),
+  // ===== Step 6 — Free Membership Card expiry (2026-09-14, Rule 019 § 4.1) =====
+  // Mirrors `shared/templateSettingsSchema.membershipExpiryMode` /
+  // `membershipCustomExpiryDays` / `membershipSpecificExpiryDate`
+  // (layer 1 of 4). Only meaningful for free membership cards
+  // (isPaid=false); paid cards use per-tier `durationType` +
+  // `monthlyCost` / `yearlyCost` instead.
+  //
+  // Frontend store: `setIsPaid(true)` clears these three fields.
+  membershipExpiryMode: z.enum(['custom_days', 'specific_date']).nullable().optional(),
+  membershipCustomExpiryDays: z
+    .number()
+    .int()
+    .min(CUSTOM_EXPIRY_DAYS_MIN)
+    .max(CUSTOM_EXPIRY_DAYS_MAX)
+    .nullable()
+    .optional(),
+  membershipSpecificExpiryDate: z.string().nullable().optional(),
   // ===== Step 6 — Cashback 卡 (2026-09-11, cashback_card only) =====
   // Mirrors `shared/templateSettingsSchema.cashbackTiers`.
   // Simplest of the Step 6 sub-modules: each tier is a flat rule of

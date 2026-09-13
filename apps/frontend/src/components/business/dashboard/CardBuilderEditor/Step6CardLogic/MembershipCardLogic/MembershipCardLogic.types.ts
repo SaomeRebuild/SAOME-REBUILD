@@ -80,3 +80,29 @@ export interface MembershipTierRewardValueFieldProps {
   tierId: string;
   rewardId: string;
 }
+
+// ===== Free Membership Card (2026-09-14) =====
+
+/**
+ * 免費會員卡專用期限模式選擇器（兩顆 radio）.
+ * Renders in MembershipCardLogicFreeState's expiry section.
+ */
+export interface MembershipExpiryModeFieldProps {
+  showValidation: boolean;
+}
+
+/**
+ * 免費會員卡自訂天數輸入框 (membershipExpiryMode === 'custom_days' 時使用).
+ * Renders only when the user picked 'custom_days' mode.
+ */
+export interface MembershipCustomExpiryDaysFieldProps {
+  showValidation: boolean;
+}
+
+/**
+ * 免費會員卡指定到期日輸入框 (membershipExpiryMode === 'specific_date' 時使用).
+ * Renders only when the user picked 'specific_date' mode.
+ */
+export interface MembershipSpecificExpiryDateFieldProps {
+  showValidation: boolean;
+}

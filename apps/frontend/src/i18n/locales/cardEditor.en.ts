@@ -490,14 +490,24 @@ export default {
     // ===== Membership Card (2026-09-13) =====
     // Paid membership card: card-wide "no expiry / with expiry" toggle +
     // up to 5 membership tiers + up to 5 member rewards sub-rows per tier.
-    // Free membership card (isPaid=false) shows only a "free membership
-    // card needs no paid settings" empty state.
+    // Free membership card (isPaid=false) renders a full editor
+    // (single tier + hasExpiry toggle + expiry mode + rewards sub-rows).
     membership: {
-      intro: 'Configure membership tiers and paid rules',
+      // Hero intro — varies by isPaid (2026-09-14)
+      // The Step6CardLogic dispatcher switches between intro (paid) and
+      // introFree based on the `isPaid` store selector. Keeping both keys
+      // here avoids inlining conditional copy in JSX.
+      intro: 'Configure membership tiers and pricing plans',
       introHint: 'Members enjoy different benefits and exclusive rewards by tier, up to 5 tiers.',
+      introFree: 'Configure this free membership card tier and validity',
+      introHintFree: 'Free membership cards need only one tier with a validity period; up to 5 rewards per tier.',
       hasExpiryToggle: 'Card Expiration',
       hasExpiryOn: 'With expiry (monthly/yearly)',
       hasExpiryOff: 'No expiry (lifetime)',
+      // 2026-09-14: free-card variant — explicitly notes "specific end date"
+      // rather than the paid card's "monthly/yearly". MembershipHasExpiryToggle
+      // switches copy based on isPaid.
+      hasExpiryOnFree: 'With expiry (specific end date)',
       tiersTitle: 'Membership Tiers',
       tiersHint: 'Configure each tier\'s cost and rewards. Up to 5 tiers.',
       addTier: 'Add Membership Tier',
@@ -536,14 +546,47 @@ export default {
         lifetimeCostPlaceholder: 'e.g. 3000',
         lifetimeCostZeroIsFree: 'Enter 0 = free lifetime member',
       },
+      // ===== Free-card section (2026-09-14) =====
+      // Free membership card (isPaid=false) UI section. Reuses
+      // membershipTiers[0].name and rewards; no new fields at the tier
+      // level. The 3 card-level expiry fields (membershipExpiryMode /
+      // customExpiryDays / specificExpiryDate) live at the store level.
+      freeTierNameTitle: 'Membership Tier',
+      freeTierNamePlaceholder: 'e.g. VIP, Standard Member',
+      freeTierNameCounter: '{{count}} / 40',
+      freeTierNameRequiredError: 'Please enter a membership tier name',
+
+      freeExpiryModeTitle: 'Expiry Setting',
+      freeExpiryModeCustomDays: 'Custom days',
+      freeExpiryModeSpecificDate: 'Specific date',
+      freeExpiryModeRequiredError: 'Please choose an expiry setting',
+
+      freeCustomExpiryDaysTitle: 'Validity (days)',
+      freeCustomExpiryDaysPlaceholder: 'e.g. 100',
+      freeCustomExpiryDaysUnit: 'days',
+      freeCustomExpiryDaysRangeError: 'Please enter between 1 and 3650 days',
+
+      freeSpecificExpiryDateTitle: 'Expiry Date',
+      freeSpecificExpiryDatePlaceholder: 'YYYY-MM-DD',
+      freeSpecificExpiryDateRequiredError: 'Please choose an expiry date',
+      freeSpecificExpiryDatePastError: 'Expiry date cannot be earlier than today',
+
+      // ===== Free state (preserved from 2026-09-13) =====
       freeStateTitle: 'Free membership card needs no paid settings',
       freeStateHint: 'This is a free membership card; no tiers or costs required. To configure a paid membership card, enable "Requires payment" in Step 2.',
+      // ===== Validation =====
       validation: {
         tierRequired: 'Please add at least one membership tier',
         tierNameRequired: 'Tier name is required',
         durationRequired: 'Please select a duration',
         costRequired: 'Please enter a cost',
         costInvalid: 'Cost cannot be negative',
+        // 2026-09-14: free-card-specific validation messages
+        freeTierNameRequired: 'Membership tier name is required',
+        freeExpiryModeRequired: 'Please choose an expiry setting',
+        freeCustomExpiryDaysInvalid: 'Please enter between 1 and 3650 days',
+        freeSpecificExpiryDateRequired: 'Please choose an expiry date',
+        freeSpecificExpiryDatePast: 'Expiry date cannot be earlier than today',
       },
     },
     // ===== Cashback card (2026-09-11) =====
