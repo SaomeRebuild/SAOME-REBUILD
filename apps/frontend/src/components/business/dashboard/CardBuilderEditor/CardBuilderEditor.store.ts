@@ -45,6 +45,17 @@ import {
 import type { LocationInput } from '@saome/shared/logic/locations';
 import { normalizeHex } from '@saome/shared/logic/color';
 import { unwrapCardSettings } from '@saome/shared/logic/cardSettings';
+import {
+  MAX_MEMBERSHIP_TIERS,
+  MAX_REWARDS_PER_TIER,
+  TIER_NAME_MAX_LENGTH,
+  REWARD_LABEL_MAX_LENGTH,
+  REWARD_VALUE_MAX_LENGTH,
+  COST_MIN,
+  COST_MAX,
+  type MembershipTierShape,
+  type MembershipRewardShape,
+} from '@saome/shared/constants/membership-card';
 
 /**
  * A single { label, value } pair used by both Step 4 back fields and Step 4
@@ -72,8 +83,22 @@ function normalizeLoadedColor(raw: unknown, fallback: string): string {
 interface CardBuilderState {
   /** Template ID（從後端建立，null = 新建模式） */
   cardId: string | null;
-  /** 卡片名稱 */
-  name: string;
+  /**
+   * Card Name — pass record name (NOT shown in preview).
+   * 2026-09-13 semantic swap: was stored in the SQL column `templates.name`
+   * but actually rendered as the "Logo Text" on the pass header (misleading).
+   * Now `templates.name` correctly stores the Card Name (the record name
+   * the user uses to identify this template in their library).
+   * Persisted to the SQL column via top-level `name` in PUT /api/cards/:id.
+   */
+  cardName: string;
+  /** Logo Text — text shown on the pass header (next to the issuer logo).
+   * 2026-09-13 semantic swap: was stored in SQL column `templates.name` and
+   * surfaced via the misleading `name` key in shared `templateSettingsSchema`.
+   * Now lives in `templates.settings.logoText` (JSONB key) — visible to
+   * the PassCardPreviewHeader via the `name` prop (which receives logoText).
+   */
+  logoText: string;
   /** 卡片類型 */
   cardType: CardType | null;
   /** 目前步驟 */
@@ -106,8 +131,25 @@ interface CardBuilderState {
   // ===== Step 2 Base 欄位（所有卡種共用）=====
   /** Barcode 格式 */
   barcodeType: BarcodeType;
-  /** 店名 */
-  storeName: string;
+  /**
+   * @deprecated REMOVED 2026-09-13 (semantic swap).
+   * The "storeName" store key was the misleading name for what the user
+   * actually saw as "store name" in Step 2 of the editor. After the
+   * semantic swap, the field formerly known as "storeName" is now:
+   *   - SQL column `templates.name` → `cardName` (Card Name, the record name)
+   *   - JSONB key `settings.logoText` → `logoText` (Logo Text, pass header)
+   *
+   * Editor flow now uses:
+   *   - `cardName` / `setCardName` (Step 2 CardNameField, top-level payload)
+   *   - `logoText` / `setLogoText` (Header Logo Text input, settings.logoText)
+   *
+   * The legacy `storeName` / `setStoreName` were NEVER compatible with the
+   * new field split — the old code wrote `settings.storeName` AND read it
+   * back into the store under `storeName`. After the swap the editor
+   * stores the value under `cardName` (top-level SQL column) and the
+   * `settings.logoText` slot (JSONB). Both shapes are kept in sync by
+   * Step 2 save and Step 4 header save respectively.
+   */
   /** PASS 有效天數（非必填，null = 未填） */
   passValidDays: number | null;
   /** 到期日設定（非必填） */
@@ -225,7 +267,20 @@ interface CardBuilderState {
 
   // Actions
   setCardId: (cardId: string | null) => void;
-  setName: (name: string) => void;
+  /**
+   * Set the Card Name (pass record name). Persisted to the SQL column
+   * `templates.name` via top-level payload on save.
+   * 2026-09-13 swap: renamed from `setName` to clarify the semantic — the
+   * record name has nothing to do with what's shown on the pass header.
+   */
+  setCardName: (cardName: string) => void;
+  /**
+   * Set the Logo Text (text shown on the pass header next to the issuer logo).
+   * Persisted to `templates.settings.logoText` (JSONB key) via settings payload.
+   * Visibility: PassCardPreviewHeader uses this value (passed via the `name`
+   * prop through CardBuilderEditorPreview → PreviewWrapper).
+   */
+  setLogoText: (logoText: string) => void;
   setCardType: (cardType: CardType | null) => void;
   setStep: (step: EditorStep) => void;
   setCompletedStep: (step: EditorStep) => void;
@@ -238,7 +293,11 @@ interface CardBuilderState {
   setTextColor: (textColor: string) => void;
   setHolderName: (holderName: string) => void;
   setBarcodeType: (barcodeType: BarcodeType) => void;
-  setStoreName: (storeName: string) => void;
+  /**
+   * @deprecated REMOVED 2026-09-13. Use `setCardName` (for the record name,
+   * written to SQL `templates.name`) or `setLogoText` (for the pass header
+   * text, written to `settings.logoText`).
+   */
   setPassValidDays: (passValidDays: number | null) => void;
   setExpiryDate: (expiryDate: string) => void;
   setCurrency: (currency: 'TWD' | 'ZAR') => void;
@@ -482,6 +541,56 @@ interface CardBuilderState {
   /** 依 thresholdSpend 由小到大排序（存檔前自動呼叫，threshold=0 在最前). */
   sortCashbackTiers: () => void;
 
+  // ===== Step 6 — Membership 卡邏輯 (2026-09-13, membership_card only) =====
+  // UI dispatcher (`Step6CardLogic`) conditionally renders membership-card
+  // editor when `cardType === 'membership_card'` AND `isPaid === true`.
+  // When `isPaid === false`, Step 6 renders a "免費會員卡無需付費設定"
+  // empty state — no editor / no fields needed.
+  //
+  // The simplest of the Step 6 sub-modules structurally:
+  //   - Card-wide `hasExpiry` toggle. false = lifetime (no durationType /
+  //     monthlyCost / yearlyCost per tier); true = each tier must specify
+  //     durationType + corresponding cost.
+  //   - Up to MAX_MEMBERSHIP_TIERS=5 tiers. Each tier is independent (no
+  //     threshold / no earning mode).
+  //   - Each tier optionally carries up to MAX_REWARDS_PER_TIER=5
+  //     "會員獎勵" sub-rows (label + value pairs).
+  //
+  // Guards (mirrors cashback pattern):
+  //   - `setHasExpiry(false)` ALSO clears durationType + monthlyCost +
+  //     yearlyCost across ALL tiers (mirrors `setEarningMode` pattern).
+  //   - `addMembershipTier` is no-op at MAX_MEMBERSHIP_TIERS=5.
+  //   - `removeMembershipTier` does NOT auto-refill (0-tier is valid for draft).
+  //   - `updateMembershipTier` rejects negative cost (allows 0 = free tier).
+  //   - `addMembershipTierReward` is no-op at MAX_REWARDS_PER_TIER=5.
+  /** 卡級「無期限 / 有期限」切換. false = 終身會員;true = 月/年付費會員. */
+  hasExpiry: boolean;
+  /** 會員等級陣列（最多 5 組). Empty array = 尚未新增 tier. */
+  membershipTiers: Array<MembershipTierShape>;
+
+  /**
+   * 設定卡級「無期限 / 有期限」toggle.
+   * 切換至 false 時清空所有 tiers 的 durationType / monthlyCost /
+   * yearlyCost（與 setEarningMode pattern 對齊，避免 stale data).
+   */
+  setHasExpiry: (hasExpiry: boolean) => void;
+  /** 新增一組空白會員等級. 在 MAX_MEMBERSHIP_TIERS=5 時為 no-op. */
+  addMembershipTier: () => void;
+  /** 移除指定 id 的會員等級. 不會自動 refill. */
+  removeMembershipTier: (id: string) => void;
+  /** 更新指定 id 的會員等級（partial patch）— name / durationType / monthlyCost / yearlyCost. */
+  updateMembershipTier: (id: string, patch: Partial<MembershipTierShape>) => void;
+  /** 為指定 tier 新增一組空白會員獎勵 sub-row. 在 MAX_REWARDS_PER_TIER=5 時為 no-op. */
+  addMembershipTierReward: (tierId: string) => void;
+  /** 為指定 tier 移除指定 rewardId 的會員獎勵 sub-row. */
+  removeMembershipTierReward: (tierId: string, rewardId: string) => void;
+  /** 為指定 tier 更新指定 rewardId 的會員獎勵（partial patch）— label / value. */
+  setMembershipTierReward: (
+    tierId: string,
+    rewardId: string,
+    patch: Partial<Pick<MembershipRewardShape, 'label' | 'value'>>,
+  ) => void;
+
   /**
    * 從既有 template 的 settings 載入 store.
    *
@@ -611,9 +720,149 @@ function sanitizeInitialMessage(raw: unknown, fallback: string): string {
   return raw.slice(0, INITIAL_MESSAGE_MAX_LENGTH);
 }
 
+/**
+ * Compute a default expiry date based on a duration type.
+ *
+ * Returns today + 1 month (monthly) or today + 1 year (yearly), formatted
+ * as `YYYY-MM-DD` (the canonical ISO format the store expects for
+ * `expiryDate`). Uses local time so the result is intuitive for the user
+ * — "if I pick Monthly, my membership expires a month from today".
+ *
+ * Why this lives here (rather than in `PassCardPreviewHeader`):
+ *   - The seeding happens at the *store* level, when the user picks a
+ *     duration — long before the preview component reads the value.
+ *   - Centralizing date math in the store avoids duplicating the rule
+ *     across `setHasExpiry(true)`, `updateMembershipTier`, and any future
+ *     auto-seed path.
+ *   - Exported for unit testing.
+ *
+ * Month-end edge case (e.g. Jan 31 → Feb 31 doesn't exist): JS `Date`
+ * normalizes overflow (Feb 31 → Mar 3). This is acceptable for a
+ * "default expiry" UX hint — the user can adjust the date in Step 2
+ * (ExpiryDateField) before saving. Backend zod schema enforces the
+ * final value on save.
+ *
+ * @param durationType - 'monthly' → today + 1 month; 'yearly' → today + 1 year
+ * @returns ISO date string in `YYYY-MM-DD` format (local timezone)
+ */
+export function computeDefaultExpiryDate(
+  durationType: 'monthly' | 'yearly',
+): string {
+  const today = new Date();
+  const future = new Date(today);
+  if (durationType === 'monthly') {
+    future.setMonth(future.getMonth() + 1);
+  } else {
+    future.setFullYear(future.getFullYear() + 1);
+  }
+  const year = future.getFullYear();
+  const month = String(future.getMonth() + 1).padStart(2, '0');
+  const day = String(future.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Defensive parser for the Step 6 `membershipTiers` array (Rule 019 + 032).
+ *
+ * Each tier entry is coerced to `{ id, name, durationType, monthlyCost,
+ * yearlyCost, lifetimeCost, rewards }`:
+ *   - `name`: slice to TIER_NAME_MAX_LENGTH; default '' if not a string.
+ *   - `durationType`: 'monthly' | 'yearly' | null. Anything else → null.
+ *   - `monthlyCost` / `yearlyCost`: ≥ 0 or null. Anything else → null.
+ *   - `lifetimeCost`: ≥ 0 or null. Anything else → null.
+ *       2026-09-13 新增: 終身會員費用, 與 monthly/yearly 互斥.
+ *   - `rewards`: array of `{ label, value }` pairs (≤ MAX_REWARDS_PER_TIER).
+ *       Each row's label is sliced to REWARD_LABEL_MAX_LENGTH,
+ *       value to REWARD_VALUE_MAX_LENGTH. Empty / invalid arrays fall
+ *       back to [].
+ *
+ * Truncates to MAX_MEMBERSHIP_TIERS=5 so a corrupted DB row with > 5
+ * entries cannot blow up the UI editor. Each invalid entry (non-object)
+ * is skipped (rather than coerced to a blank tier) — Rule 032 defensive
+ * stance: never propagate partially-corrupted tiers to the editor.
+ */
+function sanitizeMembershipTiers(
+  raw: unknown,
+  current: Array<MembershipTierShape>,
+): Array<MembershipTierShape> {
+  if (!Array.isArray(raw)) return current;
+  const trimmed: Array<MembershipTierShape> = [];
+  for (const entry of raw.slice(0, MAX_MEMBERSHIP_TIERS)) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+    const obj = entry as Record<string, unknown>;
+    const name =
+      typeof obj.name === 'string'
+        ? obj.name.slice(0, TIER_NAME_MAX_LENGTH)
+        : '';
+    const durationType =
+      obj.durationType === 'monthly' || obj.durationType === 'yearly'
+        ? (obj.durationType as 'monthly' | 'yearly')
+        : null;
+    const monthlyCost =
+      typeof obj.monthlyCost === 'number' &&
+      Number.isFinite(obj.monthlyCost) &&
+      obj.monthlyCost >= COST_MIN
+        ? Math.min(obj.monthlyCost, COST_MAX)
+        : null;
+    const yearlyCost =
+      typeof obj.yearlyCost === 'number' &&
+      Number.isFinite(obj.yearlyCost) &&
+      obj.yearlyCost >= COST_MIN
+        ? Math.min(obj.yearlyCost, COST_MAX)
+        : null;
+    const lifetimeCost =
+      typeof obj.lifetimeCost === 'number' &&
+      Number.isFinite(obj.lifetimeCost) &&
+      obj.lifetimeCost >= COST_MIN
+        ? Math.min(obj.lifetimeCost, COST_MAX)
+        : null;
+    // Per-tier rewards sub-rows.
+    const rewards: Array<{ id: string; label: string; value: string }> = [];
+    const rawRewards = obj.rewards;
+    if (Array.isArray(rawRewards)) {
+      for (const reward of rawRewards.slice(0, MAX_REWARDS_PER_TIER)) {
+        if (!reward || typeof reward !== 'object' || Array.isArray(reward)) continue;
+        const rObj = reward as Record<string, unknown>;
+        const label =
+          typeof rObj.label === 'string'
+            ? rObj.label.slice(0, REWARD_LABEL_MAX_LENGTH)
+            : '';
+        const value =
+          typeof rObj.value === 'string'
+            ? rObj.value.slice(0, REWARD_VALUE_MAX_LENGTH)
+            : '';
+        const rewardId =
+          typeof rObj.id === 'string'
+            ? rObj.id
+            : typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : `membership-reward-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        rewards.push({ id: rewardId, label, value });
+      }
+    }
+    const id =
+      typeof obj.id === 'string'
+        ? obj.id
+        : typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `membership-tier-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    trimmed.push({
+      id,
+      name,
+      durationType,
+      monthlyCost,
+      yearlyCost,
+      lifetimeCost,
+      rewards,
+    });
+  }
+  return trimmed;
+}
+
 const initialState = {
   cardId: null,
-  name: '',
+  cardName: '',
+  logoText: '',
   cardType: null,
   step: 1 as EditorStep,
   completedSteps: new Set<EditorStep>(),
@@ -631,7 +880,8 @@ const initialState = {
 
   // ===== Step 2 Base =====
   barcodeType: 'qr_code' as BarcodeType,
-  storeName: '',
+  // storeName removed 2026-09-13 (semantic swap). cardName is now the
+  // top-level SQL column value; logoText is the JSONB settings.logoText.
   passValidDays: null,
   expiryDate: '',
   currency: 'TWD' as const,
@@ -692,6 +942,13 @@ const initialState = {
   // cashbackTiers is empty array (user adds tiers via "新增回饋級距" button).
   // Each tier: name + thresholdSpend (0 allowed = default tier) + cashbackPercent.
   cashbackTiers: [],
+  // ===== Step 6 — Membership 卡邏輯 (2026-09-13) =====
+  // Defaults: hasExpiry=false (lifetime membership). membershipTiers is
+  // empty array (user adds tiers via "新增會員等級" button). When
+  // `isPaid === false` the Step 6 dispatcher renders a free-membership
+  // empty state and these fields are inert.
+  hasExpiry: false,
+  membershipTiers: [],
 };
 
 /**
@@ -707,7 +964,8 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
   ...typedInitialState,
 
   setCardId: (cardId) => set({ cardId }),
-  setName: (name) => set({ name }),
+  setCardName: (cardName) => set({ cardName }),
+  setLogoText: (logoText) => set({ logoText }),
   setCardType: (cardType) => set({ cardType }),
   setStep: (step) => set({ step }),
   setCompletedStep: (step) => set((state) => ({
@@ -722,7 +980,7 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
   setTextColor: (textColor) => set({ textColor }),
   setHolderName: (holderName) => set({ holderName }),
   setBarcodeType: (barcodeType) => set({ barcodeType }),
-  setStoreName: (storeName) => set({ storeName }),
+  // setStoreName removed 2026-09-13 (semantic swap).
   setPassValidDays: (passValidDays) => set({ passValidDays }),
   setExpiryDate: (expiryDate) => set({ expiryDate }),
   setCurrency: (currency) => set({ currency }),
@@ -1178,6 +1436,252 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
       ),
     })),
 
+  // ===== Step 6 — Membership 卡邏輯 setters (2026-09-13) =====
+  /**
+   * 設定卡級「無期限 / 有期限」toggle.
+   * 切換至 false 時清空所有 tiers 的 `durationType`(讓使用者從 monthly/yearly
+   * 「解除綁定」, 避免 stale data 顯示為已選). 月費 / 年費 / 終身費用欄位都
+   * 保留 — 切換方向不同, 哪組成本欄位生效就不同:
+   *   - hasExpiry=false (lifetime): lifetimeCost 生效, monthly/yearly 隱藏
+   *   - hasExpiry=true  (with expiry): monthly/yearly 生效, lifetimeCost 隱藏
+   *
+   * No-op if value is unchanged.
+   *
+   * 2026-09-13 修正: 原本會清空所有 cost 欄位, 但使用者明確要求 lifetime 模式
+   * 仍要保留收費輸入框(代表消費者可以一次性購買終身會員等級的權利). 修法:
+   * 只清空 durationType, 不清空 monthlyCost / yearlyCost / lifetimeCost.
+   * 編輯器層會依 hasExpiry 決定哪組欄位顯示, 不會有 stale data 洩漏問題.
+   */
+  setHasExpiry: (hasExpiry) =>
+    set((state) => {
+      if (hasExpiry === state.hasExpiry) return {};
+      if (hasExpiry === true) {
+        // Auto-seed expiryDate if it's empty so the member-expiry preview
+        // shows a sensible default (today + 1 year) the moment the user
+        // flips the toggle to ON. The user can still edit the date in
+        // Step 2 (ExpiryDateField) before saving — this is only a UX
+        // hint. Re-entering ON with an existing date is a no-op for
+        // expiryDate (preserve user's choice).
+        //
+        // 2026-09-13 fix: addresses the "preview shows '—' when toggling
+        // has expiry on" UX gap. The preview renders "—" when hasExpiry=true
+        // AND expiryDate=''; seeding on toggle removes the gap.
+        return {
+          hasExpiry: true,
+          ...(state.expiryDate === ''
+            ? { expiryDate: computeDefaultExpiryDate('yearly') }
+            : {}),
+        };
+      }
+      // false → clear durationType ONLY (preserve all cost fields)
+      return {
+        hasExpiry: false,
+        membershipTiers: state.membershipTiers.map((tier) => ({
+          ...tier,
+          durationType: null,
+        })),
+      };
+    }),
+
+  /**
+   * 新增一組空白 membershipTier. 在 MAX_MEMBERSHIP_TIERS=5 時為 no-op.
+   * 新增的 tier id 用 crypto.randomUUID() 確保 React key 唯一.
+   *
+   * 預設 durationType / monthlyCost / yearlyCost / lifetimeCost 為 null —
+   * 使用者透過對應的 field 填入(lifetime 模式填 lifetimeCost, with-expiry
+   * 模式填 monthlyCost 或 yearlyCost). rewards 預設為空陣列.
+   */
+  addMembershipTier: () =>
+    set((state) => {
+      if (state.membershipTiers.length >= MAX_MEMBERSHIP_TIERS) return {};
+      const newTier: MembershipTierShape = {
+        id:
+          typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : `membership-tier-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        name: '',
+        durationType: null,
+        monthlyCost: null,
+        yearlyCost: null,
+        lifetimeCost: null,
+        rewards: [],
+      };
+      return { membershipTiers: [...state.membershipTiers, newTier] };
+    }),
+
+  /** 移除指定 id 的 membershipTier. 不會自動 refill. */
+  removeMembershipTier: (id) =>
+    set((state) => ({
+      membershipTiers: state.membershipTiers.filter((tier) => tier.id !== id),
+    })),
+
+  /**
+   * 更新指定 id 的 membershipTier（partial patch）.
+   * Guards:
+   *   - name: slice to TIER_NAME_MAX_LENGTH
+   *   - durationType: 'monthly' | 'yearly' | null (anything else → ignore)
+   *   - monthlyCost / yearlyCost: ≥ COST_MIN (= 0, allow free tier) or null.
+   *     Used when card-wide hasExpiry=true (monthly/yearly pricing).
+   *   - lifetimeCost: ≥ COST_MIN (= 0, allow free lifetime) or null.
+   *     Used when card-wide hasExpiry=false (lifetime pricing).
+   *     2026-09-13 新增.
+   *
+   * 2026-09-13 fix: auto-seeds card-wide `expiryDate` when
+   * `patch.durationType` is set to 'monthly' or 'yearly' AND
+   * `expiryDate` is empty. The seed value is computed by
+   * `computeDefaultExpiryDate(durationType)` — today + 1 month for
+   * monthly, today + 1 year for yearly. This ensures the member-expiry
+   * preview shows a sensible default the moment the user picks a
+   * duration, instead of "—" placeholder. Existing expiryDate values
+   * are NEVER overwritten (user's explicit choice wins).
+   */
+  updateMembershipTier: (id, patch) =>
+    set((state) => {
+      // Compute the next expiryDate (may be unchanged, may be seeded).
+      let nextExpiryDate = state.expiryDate;
+      if (
+        patch.durationType !== undefined &&
+        (patch.durationType === 'monthly' || patch.durationType === 'yearly') &&
+        state.expiryDate === ''
+      ) {
+        nextExpiryDate = computeDefaultExpiryDate(patch.durationType);
+      }
+
+      return {
+        ...(nextExpiryDate !== state.expiryDate ? { expiryDate: nextExpiryDate } : {}),
+        membershipTiers: state.membershipTiers.map((tier) => {
+          if (tier.id !== id) return tier;
+          const next = { ...tier, ...patch };
+          // Guard: name length
+          if (patch.name !== undefined) {
+            next.name = String(patch.name).slice(0, TIER_NAME_MAX_LENGTH);
+          }
+          // Guard: durationType — only monthly/yearly/null allowed
+          if (patch.durationType !== undefined) {
+            if (
+              patch.durationType === 'monthly' ||
+              patch.durationType === 'yearly' ||
+              patch.durationType === null
+            ) {
+              next.durationType = patch.durationType;
+            } else {
+              next.durationType = tier.durationType;
+            }
+          }
+        // Guard: monthlyCost >= COST_MIN (= 0, allow free tier) or null
+        if (patch.monthlyCost !== undefined) {
+          if (patch.monthlyCost === null) {
+            next.monthlyCost = null;
+          } else if (
+            typeof patch.monthlyCost === 'number' &&
+            Number.isFinite(patch.monthlyCost) &&
+            patch.monthlyCost >= COST_MIN
+          ) {
+            next.monthlyCost = Math.min(patch.monthlyCost, COST_MAX);
+          } else {
+            next.monthlyCost = tier.monthlyCost;
+          }
+        }
+        // Guard: yearlyCost >= COST_MIN or null
+        if (patch.yearlyCost !== undefined) {
+          if (patch.yearlyCost === null) {
+            next.yearlyCost = null;
+          } else if (
+            typeof patch.yearlyCost === 'number' &&
+            Number.isFinite(patch.yearlyCost) &&
+            patch.yearlyCost >= COST_MIN
+          ) {
+            next.yearlyCost = Math.min(patch.yearlyCost, COST_MAX);
+          } else {
+            next.yearlyCost = tier.yearlyCost;
+          }
+        }
+        // Guard: lifetimeCost >= COST_MIN or null (2026-09-13 新增)
+        // Used when card-wide hasExpiry=false (lifetime membership).
+        if (patch.lifetimeCost !== undefined) {
+          if (patch.lifetimeCost === null) {
+            next.lifetimeCost = null;
+          } else if (
+            typeof patch.lifetimeCost === 'number' &&
+            Number.isFinite(patch.lifetimeCost) &&
+            patch.lifetimeCost >= COST_MIN
+          ) {
+            next.lifetimeCost = Math.min(patch.lifetimeCost, COST_MAX);
+          } else {
+            next.lifetimeCost = tier.lifetimeCost;
+          }
+        }
+        // Guard: rewards array (preserve existing array if patch is undefined;
+        // only mutate when caller explicitly passes a new array).
+        if (patch.rewards !== undefined && Array.isArray(patch.rewards)) {
+          // Caller passes a full rewards array; trust it (UI-level
+          // sub-component operations use per-reward setters below).
+          next.rewards = patch.rewards.slice(0, MAX_REWARDS_PER_TIER);
+        }
+        return next;
+      }),
+      };
+    }),
+
+  /**
+   * 為指定 tier 新增一組空白會員獎勵 sub-row.
+   * 在 MAX_REWARDS_PER_TIER=5 時為 no-op.
+   */
+  addMembershipTierReward: (tierId) =>
+    set((state) => ({
+      membershipTiers: state.membershipTiers.map((tier) => {
+        if (tier.id !== tierId) return tier;
+        if (tier.rewards.length >= MAX_REWARDS_PER_TIER) return tier;
+        const rewardId =
+          typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : `membership-reward-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        return {
+          ...tier,
+          rewards: [...tier.rewards, { id: rewardId, label: '', value: '' }],
+        };
+      }),
+    })),
+
+  /** 為指定 tier 移除指定 rewardId 的會員獎勵 sub-row. */
+  removeMembershipTierReward: (tierId, rewardId) =>
+    set((state) => ({
+      membershipTiers: state.membershipTiers.map((tier) => {
+        if (tier.id !== tierId) return tier;
+        return {
+          ...tier,
+          rewards: tier.rewards.filter((reward) => reward.id !== rewardId),
+        };
+      }),
+    })),
+
+  /**
+   * 為指定 tier 更新指定 rewardId 的會員獎勵（partial patch）— label / value.
+   * Guards:
+   *   - label: slice to REWARD_LABEL_MAX_LENGTH
+   *   - value: slice to REWARD_VALUE_MAX_LENGTH
+   */
+  setMembershipTierReward: (tierId, rewardId, patch) =>
+    set((state) => ({
+      membershipTiers: state.membershipTiers.map((tier) => {
+        if (tier.id !== tierId) return tier;
+        return {
+          ...tier,
+          rewards: tier.rewards.map((reward) => {
+            if (reward.id !== rewardId) return reward;
+            const next = { ...reward, ...patch };
+            if (patch.label !== undefined) {
+              next.label = String(patch.label).slice(0, REWARD_LABEL_MAX_LENGTH);
+            }
+            if (patch.value !== undefined) {
+              next.value = String(patch.value).slice(0, REWARD_VALUE_MAX_LENGTH);
+            }
+            return next;
+          }),
+        };
+      }),
+    })),
+
   loadSettings: (settings) => {
     // Bug #8.5 defensive: settings may be object / JSON string / array-of-partials
     // (legacy corruption). unwrapCardSettings handles all cases.
@@ -1203,7 +1707,17 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
       const iconImage = loadIcon ?? state.iconImage;
       const backgroundImage = loadBg ?? state.backgroundImage;
       return {
-        name: (resolved?.name ?? state.name) as string,
+        // cardName comes from the SQL column `templates.name` — loaded
+        // separately by CardBuilderEditor's URL effect via `setCardName`,
+        // not by loadSettings (loadSettings only hydrates from `settings`).
+        // We keep `cardName` on the state shape but only seed from state
+        // fallback (no-op here).
+        cardName: state.cardName,
+        // logoText (NEW 2026-09-13) — comes from `settings.logoText` (JSONB).
+        // Previously this value was stored under `templates.name` SQL column
+        // and exposed as the `name` key in the (now-removed) shared schema
+        // field. After migration 018, the value lives in `settings.logoText`.
+        logoText: (resolved?.logoText ?? state.logoText) as string,
         cardType: (resolved?.cardType ?? state.cardType) as CardType | null,
         issuerName: (resolved?.issuerName ?? state.issuerName) as string,
         issuerLogo,
@@ -1223,7 +1737,9 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
         textColor: normalizeLoadedColor(resolved?.textColor, state.textColor),
         holderName: (resolved?.holderName ?? state.holderName) as string,
         barcodeType: (resolved?.barcodeType ?? state.barcodeType) as BarcodeType,
-        storeName: (resolved?.storeName ?? state.storeName) as string,
+        // storeName removed 2026-09-13. CardName lives in SQL column; Logo
+        // Text lives in settings.logoText (mapped above). No need to load
+        // `storeName` from settings — that key is dropped by migration 018.
         passValidDays: resolved?.passValidDays !== undefined ? resolved.passValidDays as number | null : state.passValidDays,
         expiryDate: (resolved?.expiryDate ?? state.expiryDate) as string,
         currency: (resolved?.currency ?? state.currency) as 'TWD' | 'ZAR',
@@ -1518,6 +2034,21 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
           // Sort by thresholdSpend ASC (threshold=0 first = default tier).
           return trimmed.sort((a, b) => a.thresholdSpend - b.thresholdSpend);
         })(),
+        // ===== Step 6 — Membership 卡 loadSettings (2026-09-13) =====
+        // Card-wide `hasExpiry` toggle. Defensive coerce to boolean —
+        // anything non-boolean from a corrupted DB falls back to the
+        // current state value.
+        hasExpiry: (() => {
+          const raw = resolved?.hasExpiry;
+          if (typeof raw === 'boolean') return raw;
+          return state.hasExpiry;
+        })(),
+        // membershipTiers: defensive parse via sanitizeMembershipTiers.
+        // Truncates to MAX_MEMBERSHIP_TIERS=5 and sanitizes each entry.
+        membershipTiers: sanitizeMembershipTiers(
+          resolved?.membershipTiers,
+          state.membershipTiers,
+        ),
       };
     });
   },

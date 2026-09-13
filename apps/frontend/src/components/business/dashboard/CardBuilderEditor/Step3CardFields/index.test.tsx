@@ -18,6 +18,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 import { Step3CardFields } from './index';
 import { filterCARD_FIELDS_BY_CARD_TYPE, CASHBACK_CARD_TYPES } from './filterCARD_FIELDS_BY_CARD_TYPE';
+import { useCardBuilderStore } from '../CardBuilderEditor.store';
 
 // Mock i18n — vi.fn(key => key) makes t() return the key as text.
 // This lets us assert against key paths directly without depending on the
@@ -171,6 +172,68 @@ describe('filterCARD_FIELDS_BY_CARD_TYPE — cashback_card group isolation', () 
   });
 });
 
+describe('filterCARD_FIELDS_BY_CARD_TYPE — membership_card hides memberName', () => {
+  /**
+   * 2026-09-13 membership_card Step 3 display-field opt-out.
+   *
+   * `memberName` carries `hideOnCardTypes: ['membership_card']` on
+   * `CardFieldDefinition`. The filter must drop it when
+   * `cardType === 'membership_card'`, but it must still appear for
+   * every other card type (regression — preserving the original
+   * "always-on common field" behavior).
+   *
+   * Plan: membership_card_conditional_ui_hide (2026-09-13).
+   * Rationale: the pass record name is already surfaced via the SQL
+   * `templates.name` column (also rendered in the editor header as
+   * the "Logo Text" via the 2026-09-13 semantic swap), so re-displaying
+   * it as a Step 3 left/right face field on a membership card is
+   * redundant.
+   */
+
+  it('returns common fields but EXCLUDES memberName for membership_card', () => {
+    const fields = filterCARD_FIELDS_BY_CARD_TYPE('membership_card');
+    const keys = fields.map((f) => f.key);
+
+    // Common group still shown (minus the excluded one).
+    expect(keys).toContain('phone');
+    expect(keys).toContain('email');
+    expect(keys).toContain('memberLevel');
+    expect(keys).toContain('birthday');
+    expect(keys).toContain('visitCount');
+
+    // memberName hidden for membership_card.
+    expect(keys).not.toContain('memberName');
+  });
+
+  it('INCLUDES memberName for non-membership card types (regression guard)', () => {
+    const nonMembershipTypes = ['stamp_card', 'reward_card', 'cashback_card', 'multipass'] as const;
+    for (const ct of nonMembershipTypes) {
+      const keys = filterCARD_FIELDS_BY_CARD_TYPE(ct).map((f) => f.key);
+      expect(keys, `cardType=${ct} should include memberName`).toContain('memberName');
+    }
+  });
+
+  it('INCLUDES memberName when cardType is null (Step 1 not yet selected)', () => {
+    const keys = filterCARD_FIELDS_BY_CARD_TYPE(null).map((f) => f.key);
+    // Step 1 not completed → no exclusions apply (hideOnCardTypes only
+    // fires when cardType !== null and is in the exclusion list).
+    expect(keys).toContain('memberName');
+  });
+
+  it('does NOT exclude unrelated common fields for membership_card', () => {
+    const fields = filterCARD_FIELDS_BY_CARD_TYPE('membership_card');
+    const keys = fields.map((f) => f.key);
+
+    // phone/email/memberLevel/birthday/visitCount must still be visible
+    // (only memberName is in hideOnCardTypes for membership_card).
+    expect(keys).toContain('phone');
+    expect(keys).toContain('email');
+    expect(keys).toContain('memberLevel');
+    expect(keys).toContain('birthday');
+    expect(keys).toContain('visitCount');
+  });
+});
+
 describe('Step3CardFields — cashback_card memberLevel → 獎勵 label override in dropdown', () => {
   /**
    * 2026-09-12 cashback card member-level → reward refactor.
@@ -251,5 +314,66 @@ describe('Step3CardFields — cashback_card memberLevel → 獎勵 label overrid
     // currentPoints (reward group) must NOT be an option.
     const currentPointsOption = leftSelect.querySelector('option[value="currentPoints"]');
     expect(currentPointsOption).toBeNull();
+  });
+});
+
+describe('Step3CardFields — membership_card hides memberName option in dropdown', () => {
+  /**
+   * 2026-09-13 membership_card Step 3 conditional render.
+   *
+   * Mirror of the cashback_card memberLevel override describe block above,
+   * but for the membership_card → memberName exclusion. The store mock is
+   * swapped per-test via `vi.mocked(useCardBuilderStore).mockImplementation`
+   * so the existing cashback_card assertions stay unaffected.
+   *
+   * Plan: membership_card_conditional_ui_hide (2026-09-13).
+   */
+  beforeEach(() => {
+    vi.mocked(useCardBuilderStore).mockImplementation((selector) => {
+      if (typeof selector !== 'function') return undefined;
+      return selector({
+        // Only the keys actually read by Step3CardFields matter; other
+        // store slices are omitted because the component doesn't read them.
+        leftField: null,
+        rightField: null,
+        setLeftField: vi.fn(),
+        setRightField: vi.fn(),
+        cardType: 'membership_card',
+      } as never);
+    });
+  });
+
+  it('does NOT render memberName option in the LEFT dropdown', () => {
+    render(<Step3CardFields />);
+
+    const selects = screen.getAllByRole('combobox');
+    const leftSelect = selects[0];
+
+    const memberNameOption = leftSelect.querySelector('option[value="memberName"]');
+    expect(memberNameOption).toBeNull();
+  });
+
+  it('does NOT render memberName option in the RIGHT dropdown', () => {
+    render(<Step3CardFields />);
+
+    const selects = screen.getAllByRole('combobox');
+    const rightSelect = selects[1];
+
+    const memberNameOption = rightSelect.querySelector('option[value="memberName"]');
+    expect(memberNameOption).toBeNull();
+  });
+
+  it('still renders other common fields in the dropdown (regression — only memberName is excluded)', () => {
+    render(<Step3CardFields />);
+
+    const selects = screen.getAllByRole('combobox');
+    const leftSelect = selects[0];
+
+    // phone / email / memberLevel / birthday / visitCount must remain.
+    expect(leftSelect.querySelector('option[value="phone"]')).not.toBeNull();
+    expect(leftSelect.querySelector('option[value="email"]')).not.toBeNull();
+    expect(leftSelect.querySelector('option[value="memberLevel"]')).not.toBeNull();
+    expect(leftSelect.querySelector('option[value="birthday"]')).not.toBeNull();
+    expect(leftSelect.querySelector('option[value="visitCount"]')).not.toBeNull();
   });
 });

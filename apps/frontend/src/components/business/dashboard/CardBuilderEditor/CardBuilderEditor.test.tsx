@@ -62,9 +62,12 @@ describe('CardBuilderEditor', () => {
     expect(screen.getByText('pageTitle')).toBeInTheDocument();
   });
 
-  it('renders card name input', () => {
+  it('renders logo text input', () => {
+    // 2026-09-13 swap: the input bound to id="logo-text" now hosts the
+    // pass header text (Logo Text), not the record name (Card Name).
+    // Card Name is edited via Step 2's CardNameField.
     renderWithRouter(<CardBuilderEditor />);
-    const input = screen.getByPlaceholderText('cardNamePlaceholder');
+    const input = screen.getByPlaceholderText('logoTextPlaceholder');
     expect(input).toBeInTheDocument();
   });
 
@@ -117,8 +120,10 @@ describe('CardBuilderEditor', () => {
     const user = userEvent.setup();
     renderWithRouter(<CardBuilderEditor />);
 
-    // Pre-fill name so isStep1Valid passes (requires both name.trim() AND cardType)
-    const nameInput = screen.getByPlaceholderText('cardNamePlaceholder');
+    // Pre-fill logoText so isStep1Valid passes (requires both logoText.trim() AND cardType).
+    // 2026-09-13 swap: header input is now bound to Logo Text, not the
+    // record name (Card Name).
+    const nameInput = screen.getByPlaceholderText('logoTextPlaceholder');
     await user.clear(nameInput);
     await user.type(nameInput, 'My Card');
 

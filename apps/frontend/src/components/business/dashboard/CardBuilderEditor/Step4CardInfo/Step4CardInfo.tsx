@@ -8,11 +8,17 @@
  *
  * The parent (CardBuilderEditorWorkspace) is responsible for prev/next
  * buttons; this component is purely the editor body.
+ *
+ * 2026-09-13 membership_card hide: BackFieldsField (Apple EULA-mandated
+ * contact info) is hidden when cardType === 'membership_card' per the
+ * plan `membership_card_conditional_ui_hide`. DescriptionField and
+ * LinksField stay visible — only the contact-info section is omitted.
  */
 
 import { DescriptionField } from './DescriptionField';
 import { BackFieldsField } from './BackFieldsField';
 import { LinksField } from './LinksField';
+import { useCardBuilderStore } from '../CardBuilderEditor.store';
 
 interface Step4CardInfoProps {
   /**
@@ -24,10 +30,17 @@ interface Step4CardInfoProps {
 }
 
 export function Step4CardInfo({ showValidation }: Step4CardInfoProps) {
+  const cardType = useCardBuilderStore((s) => s.cardType);
+  const isMembership = cardType === 'membership_card';
+
   return (
     <div className="flex min-w-0 flex-col gap-6">
       <DescriptionField showValidation={showValidation} />
-      <BackFieldsField showValidation={showValidation} />
+      {/* Membership cards hide the Apple EULA contact-info section per
+          plan `membership_card_conditional_ui_hide`. isStep4Valid() in
+          CardBuilderEditorWorkspace mirrors this skip — see the
+          conditional branch in that function. */}
+      {!isMembership && <BackFieldsField showValidation={showValidation} />}
       <LinksField showValidation={showValidation} />
     </div>
   );

@@ -201,3 +201,64 @@ describe('Step4CardInfo — back fields multi-line (2026-09-05 plan 修二)', ()
     ).not.toBeInTheDocument();
   });
 });
+
+describe('Step4CardInfo — membership_card hides BackFieldsField (2026-09-13)', () => {
+  /**
+   * Plan: membership_card_conditional_ui_hide (2026-09-13).
+   *
+   * When cardType === 'membership_card', the Apple EULA-mandated
+   * contact-info section (BackFieldsField) is hidden — the user sees
+   * only DescriptionField + LinksField. The mirror lives in
+   * `CardBuilderEditorWorkspace.isStep4Valid()` (skips backFields check
+   * for membership_card).
+   */
+  beforeEach(() => {
+    // Reset to a known default before each test so previous cardType
+    // values from earlier describe blocks don't leak in.
+    useCardBuilderStore.getState().reset();
+  });
+
+  it('does NOT render BackFieldsField when cardType is membership_card', () => {
+    useCardBuilderStore.setState({ cardType: 'membership_card' });
+    render(<Step4CardInfo showValidation={false} />);
+    expect(screen.queryByText('step4.backFields.title')).not.toBeInTheDocument();
+    expect(screen.queryByText('step4.backFields.hint')).not.toBeInTheDocument();
+  });
+
+  it('still renders DescriptionField when cardType is membership_card', () => {
+    useCardBuilderStore.setState({ cardType: 'membership_card' });
+    render(<Step4CardInfo showValidation={false} />);
+    expect(screen.getByText('step4.description.title')).toBeInTheDocument();
+  });
+
+  it('still renders LinksField when cardType is membership_card', () => {
+    useCardBuilderStore.setState({ cardType: 'membership_card' });
+    render(<Step4CardInfo showValidation={false} />);
+    expect(screen.getByText('step4.links.title')).toBeInTheDocument();
+  });
+
+  it('renders BackFieldsField for non-membership card types (regression guard)', () => {
+    useCardBuilderStore.setState({ cardType: 'stamp_card' });
+    render(<Step4CardInfo showValidation={false} />);
+    expect(screen.getByText('step4.backFields.title')).toBeInTheDocument();
+    expect(screen.getByText('step4.backFields.hint')).toBeInTheDocument();
+  });
+
+  it('renders BackFieldsField for cashback_card (regression guard)', () => {
+    useCardBuilderStore.setState({ cardType: 'cashback_card' });
+    render(<Step4CardInfo showValidation={false} />);
+    expect(screen.getByText('step4.backFields.title')).toBeInTheDocument();
+  });
+
+  it('renders BackFieldsField for reward_card (regression guard)', () => {
+    useCardBuilderStore.setState({ cardType: 'reward_card' });
+    render(<Step4CardInfo showValidation={false} />);
+    expect(screen.getByText('step4.backFields.title')).toBeInTheDocument();
+  });
+
+  it('renders BackFieldsField for multipass (regression guard)', () => {
+    useCardBuilderStore.setState({ cardType: 'multipass' });
+    render(<Step4CardInfo showValidation={false} />);
+    expect(screen.getByText('step4.backFields.title')).toBeInTheDocument();
+  });
+});

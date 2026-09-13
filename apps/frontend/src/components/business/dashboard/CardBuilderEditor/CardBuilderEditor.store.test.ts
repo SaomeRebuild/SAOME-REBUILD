@@ -11,18 +11,18 @@
  * cache-busting param the moment we know the key exists.
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
-// unwrapCardSettings now sourced from packages/shared/logic/cardSettings
-// (Plan Phase 5.7). See packages/shared/logic/cardSettings.test.ts for the
-// full 10-case contract; this file only asserts the store's USAGE of it.
-import { useCardBuilderStore } from './CardBuilderEditor.store';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { useCardBuilderStore, computeDefaultExpiryDate } from './CardBuilderEditor.store';
 
 describe('CardBuilderEditor.store — loadSettings cache-busting fix', () => {
   beforeEach(() => {
-    // Reset store to a clean state before each test
+    // Reset store to a clean state before each test.
+    // 2026-09-13 swap: `name` → `cardName`, `storeName` removed,
+    // `logoText` (NEW) added. Tests below follow the same naming.
     useCardBuilderStore.setState({
       cardId: null,
-      name: '',
+      cardName: '',
+      logoText: '',
       cardType: null,
       step: 1,
       completedSteps: new Set(),
@@ -38,7 +38,6 @@ describe('CardBuilderEditor.store — loadSettings cache-busting fix', () => {
       textColor: '#000000',
       holderName: '',
       barcodeType: 'qr_code',
-      storeName: '',
       passValidDays: null,
       expiryDate: '',
       currency: 'TWD',
@@ -97,7 +96,11 @@ describe('CardBuilderEditor.store — loadSettings cache-busting fix', () => {
     useCardBuilderStore.getState().loadSettings({
       issuerLogo: 'tenant-1/template-1/issuer-logo.png',
       iconImage: 'tenant-1/template-1/icon.png',
-      storeName: 'My Store',
+      // 2026-09-13 swap: storeName (settings.storeName, JSONB) is gone —
+      // it's now `logoText` (settings.logoText, JSONB) for the pass
+      // header text. Card Name lives in SQL column top-level, set via
+      // `setCardName` from the URL effect (not loadSettings).
+      logoText: 'My Store',
       issuerName: 'My Issuer',
       barcodeType: 'pdf_417',
       passValidDays: 365,
@@ -107,8 +110,10 @@ describe('CardBuilderEditor.store — loadSettings cache-busting fix', () => {
     });
 
     const state = useCardBuilderStore.getState();
-    // Step 2 fields loaded
-    expect(state.storeName).toBe('My Store');
+    // Step 2 fields loaded — storeName check replaced by logoText.
+    // (cardName is loaded separately via the outer URL effect calling
+    // setCardName, not via loadSettings.)
+    expect(state.logoText).toBe('My Store');
     expect(state.issuerName).toBe('My Issuer');
     expect(state.barcodeType).toBe('pdf_417');
     expect(state.passValidDays).toBe(365);
@@ -128,7 +133,8 @@ describe('loadSettings — defensive parsing (Bug #8.5 / 2026-08-31)', () => {
   beforeEach(() => {
     useCardBuilderStore.setState({
       cardId: null,
-      name: '',
+      cardName: '',
+      logoText: '',
       cardType: null,
       step: 1,
       completedSteps: new Set(),
@@ -144,7 +150,6 @@ describe('loadSettings — defensive parsing (Bug #8.5 / 2026-08-31)', () => {
       textColor: '#000000',
       holderName: '',
       barcodeType: 'qr_code',
-      storeName: '',
       passValidDays: null,
       expiryDate: '',
       currency: 'TWD',
@@ -156,13 +161,13 @@ describe('loadSettings — defensive parsing (Bug #8.5 / 2026-08-31)', () => {
     // Bug #8.5 worst case: array of partial merges from legacy corruption.
     useCardBuilderStore.getState().loadSettings([
       { cardType: 'stamp_card' as const },
-      { storeName: 'X', barcodeType: 'pdf_417' as const },
+      { logoText: 'X', barcodeType: 'pdf_417' as const }, // 2026-09-13 swap
       { issuerLogo: 'k', iconImage: 'i' },
     ]);
 
     const s = useCardBuilderStore.getState();
     expect(s.cardType).toBe('stamp_card');
-    expect(s.storeName).toBe('X');
+    expect(s.logoText).toBe('X');
     expect(s.barcodeType).toBe('pdf_417');
     expect(s.issuerLogo).toBe('k');
     expect(s.iconImage).toBe('i');
@@ -170,12 +175,12 @@ describe('loadSettings — defensive parsing (Bug #8.5 / 2026-08-31)', () => {
 
   it('parses jsonb string before merging (Bug #8.5 legacy corruption)', () => {
     useCardBuilderStore.getState().loadSettings(
-      '{"cardType":"stamp_card","storeName":"Y","issuerLogo":"z"}',
+      '{"cardType":"stamp_card","logoText":"Y","issuerLogo":"z"}', // 2026-09-13 swap
     );
 
     const s = useCardBuilderStore.getState();
     expect(s.cardType).toBe('stamp_card');
-    expect(s.storeName).toBe('Y');
+    expect(s.logoText).toBe('Y');
     expect(s.issuerLogo).toBe('z');
   });
 
@@ -206,13 +211,13 @@ describe('loadSettings — defensive parsing (Bug #8.5 / 2026-08-31)', () => {
 describe('CardBuilderEditor.store — backgroundImage state (BackgroundUploader L2 plan 2026-09-01)', () => {
   beforeEach(() => {
     useCardBuilderStore.setState({
-      cardId: null, name: '', cardType: null, step: 1,
+      cardId: null, cardName: '', logoText: '', cardType: null, step: 1,
       completedSteps: new Set(), cardSide: 'front',
       issuerName: '', issuerLogo: '', issuerLogoVersion: 0,
       iconImage: '', iconImageVersion: 0,
       backgroundImage: '', backgroundImageVersion: 0,
       backgroundColor: '#ffffff', textColor: '#000000', holderName: '',
-      barcodeType: 'qr_code', storeName: '', passValidDays: null,
+      barcodeType: 'qr_code', passValidDays: null,
       expiryDate: '', currency: 'TWD', isPaid: false,
     });
   });
@@ -256,7 +261,7 @@ describe('CardBuilderEditor.store — backgroundImage state (BackgroundUploader 
       issuerLogo: 'tenant-1/template-1/issuer-logo.png',
       iconImage: 'tenant-1/template-1/icon.png',
       backgroundImage: 'tenant-1/template-1/background.png',
-      storeName: 'My Store',
+      logoText: 'My Store',
       issuerName: 'My Issuer',
     });
     const state = useCardBuilderStore.getState();
@@ -272,13 +277,13 @@ describe('CardBuilderEditor.store — backgroundImage state (BackgroundUploader 
 describe('CardBuilderEditor.store — backgroundColor / textColor round-trip (Step 3 Color Picker 2026-09-03)', () => {
   beforeEach(() => {
     useCardBuilderStore.setState({
-      cardId: null, name: '', cardType: null, step: 1,
+      cardId: null, cardName: '', logoText: '', cardType: null, step: 1,
       completedSteps: new Set(), cardSide: 'front',
       issuerName: '', issuerLogo: '', issuerLogoVersion: 0,
       iconImage: '', iconImageVersion: 0,
       backgroundImage: '', backgroundImageVersion: 0,
       backgroundColor: '#ffffff', textColor: '#000000', holderName: '',
-      barcodeType: 'qr_code', storeName: '', passValidDays: null,
+      barcodeType: 'qr_code', passValidDays: null,
       expiryDate: '', currency: 'TWD', isPaid: false,
     });
   });
@@ -322,7 +327,8 @@ describe('CardBuilderEditor.store — stamp grid state (Stamp Grid feature 2026-
   beforeEach(() => {
     useCardBuilderStore.setState({
       cardId: null,
-      name: '',
+      cardName: '',
+      logoText: '',
       cardType: null,
       step: 1,
       completedSteps: new Set(),
@@ -338,7 +344,6 @@ describe('CardBuilderEditor.store — stamp grid state (Stamp Grid feature 2026-
       textColor: '#000000',
       holderName: '',
       barcodeType: 'qr_code',
-      storeName: '',
       passValidDays: null,
       expiryDate: '',
       currency: 'TWD',
@@ -389,11 +394,11 @@ describe('CardBuilderEditor.store — stamp grid state (Stamp Grid feature 2026-
 
   it('loadSettings preserves current values when fields are absent', () => {
     useCardBuilderStore.setState({ stampGridRows: 2, stampIconId: 'love' });
-    useCardBuilderStore.getState().loadSettings({ storeName: 'X' });
+    useCardBuilderStore.getState().loadSettings({ logoText: 'X' });
     const s = useCardBuilderStore.getState();
     expect(s.stampGridRows).toBe(2);
     expect(s.stampIconId).toBe('love');
-    expect(s.storeName).toBe('X');
+    expect(s.logoText).toBe('X');
   });
 
   it('reset() returns stamp grid state to defaults', () => {
@@ -410,7 +415,8 @@ describe('CardBuilderEditor.store — Step 4 card-info state (2026-09-04)', () =
   beforeEach(() => {
     useCardBuilderStore.setState({
       cardId: null,
-      name: '',
+      cardName: '',
+      logoText: '',
       cardType: null,
       step: 1,
       completedSteps: new Set(),
@@ -426,7 +432,6 @@ describe('CardBuilderEditor.store — Step 4 card-info state (2026-09-04)', () =
       textColor: '#000000',
       holderName: '',
       barcodeType: 'qr_code',
-      storeName: '',
       passValidDays: null,
       expiryDate: '',
       currency: 'TWD',
@@ -842,6 +847,174 @@ describe('CardBuilderEditor.store — Cashback Card Logic state (Step 6, 2026-09
       useCardBuilderStore.getState().addCashbackTier();
       useCardBuilderStore.getState().reset();
       expect(useCardBuilderStore.getState().cashbackTiers).toEqual([]);
+    });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Membership expiry auto-seed (2026-09-13)
+// Bug: when user selects "monthly" / "yearly" duration for a membership tier
+// (or flips hasExpiry=true on the card-wide toggle), the member-expiry preview
+// shows "—" instead of a sensible default date. Fix: auto-seed `expiryDate`
+// (today + 1 month for monthly, today + 1 year for yearly) when the user
+// commits to a duration. User's explicit date is never overwritten.
+//
+// Tests pin down:
+//   1. computeDefaultExpiryDate pure function (monthly / yearly)
+//   2. setHasExpiry(true) + empty expiryDate → seeds to today + 1 year
+//   3. setHasExpiry(true) + existing expiryDate → no-op for expiryDate
+//   4. updateMembershipTier({ durationType: 'monthly' }) + empty → seeds +1 month
+//   5. updateMembershipTier({ durationType: 'yearly' }) + empty → seeds +1 year
+//   6. updateMembershipTier({ durationType: 'monthly' }) + existing → preserves
+//   7. updateMembershipTier({ durationType: null }) + empty → no auto-seed
+//   8. updateMembershipTier({ name: 'X' }) + empty → no auto-seed (unrelated patch)
+// ─────────────────────────────────────────────────────────────────────────────
+describe('CardBuilderEditor.store — membership expiry auto-seed (2026-09-13)', () => {
+  // Fixed reference time so the computed "today + N days" assertions are
+  // deterministic across test runs.
+  const REFERENCE_NOW = new Date('2026-09-13T10:00:00Z');
+
+  beforeEach(() => {
+    useCardBuilderStore.getState().reset();
+    // vi.setSystemTime() controls what `new Date()` (no args) returns.
+    // Cleaner than vi.spyOn(globalThis, 'Date') because there's no
+    // recursion risk (mocked calls go through real Date).
+    vi.useFakeTimers();
+    vi.setSystemTime(REFERENCE_NOW);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // ─── computeDefaultExpiryDate pure helper ───────────────────────────────
+  describe('computeDefaultExpiryDate', () => {
+    it('monthly → today + 1 month, formatted YYYY-MM-DD', () => {
+      const result = computeDefaultExpiryDate('monthly');
+      // Sep 13 + 1 month → Oct 13
+      expect(result).toBe('2026-10-13');
+    });
+
+    it('yearly → today + 1 year, formatted YYYY-MM-DD', () => {
+      const result = computeDefaultExpiryDate('yearly');
+      // Sep 13 + 1 year → Sep 13 2027
+      expect(result).toBe('2027-09-13');
+    });
+
+    it('formats as zero-padded YYYY-MM-DD (e.g. Feb 5 → 2027-02-05)', () => {
+      // Temporarily shift system time to Feb 5 2027.
+      vi.setSystemTime(new Date('2027-02-05T10:00:00Z'));
+      expect(computeDefaultExpiryDate('monthly')).toBe('2027-03-05');
+    });
+
+    it('month-end overflow normalizes (Jan 31 → Feb 31 → Mar 3)', () => {
+      // JS Date semantics: month overflow rolls into the next month.
+      // Documented behavior in the helper — UX acceptable, user can adjust
+      // the date in Step 2 before saving.
+      vi.setSystemTime(new Date('2027-01-31T10:00:00Z'));
+      // Jan 31 + 1 month = JS normalizes Feb 31 → Mar 3 (2027 is not a leap year).
+      expect(computeDefaultExpiryDate('monthly')).toBe('2027-03-03');
+    });
+  });
+
+  // ─── setHasExpiry(true) auto-seed ────────────────────────────────────────
+  describe('setHasExpiry(true)', () => {
+    it('auto-seeds expiryDate to today + 1 year when expiryDate is empty', () => {
+      expect(useCardBuilderStore.getState().expiryDate).toBe('');
+      useCardBuilderStore.getState().setHasExpiry(true);
+      const s = useCardBuilderStore.getState();
+      expect(s.hasExpiry).toBe(true);
+      // Sep 13 2026 + 1 year = Sep 13 2027
+      expect(s.expiryDate).toBe('2027-09-13');
+    });
+
+    it('PRESERVES existing expiryDate when toggling ON (user choice wins)', () => {
+      useCardBuilderStore.setState({ expiryDate: '2030-01-01' });
+      useCardBuilderStore.getState().setHasExpiry(true);
+      expect(useCardBuilderStore.getState().expiryDate).toBe('2030-01-01');
+    });
+
+    it('no-op when toggling ON with already hasExpiry=true', () => {
+      useCardBuilderStore.setState({ hasExpiry: true });
+      // expiryDate stays whatever it was (no seed, no overwrite)
+      useCardBuilderStore.setState({ expiryDate: '2030-06-15' });
+      useCardBuilderStore.getState().setHasExpiry(true);
+      expect(useCardBuilderStore.getState().expiryDate).toBe('2030-06-15');
+    });
+  });
+
+  // ─── updateMembershipTier({ durationType }) auto-seed ───────────────────
+  describe('updateMembershipTier({ durationType }) — auto-seed expiryDate', () => {
+    let tierId: string;
+
+    beforeEach(() => {
+      useCardBuilderStore.getState().addMembershipTier();
+      tierId = useCardBuilderStore.getState().membershipTiers[0].id;
+    });
+
+    it('durationType="monthly" + empty expiryDate → seeds today + 1 month', () => {
+      expect(useCardBuilderStore.getState().expiryDate).toBe('');
+      useCardBuilderStore
+        .getState()
+        .updateMembershipTier(tierId, { durationType: 'monthly' });
+      const s = useCardBuilderStore.getState();
+      // Sep 13 + 1 month → Oct 13
+      expect(s.expiryDate).toBe('2026-10-13');
+      expect(s.membershipTiers[0].durationType).toBe('monthly');
+    });
+
+    it('durationType="yearly" + empty expiryDate → seeds today + 1 year', () => {
+      expect(useCardBuilderStore.getState().expiryDate).toBe('');
+      useCardBuilderStore
+        .getState()
+        .updateMembershipTier(tierId, { durationType: 'yearly' });
+      const s = useCardBuilderStore.getState();
+      // Sep 13 2026 + 1 year → Sep 13 2027
+      expect(s.expiryDate).toBe('2027-09-13');
+      expect(s.membershipTiers[0].durationType).toBe('yearly');
+    });
+
+    it('PRESERVES existing expiryDate when setting durationType', () => {
+      // User's explicit date wins over the auto-seed.
+      useCardBuilderStore.setState({ expiryDate: '2030-12-31' });
+      useCardBuilderStore
+        .getState()
+        .updateMembershipTier(tierId, { durationType: 'monthly' });
+      expect(useCardBuilderStore.getState().expiryDate).toBe('2030-12-31');
+    });
+
+    it('durationType=null + empty expiryDate → does NOT auto-seed', () => {
+      // Clearing the duration (e.g. user switched back to lifetime) does
+      // not seed a date — the user is intentionally leaving the duration
+      // unset, so no expiry should be implied.
+      useCardBuilderStore
+        .getState()
+        .updateMembershipTier(tierId, { durationType: null });
+      expect(useCardBuilderStore.getState().expiryDate).toBe('');
+    });
+
+    it('unrelated patch (name only) + empty expiryDate → does NOT auto-seed', () => {
+      // Only durationType triggers the seed. Renaming a tier, changing
+      // cost, etc. should not affect expiryDate.
+      useCardBuilderStore
+        .getState()
+        .updateMembershipTier(tierId, { name: 'VIP' });
+      expect(useCardBuilderStore.getState().expiryDate).toBe('');
+    });
+
+    it('monthly → yearly switch + empty expiryDate re-seeds (deterministic)', () => {
+      // After clearing expiryDate, switching duration types re-seeds.
+      useCardBuilderStore.getState().setExpiryDate('');
+      useCardBuilderStore
+        .getState()
+        .updateMembershipTier(tierId, { durationType: 'monthly' });
+      expect(useCardBuilderStore.getState().expiryDate).toBe('2026-10-13');
+      // Switch to yearly — expiryDate was just set, so preserved.
+      useCardBuilderStore
+        .getState()
+        .updateMembershipTier(tierId, { durationType: 'yearly' });
+      // expiryDate preserved (user choice already made).
+      expect(useCardBuilderStore.getState().expiryDate).toBe('2026-10-13');
     });
   });
 });

@@ -64,15 +64,24 @@ export const CASHBACK_CARD_TYPES: ReadonlySet<CardType> = new Set<CardType>([
 /**
  * Decide which `CARD_FIELDS` entries are visible for the given card type.
  *
- * - 'common' group fields are always shown.
+ * - 'common' group fields are shown UNLESS they opt out via
+ *   `hideOnCardTypes` (e.g. `memberName` is hidden for `membership_card`,
+ *   per plan `membership_card_conditional_ui_hide`, 2026-09-13).
  * - 'stamp' group fields are shown only when cardType ∈ STAMP_CARD_TYPES.
  * - 'reward' group fields are shown only when cardType ∈ REWARD_CARD_TYPES.
+ * - 'cashback' group fields are shown only when cardType ∈ CASHBACK_CARD_TYPES.
  *
  * The function is pure and exported so the conformance test
  * (`Step3CardFields/index.test.tsx`) can assert the filter directly
  * without needing to mock the store. Returns full `CardFieldDefinition`
  * entries (including `labelKey`) so the consumer can pass the array
  * straight through to `<FieldSelect>`.
+ *
+ * Store semantics: filtering only affects the dropdown options — the
+ * stored `leftField` / `rightField` values are NOT cleared if a user
+ * switches card type and the previously-picked field becomes hidden.
+ * (Same "no silent data loss" guarantee as the existing stamp_group
+ * filter.)
  */
 export function filterCARD_FIELDS_BY_CARD_TYPE(
   cardType: CardType | null,
@@ -80,11 +89,21 @@ export function filterCARD_FIELDS_BY_CARD_TYPE(
   const showStampGroup = cardType !== null && STAMP_CARD_TYPES.has(cardType);
   const showRewardGroup = cardType !== null && REWARD_CARD_TYPES.has(cardType);
   const showCashbackGroup = cardType !== null && CASHBACK_CARD_TYPES.has(cardType);
-  return CARD_FIELDS.filter(
-    (f) =>
+  return CARD_FIELDS.filter((f) => {
+    // Step 1: group-level gate (stamp / reward / cashback conditional).
+    const groupOk =
       f.group === 'common' ||
       (f.group === 'stamp' && showStampGroup) ||
       (f.group === 'reward' && showRewardGroup) ||
-      (f.group === 'cashback' && showCashbackGroup),
-  );
+      (f.group === 'cashback' && showCashbackGroup);
+    if (!groupOk) return false;
+
+    // Step 2: per-field hideOnCardTypes opt-out (e.g. memberName is
+    // hidden for membership_card). Defaults to no exclusion — fields
+    // without `hideOnCardTypes` pass through unchanged. When
+    // cardType is null (Step 1 not yet completed), `includes(null)` is
+    // a no-op and the field is shown.
+    if (!f.hideOnCardTypes || f.hideOnCardTypes.length === 0) return true;
+    return !(cardType !== null && f.hideOnCardTypes.includes(cardType));
+  });
 }
