@@ -195,6 +195,7 @@ it('rejects empty backFields array (require at least one row)', async () => {
 
 ## 與其他 rule 的關係
 
+- [`.cursor/skills/saome-card-field-autosave-pattern/SKILL.md`](file:///c:/Users/user/.cursor/skills/saome-card-field-autosave-pattern/SKILL.md) — **5 層 pipeline + 前端 client-side validation 模板**（必讀 entry point）
 - `027-postgres-dynamic-query-pattern.mdc` § workerd JSON.stringify pitfall — 同 pitfall 不同層面
 - `028-image-uploader-pattern.mdc` § 2 Settings merge — 前端 fetch → merge → write 端
 - `030-effect-first-run-not-trustworthy.mdc` — 為什麼會有空 PUT 出去（前端沒守好）
@@ -202,8 +203,28 @@ it('rejects empty backFields array (require at least one row)', async () => {
 - `019-schema-contract-drift.mdc` § 4.1 Backend Request Schema — zod schema 是契約
 - `006-verification.mdc` — 完工驗證清單必含 conformance test
 
+## 前端 Client-side Validation 模板（NEW — 2026-09-18 cross-link）
+
+完整 `useCardFieldAutosave` hook template + client-side validation 範本見：
+
+[`.cursor/skills/saome-card-field-autosave-pattern/SKILL.md` § Hook 模板](file:///c:/Users/user/.cursor/skills/saome-card-field-autosave-pattern/SKILL.md)
+
+關鍵片段（前端 autosave timer fire 之前必跑 `safeParse`）：
+
+```typescript
+const parsed = TemplateSettingsSchema.safeParse({ description, backFields, links });
+if (!parsed.success) {
+  console.warn('[CardBuilderEditor] autosave blocked — invalid state:', parsed.error.issues);
+  return;   // 不 schedule PUT，讓使用者修正
+}
+scheduleTimer(() => cardService.update(cardId, { settings: parsed.data }));
+```
+
+5 處 live 實例的 client-side validation 位置見 skill § Reference Implementation Index。
+
 ## 參照
 
+- [`runs/improvements/feedback/20260918-step2-autosave-5th-instance-skill-needed.md`](file:///c:/Users/user/Desktop/SAOME-REBUILD/runs/improvements/feedback/20260918-step2-autosave-5th-instance-skill-needed.md) — 第 5 次同 pattern 實作 → skill 觸發原因
 - `DEV/09-2026/0905-step4-autosave-slow-network-baseline.md` — 完整事故 trace
 - `runs/improvements/feedback/20260905-step4-autosave-slow-network-baseline.md`（待寫）
 - `apps/backend/src/modules/cards/db/templates.ts::updateTemplate` — DB 層 merge 實作範例（line ~232 area）
