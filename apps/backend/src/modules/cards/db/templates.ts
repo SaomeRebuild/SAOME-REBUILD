@@ -83,6 +83,12 @@ export interface TemplateSettings {
   passValidDays?: number | null;
   expiryDate?: string;
   currency?: 'TWD' | 'ZAR';
+  /**
+   * Card display language (zh-TW | en). Controls which language the card
+   * fields are translated into when sent to Passcreator (deferred).
+   * 2026-09-18 Step 2: added for Passcreator future integration.
+   */
+  language?: 'zh-TW' | 'en';
   // Step 3-4 fields (TBD)
   issuerLogo?: string;
   /**
@@ -390,6 +396,51 @@ export interface TemplateSettings {
     thresholdSpend: number;
     cashbackPercent: number;
   }>;
+  // ===== Step 6 — Discount 卡 (Rule 019 § 4.1, layer 3 of 4, 2026-09-18) =====
+  // Mirrors `shared/templateSettingsSchema.discountTiers`.
+  // Step 6 plan 2026-09-18: discount_card variant. Each tier is a flat
+  // rule of "cumulative spend → discount %". Same shape as cashback
+  // tiers but semantically represents a DISCOUNT (reduces purchase
+  // price) rather than CASHBACK (refund after purchase).
+  //
+  // Differs from cashback_card structurally:
+  //   - The percent field is `discountPercent` (not `cashbackPercent`)
+  //     — same numeric type, different semantic.
+  //   - All other constraints are identical.
+  //
+  // Frontend store enforces sort order (thresholdSpend ASC, 0 first);
+  // backend only validates structure and bounds. Capped at 5 tiers per
+  // MAX_DISCOUNT_TIERS in packages/shared/constants/discount-card.ts.
+  /**
+   * 折扣級距陣列（最多 5 組）.
+   *
+   * Each tier shape:
+   *   - `name` (1..40 chars): tier name shown on the pass.
+   *   - `thresholdSpend` (≥ 0): cumulative spending required to qualify.
+   *       0 = default tier (everyone qualifies without accumulation).
+   *   - `discountPercent` (1..100 integer): discount percentage.
+   */
+  discountTiers?: Array<{
+    name: string;
+    thresholdSpend: number;
+    discountPercent: number;
+  }>;
+  // ===== Step 6 — Discount 卡 expiry (Rule 019 § 4.1, layer 3 of 4, 2026-09-18) =====
+  // Optional card-level expiry. Both nullable. Mutually exclusive at
+  // the field handler level (UI layer concern). No card-wide toggle.
+  // Mirrors the membership expiry field pattern.
+  /**
+   * 折扣卡自訂有效天數. 整數 [1, 3650 (10 年)].
+   * 與 discountSpecificExpiryDate 互斥 (UI 層強制).
+   * null = 未填 = 無到期.
+   */
+  discountCustomExpiryDays?: number | null;
+  /**
+   * 折扣卡指定到期日. ISO YYYY-MM-DD 字串.
+   * 與 discountCustomExpiryDays 互斥 (UI 層強制).
+   * null = 未填 = 無到期.
+   */
+  discountSpecificExpiryDate?: string | null;
   [key: string]: unknown;
 }
 

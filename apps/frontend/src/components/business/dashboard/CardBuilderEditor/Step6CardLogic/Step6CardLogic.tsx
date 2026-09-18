@@ -25,6 +25,7 @@ import { useCardBuilderStore } from '../CardBuilderEditor.store';
 import { StampCardLogic } from './StampCardLogic';
 import { RewardCardLogic } from './RewardCardLogic';
 import { CashbackCardLogic } from './CashbackCardLogic';
+import { DiscountCardLogic } from './DiscountCardLogic';
 import { MembershipCardLogic } from './MembershipCardLogic';
 import { Step6CardLogicComingSoon } from './Step6CardLogicComingSoon';
 import type { Step6CardLogicProps } from './Step6CardLogic.types';
@@ -90,6 +91,25 @@ export function Step6CardLogic({ showValidation }: Step6CardLogicProps) {
           <p className="text-xs text-muted-foreground">{t('step6.cashback.introHint')}</p>
         </div>
         <CashbackCardLogic showValidation={showValidation} />
+      </div>
+    );
+  }
+
+  // discount_card → tier-based % discount editor with optional card-level
+  // expiry (2026-09-18). Mirrors cashback_card's tier structure but
+  // semantically represents a DISCOUNT (reduces purchase price) rather
+  // than CASHBACK (refund after purchase). Hero intro is rendered here
+  // (same pattern as cashback_card / membership_card) so the user sees
+  // card-type-specific copy above the editor.
+  if (cardType === 'discount_card') {
+    return (
+      <div className="flex min-w-0 flex-col gap-6">
+        {/* Step 6 hero intro — discount-card-specific copy */}
+        <div className="flex flex-col gap-1.5 rounded-lg border border-dashed border-border bg-muted/30 p-4">
+          <p className="text-sm font-medium text-foreground">{t('step6.discount.intro')}</p>
+          <p className="text-xs text-muted-foreground">{t('step6.discount.introHint')}</p>
+        </div>
+        <DiscountCardLogic showValidation={showValidation} />
       </div>
     );
   }

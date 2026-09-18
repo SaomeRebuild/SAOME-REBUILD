@@ -87,6 +87,12 @@ export default {
     currency: {
       title: 'Currency',
     },
+    language: {
+      title: 'Card Language',
+      zhTW: 'Chinese',
+      en: 'English',
+      hint: 'Choose the language used when sending the card',
+    },
     membershipExtension: {
       title: 'Membership Card Options',
       isPaid: 'Requires payment',
@@ -124,6 +130,12 @@ export default {
         // option in the left/right dropdown renders as "Reward" instead.
         // (2026-09-10 stamp card member-level → reward refactor)
         memberLevelStamp: 'Reward',
+        // 2026-09-18 Discount Card override: when cardType is discount_card,
+        // the "memberLevel" option in the left/right dropdown renders as
+        // "Discount Tier" instead. Distinct from memberLevelStamp
+        // (stamp/reward/cashback = "Reward" semantic; discount = "tier"
+        // semantic) so we keep a dedicated key.
+        memberLevelDiscount: 'Discount Tier',
         birthday: 'Birthday',
         visitCount: 'Visit Count',
         memberName: 'Member Name',
@@ -142,6 +154,13 @@ export default {
         // (2026-09-12 cashback field copy fix.)
         pointsToNextTierCashback: 'Amount to Next Tier',
         accumulatedSpendCashback: 'Accumulated Spending',
+        // Discount-only fields — only shown for discount_card (2026-09-18).
+        // Mirror the cashback copy (spend-based, "Amount" not "Points") to
+        // keep the currency-driven amount semantics consistent across the
+        // spend-tier card families.
+        pointsToNextTierDiscount: 'Amount to Next Tier',
+        discountTierBracket: 'Discount Tier Bracket',
+        accumulatedSpendDiscount: 'Accumulated Spending',
       },
     },
     // ===== Stamp grid — added 2026-09-04 =====
@@ -629,6 +648,60 @@ export default {
         tierNameRequired: 'Tier name is required',
         thresholdInvalid: 'Cumulative spending cannot be negative',
         percentInvalid: 'Cashback % must be an integer between 1 and 100',
+      },
+    },
+    // ===== Discount Card (2026-09-18, discount_card only) =====
+    // Direct discount % at point of sale (instant price reduction), as opposed
+    // to cashback (post-purchase refund). Up to 5 tiers, each with
+    // name + thresholdSpend (0 allowed) + discountPercent (1-100).
+    // Optional card-level expiry (customDays OR specificDate, mutually exclusive, no toggle).
+    discount: {
+      intro: "Configure this discount card's discount tiers",
+      introHint: 'Different discount % based on cumulative spend; card expiry is optional.',
+      tiersTitle: 'Discount Tiers',
+      tiersHint: 'Set discount % for each cumulative spending threshold. Up to 5 tiers.',
+      addTier: 'Add Discount Tier',
+      removeTier: 'Remove',
+      maxTiersReached: 'Maximum 5 tiers reached',
+      tier: {
+        nameTitle: 'Tier Name',
+        namePlaceholder: 'e.g. Gold, Bronze, VIP',
+        nameCounter: '{{count}} / 40',
+        nameRequiredError: 'Please enter a tier name',
+        thresholdTitle: 'Cumulative Spend',
+        thresholdHelper: 'Members must spend N to qualify for this tier. Enter 0 = everyone qualifies.',
+        thresholdUnitTWD: 'NT$',
+        thresholdUnitZAR: 'R',
+        thresholdPlaceholder: 'e.g. 1000 (0 = no threshold)',
+        thresholdInvalidError: 'Threshold cannot be negative',
+        thresholdZeroHint: 'Enter 0 = no threshold, everyone qualifies',
+        percentTitle: 'Discount %',
+        percentPlaceholder: 'e.g. 10',
+        percentUnit: '%',
+        percentRequiredError: 'Please enter discount %',
+        percentInvalidError: 'Discount % must be an integer between 1 and 100',
+        percentTooLargeError: 'Discount % cannot exceed 100',
+      },
+      expiryTitle: 'Card Expiration (Required)',
+      expiryHint: 'Fill at least one field. Otherwise, use the Cashback Card (no expiry).',
+      expiryBothNullError: 'Please fill at least one expiry field (days or date). If you do not need an expiry, use the Cashback Card instead.',
+      customExpiryDaysTitle: 'Valid Days',
+      customExpiryDaysPlaceholder: 'e.g. 365',
+      customExpiryDaysUnit: 'days',
+      customExpiryDaysRangeError: 'Valid days must be an integer between 1 and 3650',
+      specificExpiryDateTitle: 'Expiry Date',
+      specificExpiryDateHint: 'Setting expiry date will clear valid days.',
+      specificExpiryDatePastError: 'Expiry date cannot be earlier than today',
+      preview: {
+        tierUnknown: 'Please add at least one discount tier',
+        noThreshold: '{{percent}}% off every purchase',
+        withThreshold: '{{percent}}% off when you spend {{amount}}',
+      },
+      validation: {
+        tierRequired: 'Please add at least one discount tier',
+        tierNameRequired: 'Tier name is required',
+        thresholdInvalid: 'Cumulative spending cannot be negative',
+        percentInvalid: 'Discount % must be an integer between 1 and 100',
       },
     },
   },

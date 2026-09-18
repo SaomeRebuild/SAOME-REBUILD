@@ -587,4 +587,179 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
     expect(Object.keys(sharedTemplateSettingsSchema.shape)).not.toContain('name');
     expect(Object.keys(localTemplateSettingsSchema.shape)).not.toContain('name');
   });
+
+  // ===== Step 2 — language field (Rule 019 § 4.1, 2026-09-18) =====
+  // Card display language (zh-TW | en) for Passcreator future integration.
+  // Deferred: Passcreator API integration not yet implemented.
+  it('shared schema has the language field (Rule 019 § 4.1 — Step 2 card language 2026-09-18)', () => {
+    expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('language');
+  });
+
+  it('local schema has the language field (4-layer sync — Layer 2)', () => {
+    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('language');
+  });
+
+  it('shared language accepts zh-TW | en', () => {
+    const field = sharedTemplateSettingsSchema.shape.language;
+    expect(field.parse('zh-TW')).toBe('zh-TW');
+    expect(field.parse('en')).toBe('en');
+  });
+
+  it('shared language rejects other values (drift guard)', () => {
+    const field = sharedTemplateSettingsSchema.shape.language;
+    expect(() => field.parse('zh')).toThrow();   // not zh-TW
+    expect(() => field.parse('zh-Hant')).toThrow();
+    expect(() => field.parse('english')).toThrow();
+    expect(() => field.parse('')).toThrow();
+  });
+
+  // ===== Step 6 — Discount Card: discountTiers + expiry fields (2026-09-18, Rule 019 § 4.1) =====
+  // User clarification 2026-09-18: in addition to tiered discount % (mirrors
+  // cashback_tiers pattern), the discount card needs OPTIONAL card-level expiry
+  // (custom days OR specific date, mutually exclusive). No `hasDiscountExpiry`
+  // toggle — both fields are always visible and the field handler enforces
+  // mutual exclusion. Mirrors the membership expiry field pattern.
+  //
+  // This block pins the 4-layer sync for the new fields:
+  //   - shared `templateSettingsSchema.discountTiers` / `discountCustomExpiryDays` / `discountSpecificExpiryDate`
+  //   - backend local `templateSettingsSchema.discountTiers` / `discountCustomExpiryDays` / `discountSpecificExpiryDate`
+  //   - backend db interface `TemplateSettings` (validated via TypeScript type system)
+  //   - frontend store (validated via TypeScript type system — see CardBuilderEditor.store.ts)
+
+  it('shared schema has the discountTiers field (Rule 019 § 4.1 — Step 6 discount card 2026-09-18)', () => {
+    expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('discountTiers');
+  });
+
+  it('local schema has the discountTiers field (4-layer sync — Layer 2, Step 6 discount card)', () => {
+    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('discountTiers');
+  });
+
+  it('shared discountTiers caps at MAX_DISCOUNT_TIERS=5', () => {
+    const field = sharedTemplateSettingsSchema.shape.discountTiers;
+    expect(() =>
+      field.parse(
+        Array.from({ length: 6 }, (_, i) => ({
+          name: `tier-${i}`,
+          thresholdSpend: i * 100,
+          discountPercent: 5,
+        })),
+      ),
+    ).toThrow();
+    // 5 tiers is allowed
+    expect(() =>
+      field.parse(
+        Array.from({ length: 5 }, (_, i) => ({
+          name: `tier-${i}`,
+          thresholdSpend: i * 100,
+          discountPercent: 5,
+        })),
+      ),
+    ).not.toThrow();
+  });
+
+  it('shared discountTiers requires name (1..40 chars)', () => {
+    const field = sharedTemplateSettingsSchema.shape.discountTiers;
+    // empty name rejected
+    expect(() =>
+      field.parse([{ name: '', thresholdSpend: 0, discountPercent: 5 }]),
+    ).toThrow();
+    // name too long rejected
+    expect(() =>
+      field.parse([{ name: 'x'.repeat(41), thresholdSpend: 0, discountPercent: 5 }]),
+    ).toThrow();
+  });
+
+  it('shared discountTiers discountPercent must be integer in [1, 100]', () => {
+    const field = sharedTemplateSettingsSchema.shape.discountTiers;
+    // 0 rejected
+    expect(() =>
+      field.parse([{ name: 'x', thresholdSpend: 0, discountPercent: 0 }]),
+    ).toThrow();
+    // 101 rejected
+    expect(() =>
+      field.parse([{ name: 'x', thresholdSpend: 0, discountPercent: 101 }]),
+    ).toThrow();
+    // 5.5 (non-integer) rejected
+    expect(() =>
+      field.parse([{ name: 'x', thresholdSpend: 0, discountPercent: 5.5 }]),
+    ).toThrow();
+    // 1, 50, 100 all accepted
+    expect(field.parse([{ name: 'x', thresholdSpend: 0, discountPercent: 1 }])).toHaveLength(1);
+    expect(field.parse([{ name: 'x', thresholdSpend: 0, discountPercent: 50 }])).toHaveLength(1);
+    expect(field.parse([{ name: 'x', thresholdSpend: 0, discountPercent: 100 }])).toHaveLength(1);
+  });
+
+  it('shared discountTiers thresholdSpend must be ≥ 0 (0 = default tier)', () => {
+    const field = sharedTemplateSettingsSchema.shape.discountTiers;
+    // negative rejected
+    expect(() =>
+      field.parse([{ name: 'x', thresholdSpend: -1, discountPercent: 5 }]),
+    ).toThrow();
+    // 0 is allowed (= default tier, everyone qualifies)
+    expect(field.parse([{ name: 'x', thresholdSpend: 0, discountPercent: 5 }])).toHaveLength(1);
+  });
+
+  it('shared schema has the discountCustomExpiryDays field (Rule 019 § 4.1 — Step 6 discount card expiry)', () => {
+    expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('discountCustomExpiryDays');
+  });
+
+  it('local schema has the discountCustomExpiryDays field (4-layer sync — Layer 2)', () => {
+    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('discountCustomExpiryDays');
+  });
+
+  it('shared discountCustomExpiryDays accepts integers in [1, 3650]', () => {
+    const field = sharedTemplateSettingsSchema.shape.discountCustomExpiryDays;
+    expect(field.parse(1)).toBe(1);
+    expect(field.parse(365)).toBe(365);
+    expect(field.parse(3650)).toBe(3650);
+  });
+
+  it('shared discountCustomExpiryDays rejects out-of-range and non-integer', () => {
+    const field = sharedTemplateSettingsSchema.shape.discountCustomExpiryDays;
+    expect(() => field.parse(0)).toThrow();
+    expect(() => field.parse(3651)).toThrow();
+    expect(() => field.parse(365.5)).toThrow();
+  });
+
+  it('shared discountCustomExpiryDays accepts null (no expiry sentinel)', () => {
+    const field = sharedTemplateSettingsSchema.shape.discountCustomExpiryDays;
+    expect(field.parse(null)).toBe(null);
+    expect(field.parse(undefined)).toBe(undefined);
+  });
+
+  it('shared schema has the discountSpecificExpiryDate field (Rule 019 § 4.1 — Step 6 discount card expiry)', () => {
+    expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('discountSpecificExpiryDate');
+  });
+
+  it('local schema has the discountSpecificExpiryDate field (4-layer sync — Layer 2)', () => {
+    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('discountSpecificExpiryDate');
+  });
+
+  it('shared discountSpecificExpiryDate accepts ISO YYYY-MM-DD string', () => {
+    const field = sharedTemplateSettingsSchema.shape.discountSpecificExpiryDate;
+    expect(field.parse('2026-12-31')).toBe('2026-12-31');
+  });
+
+  it('shared discountSpecificExpiryDate accepts null (no expiry sentinel)', () => {
+    const field = sharedTemplateSettingsSchema.shape.discountSpecificExpiryDate;
+    expect(field.parse(null)).toBe(null);
+    expect(field.parse(undefined)).toBe(undefined);
+  });
+
+  it('full templateSettings accepts discount_card with tiers + expiry (end-to-end)', () => {
+    // End-to-end happy path: a discount_card draft with 1 tier + custom expiry days
+    // survives the schema parse. Mirrors what `cardService.update` would receive
+    // from the workspace onSave handler.
+    const payload = {
+      cardType: 'discount_card',
+      discountTiers: [
+        { name: '預設', thresholdSpend: 0, discountPercent: 5 },
+        { name: '金級', thresholdSpend: 5000, discountPercent: 10 },
+      ],
+      discountCustomExpiryDays: 365,
+      discountSpecificExpiryDate: null,
+    };
+    expect(sharedTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
+    expect(localTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
+  });
 });

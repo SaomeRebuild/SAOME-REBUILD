@@ -75,10 +75,22 @@ describe('PassCardPreviewBody — all 6 fields × 2 slots', () => {
   // They have their own dedicated tests in the "cashback-only display
   // fields" describe block below. Filtering them out here keeps the
   // "all 6 fields × 2 slots" contract tight: i18n-sourced fields only.
+  //
+  // 2026-09-18 discount card extension: the two discount amount fields
+  // (`pointsToNextTierDiscount`, `accumulatedSpendDiscount`) are also
+  // currency-driven (sourced from `DISCOUNT_PREVIEW_AMOUNTS`), so they
+  // join the cashback exclusions. The `discountTierBracket` field is
+  // store-derived (`discountTiers[0].discountPercent + '%'`), NOT
+  // i18n-sourced, so it's also excluded. They have their own dedicated
+  // tests in the "discount-only amount fields" and "discountTierBracket
+  // store-derived value" describe blocks below.
   const I18N_SOURCED_FIELD_KEYS = CARD_FIELD_KEYS.filter(
     (key) =>
       key !== 'pointsToNextTierCashback' &&
-      key !== 'accumulatedSpendCashback',
+      key !== 'accumulatedSpendCashback' &&
+      key !== 'pointsToNextTierDiscount' &&
+      key !== 'accumulatedSpendDiscount' &&
+      key !== 'discountTierBracket',
   );
 
   it.each(I18N_SOURCED_FIELD_KEYS)('renders leftField="%s" → fieldPreview.%s.label and .value', (key) => {
@@ -515,29 +527,40 @@ describe('PassCardPreviewBody — stamp_card member-level → reward override (2
     expect(demoValueCalls).toHaveLength(0);
   });
 
-  it('non-stamp / non-membership cardType + leftField="memberLevel" → original memberLevel.label / .value keys (no stamp override)', () => {
-    // 2026-09-13: membership_card override branch was REMOVED. Now ALL
+  it('non-stamp / non-cashback / non-membership / non-discount cardType + leftField="memberLevel" → original memberLevel.label / .value keys (no override)', () => {
+    // 2026-09-13: membership_card override branch was RESTORED. Now ALL
     // non-{stamp,reward,cashback} card types — including membership_card —
-    // keep the original memberLevel label/value pair. To test the default
-    // branch (no override), use `discount_card` which is never overridden.
+    // keep the original memberLevel label/value pair, except the 4
+    // override families: stamp_card (stampLabel), reward_card (stampLabel),
+    // cashback_card (stampLabel), membership_card (default label +
+    // first tier name), discount_card (discountLabel + first tier name).
+    //
+    // 2026-09-18: discount_card joined the override families (per the
+    // Step 3 dropdown extension). To test the default branch (no
+    // override), use `coupon_card` which is never overridden.
     const tSpy = buildTSpy();
     mockUseTranslationOnce(tSpy);
     render(
       <PassCardPreviewBody
         leftField="memberLevel"
-        cardType="discount_card"
+        cardType="coupon_card"
         rewardName="10元折價"
       />,
     );
 
-    // discount_card is not in any override list → original label/value keys.
+    // coupon_card is not in any override list → original label/value keys.
     expect(tSpy).toHaveBeenCalledWith('fieldPreview.memberLevel.label');
     expect(tSpy).toHaveBeenCalledWith('fieldPreview.memberLevel.value');
-    // stampLabel MUST NOT be called for non-stamp/membership card types.
+    // stampLabel MUST NOT be called for non-{stamp,reward,cashback} types.
     const stampLabelCalls = tSpy.mock.calls.filter(
       (call) => call[0] === 'fieldPreview.memberLevel.stampLabel',
     );
     expect(stampLabelCalls).toHaveLength(0);
+    // discountLabel MUST NOT be called for non-discount types.
+    const discountLabelCalls = tSpy.mock.calls.filter(
+      (call) => call[0] === 'fieldPreview.memberLevel.discountLabel',
+    );
+    expect(discountLabelCalls).toHaveLength(0);
     // And rewardName is NOT surfaced in the DOM (the override is off).
     expect(screen.queryByText('10元折價')).toBeNull();
   });
@@ -691,18 +714,21 @@ describe('PassCardPreviewBody — reward_card member-level → reward override (
     expect(demoValueCalls).toHaveLength(0);
   });
 
-  it('non-reward cardType (discount_card) + leftField="memberLevel" + firstMembershipTierName="VIP" → default branch (override = membership_card ONLY)', () => {
+  it('non-{membership,discount} cardType (coupon_card) + leftField="memberLevel" + firstMembershipTierName="VIP" → default branch', () => {
     // 2026-09-13: the membership_card override is INTENTIONALLY scoped
-    // to `membership_card` only. Non-membership card types (incl.
-    // discount_card) keep the default fieldPreview.memberLevel label/value
-    // pair even if firstMembershipTierName is provided (membership override
-    // is a different cardType).
+    // to `membership_card` only. Non-membership card types keep the
+    // default fieldPreview.memberLevel label/value pair even if
+    // firstMembershipTierName is provided.
+    //
+    // 2026-09-18: discount_card got its own override too. To test the
+    // default branch (no override), use `coupon_card` which is never
+    // overridden.
     const tSpy = buildTSpy();
     mockUseTranslationOnce(tSpy);
     render(
       <PassCardPreviewBody
         leftField="memberLevel"
-        cardType="discount_card"
+        cardType="coupon_card"
         firstMembershipTierName="VIP"
       />,
     );
@@ -1194,8 +1220,6 @@ describe('PassCardPreviewBody — ZAR pollution regression (2026-09-13)', () => 
 // Pull in useTranslation so the tests above can `vi.mocked` it.
 import { useTranslation } from 'react-i18next';
 import { useCardBuilderStore } from '../CardBuilderEditor.store';
-
-// ── Mock useCardBuilderStore for currency-aware tests ───────────────────────────
 // PassCardPreviewBody reads `s.currency` from the store to drive ZAR formatting.
 // Tests that need ZAR call `vi.mocked(useCardBuilderStore).setState({ currency: 'ZAR' })`
 // before rendering; TWD is the default (isZAR === false).
@@ -1228,4 +1252,313 @@ vi.mock('../CardBuilderEditor.store', async () => {
   (mocked as { getState: typeof actual.useCardBuilderStore.getState }).getState =
     actual.useCardBuilderStore.getState;
   return { useCardBuilderStore: mocked };
+});
+
+// ── 2026-09-18 discount card: memberLevel override + currency-driven amount fields ──
+
+describe('PassCardPreviewBody — discount_card member-level → first-tier-name override (2026-09-18)', () => {
+  /**
+   * 2026-09-18 discount card Step 3 / preview extension.
+   *
+   * When `cardType === 'discount_card'` AND the picked field is
+   * `'memberLevel'`, the slot must render as a 2-line pair:
+   *   label = `fieldPreview.memberLevel.discountLabel` ("折扣等級" /
+   *         "Discount Tier") — distinct i18n key from stampLabel
+   *   value = `firstDiscountTierName` (the user's Step 6
+   *           `discountTiers[0].name` input — first row only).
+   *
+   * Mirrors the cashback_card override pattern (2026-09-12) but uses a
+   * distinct label key (`discountLabel` instead of `stampLabel`) because
+   * the discount semantic is "tier identity", not "reward earned".
+   *
+   * Empty / undefined `firstDiscountTierName` renders as an empty string.
+   *
+   * Key contract: the override is scoped EXCLUSIVELY to `discount_card`.
+   * Non-discount card types with `firstDiscountTierName` provided must
+   * NOT surface that value (each card type has its own value source).
+   */
+
+  function buildTSpy() {
+    return vi.fn((...args: unknown[]) => args[0] as string);
+  }
+
+  function mockUseTranslationOnce(spy: ReturnType<typeof buildTSpy>) {
+    vi.mocked(useTranslation).mockReturnValueOnce({ t: spy } as unknown as ReturnType<typeof useTranslation>);
+  }
+
+  it('discount_card + leftField="memberLevel" + firstDiscountTierName="金級" → label uses discountLabel, value equals tier name', () => {
+    const tSpy = buildTSpy();
+    mockUseTranslationOnce(tSpy);
+    render(
+      <PassCardPreviewBody
+        leftField="memberLevel"
+        cardType="discount_card"
+        firstDiscountTierName="金級"
+      />,
+    );
+
+    // Label uses discountLabel key (distinct from stampLabel).
+    expect(tSpy).toHaveBeenCalledWith('fieldPreview.memberLevel.discountLabel');
+    // stampLabel MUST NOT be called (different semantic — discount uses
+    // "Discount Tier", not "Reward").
+    expect(tSpy).not.toHaveBeenCalledWith('fieldPreview.memberLevel.stampLabel');
+    // Original memberLevel.label key MUST NOT be called.
+    expect(tSpy).not.toHaveBeenCalledWith('fieldPreview.memberLevel.label');
+    // Value: firstDiscountTierName passed through verbatim.
+    expect(screen.getByText('金級')).toBeInTheDocument();
+  });
+
+  it('discount_card + rightField="memberLevel" + firstDiscountTierName="VIP Discount" → right slot renders override', () => {
+    const tSpy = buildTSpy();
+    mockUseTranslationOnce(tSpy);
+    render(
+      <PassCardPreviewBody
+        rightField="memberLevel"
+        cardType="discount_card"
+        firstDiscountTierName="VIP Discount"
+      />,
+    );
+
+    expect(tSpy).toHaveBeenCalledWith('fieldPreview.memberLevel.discountLabel');
+    expect(screen.getByText('VIP Discount')).toBeInTheDocument();
+  });
+
+  it('discount_card + leftField="memberLevel" + firstDiscountTierName="" → value renders as empty string (no demo fallback)', () => {
+    const tSpy = buildTSpy();
+    mockUseTranslationOnce(tSpy);
+    render(
+      <PassCardPreviewBody
+        leftField="memberLevel"
+        cardType="discount_card"
+        firstDiscountTierName=""
+      />,
+    );
+
+    expect(tSpy).toHaveBeenCalledWith('fieldPreview.memberLevel.discountLabel');
+    // Empty string: DOM has an empty <span> for the value side.
+    const allSpans = Array.from(document.querySelectorAll('span'));
+    const emptyValueSpans = allSpans.filter((span) => span.textContent === '');
+    expect(emptyValueSpans.length).toBeGreaterThanOrEqual(1);
+    // Demo "金級" / "Gold" value key MUST NOT be called.
+    expect(tSpy).not.toHaveBeenCalledWith('fieldPreview.memberLevel.value');
+  });
+
+  it('discount_card + leftField="memberLevel" without firstDiscountTierName → empty string fallback', () => {
+    const tSpy = buildTSpy();
+    mockUseTranslationOnce(tSpy);
+    render(
+      <PassCardPreviewBody
+        leftField="memberLevel"
+        cardType="discount_card"
+      />,
+    );
+
+    expect(tSpy).toHaveBeenCalledWith('fieldPreview.memberLevel.discountLabel');
+    expect(tSpy).not.toHaveBeenCalledWith('fieldPreview.memberLevel.value');
+  });
+
+  it('non-discount cardType + firstDiscountTierName="WRONG" → original memberLevel.label / .value, firstDiscountTierName NOT surfaced', () => {
+    // stamp_card / reward_card / cashback_card / multipass / membership_card
+    // must NOT use the discount value source. Each card type has its own.
+    const tSpy = buildTSpy();
+    mockUseTranslationOnce(tSpy);
+    render(
+      <PassCardPreviewBody
+        leftField="memberLevel"
+        cardType="stamp_card"
+        firstDiscountTierName="WRONG_VALUE_SHOULD_NOT_SHOW"
+      />,
+    );
+
+    // stamp_card uses rewardName (not firstDiscountTierName).
+    expect(tSpy).toHaveBeenCalledWith('fieldPreview.memberLevel.stampLabel');
+    expect(screen.queryByText('WRONG_VALUE_SHOULD_NOT_SHOW')).toBeNull();
+  });
+
+  it('discount_card + firstRewardTierName is IGNORED (each card type has distinct value source)', () => {
+    // discount_card reads firstDiscountTierName, NOT firstRewardTierName.
+    const tSpy = buildTSpy();
+    mockUseTranslationOnce(tSpy);
+    render(
+      <PassCardPreviewBody
+        leftField="memberLevel"
+        cardType="discount_card"
+        firstRewardTierName="WRONG_REWARD_VALUE"
+        firstDiscountTierName="CORRECT_DISCOUNT_VALUE"
+      />,
+    );
+
+    expect(screen.getByText('CORRECT_DISCOUNT_VALUE')).toBeInTheDocument();
+    expect(screen.queryByText('WRONG_REWARD_VALUE')).toBeNull();
+  });
+
+  it('discount_card + leftField="phone" + firstDiscountTierName="金級" → phone field is NOT overridden (override is memberLevel-specific)', () => {
+    // The override only applies to memberLevel — other common fields keep
+    // their canonical fieldPreview.{key}.label + .value rendering.
+    const tSpy = buildTSpy();
+    mockUseTranslationOnce(tSpy);
+    render(
+      <PassCardPreviewBody
+        leftField="phone"
+        cardType="discount_card"
+        firstDiscountTierName="金級"
+      />,
+    );
+
+    expect(tSpy).toHaveBeenCalledWith('fieldPreview.phone.label');
+    expect(tSpy).toHaveBeenCalledWith('fieldPreview.phone.value');
+    // discountLabel MUST NOT be called for non-memberLevel fields.
+    expect(tSpy).not.toHaveBeenCalledWith('fieldPreview.memberLevel.discountLabel');
+    // firstDiscountTierName is NOT surfaced for phone.
+    expect(screen.queryByText('金級')).toBeNull();
+  });
+});
+
+describe('PassCardPreviewBody — discount-only amount fields (2026-09-18)', () => {
+  /**
+   * Discount card adds two new amount display fields accessible in Step 3:
+   *   - pointsToNextTierDiscount  — 到下一級還差 / Amount to Next Tier
+   *   - accumulatedSpendDiscount  — 累積消費 / Accumulated Spending
+   *
+   * The values are NOT stored in i18n (label-only there). They are
+   * sourced from `DISCOUNT_PREVIEW_AMOUNTS[currency]` — same
+   * currency-driven map pattern as `CASHBACK_PREVIEW_AMOUNTS`.
+   *
+   *   TWD → "234元" / "556元" (Han suffix, en-locale-unsafe)
+   *   ZAR → "R234" / "R556" (no Han, locale en-ZA convention)
+   *
+   * The body component NEVER routes discount amount values through t() —
+   * they're rendered as raw strings from the constant.
+   */
+
+  it('pointsToNextTierDiscount renders its label via i18n + value via DISCOUNT_PREVIEW_AMOUNTS (TWD)', () => {
+    // Reset currency to TWD explicitly — previous tests in this file may
+    // have flipped the store to ZAR (currency leaks across tests).
+    useCardBuilderStore.setState({ currency: 'TWD' });
+    const { unmount } = render(
+      <PassCardPreviewBody leftField="pointsToNextTierDiscount" />,
+    );
+    expect(screen.getByText('fieldPreview.pointsToNextTierDiscount.label')).toBeInTheDocument();
+    expect(screen.getByText('234元')).toBeInTheDocument();
+    unmount();
+  });
+
+  it('accumulatedSpendDiscount renders its label via i18n + value via DISCOUNT_PREVIEW_AMOUNTS (TWD)', () => {
+    useCardBuilderStore.setState({ currency: 'TWD' });
+    const { unmount } = render(
+      <PassCardPreviewBody rightField="accumulatedSpendDiscount" />,
+    );
+    expect(screen.getByText('fieldPreview.accumulatedSpendDiscount.label')).toBeInTheDocument();
+    expect(screen.getByText('556元')).toBeInTheDocument();
+    unmount();
+  });
+
+  it('ZAR currency: discount values read from DISCOUNT_PREVIEW_AMOUNTS.ZAR', () => {
+    useCardBuilderStore.setState({ currency: 'ZAR' });
+
+    const { unmount } = render(
+      <PassCardPreviewBody
+        leftField="pointsToNextTierDiscount"
+        rightField="accumulatedSpendDiscount"
+      />,
+    );
+    expect(screen.getByText('R234')).toBeInTheDocument();
+    expect(screen.getByText('R556')).toBeInTheDocument();
+    unmount();
+  });
+
+  it('TWD currency: discount values read from DISCOUNT_PREVIEW_AMOUNTS.TWD (Han suffix)', () => {
+    // Reset currency to TWD in case a previous test flipped it to ZAR.
+    useCardBuilderStore.setState({ currency: 'TWD' });
+
+    const { unmount } = render(
+      <PassCardPreviewBody
+        leftField="pointsToNextTierDiscount"
+        rightField="accumulatedSpendDiscount"
+      />,
+    );
+    expect(screen.getByText('234元')).toBeInTheDocument();
+    expect(screen.getByText('556元')).toBeInTheDocument();
+    // Mock t() returns i18n keys verbatim — discount amount values
+    // bypass t() entirely (currency-driven map).
+    expect(
+      screen.queryByText('fieldPreview.pointsToNextTierDiscount.value'),
+    ).toBeNull();
+    expect(
+      screen.queryByText('fieldPreview.accumulatedSpendDiscount.value'),
+    ).toBeNull();
+    unmount();
+  });
+});
+
+describe('PassCardPreviewBody — discountTierBracket store-derived value (2026-09-18)', () => {
+  /**
+   * The `discountTierBracket` field is a pure store-derived field:
+   *   label = `fieldPreview.discountTierBracket.label` ("折扣級距" /
+   *         "Discount Tier Bracket") — from i18n
+   *   value = `discountTiers[0].discountPercent` formatted as `"X%"`
+   *         — from the store, NOT from i18n, NOT from a currency map
+   *
+   * This field does NOT depend on currency. It does NOT depend on
+   * cardType (the dropdown filter already restricts this option to
+   * discount_card). It's a static "first tier's % discount" preview
+   * that reflects the user's live edit of the discount tier list.
+   */
+
+  function buildTSpy() {
+    return vi.fn((...args: unknown[]) => args[0] as string);
+  }
+
+  function mockUseTranslationOnce(spy: ReturnType<typeof buildTSpy>) {
+    vi.mocked(useTranslation).mockReturnValueOnce({ t: spy } as unknown as ReturnType<typeof useTranslation>);
+  }
+
+  it('discountTierBracket renders label via i18n + value via discountTiers[0].discountPercent (default 1%)', () => {
+    // Store seeds a default tier with `discountPercent = 1`, so the
+    // preview defaults to "1%" before the user has edited any tier.
+    const tSpy = buildTSpy();
+    mockUseTranslationOnce(tSpy);
+    render(<PassCardPreviewBody leftField="discountTierBracket" />);
+
+    expect(screen.getByText('fieldPreview.discountTierBracket.label')).toBeInTheDocument();
+    expect(screen.getByText('1%')).toBeInTheDocument();
+  });
+
+  it('discountTierBracket reflects updated discountTiers[0].discountPercent from the store (reactive)', () => {
+    // Simulate the user editing the first tier's discount to 10.
+    useCardBuilderStore.setState({
+      discountTiers: [
+        {
+          id: 'tier-test',
+          name: 'Gold',
+          thresholdSpend: 0,
+          discountPercent: 10,
+        },
+      ],
+    });
+    render(<PassCardPreviewBody rightField="discountTierBracket" />);
+    expect(screen.getByText('fieldPreview.discountTierBracket.label')).toBeInTheDocument();
+    expect(screen.getByText('10%')).toBeInTheDocument();
+  });
+
+  it('discountTierBracket is NOT currency-driven (ZAR does not change the value format)', () => {
+    // Reset to the default tier so the discountPercent is back to 1
+    // (the previous "reactive" test set it to 10). Then set ZAR to
+    // verify the value format is unaffected by currency.
+    useCardBuilderStore.setState({
+      currency: 'ZAR',
+      discountTiers: [
+        {
+          id: 'default-discount-tier',
+          name: '',
+          thresholdSpend: 0,
+          discountPercent: 1,
+        },
+      ],
+    });
+    render(<PassCardPreviewBody leftField="discountTierBracket" />);
+    expect(screen.getByText('1%')).toBeInTheDocument();
+    // No R prefix contamination.
+    expect(screen.queryByText(/^R\d/)).toBeNull();
+  });
 });

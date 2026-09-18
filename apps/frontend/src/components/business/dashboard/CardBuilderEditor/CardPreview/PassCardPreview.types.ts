@@ -40,9 +40,12 @@ export interface PassCardPreviewProps extends HTMLAttributes<HTMLDivElement> {
    *                        (Step 6 `rewardTiers[0].name` — first row only).
    *       * cashback_card  → label = stampLabel, value = `firstCashbackTierName`
    *                        (Step 6 `cashbackTiers[0].name` — first row only).
+   *     For `discount_card` the override uses a distinct label
+   *     (`discountLabel` → "折扣等級" / "Discount Tier"), value = `firstDiscountTierName`.
    *     (2026-09-10 stamp card member-level → reward refactor; extended
    *     2026-09-10 to also cover reward_card; extended 2026-09-12 to
-   *     also cover cashback_card.)
+   *     also cover cashback_card; extended 2026-09-18 to also cover
+   *     discount_card.)
    */
   cardType?: CardType | null;
   /** 發卡機構標誌（可選，URL 或 SVG） */
@@ -133,6 +136,22 @@ export interface PassCardPreviewProps extends HTMLAttributes<HTMLDivElement> {
    *     reward_card / cashback_card pattern: read first row's name).
    */
   firstMembershipTierName?: string;
+  /**
+   * 2026-09-18 discount card — First discount tier name from the editor
+   * store (Step 6 `discountTiers[0].name`). Surfaced as the preview
+   * `value` for the `memberLevel` slot when `cardType === 'discount_card'`.
+   * Optional — when omitted / empty / when `discountTiers` is empty, the
+   * preview renders an empty value (matches stamp_card / reward_card /
+   * cashback_card / membership_card empty-input UX).
+   *
+   * Differs from stamp/reward/cashback ONLY in the label: uses
+   * `fieldPreview.memberLevel.discountLabel` ("折扣等級" / "Discount Tier")
+   * rather than `stampLabel` ("獎勵" / "Reward"). Differs from membership_card
+   * in the label (membership uses the default `fieldPreview.memberLevel.label`).
+   * Value source mirrors the reward_card / cashback_card / membership_card
+   * pattern: reads the FIRST row's name from the multi-tier array.
+   */
+  firstDiscountTierName?: string;
   /**
    * 2026-09-13 membership card — 會員獎勵 sub-rows from the first
    * membership tier (`membershipTiers[0].rewards`). Surfaced as a new

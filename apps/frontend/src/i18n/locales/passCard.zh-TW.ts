@@ -19,7 +19,7 @@ export default {
   fieldPreview: {
     phone: { label: '電話', value: '+8869XXXXXXXX' },
     email: { label: 'E-mail', value: 'hi@saome.org' },
-    memberLevel: { label: '會員等級', value: '金級', stampLabel: '獎勵' },
+    memberLevel: { label: '會員等級', value: '金級', stampLabel: '獎勵', discountLabel: '折扣等級' },
     birthday: { label: '生日', value: '05/11/1999' },
     visitCount: { label: '拜訪次數', value: '5 次' },
     memberName: { label: '會員姓名', value: '王大明' },
@@ -47,6 +47,17 @@ export default {
     // shared constant）。
     pointsToNextTierCashback: { label: '到下個層級還差' },
     accumulatedSpendCashback: { label: '已累積消費' },
+    // 折扣卡專用欄位預覽 — 僅在 discount_card 時顯示於下拉選單(2026-09-18)。
+    // 兩個 amount field 的 value 不存於此處,由
+    // `@saome/shared/constants/discountPreviewAmounts.ts` 的 currency-driven
+    // map 提供(TWD → "234元" / ZAR → "R234"),
+    // PassCardPreviewBody 在 runtime 從 map 讀取。本 locale 只保留 label。
+    // 沿用 cashback 的 label/value 拆分邏輯(Rule 023 § 翻譯書寫紀律)。
+    // discountTierBracket 的 value 直接由 store 派生
+    // (`discountTiers[0].discountPercent` + '%'),不走 currency-driven map。
+    pointsToNextTierDiscount: { label: '到下一級還差' },
+    discountTierBracket: { label: '折扣級距' },
+    accumulatedSpendDiscount: { label: '累積消費' },
   },
   // ===== 餘額預覽 — 僅在 stamp_card / reward_card / cashback_card 顯示 =====
   // Step 1 選這 3 種卡時，PassCardPreviewHeader 的右側卡種 pill 會被替換成兩行垂直區塊。
@@ -71,5 +82,21 @@ export default {
   //   當 hasExpiry=true 且 expiryDate 為空時，fallback 到 "—" (placeholder)。
   memberExpiry: {
     label: '會員到期日',
+  },
+// ===== 折扣卡到期預覽 — 僅在 discount_card 顯示 (2026-09-18) =====
+  // Step 1 選 discount_card 時,PassCardPreviewHeader 的右側卡種 pill 會被替換成
+  // 兩行垂直區塊。
+  //   - label: "有效期限" (locale-driven, 由 i18n 提供)
+  //   - value: 由 store.discountCustomExpiryDays / discountSpecificExpiryDate 決定:
+  //       - discountCustomExpiryDays 設定 → today + N 天 formatted per locale
+  //         ("2026.10.30" zh-TW / "10.30.2026" en)
+  //       - discountSpecificExpiryDate 設定 → 直接 formatted per locale
+  //       - 兩者皆 null → "—" (理論上不會發生,因為 Step 6 expiry 為必填)
+  //   與 memberExpiry 不同:discount card 的到期日是 *card-level* 必填欄位
+  //   (Step 6 DiscountExpiryFields 必填),不是 membership 式的"是否啟用"切換。
+  //   沿用既有 `formatExpiryDate(isoDate, locale)` helper
+  //   (zh-TW YYYY.MM.DD / en MM.DD.YYYY)。
+  discountExpiry: {
+    label: '有效期限',
   },
 };

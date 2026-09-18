@@ -15,6 +15,7 @@ import {
   cardTypeSchema as sharedCardTypeSchema,
   barcodeTypeSchema as sharedBarcodeTypeSchema,
   currencySchema as sharedCurrencySchema,
+  languageSchema as sharedLanguageSchema,
   templateStatusSchema as sharedTemplateStatusSchema,
   cardFieldKeySchema as sharedCardFieldKeySchema,
 } from '@saome/shared/schemas/card';
@@ -30,6 +31,8 @@ export { barcodeTypeSchema } from '@saome/shared/schemas/card';
 export type { BarcodeType } from '@saome/shared/schemas/card';
 export { currencySchema } from '@saome/shared/schemas/card';
 export type { Currency } from '@saome/shared/schemas/card';
+export { languageSchema } from '@saome/shared/schemas/card';
+export type { CardLanguage } from '@saome/shared/schemas/card';
 export { templateStatusSchema } from '@saome/shared/schemas/card';
 export type { TemplateStatus } from '@saome/shared/schemas/card';
 export { cardFieldKeySchema } from '@saome/shared/schemas/card';
@@ -56,6 +59,12 @@ export const templateSettingsSchema = z.object({
   passValidDays: z.number().int().positive().nullable().optional(),
   expiryDate: z.string().optional(), // ISO date string
   currency: sharedCurrencySchema.optional(),
+  /**
+   * Card display language (zh-TW | en). Controls which language the card
+   * fields are translated into when sent to Passcreator (deferred).
+   * 2026-09-18 Step 2: mirrors shared templateSettingsSchema.language.
+   */
+  language: sharedLanguageSchema.optional(),
   // Step 3-4 (TBD)
   issuerLogo: z.string().optional(),
   /**
@@ -308,6 +317,47 @@ export const templateSettingsSchema = z.object({
     )
     .max(5)
     .optional(),
+  // ===== Step 6 — Discount 卡 (2026-09-18, Rule 019 § 4.1) =====
+  // Mirrors `shared/templateSettingsSchema.discountTiers` (layer 1 of 4).
+  // discount_card variant: each tier is a flat rule of
+  // "cumulative spend → discount %". Same shape as cashbackTiers but
+  // semantically represents a DISCOUNT (reduces purchase price) rather
+  // than CASHBACK (refund after purchase).
+  //
+  // Single source of truth:
+  //   - packages/shared/schemas/card.ts (Rule 019 § 4.1 layer 1)
+  //   - packages/shared/constants/discount-card.ts (bounds)
+  //
+  // thresholdSpend = 0 is legitimate (= default tier, everyone qualifies).
+  // Sort order (thresholdSpend ASC, 0 first) is enforced by the frontend
+  // store; backend only validates structure and bounds.
+  discountTiers: z
+    .array(
+      z.object({
+        /** 折扣等級名稱. Required, max 40 chars. */
+        name: z.string().min(1).max(40),
+        /** 累積消費門檻. 0 = 預設 tier (人人享有). */
+        thresholdSpend: z.number().min(0),
+        /** 折扣%數, 整數 [1, 100]. */
+        discountPercent: z.number().int().min(1).max(100),
+      }),
+    )
+    .max(5)
+    .optional(),
+  // ===== Step 6 — Discount 卡 expiry (2026-09-18, Rule 019 § 4.1) =====
+  // Optional card-level expiry. Mirrors membership expiry pattern:
+  // two nullable fields, mutually exclusive at the field handler level.
+  // No card-wide toggle.
+  //
+  // Both are nullable; null = no expiry (matches cashback card behavior).
+  discountCustomExpiryDays: z
+    .number()
+    .int()
+    .min(1)
+    .max(3650)
+    .nullable()
+    .optional(),
+  discountSpecificExpiryDate: z.string().nullable().optional(),
 });
 
 export type TemplateSettings = z.infer<typeof templateSettingsSchema>;

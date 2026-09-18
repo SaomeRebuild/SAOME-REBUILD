@@ -19,7 +19,7 @@ export default {
   fieldPreview: {
     phone: { label: 'Phone', value: '+279XXXXXXXXX' },
     email: { label: 'Email', value: 'hi@saome.org' },
-    memberLevel: { label: 'Member Level', value: 'Gold', stampLabel: 'Reward' },
+    memberLevel: { label: 'Member Level', value: 'Gold', stampLabel: 'Reward', discountLabel: 'Discount Tier' },
     birthday: { label: 'Birthday', value: '05/11/1999' },
     visitCount: { label: 'Visit Count', value: '5 times' },
     memberName: { label: 'Member Name', value: 'Thabo Mokoena' },
@@ -51,6 +51,21 @@ export default {
     // constant).
     pointsToNextTierCashback: { label: 'Amount to Next Tier' },
     accumulatedSpendCashback: { label: 'Accumulated Spending' },
+    // Discount-only preview fields — only shown in the dropdown for
+    // discount_card (2026-09-18). Amount values are NOT stored here — they
+    // live in `@saome/shared/constants/discountPreviewAmounts.ts` as a
+    // currency-driven map (TWD → "234元" / ZAR → "R234"). The body component
+    // reads from the map at runtime, so this locale only carries the label.
+    // Reason for splitting label/value (Rule 023 § 翻譯書寫紀律): en cannot
+    // contain Han characters, so "234元" cannot live in passCard.en.ts.
+    // Mirrors the cashback amount split (2026-09-12) with distinct keys
+    // because discount card has its own preview amount demo values.
+    // discountTierBracket's value is rendered from store
+    // (discountTiers[0].discountPercent + '%'); it has no currency-dependent
+    // string, so it only needs the label here.
+    pointsToNextTierDiscount: { label: 'Amount to Next Tier' },
+    discountTierBracket: { label: 'Discount Tier Bracket' },
+    accumulatedSpendDiscount: { label: 'Accumulated Spending' },
   },
   // ===== Balance preview — only shown for stamp_card / reward_card / cashback_card =====
   // When Step 1 picks one of these 3 card types, PassCardPreviewHeader's right-side
@@ -78,5 +93,21 @@ export default {
   //   When hasExpiry=true and expiryDate is empty, falls back to "—" (placeholder).
   memberExpiry: {
     label: 'Member Expiry',
+  },
+// ===== Discount card expiry preview — only shown for discount_card (2026-09-18) =====
+  // When Step 1 picks `discount_card`, PassCardPreviewHeader's right-side
+  // card-type pill is replaced with a 2-line vertical block:
+  //   - label: "Expiry Date" (locale-driven, provided by i18n)
+  //   - value: selected by store.discountCustomExpiryDays /
+  //     discountSpecificExpiryDate:
+  //       - discountCustomExpiryDays set → today + N days formatted per locale
+  //       - discountSpecificExpiryDate set → directly formatted per locale
+  //       - both null → "—" (theoretical only, since expiry is required)
+  //   Unlike the member expiry preview, the discount card expiry is a
+  //   *required card-level* field (Step 6 DiscountExpiryFields is mandatory),
+  //   not a toggle. Reuses the existing `formatExpiryDate(isoDate, locale)`
+  //   helper from PassCardPreviewHeader (zh-TW YYYY.MM.DD / en MM.DD.YYYY).
+  discountExpiry: {
+    label: 'Expiry Date',
   },
 };

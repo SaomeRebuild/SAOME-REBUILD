@@ -208,7 +208,8 @@ export function CardBuilderEditorWorkspace({
       cardTypeValue !== 'multipass' &&
       cardTypeValue !== 'reward_card' &&
       cardTypeValue !== 'cashback_card' &&
-      cardTypeValue !== 'membership_card'
+      cardTypeValue !== 'membership_card' &&
+      cardTypeValue !== 'discount_card'
     ) {
       return true;
     }
@@ -220,6 +221,9 @@ export function CardBuilderEditorWorkspace({
     }
     if (cardTypeValue === 'membership_card') {
       return isMembershipStep6Valid();
+    }
+    if (cardTypeValue === 'discount_card') {
+      return isDiscountStep6Valid();
     }
     // stamp_card / multipass path
     const {
@@ -438,6 +442,97 @@ export function CardBuilderEditorWorkspace({
     });
   }
 
+  /**
+   * DISCOUNT 卡 Step 6 validation (2026-09-18).
+   *
+   * Mirrors packages/shared/constants/discount-card.ts bounds:
+   *   - discountTiers.length ≥ 1 (the store auto-seeds one default tier;
+   *     removeDiscountTier re-adds 1 if the array becomes empty, and the
+   *     DiscountCardLogic mount-effect is a defense-in-depth — see
+   *     DiscountCardLogic.tsx auto-add useEffect).
+   *   - each tier: name.trim() !== ''
+   *           && 0 ≤ thresholdSpend ≤ DISCOUNT_THRESHOLD_MAX (=999_999_999)
+   *           && 1 ≤ discountPercent ≤ 100 (integer)
+   *
+   * thresholdSpend = 0 is a LEGITIMATE value (default tier — same as
+   * cashback_card). Validation only checks the upper bound.
+   *
+   * Card-level expiry fields (`discountCustomExpiryDays` /
+   * `discountSpecificExpiryDate`) are OPTIONAL — both null = no expiry
+   * (matches cashback_card default). Validation does NOT enforce
+   * either field: the user can leave both blank and advance past Step 6.
+   *
+   * Mutual exclusion (one expiry field set OR neither, never both) is
+   * enforced at the field handler level in DiscountExpiryFields.tsx, not
+   * here. The store setters are pure and don't enforce exclusion.
+   */
+  /**
+   * DISCOUNT 卡 Step 6 validation (2026-09-18).
+   *
+   * Three constraints must ALL hold for the workspace "Next" button to enable:
+   *   1. ≥ 1 discount tier row, AND
+   *      every tier: name.trim() !== '' (user typed a name)
+   *      every tier: thresholdSpend ∈ [0, DISCOUNT_THRESHOLD_MAX]
+   *      every tier: discountPercent ∈ [DISCOUNT_PERCENT_MIN, DISCOUNT_PERCENT_MAX]
+   *      every tier: discountPercent is an integer (zod schema)
+   *   2. Card-level expiry is REQUIRED — at least ONE of
+   *      discountCustomExpiryDays / discountSpecificExpiryDate must be set.
+   *      Per user clarification 2026-09-18: "他不該是選填，應該是必填其中之一，
+   *      不然的話去設計Cashback卡就好".
+   *      Both null → invalid → use Cashback card instead.
+   *   3. When expiry is set via discountCustomExpiryDays, it must be in
+   *      [DISCOUNT_CUSTOM_EXPIRY_DAYS_MIN, DISCOUNT_CUSTOM_EXPIRY_DAYS_MAX].
+   *      When set via discountSpecificExpiryDate, it must be a valid
+   *      ISO YYYY-MM-DD string (the store already enforces this — defensive
+   *      re-check here for completeness).
+   *
+   * Mirrors packages/shared/constants/discount-card.ts source-of-truth bounds.
+   */
+  function isDiscountStep6Valid(): boolean {
+    const {
+      discountTiers,
+      discountCustomExpiryDays,
+      discountSpecificExpiryDate,
+    } = useCardBuilderStore.getState();
+
+    // 1. Tier rows: ≥ 1 row, every row meets the per-tier contract.
+    if (!discountTiers || discountTiers.length === 0) return false;
+
+    const everyTierValid = discountTiers.every((tier) => {
+      if (tier.name.trim() === '') return false;
+      if (tier.thresholdSpend < 0 || tier.thresholdSpend > 999_999_999) return false;
+      if (tier.discountPercent < 1 || tier.discountPercent > 100) return false;
+      if (!Number.isInteger(tier.discountPercent)) return false;
+      return true;
+    });
+    if (!everyTierValid) return false;
+
+    // 2. Card-level expiry (REQUIRED, user clarification 2026-09-18):
+    // at least one of (days, date) must be set. Both null → invalid.
+    const daysFilled =
+      discountCustomExpiryDays !== null &&
+      discountCustomExpiryDays >= 1 &&
+      discountCustomExpiryDays <= 3650 &&
+      Number.isInteger(discountCustomExpiryDays);
+    const dateFilled =
+      typeof discountSpecificExpiryDate === 'string' &&
+      /^\d{4}-\d{2}-\d{2}$/.test(discountSpecificExpiryDate);
+
+    if (!daysFilled && !dateFilled) return false;
+
+    // Both-null guard already covers "neither set"; defensive re-check that
+    // an out-of-range value also blocks Next (the store setter clamps, but
+    // loadSettings could surface a corrupted DB row with stale bounds).
+    if (
+      discountCustomExpiryDays !== null &&
+      (discountCustomExpiryDays < 1 || discountCustomExpiryDays > 3650)
+    ) {
+      return false;
+    }
+
+    return true;
+  }
+
   async function handleNext() {
     console.log('[handleNext] step:', step, 'cardId:', cardId);
     if (step < 8) {
@@ -451,7 +546,7 @@ export function CardBuilderEditorWorkspace({
           // `templates.name` (top-level payload); logoText goes to
           // `settings.logoText` (JSONB). storeName is gone.
           const { cardName, logoText, issuerName, issuerLogo } = useCardBuilderStore.getState();
-          const { barcodeType, passValidDays, expiryDate, currency, isPaid } = useCardBuilderStore.getState();
+          const { barcodeType, passValidDays, expiryDate, currency, language, isPaid } = useCardBuilderStore.getState();
           await onSave(cardId, {
             // Top-level SQL column value.
             name: cardName,
@@ -464,6 +559,7 @@ export function CardBuilderEditorWorkspace({
               passValidDays,
               expiryDate,
               currency,
+              language,
               isPaid,
             },
           });
@@ -609,6 +705,13 @@ export function CardBuilderEditorWorkspace({
             membershipExpiryMode,
             membershipCustomExpiryDays,
             membershipSpecificExpiryDate,
+            // 2026-09-18: Discount card Step 6 fields (tiers + optional
+            // card-level expiry). Always sent so DB always reflects store
+            // state; non-discount cards send undefined for the expiry
+            // fields (schema optional accepts undefined).
+            discountTiers,
+            discountCustomExpiryDays,
+            discountSpecificExpiryDate,
           } = useCardBuilderStore.getState();
           // Strip `id` field from each reward tier before sending to backend
           // (id is a UI-only React key, not part of the data contract).
@@ -650,6 +753,18 @@ export function CardBuilderEditorWorkspace({
               value: reward.value,
             })),
           }));
+          // 2026-09-18 Discount: strip `id` from each discount tier and
+          // sort by thresholdSpend ASC (threshold=0 first = default tier)
+          // so the persisted array matches the UI sort order. Same
+          // pattern as cashback (cashbackCard tiers just renamed).
+          const sanitizedDiscountTiers = (discountTiers ?? [])
+            .slice()
+            .sort((a, b) => a.thresholdSpend - b.thresholdSpend)
+            .map((tier) => ({
+              name: tier.name,
+              thresholdSpend: tier.thresholdSpend,
+              discountPercent: tier.discountPercent,
+            }));
           await onSave(cardId, {
             stampAccrualMode,
             rewardName,
@@ -673,10 +788,20 @@ export function CardBuilderEditorWorkspace({
             // but always sent so the DB always reflects the current store
             // state. loadSettings coerces non-matching values back to [].
             cashbackTiers: sanitizedCashbackTiers,
-            // MEMBERSHIP 卡 (2026-09-13) — only meaningful for membership_card,
-            // but always sent so the DB always reflects the current store state.
-            hasExpiry,
-            membershipTiers: sanitizedMembershipTiers,
+            // MEMBERSHIP 卡 (2026-09-13) — only meaningful for membership_card.
+            // For non-membership cards we send `[]` (NOT the seeded
+            // default-tier from initialState) to avoid polluting the
+            // JSONB with meaningless membership data. Mirrors the
+            // `discountTiers` pattern (cardType-filtered at serializer).
+            // 2026-09-18 fix: previously sent unconditionally, which
+            // leaked the 2026-09-18 initialState seed (`default-membership-tier`)
+            // into stamp_card / reward_card / cashback_card / discount_card
+            // payloads. The integration tests' expectation of
+            // `membershipTiers: []` for non-membership cards is now
+            // guaranteed by the serializer.
+            hasExpiry: cardType === 'membership_card' ? hasExpiry : false,
+            membershipTiers:
+              cardType === 'membership_card' ? sanitizedMembershipTiers : [],
             // ===== Free-card expiry (2026-09-14) =====
             // Only meaningful for `cardType === 'membership_card' && isPaid === false`.
             // 其他卡種 或 付費卡 不寫這 3 欄位（schema optional 接受 undefined）。
@@ -692,6 +817,24 @@ export function CardBuilderEditorWorkspace({
               cardType === 'membership_card' && !isPaid
                 ? membershipSpecificExpiryDate
                 : undefined,
+            // ===== DISCOUNT 卡 (2026-09-18) =====
+            // Only meaningful for `cardType === 'discount_card'`. For
+            // other card types the field values are undefined (schema
+            // optional accepts undefined). Tier rows are sorted by
+            // thresholdSpend ASC and id is stripped before persisting
+            // (same pattern as cashback_tiers).
+            //
+            // Card-level expiry fields (custom days OR specific date)
+            // are mutually exclusive at the field handler level; the
+            // store may briefly carry both as a result of mid-edit
+            // transitions, but the field handler clears the other. We
+            // persist whichever is set; null is the "no expiry" sentinel
+            // (matches cashback_card default).
+            discountTiers: cardType === 'discount_card' ? sanitizedDiscountTiers : undefined,
+            discountCustomExpiryDays:
+              cardType === 'discount_card' ? discountCustomExpiryDays : undefined,
+            discountSpecificExpiryDate:
+              cardType === 'discount_card' ? discountSpecificExpiryDate : undefined,
           });
           console.log('[handleNext] Step 6 card logic saved', {
             stampAccrualMode,
@@ -713,6 +856,10 @@ export function CardBuilderEditorWorkspace({
             membershipExpiryMode,
             membershipCustomExpiryDays,
             membershipSpecificExpiryDate,
+            // 2026-09-18 discount-card logging
+            discountTiers: sanitizedDiscountTiers,
+            discountCustomExpiryDays,
+            discountSpecificExpiryDate,
           });
         } catch (err) {
           // Don't block step transition — let the user proceed and retry later.

@@ -48,6 +48,7 @@ export function PreviewWrapper({
   rewardName,
   firstRewardTierName,
   firstCashbackTierName,
+  firstDiscountTierName,
   membershipTiersRewards,
   isMembership,
   description,
@@ -86,6 +87,7 @@ export function PreviewWrapper({
             rewardName={rewardName}
             firstRewardTierName={firstRewardTierName}
             firstCashbackTierName={firstCashbackTierName}
+            firstDiscountTierName={firstDiscountTierName}
             membershipTiersRewards={membershipTiersRewards}
             isMembership={isMembership}
             description={description}
@@ -122,6 +124,7 @@ export function PreviewWrapper({
       rewardName={rewardName}
       firstRewardTierName={firstRewardTierName}
       firstCashbackTierName={firstCashbackTierName}
+      firstDiscountTierName={firstDiscountTierName}
       membershipTiersRewards={membershipTiersRewards}
       isMembership={isMembership}
       description={description}

@@ -27,6 +27,7 @@ let stampCardLogicRenders = 0;
 let rewardCardLogicRenders = 0;
 let cashbackCardLogicRenders = 0;
 let membershipCardLogicRenders = 0;
+let discountCardLogicRenders = 0;
 let comingSoonRenders = 0;
 
 vi.mock('./StampCardLogic', () => ({
@@ -57,6 +58,13 @@ vi.mock('./MembershipCardLogic', () => ({
   },
 }));
 
+vi.mock('./DiscountCardLogic', () => ({
+  DiscountCardLogic: () => {
+    discountCardLogicRenders += 1;
+    return <div data-testid="discount-card-logic">DiscountCardLogic</div>;
+  },
+}));
+
 vi.mock('./Step6CardLogicComingSoon', () => ({
   Step6CardLogicComingSoon: ({ cardType }: { cardType: CardType | null }) => {
     comingSoonRenders += 1;
@@ -73,6 +81,7 @@ beforeEach(() => {
   rewardCardLogicRenders = 0;
   cashbackCardLogicRenders = 0;
   membershipCardLogicRenders = 0;
+  discountCardLogicRenders = 0;
   comingSoonRenders = 0;
 });
 
@@ -152,9 +161,24 @@ describe('Step6CardLogic — dispatcher (Rule 000 § A.1)', () => {
     expect(screen.getByTestId('membership-card-logic')).toBeInTheDocument();
   });
 
-  it('renders ComingSoon for discount_card, coupon_card, gift_card', () => {
+  it('renders DiscountCardLogic for discount_card (Step 6 plan 2026-09-18)', () => {
+    useCardBuilderStore.setState({ cardType: 'discount_card' });
+    render(<Step6CardLogic showValidation={false} />);
+
+    expect(stampCardLogicRenders).toBe(0);
+    expect(rewardCardLogicRenders).toBe(0);
+    expect(cashbackCardLogicRenders).toBe(0);
+    expect(membershipCardLogicRenders).toBe(0);
+    expect(discountCardLogicRenders).toBe(1);
+    expect(comingSoonRenders).toBe(0);
+    expect(screen.getByTestId('discount-card-logic')).toBeInTheDocument();
+    // The discount branch uses discount-card-specific intro copy
+    expect(screen.getByText('step6.discount.intro')).toBeInTheDocument();
+    expect(screen.getByText('step6.discount.introHint')).toBeInTheDocument();
+  });
+
+  it('renders ComingSoon for coupon_card, gift_card', () => {
     const unsupportedTypes: CardType[] = [
-      'discount_card',
       'coupon_card',
       'gift_card',
     ];
@@ -165,6 +189,7 @@ describe('Step6CardLogic — dispatcher (Rule 000 § A.1)', () => {
       rewardCardLogicRenders = 0;
       cashbackCardLogicRenders = 0;
       membershipCardLogicRenders = 0;
+      discountCardLogicRenders = 0;
       comingSoonRenders = 0;
       cleanup();
       useCardBuilderStore.setState({ cardType });
@@ -174,6 +199,7 @@ describe('Step6CardLogic — dispatcher (Rule 000 § A.1)', () => {
       expect(rewardCardLogicRenders).toBe(0);
       expect(cashbackCardLogicRenders).toBe(0);
       expect(membershipCardLogicRenders).toBe(0);
+      expect(discountCardLogicRenders).toBe(0);
       expect(comingSoonRenders).toBe(1);
       expect(screen.getByTestId('coming-soon')).toHaveAttribute(
         'data-card-type',

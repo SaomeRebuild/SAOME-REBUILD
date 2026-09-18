@@ -97,17 +97,21 @@ interface FieldSelectProps {
   /**
    * Current `cardType` from the store (Step 1 selection). Used to override
    * the option label for `memberLevel` when cardType is `stamp_card`,
-   * `reward_card`, or `cashback_card`: the dropdown option reads
-   * "獎勵" / "Reward" instead of "會員等級" / "Member Level",
-   * and the live preview's label/value follow the same cardType-driven
-   * path (PassCardPreviewBody.tsx).
-   *   - stamp_card:    value source = top-level `rewardName` (Step 6 input).
-   *   - reward_card:   value source = `rewardTiers[0].name` (first row).
-   *   - cashback_card: value source = `cashbackTiers[0].name` (first row).
+   * `reward_card`, `cashback_card`, or `discount_card`:
+   *   - stamp_card / reward_card / cashback_card: dropdown option reads
+   *     "獎勵" / "Reward"; live preview follows the same cardType-driven
+   *     path (PassCardPreviewBody.tsx).
+   *     * stamp_card:    value source = top-level `rewardName` (Step 6 input).
+   *     * reward_card:   value source = `rewardTiers[0].name` (first row).
+   *     * cashback_card: value source = `cashbackTiers[0].name` (first row).
+   *   - discount_card: dropdown option reads "折扣等級" / "Discount Tier"
+   *     (separate i18n key); value source = `discountTiers[0].name`.
    *   For all other cardTypes (incl. `multipass`), the original
    *   "會員等級" / "Member Level" label is preserved.
    * (2026-09-10 stamp/reward card member-level → reward refactor, extended
-   *  2026-09-12 cashback_card to share the same override scope.)
+   *  2026-09-12 cashback_card to share the same override scope,
+   *  extended 2026-09-18 discount_card with a distinct "Discount Tier"
+   *  label.)
    */
   cardType?: CardType | null;
 }
@@ -116,8 +120,20 @@ interface FieldSelectProps {
  * Resolve the i18n labelKey for a `CardFieldDefinition` in the dropdown.
  *
  * The conditional override applies when `cardType ∈ {stamp_card,
- * reward_card}` AND the field is `memberLevel`: the option renders as
- * "獎勵" / "Reward" instead of "會員等級" / "Member Level".
+ * reward_card, cashback_card}` AND the field is `memberLevel`: the option
+ * renders as "獎勵" / "Reward" instead of "會員等級" / "Member Level".
+ *
+ * 2026-09-18 (discount card extension): the override also applies when
+ * `cardType === 'discount_card'`, BUT uses a distinct i18n key
+ * (`memberLevelDiscount` → "折扣等級" / "Discount Tier"). The semantic
+ * intent differs from stamp/reward/cashback:
+ *   - stamp_card / reward_card / cashback_card → "獎勵" / "Reward"
+ *     (the memberLevel slot reads a tier/reward name).
+ *   - discount_card → "折扣等級" / "Discount Tier"
+ *     (the memberLevel slot reads the first discount tier name; the
+ *     business semantic is "tier identity", not "reward earned").
+ * Keeping the keys separate avoids overloading either label with the
+ * other card family's copy.
  *
  * Scope rationale:
  *   - stamp_card: memberLevel semantically represents "single reward tier
@@ -127,6 +143,14 @@ interface FieldSelectProps {
  *     name" (Step 6 `rewardTiers[0].name` input) — same UX intent as
  *     stamp_card, but the data source is the first row of the multi-tier
  *     structure instead of a top-level string.
+ *   - cashback_card: memberLevel semantically represents "first cashback
+ *     tier name" (Step 6 `cashbackTiers[0].name` input) — same UX intent
+ *     as reward_card, but the data source is the cashback tier array.
+ *   - discount_card: memberLevel semantically represents "first discount
+ *     tier name" (Step 6 `discountTiers[0].name` input) — the label
+ *     intentionally uses "折扣等級" / "Discount Tier" to signal the
+ *     tier identity semantics (different from stamp/reward/cashback's
+ *     "reward" semantics).
  *   - multipass: keeps "會員等級" / "Member Level" — multipass is a
  *     collection of stamp cards, not a reward system, so the original
  *     label is preserved (user-confirmed scope).
@@ -141,6 +165,13 @@ function resolveOptionLabelKey(field: CardFieldDefinition, cardType?: CardType |
     (cardType === 'stamp_card' || cardType === 'reward_card' || cardType === 'cashback_card')
   ) {
     return 'step3.fieldsSection.fields.memberLevelStamp';
+  }
+  // 2026-09-18: discount_card override uses a dedicated key
+  // (`memberLevelDiscount`) because the label semantic is "Discount Tier",
+  // not "Reward". Keep separate from `memberLevelStamp` so future i18n
+  // tweaks to one card family do not silently affect the other.
+  if (field.key === 'memberLevel' && cardType === 'discount_card') {
+    return 'step3.fieldsSection.fields.memberLevelDiscount';
   }
   return field.labelKey;
 }

@@ -36,11 +36,20 @@ import {
   CASHBACK_PERCENT_MAX,
   CASHBACK_THRESHOLD_MIN,
   CASHBACK_THRESHOLD_MAX,
+  MAX_DISCOUNT_TIERS,
+  DISCOUNT_TIER_NAME_MAX_LENGTH,
+  DISCOUNT_PERCENT_MIN,
+  DISCOUNT_PERCENT_MAX,
+  DISCOUNT_THRESHOLD_MIN,
+  DISCOUNT_THRESHOLD_MAX,
+  DISCOUNT_CUSTOM_EXPIRY_DAYS_MIN,
+  DISCOUNT_CUSTOM_EXPIRY_DAYS_MAX,
   type AccrualMode,
   type RewardType,
   type EarningMode,
   type RewardTierShape,
   type CashbackTierShape,
+  type DiscountTierShape,
 } from '@saome/shared/constants';
 import type { LocationInput } from '@saome/shared/logic/locations';
 import { normalizeHex } from '@saome/shared/logic/color';
@@ -160,6 +169,12 @@ interface CardBuilderState {
   expiryDate: string;
   /** 貨幣選擇 */
   currency: 'TWD' | 'ZAR';
+  /**
+   * 2026-09-18 Step 2: card display language (zh-TW | en).
+   * Determines which language the card fields are sent in to Passcreator
+   * (integration deferred). Per-card, not per-tenant.
+   */
+  language: 'zh-TW' | 'en';
 
   // ===== Step 3 — 顯示欄位 (left/right slots) =====
   /**
@@ -305,6 +320,11 @@ interface CardBuilderState {
   setPassValidDays: (passValidDays: number | null) => void;
   setExpiryDate: (expiryDate: string) => void;
   setCurrency: (currency: 'TWD' | 'ZAR') => void;
+  /**
+   * Set the card display language (zh-TW | en). 2026-09-18 Step 2.
+   * Deferred: Passcreator integration not yet implemented.
+   */
+  setLanguage: (language: 'zh-TW' | 'en') => void;
   /**
    * Set the left-slot display field. Pass `null` to clear (shows placeholder).
    * `rightField` is NOT auto-cleared — dedup is enforced in the UI layer by
@@ -544,6 +564,100 @@ interface CardBuilderState {
   updateCashbackTier: (id: string, patch: Partial<CashbackTierShape>) => void;
   /** 依 thresholdSpend 由小到大排序（存檔前自動呼叫，threshold=0 在最前). */
   sortCashbackTiers: () => void;
+
+  // ===== Step 6 — Discount 卡邏輯 (2026-09-18, discount_card only) =====
+  // UI dispatcher (`Step6CardLogic`) conditionally renders discount-card
+  // editor when `cardType === 'discount_card'`.
+  //
+  // Structurally identical to the cashback pattern (same `name +
+  // thresholdSpend + percent` tier shape, capped at 5 tiers), but with
+  // optional card-level expiry (custom days OR specific date, mutually
+  // exclusive at the field handler level, no card-wide toggle).
+  //
+  // Differs from cashback:
+  //   - Percent field is `discountPercent` (not `cashbackPercent`).
+  //   - Two extra card-level expiry fields: `discountCustomExpiryDays`
+  //     and `discountSpecificExpiryDate` (mirrors membership expiry
+  //     pattern but without a `hasExpiry` toggle).
+  //
+  // Differs from membership:
+  //   - No `hasDiscountExpiry` toggle. The user just leaves both fields
+  //     empty if no expiry is needed (matches cashback card default).
+  //   - Mutual exclusion lives at the field handler level (NOT in the
+  //     store setter), mirroring `PassValidDaysField` ↔ `ExpiryDateField`.
+  //
+  // Guards (mirrors cashback pattern):
+  //   - `addDiscountTier` is no-op at MAX_DISCOUNT_TIERS=5 (matches backend schema cap).
+  //   - `removeDiscountTier` RE-ADDS 1 default tier if array becomes
+  //     empty (differs from cashback — matches user requirement
+  //     "預設一個 row", so user always sees at least 1 tier).
+  //   - `updateDiscountTier` rejects name > DISCOUNT_TIER_NAME_MAX_LENGTH chars.
+  //   - `updateDiscountTier` rejects discountPercent < DISCOUNT_PERCENT_MIN or > DISCOUNT_PERCENT_MAX.
+  //   - `updateDiscountTier` rejects thresholdSpend < 0 (but allows 0 as legitimate default).
+  //   - `sortDiscountTiers` orders by thresholdSpend ASC (threshold=0 first).
+  /** 折扣級距陣列（最多 5 組). Always ≥ 1 row (UI layer auto-adds). */
+  discountTiers: Array<DiscountTierShape & { id: string }>;
+
+  /** 新增一組空白折扣級距. 在 MAX_DISCOUNT_TIERS=5 時為 no-op. */
+  addDiscountTier: () => void;
+  /**
+   * 移除指定 id 的折扣級距. 若陣列變空,自動補回 1 個預設級距
+   * (matches user requirement "預設一個 row").
+   */
+  removeDiscountTier: (id: string) => void;
+  /** 更新指定 id 的折扣級距（partial patch）. */
+  updateDiscountTier: (id: string, patch: Partial<DiscountTierShape>) => void;
+  /** 依 thresholdSpend 由小到大排序（存檔前自動呼叫，threshold=0 在最前). */
+  sortDiscountTiers: () => void;
+
+  // ===== Step 6 — Discount 卡 expiry (2026-09-18) =====
+  // Optional card-level expiry fields for discount_card. Mirrors membership
+  // expiry pattern but without a card-wide toggle. Both nullable; null =
+  // no expiry (matches cashback card default).
+  //
+  // Mutual exclusion is enforced at the field handler level
+  // (DiscountExpiryFields.tsx), NOT in the store setter — each field's
+  // `onChange` clears the other. Store setters are pure and reusable.
+  //
+  // Data source: passed through `templateSettingsSchema` as JSONB keys
+  // `discountCustomExpiryDays` / `discountSpecificExpiryDate`. Backend
+  // mirror lives in apps/backend/src/modules/cards/schemas/request.ts
+  // and apps/backend/src/modules/cards/db/templates.ts.
+  /**
+   * 折扣卡自訂有效天數.
+   * 整數 [DISCOUNT_CUSTOM_EXPIRY_DAYS_MIN=1, DISCOUNT_CUSTOM_EXPIRY_DAYS_MAX=3650 (10 年)].
+   * null = 未填 = 無到期.
+   */
+  discountCustomExpiryDays: number | null;
+  /**
+   * 折扣卡指定到期日. ISO YYYY-MM-DD 字串.
+   * null = 未填 = 無到期.
+   */
+  discountSpecificExpiryDate: string | null;
+  /**
+   * 設定折扣卡自訂有效天數.
+   * 守門:
+   *   - null 允許 (= 未填)
+   *   - 拒絕非整數 (NaN / 小數)
+   *   - clamp 到 [DISCOUNT_CUSTOM_EXPIRY_DAYS_MIN=1, DISCOUNT_CUSTOM_EXPIRY_DAYS_MAX=3650]
+   *
+   * Mutual exclusion (with discountSpecificExpiryDate) 由
+   * DiscountCustomExpiryDaysField handler 層級執行 — 設定新值時清空 date。
+   */
+  setDiscountCustomExpiryDays: (days: number | null) => void;
+  /**
+   * 設定折扣卡指定到期日 (ISO YYYY-MM-DD).
+   * 守門:
+   *   - null 允許
+   *   - 字串格式檢查: 必須符合 /^\d{4}-\d{2}-\d{2}$/
+   *
+   * 「不早於今天」檢查由 DiscountSpecificExpiryDateField 層級執行
+   * （<input type="date" min={today}>）。
+   *
+   * Mutual exclusion (with discountCustomExpiryDays) 由
+   * DiscountSpecificExpiryDateField handler 層級執行 — 設定新值時清空 days。
+   */
+  setDiscountSpecificExpiryDate: (date: string | null) => void;
 
   // ===== Step 6 — Membership 卡邏輯 (2026-09-13, membership_card only) =====
   // UI dispatcher (`Step6CardLogic`) conditionally renders membership-card
@@ -933,6 +1047,7 @@ const initialState = {
   passValidDays: null,
   expiryDate: '',
   currency: 'TWD' as const,
+  language: 'en' as const,   // 2026-09-18 Step 2 default
 
   // ===== Step 3 — 顯示欄位 =====
   leftField: null,
@@ -991,12 +1106,34 @@ const initialState = {
   // Each tier: name + thresholdSpend (0 allowed = default tier) + cashbackPercent.
   cashbackTiers: [],
   // ===== Step 6 — Membership 卡邏輯 (2026-09-13) =====
-  // Defaults: hasExpiry=false (lifetime membership). membershipTiers is
-  // empty array (user adds tiers via "新增會員等級" button). When
-  // `isPaid === false` the Step 6 dispatcher renders a free-membership
-  // empty state and these fields are inert.
+  // Defaults: hasExpiry=false (lifetime membership). membershipTiers seeds
+  // ONE empty tier (id='default-membership-tier') so that the free-card
+  // editor (`MembershipCardLogicFreeState`) can render on first visit.
+  //
+  // 2026-09-18 fix (regression): the previous `membershipTiers: []` shape
+  // made `MembershipCardLogicFreeState` fall through to the defensive
+  // `freeStateHint` section because `membershipTiers[0]` was undefined.
+  // The seed logic in `setIsPaid(false)` never fired on a fresh card
+  // (isPaid already starts at `false`), so the only way to escape the
+  // fallback was to toggle paid → unpaid once. Mirrors the
+  // `discountTiers` initial-state pattern (id='default-discount-tier').
+  // When `isPaid === true` (paid card path), `MembershipCardLogic` does
+  // NOT use this seed — the user adds tiers via "新增會員等級" and
+  // `addMembershipTier` is the canonical entry. Seed is harmless in
+  // either path (one extra empty tier for paid card, but the paid
+  // editor doesn't bind to it).
   hasExpiry: false,
-  membershipTiers: [],
+  membershipTiers: [
+    {
+      id: 'default-membership-tier',
+      name: '',
+      durationType: null,
+      monthlyCost: null,
+      yearlyCost: null,
+      lifetimeCost: null,
+      rewards: [],
+    },
+  ],
   // ===== Step 6 — Free Membership Card expiry (2026-09-14) =====
   // Defaults: all null — user must pick via the editor. Used only when
   // `isPaid === false`. When `isPaid === true`, `setIsPaid(true)` clears
@@ -1004,6 +1141,22 @@ const initialState = {
   membershipExpiryMode: null,
   membershipCustomExpiryDays: null,
   membershipSpecificExpiryDate: null,
+  // ===== Step 6 — Discount 卡邏輯 (2026-09-18) =====
+  // Default 1 tier per user requirement (preset baseline tier; user can
+  // edit/add/remove). The stable id `default-discount-tier` ensures the
+  // auto-add useEffect in DiscountCardLogic.tsx does NOT fire on every
+  // mount (the existing initial row satisfies the "≥ 1 row" check).
+  // expiry fields default to null (= no expiry, matches cashback card).
+  discountTiers: [
+    {
+      id: 'default-discount-tier',
+      name: '',
+      thresholdSpend: 0,
+      discountPercent: 1,
+    },
+  ],
+  discountCustomExpiryDays: null,
+  discountSpecificExpiryDate: null,
 };
 
 /**
@@ -1039,6 +1192,7 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
   setPassValidDays: (passValidDays) => set({ passValidDays }),
   setExpiryDate: (expiryDate) => set({ expiryDate }),
   setCurrency: (currency) => set({ currency }),
+  setLanguage: (language) => set({ language }),
   setLeftField: (leftField) => set({ leftField }),
   setRightField: (rightField) => set({ rightField }),
   /**
@@ -1538,6 +1692,158 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
       ),
     })),
 
+  // ===== Step 6 — Discount 卡邏輯 setters (2026-09-18) =====
+  /**
+   * 新增一組空白折扣級距. 在 MAX_DISCOUNT_TIERS=5 時為 no-op.
+   * Default values mirror `DiscountTierShape` initial state.
+   */
+  addDiscountTier: () =>
+    set((state) => {
+      if (state.discountTiers.length >= MAX_DISCOUNT_TIERS) return {};
+      const newTier: DiscountTierShape & { id: string } = {
+        id:
+          typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : `discount-tier-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        name: '',
+        thresholdSpend: 0,
+        discountPercent: 1,
+      };
+      return { discountTiers: [...state.discountTiers, newTier] };
+    }),
+  /**
+   * 移除指定 id 的折扣級距. 若陣列變空,自動補回 1 個預設級距
+   * (matches user requirement "預設一個 row" — discount card always
+   * shows at least 1 tier row).
+   */
+  removeDiscountTier: (id) =>
+    set((state) => {
+      const filtered = state.discountTiers.filter((tier) => tier.id !== id);
+      if (filtered.length === 0) {
+        // Auto-refill with the default baseline tier.
+        return {
+          discountTiers: [
+            {
+              id:
+                typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+                  ? crypto.randomUUID()
+                  : `discount-tier-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              name: '',
+              thresholdSpend: 0,
+              discountPercent: 1,
+            },
+          ],
+        };
+      }
+      return { discountTiers: filtered };
+    }),
+  /**
+   * 更新指定 id 的折扣級距（partial patch）.
+   * Guards (mirror cashback pattern, swap percent field name):
+   *   - name: slice to DISCOUNT_TIER_NAME_MAX_LENGTH
+   *   - thresholdSpend: reject < 0 (allow 0 = legitimate default)
+   *   - discountPercent: reject < 1 or > 100, integer
+   */
+  updateDiscountTier: (id, patch) =>
+    set((state) => ({
+      discountTiers: state.discountTiers.map((tier) => {
+        if (tier.id !== id) return tier;
+        const next = { ...tier, ...patch };
+        // Guard: name length
+        if (patch.name !== undefined) {
+          next.name = String(patch.name).slice(0, DISCOUNT_TIER_NAME_MAX_LENGTH);
+        }
+        // Guard: thresholdSpend >= 0 (allow 0 as legitimate default)
+        if (patch.thresholdSpend !== undefined) {
+          if (
+            typeof patch.thresholdSpend === 'number' &&
+            Number.isFinite(patch.thresholdSpend) &&
+            patch.thresholdSpend >= DISCOUNT_THRESHOLD_MIN
+          ) {
+            next.thresholdSpend = Math.min(
+              Math.round(patch.thresholdSpend),
+              DISCOUNT_THRESHOLD_MAX,
+            );
+          } else {
+            next.thresholdSpend = tier.thresholdSpend;
+          }
+        }
+        // Guard: discountPercent ∈ [1, 100] integer
+        if (patch.discountPercent !== undefined) {
+          if (
+            patch.discountPercent === null ||
+            (typeof patch.discountPercent === 'number' &&
+              Number.isFinite(patch.discountPercent) &&
+              patch.discountPercent >= DISCOUNT_PERCENT_MIN &&
+              patch.discountPercent <= DISCOUNT_PERCENT_MAX)
+          ) {
+            next.discountPercent =
+              patch.discountPercent === null
+                ? 1
+                : Math.round(patch.discountPercent);
+          } else {
+            next.discountPercent = tier.discountPercent;
+          }
+        }
+        return next;
+      }),
+    })),
+  /** 依 thresholdSpend 由小到大排序（存檔前自動呼叫，threshold=0 在最前). */
+  sortDiscountTiers: () =>
+    set((state) => ({
+      discountTiers: [...state.discountTiers].sort(
+        (a, b) => a.thresholdSpend - b.thresholdSpend,
+      ),
+    })),
+  /**
+   * 設定折扣卡自訂有效天數.
+   * 守門 (mirrors setMembershipCustomExpiryDays):
+   *   - null 允許 (= 未填)
+   *   - 拒絕非整數 (NaN / 小數)
+   *   - clamp 到 [DISCOUNT_CUSTOM_EXPIRY_DAYS_MIN=1, DISCOUNT_CUSTOM_EXPIRY_DAYS_MAX=3650]
+   *
+   * Mutual exclusion (with discountSpecificExpiryDate) 由
+   * DiscountCustomExpiryDaysField handler 層級執行 — 設定新值時清空 date。
+   * store setter 是 pure function（只動 discountCustomExpiryDays，不動 date）,
+   * 方便其他 caller（例如測試）單獨設定其中一個。
+   */
+  setDiscountCustomExpiryDays: (days) =>
+    set(() => {
+      if (days === null) {
+        return { discountCustomExpiryDays: null };
+      }
+      if (typeof days !== 'number' || !Number.isFinite(days)) return {};
+      // 拒絕小數（非整數）
+      if (!Number.isInteger(days)) return {};
+      const clamped = Math.max(
+        DISCOUNT_CUSTOM_EXPIRY_DAYS_MIN,
+        Math.min(days, DISCOUNT_CUSTOM_EXPIRY_DAYS_MAX),
+      );
+      return { discountCustomExpiryDays: clamped };
+    }),
+  /**
+   * 設定折扣卡指定到期日 (ISO YYYY-MM-DD).
+   * 守門 (mirrors setMembershipSpecificExpiryDate):
+   *   - null 允許
+   *   - 字串格式檢查: 必須符合 /^\d{4}-\d{2}-\d{2}$/
+   *
+   * 「不早於今天」檢查由 DiscountSpecificExpiryDateField 層級執行
+   * （<input type="date" min={today}>）。
+   *
+   * Mutual exclusion (with discountCustomExpiryDays) 由
+   * DiscountSpecificExpiryDateField handler 層級執行 — 設定新值時清空 days。
+   */
+  setDiscountSpecificExpiryDate: (date) =>
+    set(() => {
+      if (date === null) {
+        return { discountSpecificExpiryDate: null };
+      }
+      if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return {};
+      }
+      return { discountSpecificExpiryDate: date };
+    }),
+
   // ===== Step 6 — Membership 卡邏輯 setters (2026-09-13) =====
   /**
    * 設定卡級「無期限 / 有期限」toggle.
@@ -1920,6 +2226,7 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
         passValidDays: resolved?.passValidDays !== undefined ? resolved.passValidDays as number | null : state.passValidDays,
         expiryDate: (resolved?.expiryDate ?? state.expiryDate) as string,
         currency: (resolved?.currency ?? state.currency) as 'TWD' | 'ZAR',
+        language: (resolved?.language ?? state.language) as 'zh-TW' | 'en',
         leftField: (resolved?.leftField ?? state.leftField) as CardFieldKey | null,
         rightField: (resolved?.rightField ?? state.rightField) as CardFieldKey | null,
         isPaid: (resolved?.isPaid ?? state.isPaid) as boolean,
@@ -2222,10 +2529,36 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
         })(),
         // membershipTiers: defensive parse via sanitizeMembershipTiers.
         // Truncates to MAX_MEMBERSHIP_TIERS=5 and sanitizes each entry.
-        membershipTiers: sanitizeMembershipTiers(
-          resolved?.membershipTiers,
-          state.membershipTiers,
-        ),
+        //
+        // 2026-09-18 fix (regression): second-layer defensive seed. If the
+        // loaded row says `isPaid === false` AND `membershipTiers` is
+        // empty (legacy DB row that pre-dates the free-card editor, or
+        // a corrupted settings payload), seed one default tier so the
+        // free-card editor has something to bind to. Fresh cards never
+        // hit this branch — initialState already seeds the tier.
+        membershipTiers: (() => {
+          const trimmed = sanitizeMembershipTiers(
+            resolved?.membershipTiers,
+            state.membershipTiers,
+          );
+          if (
+            trimmed.length === 0 &&
+            resolved?.isPaid === false
+          ) {
+            return [
+              {
+                id: 'default-membership-tier',
+                name: '',
+                durationType: null,
+                monthlyCost: null,
+                yearlyCost: null,
+                lifetimeCost: null,
+                rewards: [],
+              },
+            ];
+          }
+          return trimmed;
+        })(),
         // ===== Step 6 — Free Membership Card expiry (2026-09-14) =====
         // 3 card-level fields, defensive coerce. Each field independently
         // falls back to current state if not present / not well-typed, so
@@ -2268,6 +2601,84 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
             return raw;
           }
           return state.membershipSpecificExpiryDate;
+        })(),
+        // ===== Step 6 — Discount 卡 loadSettings (2026-09-18) =====
+        // Defensive parse of `resolved.discountTiers` array.
+        // Each tier: { name, thresholdSpend (>=0), discountPercent (1-100) }.
+        // Sorts by thresholdSpend ASC (threshold=0 first = default tier).
+        // Falls back to current state if not present / malformed.
+        discountTiers: (() => {
+          const raw = resolved?.discountTiers;
+          if (!Array.isArray(raw)) return state.discountTiers;
+          const trimmed: Array<DiscountTierShape & { id: string }> = [];
+          for (const entry of raw.slice(0, MAX_DISCOUNT_TIERS)) {
+            if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+            const obj = entry as Record<string, unknown>;
+            const name =
+              typeof obj.name === 'string'
+                ? obj.name.slice(0, DISCOUNT_TIER_NAME_MAX_LENGTH)
+                : '';
+            const thresholdSpend =
+              typeof obj.thresholdSpend === 'number' &&
+              Number.isFinite(obj.thresholdSpend) &&
+              obj.thresholdSpend >= DISCOUNT_THRESHOLD_MIN
+                ? Math.min(Math.round(obj.thresholdSpend), DISCOUNT_THRESHOLD_MAX)
+                : 0;
+            const discountPercent =
+              typeof obj.discountPercent === 'number' &&
+              Number.isFinite(obj.discountPercent) &&
+              obj.discountPercent >= DISCOUNT_PERCENT_MIN &&
+              obj.discountPercent <= DISCOUNT_PERCENT_MAX
+                ? Math.round(obj.discountPercent)
+                : 1;
+            const id =
+              typeof obj.id === 'string'
+                ? obj.id
+                : typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+                ? crypto.randomUUID()
+                : `discount-tier-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+            trimmed.push({ id, name, thresholdSpend, discountPercent });
+          }
+          // Sort by thresholdSpend ASC (threshold=0 first = default tier).
+          // If the cleaned array is empty AND we have no existing state,
+          // seed with the default 1-row baseline (matches initialState).
+          if (trimmed.length === 0 && state.discountTiers.length === 0) {
+            return [
+              {
+                id: 'default-discount-tier',
+                name: '',
+                thresholdSpend: 0,
+                discountPercent: 1,
+              },
+            ];
+          }
+          return trimmed.sort((a, b) => a.thresholdSpend - b.thresholdSpend);
+        })(),
+        // discountCustomExpiryDays: integer in [1, 3650] or null
+        discountCustomExpiryDays: (() => {
+          const raw = resolved?.discountCustomExpiryDays;
+          if (raw === null) return null;
+          if (
+            typeof raw === 'number' &&
+            Number.isInteger(raw) &&
+            raw >= DISCOUNT_CUSTOM_EXPIRY_DAYS_MIN &&
+            raw <= DISCOUNT_CUSTOM_EXPIRY_DAYS_MAX
+          ) {
+            return raw;
+          }
+          return state.discountCustomExpiryDays;
+        })(),
+        // discountSpecificExpiryDate: ISO YYYY-MM-DD string or null
+        discountSpecificExpiryDate: (() => {
+          const raw = resolved?.discountSpecificExpiryDate;
+          if (raw === null) return null;
+          if (
+            typeof raw === 'string' &&
+            /^\d{4}-\d{2}-\d{2}$/.test(raw)
+          ) {
+            return raw;
+          }
+          return state.discountSpecificExpiryDate;
         })(),
       };
     });

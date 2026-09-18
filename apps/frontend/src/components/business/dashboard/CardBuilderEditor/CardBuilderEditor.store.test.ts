@@ -11,7 +11,7 @@
  * cache-busting param the moment we know the key exists.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useCardBuilderStore, computeDefaultExpiryDate } from './CardBuilderEditor.store';
 
 describe('CardBuilderEditor.store — loadSettings cache-busting fix', () => {
@@ -847,6 +847,367 @@ describe('CardBuilderEditor.store — Cashback Card Logic state (Step 6, 2026-09
       useCardBuilderStore.getState().addCashbackTier();
       useCardBuilderStore.getState().reset();
       expect(useCardBuilderStore.getState().cashbackTiers).toEqual([]);
+    });
+  });
+});
+
+// =============================================================================
+// Discount Card Logic store tests (Step 6 — 2026-09-18)
+// =============================================================================
+//
+// Covers the discount sub-module of Step 6 (discount_card):
+//   - addDiscountTier / removeDiscountTier (re-adds default on empty) /
+//     updateDiscountTier / sortDiscountTiers
+//   - setDiscountCustomExpiryDays (clamp [1, 3650], reject non-integer)
+//   - setDiscountSpecificExpiryDate (ISO format validation)
+//   - loadSettings defensive parsing of discountTiers +
+//     discountCustomExpiryDays + discountSpecificExpiryDate
+//   - reset() returns to single default tier + null expiries
+//
+// Differs from cashback:
+//   - removeDiscountTier RE-ADDS 1 default tier if array becomes empty
+//     (matches user requirement "預設一個 row").
+//   - Two extra card-level expiry fields (days, date) with field-level
+//     mutual exclusion — store setters are pure, no exclusion logic here.
+//
+// Mirrors packages/shared/constants/discount-card.ts source-of-truth bounds.
+// =============================================================================
+
+describe('CardBuilderEditor.store — Discount Card Logic state (Step 6, 2026-09-18)', () => {
+  beforeEach(() => {
+    useCardBuilderStore.getState().reset();
+  });
+
+  describe('addDiscountTier', () => {
+    it('appends a new tier with default values', () => {
+      // Note: reset() seeds 1 default tier, so the array starts at length=1.
+      // addDiscountTier appends, so after this call length=2.
+      useCardBuilderStore.getState().addDiscountTier();
+      const s = useCardBuilderStore.getState();
+      expect(s.discountTiers.length).toBe(2);
+      // The freshly added tier has the canonical default values
+      expect(s.discountTiers[1]).toMatchObject({
+        name: '',
+        thresholdSpend: 0,
+        discountPercent: 1,
+      });
+      expect(typeof s.discountTiers[1].id).toBe('string');
+      expect(s.discountTiers[1].id.length).toBeGreaterThan(0);
+    });
+
+    it('is no-op when at MAX_DISCOUNT_TIERS=5', () => {
+      // After reset() we have 1 default. Add 4 more to reach MAX.
+      for (let i = 0; i < 4; i++) {
+        useCardBuilderStore.getState().addDiscountTier();
+      }
+      expect(useCardBuilderStore.getState().discountTiers.length).toBe(5);
+
+      // 6th add is a no-op (max already reached)
+      useCardBuilderStore.getState().addDiscountTier();
+      expect(useCardBuilderStore.getState().discountTiers.length).toBe(5);
+    });
+
+    it('seed id is stable when starting from empty defaults', () => {
+      // reset() seeds with 'default-discount-tier' so auto-add effect
+      // doesn't double-seed at mount. Verify the seeded id is stable.
+      const seeded = useCardBuilderStore.getState().discountTiers;
+      expect(seeded.length).toBe(1);
+      expect(seeded[0].id).toBe('default-discount-tier');
+    });
+  });
+
+  describe('removeDiscountTier', () => {
+    it('removes a non-default tier by id (default tier stays put)', () => {
+      // After reset: [seeded default]. Add one user tier → [default, user].
+      useCardBuilderStore.getState().addDiscountTier();
+      const allBefore = useCardBuilderStore.getState().discountTiers;
+      // Remove the user-added (index 1), not the seeded default.
+      useCardBuilderStore.getState().removeDiscountTier(allBefore[1].id);
+      const remaining = useCardBuilderStore.getState().discountTiers;
+      // Default tier remains, no auto-refill needed (length was 2 → 1, not 0).
+      expect(remaining.length).toBe(1);
+      expect(remaining[0].id).toBe('default-discount-tier');
+    });
+
+    it('auto-refills when the seeded default is removed (default = 1 row invariant)', () => {
+      // User removes the seeded default tier → store re-adds a fresh
+      // default so the UI always has ≥ 1 row.
+      const seededDefault = useCardBuilderStore.getState().discountTiers[0];
+      useCardBuilderStore.getState().removeDiscountTier(seededDefault.id);
+      const after = useCardBuilderStore.getState().discountTiers;
+      expect(after.length).toBe(1);
+      // The new default has the standard {name='', thresholdSpend=0, discountPercent=1} values
+      expect(after[0]).toMatchObject({
+        name: '',
+        thresholdSpend: 0,
+        discountPercent: 1,
+      });
+      // But its id is freshly generated (NOT the 'default-discount-tier' sentinel)
+      expect(after[0].id).not.toBe('default-discount-tier');
+    });
+  });
+
+  describe('updateDiscountTier', () => {
+    let tierId: string;
+
+    beforeEach(() => {
+      useCardBuilderStore.getState().addDiscountTier();
+      tierId = useCardBuilderStore.getState().discountTiers[0].id;
+    });
+
+    it('updates name field', () => {
+      useCardBuilderStore.getState().updateDiscountTier(tierId, { name: 'VIP' });
+      expect(useCardBuilderStore.getState().discountTiers[0].name).toBe('VIP');
+    });
+
+    it('truncates name to DISCOUNT_TIER_NAME_MAX_LENGTH=40', () => {
+      const long = 'A'.repeat(100);
+      useCardBuilderStore.getState().updateDiscountTier(tierId, { name: long });
+      expect(useCardBuilderStore.getState().discountTiers[0].name.length).toBe(40);
+    });
+
+    it('accepts thresholdSpend = 0 (legitimate default tier)', () => {
+      useCardBuilderStore.getState().updateDiscountTier(tierId, { thresholdSpend: 1000 });
+      useCardBuilderStore.getState().updateDiscountTier(tierId, { thresholdSpend: 0 });
+      expect(useCardBuilderStore.getState().discountTiers[0].thresholdSpend).toBe(0);
+    });
+
+    it('rejects thresholdSpend < 0 (keeps previous value)', () => {
+      useCardBuilderStore.getState().updateDiscountTier(tierId, { thresholdSpend: 1000 });
+      useCardBuilderStore.getState().updateDiscountTier(tierId, { thresholdSpend: -1 });
+      expect(useCardBuilderStore.getState().discountTiers[0].thresholdSpend).toBe(1000);
+    });
+
+    it('caps thresholdSpend at DISCOUNT_THRESHOLD_MAX=999_999_999', () => {
+      useCardBuilderStore
+        .getState()
+        .updateDiscountTier(tierId, { thresholdSpend: 999_999_999_999 });
+      expect(useCardBuilderStore.getState().discountTiers[0].thresholdSpend).toBe(999_999_999);
+    });
+
+    it('accepts discountPercent = 1 (lower bound)', () => {
+      useCardBuilderStore.getState().updateDiscountTier(tierId, { discountPercent: 1 });
+      expect(useCardBuilderStore.getState().discountTiers[0].discountPercent).toBe(1);
+    });
+
+    it('accepts discountPercent = 100 (upper bound)', () => {
+      useCardBuilderStore.getState().updateDiscountTier(tierId, { discountPercent: 100 });
+      expect(useCardBuilderStore.getState().discountTiers[0].discountPercent).toBe(100);
+    });
+
+    it('rejects discountPercent < DISCOUNT_PERCENT_MIN=1 (keeps previous)', () => {
+      useCardBuilderStore.getState().updateDiscountTier(tierId, { discountPercent: 50 });
+      useCardBuilderStore.getState().updateDiscountTier(tierId, { discountPercent: 0 });
+      expect(useCardBuilderStore.getState().discountTiers[0].discountPercent).toBe(50);
+    });
+
+    it('rejects discountPercent > DISCOUNT_PERCENT_MAX=100 (keeps previous)', () => {
+      useCardBuilderStore.getState().updateDiscountTier(tierId, { discountPercent: 50 });
+      useCardBuilderStore.getState().updateDiscountTier(tierId, { discountPercent: 200 });
+      expect(useCardBuilderStore.getState().discountTiers[0].discountPercent).toBe(50);
+    });
+
+    it('rejects non-integer discountPercent (5.5 → 6, snap-to-integer)', () => {
+      // Document current behavior: store snaps to Math.round. If behavior
+      // changes to strict-reject, this test will fail and signal the
+      // breakage in PR review.
+      useCardBuilderStore.getState().updateDiscountTier(tierId, { discountPercent: 5.5 });
+      expect(useCardBuilderStore.getState().discountTiers[0].discountPercent).toBe(6);
+    });
+  });
+
+  describe('sortDiscountTiers', () => {
+    it('sorts by thresholdSpend ASC (threshold=0 first)', () => {
+      const tiers = [
+        { id: 'a', name: 'A', thresholdSpend: 500, discountPercent: 10 },
+        { id: 'b', name: 'B', thresholdSpend: 0, discountPercent: 5 },
+        { id: 'c', name: 'C', thresholdSpend: 100, discountPercent: 7 },
+      ];
+      useCardBuilderStore.setState({ discountTiers: tiers });
+
+      useCardBuilderStore.getState().sortDiscountTiers();
+      const sorted = useCardBuilderStore.getState().discountTiers;
+      expect(sorted[0].id).toBe('b'); // thresholdSpend=0
+      expect(sorted[1].id).toBe('c'); // thresholdSpend=100
+      expect(sorted[2].id).toBe('a'); // thresholdSpend=500
+    });
+  });
+
+  describe('setDiscountCustomExpiryDays', () => {
+    it('accepts integer in [1, 3650]', () => {
+      useCardBuilderStore.getState().setDiscountCustomExpiryDays(365);
+      expect(useCardBuilderStore.getState().discountCustomExpiryDays).toBe(365);
+    });
+
+    it('accepts null (no expiry sentinel)', () => {
+      useCardBuilderStore.getState().setDiscountCustomExpiryDays(365);
+      useCardBuilderStore.getState().setDiscountCustomExpiryDays(null);
+      expect(useCardBuilderStore.getState().discountCustomExpiryDays).toBe(null);
+    });
+
+    it('clamps values below DISCOUNT_CUSTOM_EXPIRY_DAYS_MIN=1 to 1', () => {
+      useCardBuilderStore.getState().setDiscountCustomExpiryDays(0);
+      expect(useCardBuilderStore.getState().discountCustomExpiryDays).toBe(1);
+    });
+
+    it('clamps values above DISCOUNT_CUSTOM_EXPIRY_DAYS_MAX=3650 to 3650', () => {
+      useCardBuilderStore.getState().setDiscountCustomExpiryDays(9999);
+      expect(useCardBuilderStore.getState().discountCustomExpiryDays).toBe(3650);
+    });
+
+    it('rejects non-integer (no change, keeps prior value)', () => {
+      // setDiscountCustomExpiryDays rejects non-integer at the store
+      // level (Number.isInteger check); the rejected call returns {}
+      // which is a no-op. So the value stays at whatever it was —
+      // typically null after reset(), or the prior clamped integer.
+      useCardBuilderStore.getState().setDiscountCustomExpiryDays(365.7);
+      // After reset() the value is null; rejected non-integer keeps null.
+      expect(useCardBuilderStore.getState().discountCustomExpiryDays).toBe(null);
+
+      // Set a valid integer, then attempt non-integer → prior value retained.
+      useCardBuilderStore.getState().setDiscountCustomExpiryDays(100);
+      useCardBuilderStore.getState().setDiscountCustomExpiryDays(100.5);
+      expect(useCardBuilderStore.getState().discountCustomExpiryDays).toBe(100);
+    });
+
+    it('store setter does NOT clear discountSpecificExpiryDate (mutual exclusion lives at field handler level)', () => {
+      // The store setter is pure — it only mutates discountCustomExpiryDays.
+      // The DiscountExpiryFields component owns mutual exclusion via its
+      // onChange wrapper.
+      useCardBuilderStore.getState().setDiscountSpecificExpiryDate('2027-01-01');
+      useCardBuilderStore.getState().setDiscountCustomExpiryDays(30);
+      expect(useCardBuilderStore.getState().discountSpecificExpiryDate).toBe('2027-01-01');
+      expect(useCardBuilderStore.getState().discountCustomExpiryDays).toBe(30);
+    });
+  });
+
+  describe('setDiscountSpecificExpiryDate', () => {
+    it('accepts valid ISO YYYY-MM-DD string', () => {
+      useCardBuilderStore.getState().setDiscountSpecificExpiryDate('2027-12-31');
+      expect(useCardBuilderStore.getState().discountSpecificExpiryDate).toBe('2027-12-31');
+    });
+
+    it('accepts null (no expiry sentinel)', () => {
+      useCardBuilderStore.getState().setDiscountSpecificExpiryDate('2027-12-31');
+      useCardBuilderStore.getState().setDiscountSpecificExpiryDate(null);
+      expect(useCardBuilderStore.getState().discountSpecificExpiryDate).toBe(null);
+    });
+
+    it('rejects ISO strings with wrong format (rejects "2027/12/31" / "31-12-2027")', () => {
+      // setDiscountSpecificExpiryDate validates /^\d{4}-\d{2}-\d{2}$/.
+      // Malformed ISO strings are dropped (state stays null).
+      useCardBuilderStore.getState().setDiscountSpecificExpiryDate('2027/12/31');
+      expect(useCardBuilderStore.getState().discountSpecificExpiryDate).toBe(null);
+
+      useCardBuilderStore.getState().setDiscountSpecificExpiryDate('31-12-2027');
+      expect(useCardBuilderStore.getState().discountSpecificExpiryDate).toBe(null);
+    });
+
+    it('past-date validation lives at UI layer (component min=today), not store', () => {
+      // store accepts any valid-format ISO string, including past dates.
+      // The component enforces min={todayIso} which prevents past-date
+      // input at the DOM level, but a programmatic call from another
+      // consumer could still set a past date.
+      useCardBuilderStore.getState().setDiscountSpecificExpiryDate('2020-01-01');
+      expect(useCardBuilderStore.getState().discountSpecificExpiryDate).toBe('2020-01-01');
+    });
+
+    it('store setter does NOT clear discountCustomExpiryDays (mutual exclusion lives at field handler level)', () => {
+      useCardBuilderStore.getState().setDiscountCustomExpiryDays(30);
+      useCardBuilderStore.getState().setDiscountSpecificExpiryDate('2027-01-01');
+      expect(useCardBuilderStore.getState().discountCustomExpiryDays).toBe(30);
+      expect(useCardBuilderStore.getState().discountSpecificExpiryDate).toBe('2027-01-01');
+    });
+  });
+
+  describe('loadSettings — defensive parsing', () => {
+    it('parses valid discountTiers array', () => {
+      useCardBuilderStore.getState().loadSettings({
+        discountTiers: [
+          { name: 'Default', thresholdSpend: 0, discountPercent: 5 },
+          { name: 'Gold', thresholdSpend: 5000, discountPercent: 10 },
+        ],
+      });
+      const s = useCardBuilderStore.getState();
+      expect(s.discountTiers.length).toBe(2);
+      expect(s.discountTiers[0].name).toBe('Default');
+      expect(s.discountTiers[0].thresholdSpend).toBe(0);
+      expect(s.discountTiers[1].name).toBe('Gold');
+    });
+
+    it('preserves existing discountTiers when input is missing', () => {
+      useCardBuilderStore.getState().addDiscountTier();
+      const before = useCardBuilderStore.getState().discountTiers;
+      useCardBuilderStore.getState().loadSettings({ /* no discountTiers */ });
+      const after = useCardBuilderStore.getState().discountTiers;
+      expect(after).toEqual(before);
+    });
+
+    it('clamps malformed tier rows (coerces bounds)', () => {
+      useCardBuilderStore.getState().loadSettings({
+        discountTiers: [
+          // name is not a string → ''
+          // thresholdSpend is negative → 0
+          // discountPercent is out of range → 1
+          { name: 123 as unknown as string, thresholdSpend: -5, discountPercent: 999 },
+        ],
+      });
+      const tier = useCardBuilderStore.getState().discountTiers[0];
+      expect(tier.name).toBe('');
+      expect(tier.thresholdSpend).toBe(0);
+      expect(tier.discountPercent).toBe(1);
+    });
+
+    it('caps array length at MAX_DISCOUNT_TIERS=5', () => {
+      const long = Array.from({ length: 10 }, (_, i) => ({
+        name: `T${i}`,
+        thresholdSpend: i * 100,
+        discountPercent: 1,
+      }));
+      useCardBuilderStore.getState().loadSettings({ discountTiers: long });
+      expect(useCardBuilderStore.getState().discountTiers.length).toBe(5);
+    });
+
+    it('parses discountCustomExpiryDays as integer or null', () => {
+      useCardBuilderStore.getState().loadSettings({ discountCustomExpiryDays: 365 });
+      expect(useCardBuilderStore.getState().discountCustomExpiryDays).toBe(365);
+
+      useCardBuilderStore.getState().loadSettings({ discountCustomExpiryDays: null });
+      expect(useCardBuilderStore.getState().discountCustomExpiryDays).toBe(null);
+    });
+
+    it('parses discountSpecificExpiryDate as ISO string or null', () => {
+      useCardBuilderStore.getState().loadSettings({ discountSpecificExpiryDate: '2027-12-31' });
+      expect(useCardBuilderStore.getState().discountSpecificExpiryDate).toBe('2027-12-31');
+
+      useCardBuilderStore.getState().loadSettings({ discountSpecificExpiryDate: null });
+      expect(useCardBuilderStore.getState().discountSpecificExpiryDate).toBe(null);
+    });
+  });
+
+  describe('reset()', () => {
+    it('returns discountTiers to a single default tier (not empty)', () => {
+      // Match user requirement "預設一個 row".
+      useCardBuilderStore.getState().addDiscountTier();
+      useCardBuilderStore.getState().addDiscountTier();
+      useCardBuilderStore.getState().addDiscountTier();
+      useCardBuilderStore.getState().reset();
+      const s = useCardBuilderStore.getState();
+      expect(s.discountTiers.length).toBe(1);
+      expect(s.discountTiers[0]).toMatchObject({
+        name: '',
+        thresholdSpend: 0,
+        discountPercent: 1,
+      });
+    });
+
+    it('returns both discount expiry fields to null', () => {
+      useCardBuilderStore.getState().setDiscountCustomExpiryDays(30);
+      useCardBuilderStore.getState().setDiscountSpecificExpiryDate('2027-01-01');
+      useCardBuilderStore.getState().reset();
+      const s = useCardBuilderStore.getState();
+      expect(s.discountCustomExpiryDays).toBe(null);
+      expect(s.discountSpecificExpiryDate).toBe(null);
     });
   });
 });

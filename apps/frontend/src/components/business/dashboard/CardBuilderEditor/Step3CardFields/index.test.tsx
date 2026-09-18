@@ -17,7 +17,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 import { Step3CardFields } from './index';
-import { filterCARD_FIELDS_BY_CARD_TYPE, CASHBACK_CARD_TYPES } from './filterCARD_FIELDS_BY_CARD_TYPE';
+import {
+  filterCARD_FIELDS_BY_CARD_TYPE,
+  CASHBACK_CARD_TYPES,
+  DISCOUNT_CARD_TYPES,
+} from './filterCARD_FIELDS_BY_CARD_TYPE';
 import { useCardBuilderStore } from '../CardBuilderEditor.store';
 
 // Mock i18n — vi.fn(key => key) makes t() return the key as text.
@@ -172,6 +176,131 @@ describe('filterCARD_FIELDS_BY_CARD_TYPE — cashback_card group isolation', () 
   });
 });
 
+describe('filterCARD_FIELDS_BY_CARD_TYPE — discount_card group isolation', () => {
+  /**
+   * 2026-09-18 discount card Step 3 display-field extension.
+   *
+   * DISCOUNT_CARD_TYPES = { discount_card }.
+   * discount group fields (pointsToNextTierDiscount, discountTierBracket,
+   * accumulatedSpendDiscount) must appear ONLY when cardType === 'discount_card'.
+   * They must NOT appear for any other card type (mirrors the cashback group
+   * isolation contract — 2026-09-12).
+   */
+
+  it('returns discount-only fields when cardType === discount_card', () => {
+    const fields = filterCARD_FIELDS_BY_CARD_TYPE('discount_card');
+    const keys = fields.map((f) => f.key);
+
+    // Discount group must be visible.
+    expect(keys).toContain('pointsToNextTierDiscount');
+    expect(keys).toContain('discountTierBracket');
+    expect(keys).toContain('accumulatedSpendDiscount');
+  });
+
+  it('returns common fields alongside discount fields for discount_card', () => {
+    const fields = filterCARD_FIELDS_BY_CARD_TYPE('discount_card');
+    const keys = fields.map((f) => f.key);
+
+    // Common group: always shown.
+    expect(keys).toContain('phone');
+    expect(keys).toContain('email');
+    expect(keys).toContain('memberLevel');
+    expect(keys).toContain('birthday');
+    expect(keys).toContain('visitCount');
+    expect(keys).toContain('memberName');
+  });
+
+  it('does NOT return cashback-only fields for discount_card (group isolation)', () => {
+    const fields = filterCARD_FIELDS_BY_CARD_TYPE('discount_card');
+    const keys = fields.map((f) => f.key);
+
+    // Cashback-only group must NOT be visible for discount_card.
+    expect(keys).not.toContain('pointsToNextTierCashback');
+    expect(keys).not.toContain('accumulatedSpendCashback');
+  });
+
+  it('does NOT return reward-only fields for discount_card (group isolation)', () => {
+    const fields = filterCARD_FIELDS_BY_CARD_TYPE('discount_card');
+    const keys = fields.map((f) => f.key);
+
+    expect(keys).not.toContain('pointsToNextTier');
+    expect(keys).not.toContain('currentPoints');
+  });
+
+  it('does NOT return stamp-only fields for discount_card', () => {
+    const fields = filterCARD_FIELDS_BY_CARD_TYPE('discount_card');
+    const keys = fields.map((f) => f.key);
+
+    expect(keys).not.toContain('availableRewards');
+    expect(keys).not.toContain('totalStamps');
+    expect(keys).not.toContain('stampsRemaining');
+  });
+
+  it('discount group fields do NOT appear when cardType is null', () => {
+    const fields = filterCARD_FIELDS_BY_CARD_TYPE(null);
+    const keys = fields.map((f) => f.key);
+
+    // No discount-only fields when cardType is null.
+    expect(keys).not.toContain('pointsToNextTierDiscount');
+    expect(keys).not.toContain('discountTierBracket');
+    expect(keys).not.toContain('accumulatedSpendDiscount');
+  });
+
+  it('discount group fields do NOT appear for cashback_card', () => {
+    const fields = filterCARD_FIELDS_BY_CARD_TYPE('cashback_card');
+    const keys = fields.map((f) => f.key);
+
+    expect(keys).not.toContain('pointsToNextTierDiscount');
+    expect(keys).not.toContain('discountTierBracket');
+    expect(keys).not.toContain('accumulatedSpendDiscount');
+  });
+
+  it('discount group fields do NOT appear for reward_card', () => {
+    const fields = filterCARD_FIELDS_BY_CARD_TYPE('reward_card');
+    const keys = fields.map((f) => f.key);
+
+    expect(keys).not.toContain('pointsToNextTierDiscount');
+    expect(keys).not.toContain('discountTierBracket');
+    expect(keys).not.toContain('accumulatedSpendDiscount');
+  });
+
+  it('discount group fields do NOT appear for stamp_card', () => {
+    const fields = filterCARD_FIELDS_BY_CARD_TYPE('stamp_card');
+    const keys = fields.map((f) => f.key);
+
+    expect(keys).not.toContain('pointsToNextTierDiscount');
+    expect(keys).not.toContain('discountTierBracket');
+    expect(keys).not.toContain('accumulatedSpendDiscount');
+  });
+
+  it('discount group fields do NOT appear for multipass', () => {
+    const fields = filterCARD_FIELDS_BY_CARD_TYPE('multipass');
+    const keys = fields.map((f) => f.key);
+
+    expect(keys).not.toContain('pointsToNextTierDiscount');
+    expect(keys).not.toContain('discountTierBracket');
+    expect(keys).not.toContain('accumulatedSpendDiscount');
+  });
+
+  it('discount group fields do NOT appear for membership_card', () => {
+    const fields = filterCARD_FIELDS_BY_CARD_TYPE('membership_card');
+    const keys = fields.map((f) => f.key);
+
+    expect(keys).not.toContain('pointsToNextTierDiscount');
+    expect(keys).not.toContain('discountTierBracket');
+    expect(keys).not.toContain('accumulatedSpendDiscount');
+  });
+
+  it('DISCOUNT_CARD_TYPES constant contains exactly discount_card', () => {
+    expect(DISCOUNT_CARD_TYPES.size).toBe(1);
+    expect(DISCOUNT_CARD_TYPES.has('discount_card')).toBe(true);
+    expect(DISCOUNT_CARD_TYPES.has('stamp_card')).toBe(false);
+    expect(DISCOUNT_CARD_TYPES.has('cashback_card')).toBe(false);
+    expect(DISCOUNT_CARD_TYPES.has('reward_card')).toBe(false);
+    expect(DISCOUNT_CARD_TYPES.has('membership_card')).toBe(false);
+  });
+});
+
 describe('filterCARD_FIELDS_BY_CARD_TYPE — membership_card hides memberName', () => {
   /**
    * 2026-09-13 membership_card Step 3 display-field opt-out.
@@ -302,6 +431,117 @@ describe('Step3CardFields — cashback_card memberLevel → 獎勵 label overrid
   });
 
   it('does NOT render reward-only field options in the dropdown for cashback_card', () => {
+    render(<Step3CardFields />);
+
+    const selects = screen.getAllByRole('combobox');
+    const leftSelect = selects[0];
+
+    // pointsToNextTier (reward group) must NOT be an option.
+    const rewardOption = leftSelect.querySelector('option[value="pointsToNextTier"]');
+    expect(rewardOption).toBeNull();
+
+    // currentPoints (reward group) must NOT be an option.
+    const currentPointsOption = leftSelect.querySelector('option[value="currentPoints"]');
+    expect(currentPointsOption).toBeNull();
+  });
+});
+
+describe('Step3CardFields — discount_card memberLevel → 折扣等級 label override', () => {
+  /**
+   * 2026-09-18 discount card Step 3 dropdown override.
+   *
+   * When cardType === 'discount_card', the `memberLevel` option in the
+   * left/right field dropdown must render as "折扣等級" / "Discount Tier"
+   * (using `step3.fieldsSection.fields.memberLevelDiscount`) instead of
+   * the original "會員等級" / "Member Level" label.
+   *
+   * Distinct from stamp/reward/cashback override (memberLevelStamp →
+   * "獎勵" / "Reward"): the discount semantic is "tier identity"
+   * rather than "reward earned", so a separate key keeps i18n clean.
+   *
+   * The store mock is swapped per-test via
+   * `vi.mocked(useCardBuilderStore).mockImplementation` so the existing
+   * cashback_card assertions stay unaffected.
+   */
+  beforeEach(() => {
+    vi.mocked(useCardBuilderStore).mockImplementation((selector) => {
+      if (typeof selector !== 'function') return undefined;
+      return selector({
+        // Only the keys actually read by Step3CardFields matter; other
+        // store slices are omitted because the component doesn't read them.
+        leftField: null,
+        rightField: null,
+        setLeftField: vi.fn(),
+        setRightField: vi.fn(),
+        cardType: 'discount_card',
+      } as never);
+    });
+  });
+
+  it('renders the memberLevel option with memberLevelDiscount label (折扣等級) in the left dropdown for discount_card', () => {
+    render(<Step3CardFields />);
+
+    const selects = screen.getAllByRole('combobox');
+    const leftSelect = selects[0];
+
+    // The option with value="memberLevel" should have label "折扣等級"
+    // (from memberLevelDiscount key — distinct from memberLevelStamp).
+    const memberLevelOption = leftSelect.querySelector('option[value="memberLevel"]');
+    expect(memberLevelOption).not.toBeNull();
+    expect(memberLevelOption?.textContent).toContain('memberLevelDiscount');
+    // Must NOT contain memberLevelStamp (semantic differs from stamp/reward/cashback).
+    expect(memberLevelOption?.textContent).not.toContain('memberLevelStamp');
+  });
+
+  it('renders the memberLevel option with memberLevelDiscount label (折扣等級) in the right dropdown for discount_card', () => {
+    render(<Step3CardFields />);
+
+    const selects = screen.getAllByRole('combobox');
+    const rightSelect = selects[1];
+
+    const memberLevelOption = rightSelect.querySelector('option[value="memberLevel"]');
+    expect(memberLevelOption).not.toBeNull();
+    expect(memberLevelOption?.textContent).toContain('memberLevelDiscount');
+  });
+
+  it('renders discount-only field options (pointsToNextTierDiscount, discountTierBracket, accumulatedSpendDiscount) in the dropdown', () => {
+    render(<Step3CardFields />);
+
+    const selects = screen.getAllByRole('combobox');
+    const leftSelect = selects[0];
+
+    // pointsToNextTierDiscount option must be present.
+    const discountOption1 = leftSelect.querySelector('option[value="pointsToNextTierDiscount"]');
+    expect(discountOption1).not.toBeNull();
+    expect(discountOption1?.textContent).toContain('pointsToNextTierDiscount');
+
+    // discountTierBracket option must be present.
+    const discountOption2 = leftSelect.querySelector('option[value="discountTierBracket"]');
+    expect(discountOption2).not.toBeNull();
+    expect(discountOption2?.textContent).toContain('discountTierBracket');
+
+    // accumulatedSpendDiscount option must be present.
+    const discountOption3 = leftSelect.querySelector('option[value="accumulatedSpendDiscount"]');
+    expect(discountOption3).not.toBeNull();
+    expect(discountOption3?.textContent).toContain('accumulatedSpendDiscount');
+  });
+
+  it('does NOT render cashback-only field options in the dropdown for discount_card', () => {
+    render(<Step3CardFields />);
+
+    const selects = screen.getAllByRole('combobox');
+    const leftSelect = selects[0];
+
+    // pointsToNextTierCashback (cashback group) must NOT be an option.
+    const cashbackOption1 = leftSelect.querySelector('option[value="pointsToNextTierCashback"]');
+    expect(cashbackOption1).toBeNull();
+
+    // accumulatedSpendCashback (cashback group) must NOT be an option.
+    const cashbackOption2 = leftSelect.querySelector('option[value="accumulatedSpendCashback"]');
+    expect(cashbackOption2).toBeNull();
+  });
+
+  it('does NOT render reward-only field options in the dropdown for discount_card', () => {
     render(<Step3CardFields />);
 
     const selects = screen.getAllByRole('combobox');

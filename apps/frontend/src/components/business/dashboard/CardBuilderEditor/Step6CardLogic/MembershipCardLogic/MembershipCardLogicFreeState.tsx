@@ -54,11 +54,21 @@ export function MembershipCardLogicFreeState({
 
   const freeTier = membershipTiers[0];
 
-  // 2026-09-14 defensive: `setIsPaid(false)` auto-seeds tier[0], so the
-  // editor should always have a tier to bind to. If for some reason the
-  // store has no tier (e.g. legacy data without auto-seed), render a
-  // brief loading hint instead of crashing.
+  // 2026-09-18 fix (regression): defensive seed in initialState +
+  // loadSettings guarantees `membershipTiers[0]` exists whenever
+  // `isPaid === false`. This fallback should be unreachable in normal
+  // flows; if it ever fires it indicates a code path bypassed the
+  // invariant (e.g. a test manually setState'd an empty array, or
+  // someone refactored away the seed). Log a warning so the regression
+  // is loud rather than silent.
   if (!freeTier) {
+    if (typeof console !== 'undefined') {
+      console.warn(
+        '[MembershipCardLogicFreeState] membershipTiers is empty when isPaid=false. ' +
+        'This should not happen with proper initial-state seeding. ' +
+        'Investigate loadSettings or reset path.',
+      );
+    }
     return (
       <section className="flex min-w-0 flex-col items-start gap-3 rounded-lg border border-dashed border-border bg-muted/20 p-6">
         <p className="text-sm text-muted-foreground">

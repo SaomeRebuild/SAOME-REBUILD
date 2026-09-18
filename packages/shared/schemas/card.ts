@@ -75,6 +75,11 @@ export const currencySchema = z.enum(['TWD', 'ZAR']);
 
 export type Currency = z.infer<typeof currencySchema>;
 
+// ===== Card Language =====
+
+export const languageSchema = z.enum(['zh-TW', 'en']);
+export type CardLanguage = z.infer<typeof languageSchema>;
+
 // ===== Template Status =====
 
 export const templateStatusSchema = z.enum(['draft', 'published', 'abandoned']);
@@ -112,6 +117,14 @@ export const templateSettingsSchema = z.object({
   passValidDays: z.number().int().positive().nullable().optional(),
   expiryDate: z.string().optional(),
   currency: currencySchema.optional(),
+  /**
+   * Card display language. Controls which language the card fields are
+   * translated into when sent to Passcreator (deferred — not implemented
+   * yet). Per-card property (not per-tenant) so different cards in the
+   * same tenant can serve different language audiences.
+   * 2026-09-18 Step 2: added for Passcreator future integration.
+   */
+  language: languageSchema.optional(),
   // Step 3-4 (TBD)
   issuerLogo: z.string().optional(),
   /**
@@ -536,6 +549,64 @@ export const templateSettingsSchema = z.object({
     )
     .max(5)
     .optional(),
+  // ===== Step 6 — Discount 卡 (2026-09-18, discount_card only) =====
+  // Mirrors mu-plugins cashback-tier structure but semantically
+  // represents a DISCOUNT (reduces purchase price) rather than
+  // CASHBACK (refund after purchase). Same shape as cashbackTiers;
+  // the percent field is `discountPercent` instead of `cashbackPercent`.
+  //
+  // Cross-references:
+  //   - packages/shared/constants/discount-card.ts (single source of truth)
+  //   - apps/backend/src/modules/cards/schemas/request.ts (mirror)
+  //   - apps/backend/src/modules/cards/db/templates.ts (TemplateSettings interface)
+  /**
+   * 折扣級距陣列 (最多 5 組).
+   * 每個 tier 包含 name + thresholdSpend + discountPercent.
+   *
+   * 排序由前端 store 負責（thresholdSpend ASC，threshold=0 在最前）;
+   * 後端只驗證結構與範圍，不強制排序。
+   */
+  discountTiers: z
+    .array(
+      z.object({
+        /** 折扣等級名稱 (例: "金級", "VIP"). Required. */
+        name: z.string().min(1).max(40),
+        /** 累積消費門檻 (in store currency units). 0 = 預設 tier, 人人享有. */
+        thresholdSpend: z.number().min(0),
+        /** 折扣%數, 整數 [1, 100]. */
+        discountPercent: z.number().int().min(1).max(100),
+      }),
+    )
+    .max(5)
+    .optional(),
+  // ===== Step 6 — Discount 卡 expiry (2026-09-18, discount_card only) =====
+  // Optional card-level expiry. Mirrors membership expiry pattern:
+  // two nullable fields, mutually exclusive at the field handler level,
+  // no card-wide toggle (no `hasDiscountExpiry` field).
+  //
+  // Both are nullable; null = no expiry (matches cashback card behavior).
+  //
+  // Cross-references:
+  //   - packages/shared/constants/discount-card.ts (bounds)
+  /**
+   * 折扣卡自訂有效天數. 整數 [DISCOUNT_CUSTOM_EXPIRY_DAYS_MIN=1,
+   * DISCOUNT_CUSTOM_EXPIRY_DAYS_MAX=3650 (10 年)].
+   * 與 discountSpecificExpiryDate 互斥（field handler 層級強制）.
+   * null = 未填 = 無到期.
+   */
+  discountCustomExpiryDays: z
+    .number()
+    .int()
+    .min(1)
+    .max(3650)
+    .nullable()
+    .optional(),
+  /**
+   * 折扣卡指定到期日. ISO YYYY-MM-DD 字串.
+   * 與 discountCustomExpiryDays 互斥（field handler 層級強制）.
+   * null = 未填 = 無到期.
+   */
+  discountSpecificExpiryDate: z.string().nullable().optional(),
 });
 
 export type TemplateSettings = z.infer<typeof templateSettingsSchema>;

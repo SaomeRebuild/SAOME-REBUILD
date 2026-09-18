@@ -39,6 +39,23 @@ vi.mock('react-i18next', () => ({
 afterEach(() => {
   step6Renders = 0;
   useCardBuilderStore.getState().reset();
+  // 2026-09-18: Reset the multi-tier Step 6 fields to `[]` so each test
+  // starts from a clean slate. The store's `reset()` restores the typed
+  // initial state, which includes the baseline 1-row seed for
+  // `discountTiers` (per user requirement "預設一個 row") and the
+  // baseline 1-row `membershipTiers` (2026-09-18 regression fix for
+  // `MembershipCardLogicFreeState`). For tests that exercise a specific
+  // card type, the multi-tier arrays are typically expected to be empty
+  // unless the test injects values via `setState`. Without this explicit
+  // reset the seed row would leak into the save-payload expect diffs.
+  useCardBuilderStore.setState({
+    membershipTiers: [],
+    rewardTiers: [],
+    cashbackTiers: [],
+    discountTiers: [],
+    discountCustomExpiryDays: null,
+    discountSpecificExpiryDate: null,
+  });
   cleanup();
 });
 
@@ -777,6 +794,231 @@ describe('CardBuilderEditorWorkspace — Step 6 (2026-09-07 stamp card logic int
       membershipExpiryMode: undefined,
       membershipCustomExpiryDays: undefined,
       membershipSpecificExpiryDate: undefined,
+    });
+
+    expect(onStepChange).toHaveBeenCalledWith(7);
+  });
+
+  // ===== 2026-09-18 isDiscountStep6Valid tests =====
+  // Per user clarification: card expiry is REQUIRED — at least ONE of
+  // (discountCustomExpiryDays, discountSpecificExpiryDate) must be set.
+  // Otherwise the user should design a Cashback card instead.
+  //
+  // Mirrors isCashbackStep6Valid test pattern above.
+  it('discount_card: Next disabled when tier name is empty (regression — basic tier check still works)', () => {
+    useCardBuilderStore.setState({
+      cardType: 'discount_card',
+      discountTiers: [
+        { id: 't-1', name: '', thresholdSpend: 0, discountPercent: 5 },
+      ],
+      // Provide an expiry so the only failing gate is the tier name.
+      discountCustomExpiryDays: 365,
+      discountSpecificExpiryDate: null,
+    });
+    render(
+      <CardBuilderEditorWorkspace
+        step={6}
+        onStepChange={vi.fn()}
+        cardType="discount_card"
+        cardId="d-noname"
+        onCardTypeChange={vi.fn()}
+        onSave={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('step1.next')).toBeDisabled();
+  });
+
+  it('discount_card: Next disabled when both expiry fields are null (REQUIRED — user clarification 2026-09-18)', () => {
+    // Per user: "他不該是選填，應該是必填其中之一，不然的話去設計Cashback卡就好"
+    // Tier is valid (default tier with name) but no expiry set → invalid.
+    useCardBuilderStore.setState({
+      cardType: 'discount_card',
+      discountTiers: [
+        { id: 't-1', name: '一般會員', thresholdSpend: 0, discountPercent: 5 },
+      ],
+      discountCustomExpiryDays: null,
+      discountSpecificExpiryDate: null,
+    });
+    render(
+      <CardBuilderEditorWorkspace
+        step={6}
+        onStepChange={vi.fn()}
+        cardType="discount_card"
+        cardId="d-no-expiry"
+        onCardTypeChange={vi.fn()}
+        onSave={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('step1.next')).toBeDisabled();
+  });
+
+  it('discount_card: Next enabled when days is set (one expiry field is enough)', () => {
+    useCardBuilderStore.setState({
+      cardType: 'discount_card',
+      discountTiers: [
+        { id: 't-1', name: '一般會員', thresholdSpend: 0, discountPercent: 5 },
+      ],
+      discountCustomExpiryDays: 365,
+      discountSpecificExpiryDate: null,
+    });
+    render(
+      <CardBuilderEditorWorkspace
+        step={6}
+        onStepChange={vi.fn()}
+        cardType="discount_card"
+        cardId="d-days-ok"
+        onCardTypeChange={vi.fn()}
+        onSave={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('step1.next')).not.toBeDisabled();
+  });
+
+  it('discount_card: Next enabled when date is set (one expiry field is enough)', () => {
+    useCardBuilderStore.setState({
+      cardType: 'discount_card',
+      discountTiers: [
+        { id: 't-1', name: '一般會員', thresholdSpend: 0, discountPercent: 5 },
+      ],
+      discountCustomExpiryDays: null,
+      discountSpecificExpiryDate: '2027-12-31',
+    });
+    render(
+      <CardBuilderEditorWorkspace
+        step={6}
+        onStepChange={vi.fn()}
+        cardType="discount_card"
+        cardId="d-date-ok"
+        onCardTypeChange={vi.fn()}
+        onSave={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('step1.next')).not.toBeDisabled();
+  });
+
+  it('discount_card: Next disabled when days is OUT OF RANGE (defensive — store clamps but corrupt DB may bypass)', () => {
+    // Store setter clamps to [1, 3650]; loadSettings coerces. But if a
+    // corrupted DB row leaks through with an out-of-range value, the
+    // workspace validation must still block Next.
+    useCardBuilderStore.setState({
+      cardType: 'discount_card',
+      discountTiers: [
+        { id: 't-1', name: '一般會員', thresholdSpend: 0, discountPercent: 5 },
+      ],
+      // Bypass the setter by writing directly to the state shape.
+      // (Valid in unit tests; production setter would clamp to 3650.)
+      discountCustomExpiryDays: 9999,
+      discountSpecificExpiryDate: null,
+    });
+    render(
+      <CardBuilderEditorWorkspace
+        step={6}
+        onStepChange={vi.fn()}
+        cardType="discount_card"
+        cardId="d-days-bad"
+        onCardTypeChange={vi.fn()}
+        onSave={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('step1.next')).toBeDisabled();
+  });
+
+  it('discount_card: Next enabled for multi-tier with days expiry (sorted ASC by thresholdSpend)', () => {
+    useCardBuilderStore.setState({
+      cardType: 'discount_card',
+      discountTiers: [
+        { id: 't-1', name: '一般', thresholdSpend: 0, discountPercent: 1 },
+        { id: 't-2', name: '銀卡', thresholdSpend: 1000, discountPercent: 3 },
+        { id: 't-3', name: '金卡', thresholdSpend: 5000, discountPercent: 5 },
+      ],
+      discountCustomExpiryDays: 365,
+      discountSpecificExpiryDate: null,
+    });
+    render(
+      <CardBuilderEditorWorkspace
+        step={6}
+        onStepChange={vi.fn()}
+        cardType="discount_card"
+        cardId="d-multi-ok"
+        onCardTypeChange={vi.fn()}
+        onSave={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('step1.next')).not.toBeDisabled();
+  });
+
+  it('discount_card: handleNext forwards sanitized discountTiers + both expiry fields (REQUIRED both sent)', async () => {
+    // Per user clarification 2026-09-18: discount card MUST have an expiry;
+    // both expiry fields are forwarded on save (the API contract preserves
+    // whichever the user picked; mutually-exclusive invariant guarantees
+    // at most one is non-null at any time, but the field-handler contract
+    // is the authority).
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    useCardBuilderStore.setState({
+      cardType: 'discount_card',
+      // Deliberately unsorted — store sorts ASC on save.
+      discountTiers: [
+        { id: 't-1', name: '金卡', thresholdSpend: 5000, discountPercent: 5 },
+        { id: 't-2', name: '一般', thresholdSpend: 0, discountPercent: 1 },
+      ],
+      discountCustomExpiryDays: 365,
+      discountSpecificExpiryDate: null,
+    });
+
+    const onStepChange = vi.fn();
+    render(
+      <CardBuilderEditorWorkspace
+        step={6}
+        onStepChange={onStepChange}
+        cardType="discount_card"
+        cardId="d-save"
+        onCardTypeChange={vi.fn()}
+        onSave={onSave}
+        onBack={vi.fn()}
+      />,
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByText('step1.next'));
+
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalledTimes(1);
+    });
+
+    expect(onSave).toHaveBeenCalledWith('d-save', {
+      // Stamp / reward / cashback / membership fields (not applicable for discount_card)
+      stampAccrualMode: null,
+      rewardName: '',
+      rewardType: null,
+      rewardValue: null,
+      maxDiscountAmount: null,
+      stampsPerVisitCount: null,
+      stampsPerVisitStamps: null,
+      stampsPerSpendAmount: null,
+      stampsPerSpendStamps: null,
+      earningMode: null,
+      hasExpiry: false,
+      membershipTiers: [],
+      rewardTiers: [],
+      cashbackTiers: [],
+      membershipExpiryMode: undefined,
+      membershipCustomExpiryDays: undefined,
+      membershipSpecificExpiryDate: undefined,
+      // 2026-09-18: Discount card fields. tiers sorted ASC by
+      // thresholdSpend (threshold=0 first); id stripped.
+      discountTiers: [
+        { name: '一般', thresholdSpend: 0, discountPercent: 1 },
+        { name: '金卡', thresholdSpend: 5000, discountPercent: 5 },
+      ],
+      // Expiry: days filled, date null. Both fields sent.
+      discountCustomExpiryDays: 365,
+      discountSpecificExpiryDate: null,
     });
 
     expect(onStepChange).toHaveBeenCalledWith(7);

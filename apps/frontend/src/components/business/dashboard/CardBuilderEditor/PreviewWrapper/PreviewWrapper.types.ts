@@ -89,6 +89,20 @@ export interface PreviewWrapperProps {
    */
   membershipTiersRewards?: ReadonlyArray<{ label: string; value: string }>;
   /**
+   * 2026-09-18 discount card — First discount tier name from the editor
+   * store (Step 6 `discountTiers[0].name`). Forwarded to
+   * PassCardPreviewBody so the `memberLevel` slot surfaces as a
+   * "折扣等級" preview with this value when cardType is `discount_card`.
+   * Optional — when omitted / empty / no-tiers, the preview renders an
+   * empty string (matches stamp/reward/cashback/membership empty-input
+   * UX).
+   *
+   * Mirrors the `firstCashbackTierName` / `firstMembershipTierName`
+   * pattern: each card type reads the FIRST tier's name from its own
+   * multi-tier array.
+   */
+  firstDiscountTierName?: string;
+  /**
    * 2026-09-13 membership card — boolean flag indicating the card is a
    * paid membership card. Gates:
    *   - PassCardPreviewStrip: switch to UserIcon + label/value pair

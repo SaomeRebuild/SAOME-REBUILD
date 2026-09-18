@@ -101,6 +101,45 @@
  *   (會員獎勵 sub-rows from the first tier), but the FRONT-side
  *   left/right memberLevel slot now ALSO reflects the first tier name.
  *
+ * Discount card member-level → first tier name override (2026-09-18):
+ *   - When `cardType === 'discount_card'` AND the picked field is
+ *     `'memberLevel'`, the slot renders as
+ *       label = `fieldPreview.memberLevel.discountLabel` ("折扣等級" /
+ *             "Discount Tier") — distinct i18n key from stampLabel
+ *       value = `firstDiscountTierName` (Step 6 `discountTiers[0].name`)
+ *     so the live preview reflects the user's first discount tier name.
+ *   - When `firstDiscountTierName` is empty / undefined / no tiers, the
+ *     value renders as `''` — matching the stamp/reward/cashback/membership
+ *     empty-string UX.
+ *   - Differs from stamp/reward/cashback ONLY in the label (uses
+ *     `discountLabel` instead of `stampLabel`). Differs from membership
+ *     ONLY in the label too (membership uses default `memberLevel.label`).
+ *   - Value source contract is identical to stamp/reward/cashback/membership:
+ *     read the first row's name from the multi-tier array.
+ *
+ * Discount currency-driven amount fields (2026-09-18):
+ *   When the picked field is one of the discount-only amount fields
+ *   (`pointsToNextTierDiscount` or `accumulatedSpendDiscount`), the
+ *   `value` is sourced from `DISCOUNT_PREVIEW_AMOUNTS[currency]` — the
+ *   same currency-driven pattern used by `CASHBACK_PREVIEW_AMOUNTS` and
+ *   `BALANCE_PREVIEW_AMOUNTS`. TWD → "234元" / "556元" | ZAR → "R234" / "R556".
+ *   The demo values differ (234 / 556 vs cashback's 562 / 3301) because
+ *   each card type's preview is independently sampled.
+ *
+ *   Reason for moving values to shared constants (Rule 023 § 翻譯書寫紀律):
+ *   en translations may not contain Han characters, so "234元" cannot live
+ *   in passCard.en.ts. The discount amount map mirrors cashback's (same
+ *   reason, same pattern).
+ *
+ * Discount tier bracket (2026-09-18):
+ *   When the picked field is `discountTierBracket`, the value is rendered
+ *   directly from the store: `discountTiers[0].discountPercent` formatted
+ *   as `"<percent>%"` (e.g. "10%"). This field is NOT i18n-driven and NOT
+ *   currency-driven — it is a pure store-derived string. Empty / undefined
+ *   / no tiers → renders the default tier's percent (the store seeds a
+ *   default tier with `discountPercent = 1`, so the preview will show
+ *   "1%" rather than empty when the user has not yet edited the tier).
+ *
  * Cashback currency-driven amount (2026-09-12, refined 2026-09-13):
  *   When the picked field is one of the cashback-only amount fields
  *   (`pointsToNextTierCashback` or `accumulatedSpendCashback`), the
@@ -136,6 +175,7 @@ import type { CardFieldKey } from '@saome/shared/constants/card-fields';
 import type { CardType } from '@saome/shared/schemas/card';
 import type { Currency } from '@saome/shared/schemas/card';
 import { CASHBACK_PREVIEW_AMOUNTS } from '@saome/shared/constants/cashbackPreviewAmounts';
+import { DISCOUNT_PREVIEW_AMOUNTS } from '@saome/shared/constants/discountPreviewAmounts';
 import {
   STAMPS_PER_ROW,
   type StampGridRows,
@@ -209,6 +249,20 @@ interface PassCardPreviewBodyProps {
    * the user's first tier name.
    */
   firstMembershipTierName?: string;
+  /**
+   * 2026-09-18 discount card — First discount tier name from the editor
+   * store (Step 6 `discountTiers[0].name`). Surfaced as the preview
+   * `value` when `cardType === 'discount_card'` AND the picked field is
+   * `'memberLevel'`. Optional — when omitted / empty / when
+   * `discountTiers` is empty, the preview renders an empty value
+   * (matches stamp/reward/cashback/membership empty-string UX).
+   *
+   * Note: unlike stamp/reward/cashback (which use `stampLabel`), the
+   * discount override uses `fieldPreview.memberLevel.discountLabel`
+   * ("折扣等級" / "Discount Tier") as the label — a separate i18n key
+   * reflecting the discount semantic ("tier identity", not "reward earned").
+   */
+  firstDiscountTierName?: string;
 }
 
 /**
@@ -225,17 +279,29 @@ interface PassCardPreviewBodyProps {
  *                                           value = firstCashbackTierName ?? '')
  *   5. `membership_card + memberLevel`   → membership-card override (label = default
  *                                           memberLevel.label, value = firstMembershipTierName ?? '')
- *   6. `totalStamps`                     → rows × STAMPS_PER_ROW interpolation
- *   7. cashback amount fields            → currency-driven
+ *   6. `discount_card + memberLevel`     → discount-card override (label = discountLabel,
+ *                                           value = firstDiscountTierName ?? '')
+ *   7. `totalStamps`                     → rows × STAMPS_PER_ROW interpolation
+ *   8. `discountTierBracket`             → store-derived "X%" (NOT i18n, NOT currency)
+ *   9. cashback amount fields            → currency-driven
  *                                           (`CASHBACK_PREVIEW_AMOUNTS[currency][field]`)
- *   8. default                           → `fieldPreview.{key}.label` + `.value`
+ *  10. discount amount fields            → currency-driven
+ *                                           (`DISCOUNT_PREVIEW_AMOUNTS[currency][field]`)
+ *  11. default                           → `fieldPreview.{key}.label` + `.value`
  *                                           (NO ZAR formatter — values are demo
  *                                            data and are NOT currency-dependent)
  *
- * The stamp/reward/cashback/membership-card branches are checked BEFORE the
- * `totalStamps` branch because `memberLevel` is a `common`-group field and
- * could conceptually appear alongside `totalStamps` in the two slots; the
- * member-level override is the more specific case.
+ * The stamp/reward/cashback/membership/discount-card branches are checked
+ * BEFORE the `totalStamps` branch because `memberLevel` is a `common`-group
+ * field and could conceptually appear alongside `totalStamps` in the two
+ * slots; the member-level override is the more specific case.
+ *
+ * The `discountTierBracket` branch sits between `totalStamps` and the
+ * cashback amount branch because it shares the same "store-derived demo
+ * value" pattern as `totalStamps` (no i18n, no currency map) but operates
+ * on a single key rather than needing `stampGridRows`. Both branches
+ * short-circuit the cashback/discount amount branches below because
+ * `discountTierBracket` is NOT currency-driven.
  *
  * Cashback amount branch (2026-09-13 ZAR pollution fix):
  *   The two cashback-only display fields (`pointsToNextTierCashback` and
@@ -244,6 +310,11 @@ interface PassCardPreviewBodyProps {
  *   pattern as `BALANCE_PREVIEW_AMOUNTS` for the balance preview block).
  *   This replaces the previous regex-based `R`-prefix formatter (which
  *   contaminated every i18n-sourced value on every card type).
+ *
+ * Discount amount branch (2026-09-18):
+ *   Same pattern as cashback: the two discount-only display fields
+ *   (`pointsToNextTierDiscount` and `accumulatedSpendDiscount`) read
+ *   their value from `DISCOUNT_PREVIEW_AMOUNTS[currency]`.
  *
  * Branch order:
  *   1. `!field`                          → placeholder (左欄位 / 右欄位)
@@ -255,10 +326,15 @@ interface PassCardPreviewBodyProps {
  *                                           value = firstCashbackTierName ?? '')
  *   5. `membership_card + memberLevel`   → membership-card override (label = default
  *                                           memberLevel.label, value = firstMembershipTierName ?? '')
- *   6. `totalStamps`                     → rows × STAMPS_PER_ROW interpolation
- *   7. cashback amount fields            → CASHBACK_PREVIEW_AMOUNTS[currency][field]
+ *   6. `discount_card + memberLevel`     → discount-card override (label = discountLabel,
+ *                                           value = firstDiscountTierName ?? '')
+ *   7. `totalStamps`                     → rows × STAMPS_PER_ROW interpolation
+ *   8. `discountTierBracket`             → store-derived "X%" (NOT i18n, NOT currency)
+ *   9. cashback amount fields            → CASHBACK_PREVIEW_AMOUNTS[currency][field]
  *                                           (currency-driven, like balance preview)
- *   8. default                           → `fieldPreview.{key}.label` + `.value`
+ *  10. discount amount fields            → DISCOUNT_PREVIEW_AMOUNTS[currency][field]
+ *                                           (currency-driven, like balance preview)
+ *  11. default                           → `fieldPreview.{key}.label` + `.value`
  *                                           (NO ZAR formatter — values are demo
  *                                            data and are NOT currency-dependent)
  */
@@ -271,6 +347,8 @@ function resolveSlot(
   firstRewardTierName: string | undefined,
   firstCashbackTierName: string | undefined,
   firstMembershipTierName: string | undefined,
+  firstDiscountTierName: string | undefined,
+  discountTierBracket: string | undefined,
   currency: Currency,
 ): { label: string; value: string } {
   if (!field) {
@@ -324,6 +402,35 @@ function resolveSlot(
     };
   }
 
+  // Discount card override (2026-09-18): the `memberLevel` slot uses a
+  // DISTINCT label ("折扣等級" / "Discount Tier") — different from
+  // stamp/reward/cashback (which use stampLabel "Reward") AND from
+  // membership (which uses default `memberLevel.label`). The value
+  // source is the FIRST row of the Step 6 `discountTiers` array
+  // (same contract as cashback/membership). Empty / undefined / no-tiers
+  // → empty string (matches the stamp/reward/cashback/membership UX).
+  if (cardType === 'discount_card' && field === 'memberLevel') {
+    return {
+      label: t('fieldPreview.memberLevel.discountLabel'),
+      value: firstDiscountTierName ?? '',
+    };
+  }
+
+  // Discount tier bracket (2026-09-18): NOT i18n-driven, NOT
+  // currency-driven. The value is rendered directly from the store:
+  // `discountTiers[0].discountPercent` formatted as "<percent>%". This
+  // branch handles only the `discountTierBracket` field key (it does not
+  // depend on cardType since the dropdown filter already restricts this
+  // option to `discount_card`). Empty `discountTierBracket` (which
+  // shouldn't happen — the store always seeds a default tier) renders
+  // as an empty string rather than crashing.
+  if (field === 'discountTierBracket') {
+    return {
+      label: t(`fieldPreview.${field}.label`),
+      value: discountTierBracket ?? '',
+    };
+  }
+
   if (field === 'totalStamps') {
     // The user picks a row count (1..4); the displayed denominator is the
     // total stamp count = rows × STAMPS_PER_ROW. We pre-multiply here so
@@ -352,6 +459,22 @@ function resolveSlot(
     };
   }
 
+  // Discount amount branch (2026-09-18): the two discount-only display
+  // fields are currency-driven, NOT i18n-driven. Their values live in
+  // `@saome/shared/constants/discountPreviewAmounts.ts` — same pattern
+  // as `CASHBACK_PREVIEW_AMOUNTS` and `BALANCE_PREVIEW_AMOUNTS`. The
+  // demo values (234 / 556) differ from cashback (562 / 3301) because
+  // each card type's preview is independently sampled.
+  if (
+    field === 'pointsToNextTierDiscount' ||
+    field === 'accumulatedSpendDiscount'
+  ) {
+    return {
+      label: t(`fieldPreview.${field}.label`),
+      value: DISCOUNT_PREVIEW_AMOUNTS[currency][field],
+    };
+  }
+
   // Default: read label + value from i18n fieldPreview.{key} verbatim.
   // Values are demo data and are NOT currency-dependent (phone numbers,
   // names, dates, counts, etc. have no concept of currency), so we do
@@ -374,17 +497,27 @@ export function PassCardPreviewBody({
   firstRewardTierName,
   firstCashbackTierName,
   firstMembershipTierName,
+  firstDiscountTierName,
 }: PassCardPreviewBodyProps) {
   const { t } = useTranslation('passCard');
 
   // Currency awareness (2026-09-13 ZAR pollution fix): read the current
   // card currency from the editor store so the two cashback amount fields
-  // (`pointsToNextTierCashback`, `accumulatedSpendCashback`) can source
-  // their value from `CASHBACK_PREVIEW_AMOUNTS[currency]`. All other
-  // fields are currency-agnostic demo data — they do NOT receive any ZAR
-  // prefix transformation. The previous regex-based formatter (which
-  // contaminated every i18n-sourced value) has been removed.
+  // (`pointsToNextTierCashback`, `accumulatedSpendCashback`) AND the two
+  // discount amount fields (`pointsToNextTierDiscount`,
+  // `accumulatedSpendDiscount`) can source their value from their
+  // respective currency-driven constants. All other fields are
+  // currency-agnostic demo data — they do NOT receive any ZAR prefix
+  // transformation. The previous regex-based formatter (which contaminated
+  // every i18n-sourced value) has been removed.
   const currency = useCardBuilderStore((s) => s.currency);
+
+  // Discount tier bracket value (2026-09-18): read the FIRST discount
+  // tier's `discountPercent` from the store. The store seeds a default
+  // tier with `discountPercent = 1`, so the preview will show "1%" when
+  // the user has not yet edited the tier (rather than an empty placeholder).
+  const discountTiers = useCardBuilderStore((s) => s.discountTiers);
+  const discountTierBracket = `${discountTiers?.[0]?.discountPercent ?? 0}%`;
 
   // Demo label/value 配對（PassCreator Label + Value 格式）
   const leftPreview = resolveSlot(
@@ -396,6 +529,8 @@ export function PassCardPreviewBody({
     firstRewardTierName,
     firstCashbackTierName,
     firstMembershipTierName,
+    firstDiscountTierName,
+    discountTierBracket,
     currency,
   );
   const rightPreview = resolveSlot(
@@ -407,6 +542,8 @@ export function PassCardPreviewBody({
     firstRewardTierName,
     firstCashbackTierName,
     firstMembershipTierName,
+    firstDiscountTierName,
+    discountTierBracket,
     currency,
   );
 

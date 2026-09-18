@@ -41,7 +41,7 @@
  * `templates.name`, so duplicating it as a left/right face field is
  * redundant. See plan `membership_card_conditional_ui_hide` (2026-09-13).
  */
-export type CardFieldGroup = 'common' | 'stamp' | 'reward' | 'cashback';
+export type CardFieldGroup = 'common' | 'stamp' | 'reward' | 'cashback' | 'discount';
 
 /**
  * Canonical field keys. Order is user-visible in the dropdown for common
@@ -88,6 +88,23 @@ export const CARD_FIELD_KEYS = [
   // (2026-09-12 copy fix: "Points to Next Tier" → "Amount to Next Tier".)
   'pointsToNextTierCashback',
   'accumulatedSpendCashback',
+  // ── discount: only discount_card ───────────────────────────────────────
+  // 2026-09-18 discount card Step 3 display-field extension:
+  //   pointsToNextTierDiscount  — 到下一級還差 / Amount to Next Tier
+  //   discountTierBracket       — 折扣級距 / Discount Tier Bracket
+  //   accumulatedSpendDiscount  — 累積消費 / Accumulated Spending
+  // Discount fields mirror the cashback shape but use distinct keys:
+  //   - The tier value source differs (discountTiers[0].discountPercent
+  //     for the bracket vs cashbackTiers[0].cashbackPercent for the
+  //     cashback equivalent).
+  //   - The semantic intent differs (discount = price reduction vs
+  //     cashback = post-purchase refund).
+  // The English label for `pointsToNextTierDiscount` mirrors the cashback
+  // "Amount to Next Tier" copy (same spend-based currency contract, no
+  // "Points" suffix).
+  'pointsToNextTierDiscount',
+  'discountTierBracket',
+  'accumulatedSpendDiscount',
 ] as const;
 
 /**
@@ -111,6 +128,7 @@ export interface CardFieldDefinition {
    * - 'stamp'   : only shown when cardType ∈ {stamp_card, multipass}
    * - 'reward'  : only shown when cardType === 'reward_card'
    * - 'cashback': only shown when cardType === 'cashback_card'
+   * - 'discount': only shown when cardType === 'discount_card'
    */
   group: CardFieldGroup;
   /**
@@ -185,4 +203,15 @@ export const CARD_FIELDS: readonly CardFieldDefinition[] = [
   // wired (same deferred path as phone / email / visitCount).
   { key: 'pointsToNextTierCashback',   group: 'cashback', labelKey: 'step3.fieldsSection.fields.pointsToNextTierCashback' },
   { key: 'accumulatedSpendCashback',   group: 'cashback', labelKey: 'step3.fieldsSection.fields.accumulatedSpendCashback' },
+  // ── discount: only discount_card (2026-09-18) ────────────────────────
+  // Display-field extension for the Discount Card tier system. Preview values
+  // for the two amount fields are static demo strings sourced from the
+  // currency-driven `DISCOUNT_PREVIEW_AMOUNTS` constant (same pattern as
+  // cashback); the `discountTierBracket` field renders the live
+  // `discountTiers[0].discountPercent` directly from the store.
+  // Real values will be sourced from the member row once PassCreator is
+  // wired (same deferred path as phone / email / visitCount).
+  { key: 'pointsToNextTierDiscount',   group: 'discount', labelKey: 'step3.fieldsSection.fields.pointsToNextTierDiscount' },
+  { key: 'discountTierBracket',        group: 'discount', labelKey: 'step3.fieldsSection.fields.discountTierBracket' },
+  { key: 'accumulatedSpendDiscount',   group: 'discount', labelKey: 'step3.fieldsSection.fields.accumulatedSpendDiscount' },
 ];

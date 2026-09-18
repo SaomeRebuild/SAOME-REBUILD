@@ -93,6 +93,12 @@ export default {
     currency: {
       title: '貨幣',
     },
+    language: {
+      title: '卡片語言',
+      zhTW: '中文',
+      en: 'English',
+      hint: '選擇發送的卡片的語言',
+    },
     membershipExtension: {
       title: '會員卡選項',
       isPaid: '需收費',
@@ -129,6 +135,11 @@ export default {
         // Stamp Card 限定覆寫：選 stamp_card 時「會員等級」option 顯示為「獎勵」
         // （per 2026-09-10 stamp card member-level → reward refactor）
         memberLevelStamp: '獎勵',
+        // 折扣卡限定覆寫：選 discount_card 時「會員等級」option 顯示為「折扣等級」
+        // （per 2026-09-18 discount card Step 3 dropdown override；不沿用
+        //  memberLevelStamp — stamp/reward/cashback 都是「獎勵」語意,
+        //  discount 是「等級」語意,需獨立 key。）
+        memberLevelDiscount: '折扣等級',
         birthday: '生日',
         visitCount: '拜訪次數',
         memberName: '會員姓名',
@@ -142,6 +153,11 @@ export default {
         // 現金回饋卡專用欄位 — 僅在 cashback_card 顯示（2026-09-12）
         pointsToNextTierCashback: '到下個層級還差',
         accumulatedSpendCashback: '已累積消費',
+        // 折扣卡專用欄位 — 僅在 discount_card 顯示（2026-09-18）
+        // memberLevel 在 discount_card 時覆寫為「折扣等級」（獨立 i18n key）
+        pointsToNextTierDiscount: '到下一級還差',
+        discountTierBracket: '折扣級距',
+        accumulatedSpendDiscount: '累積消費',
       },
     },
     // ===== Stamp grid (集點印章) — added 2026-09-04 =====
@@ -638,6 +654,59 @@ export default {
         tierNameRequired: '回饋等級為必填欄位',
         thresholdInvalid: '累積消費不可為負數',
         percentInvalid: '回饋%需為 1-100 之間的整數',
+      },
+    },
+    // ===== Discount 卡 (2026-09-18, discount_card only) =====
+    // 消費時直接給予折扣% (即時減價), 不同於 cashback (事後退點).
+    // 最多 5 組 tier, 每個 tier 含 name + thresholdSpend (0 允許) + discountPercent (1-100).
+    // 卡片層級到期選填（customDays OR specificDate, 二擇一, 無 toggle）.
+    discount: {
+      intro: '設定此折扣卡的折扣級距',
+      introHint: '依據累計消費給予不同折扣率；可選擇不設定卡片有效期限。',
+      tiersTitle: '折扣級距',
+      tiersHint: '設定不同累計消費門檻對應的折扣%。最多可設定 5 組。',
+      addTier: '新增折扣級距',
+      removeTier: '移除',
+      maxTiersReached: '已達最高 5 組級距',
+      tier: {
+        nameTitle: '折扣等級',
+        namePlaceholder: '例如：金級、銅級、VIP',
+        nameCounter: '{{count}} / 40',
+        nameRequiredError: '請輸入折扣等級名稱',
+        thresholdTitle: '累計消費',
+        thresholdHelper: '需累計消費滿 N 元才可享此級距折扣。輸入 0 = 不需累計，人人享有。',
+        thresholdUnitTWD: '元',
+        thresholdUnitZAR: 'R',
+        thresholdPlaceholder: '例如：1000（輸入 0 表示不需累計）',
+        thresholdInvalidError: '累積消費不可為負數',
+        thresholdZeroHint: '輸入 0 = 不需累計，人人有此折扣',
+        percentTitle: '折扣%',
+        percentPlaceholder: '例如：10',
+        percentUnit: '%',
+        percentRequiredError: '請輸入折扣%',
+        percentInvalidError: '折扣%需為 1-100 之間的整數',
+        percentTooLargeError: '折扣%不能超過 100',
+      },
+      expiryTitle: '卡片有效期限（必填）',
+      expiryHint: '兩欄位擇一填寫，否則請改用現金回饋卡（無期限設計）。',
+      expiryBothNullError: '請至少填寫一項有效期限（天數或到期日）。若不需期限，請改用現金回饋卡。',
+      customExpiryDaysTitle: '有效天數',
+      customExpiryDaysPlaceholder: '例如：365',
+      customExpiryDaysUnit: '天',
+      customExpiryDaysRangeError: '有效天數需為 1-3650 之間的整數',
+      specificExpiryDateTitle: '到期日',
+      specificExpiryDateHint: '設定後有效天數將自動清除。',
+      specificExpiryDatePastError: '到期日不可早於今天',
+      preview: {
+        tierUnknown: '請新增至少一組折扣級距',
+        noThreshold: '不限消費金額享 {{percent}}% 折扣',
+        withThreshold: '累計消費滿 {{amount}} 享 {{percent}}% 折扣',
+      },
+      validation: {
+        tierRequired: '請至少新增 1 組折扣級距',
+        tierNameRequired: '折扣等級為必填欄位',
+        thresholdInvalid: '累積消費不可為負數',
+        percentInvalid: '折扣%需為 1-100 之間的整數',
       },
     },
   },

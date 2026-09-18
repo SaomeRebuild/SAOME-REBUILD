@@ -29,6 +29,8 @@ import {
   shouldShowBalancePreview,
   shouldShowMemberExpiryPreview,
   MEMBER_EXPIRY_PREVIEW_CARD_TYPES,
+  shouldShowDiscountExpiryPreview,
+  DISCOUNT_EXPIRY_PREVIEW_CARD_TYPES,
   formatExpiryDate,
 } from './PassCardPreviewHeader';
 import { useCardBuilderStore } from '../CardBuilderEditor.store';
@@ -61,7 +63,7 @@ beforeEach(() => {
 //   - 2026-09-08: stamp/reward/cashback were excluded when the balance
 //     preview was added.
 describe('PassCardPreviewHeader — default pill for non-target card types', () => {
-  it.each(['discount_card', 'coupon_card', 'multipass', 'gift_card'] as const)(
+  it.each(['coupon_card', 'multipass', 'gift_card'] as const)(
     'cardType="%s" renders rounded-full pill with raw cardType text',
     (cardType) => {
       const { container } = render(<PassCardPreviewHeader cardType={cardType} />);
@@ -433,5 +435,219 @@ describe('formatExpiryDate — locale-driven YYYY-MM-DD → display format', () 
   it('malformed input (not YYYY-MM-DD) → returns input verbatim (defensive)', () => {
     expect(formatExpiryDate('not-a-date', 'en')).toBe('not-a-date');
     expect(formatExpiryDate('2027/10/23', 'en')).toBe('2027/10/23');
+  });
+});
+
+// ─── Discount expiry preview (2026-09-18) ───────────────────────────────
+// discount_card renders a 2-line vertical block on the right side of the
+// header: label = "有效期限" / "Expiry Date", value = either formatted
+// discountSpecificExpiryDate or (today + discountCustomExpiryDays),
+// locale-aware (zh-TW: YYYY.MM.DD, en: MM.DD.YYYY). Falls back to "—"
+// when both fields are null (theoretical — Step 6 requires one).
+describe('PassCardPreviewHeader — discount expiry preview for discount_card', () => {
+  /**
+   * 2026-09-18 discount card extension.
+   *
+   * Mirrors the member expiry preview block above, but for the
+   * `discount_card` card type. The data source is the store's
+   * `discountCustomExpiryDays` (int days from today) or
+   * `discountSpecificExpiryDate` (ISO YYYY-MM-DD string). Both are
+   * mutually exclusive (setDiscountCustomExpiryDays clears the date
+   * and vice versa — see CardBuilderEditor.store.ts).
+   *
+   * The date math is evaluated against `new Date()` which is timezone-
+   * dependent in jsdom. Tests assert on the formatted OUTPUT string
+   * (not the raw Date object) to pin the locale-driven formatter.
+   */
+  it('discount_card + discountCustomExpiryDays = 30 → value is today+30 days (en format)', () => {
+    useCardBuilderStore.setState({
+      discountCustomExpiryDays: 30,
+      discountSpecificExpiryDate: null,
+    });
+    render(<PassCardPreviewHeader cardType="discount_card" />);
+    expect(screen.getByText('discountExpiry.label')).toBeInTheDocument();
+
+    // Compute expected value: today + 30 days in en format (MM.DD.YYYY).
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const future = new Date(today);
+    future.setDate(future.getDate() + 30);
+    const mm = String(future.getMonth() + 1).padStart(2, '0');
+    const dd = String(future.getDate()).padStart(2, '0');
+    const yyyy = future.getFullYear();
+    const expected = `${mm}.${dd}.${yyyy}`;
+    expect(screen.getByText(expected)).toBeInTheDocument();
+  });
+
+  it('discount_card + discountSpecificExpiryDate = "2026-10-30" → value is formatted en', () => {
+    useCardBuilderStore.setState({
+      discountCustomExpiryDays: null,
+      discountSpecificExpiryDate: '2026-10-30',
+    });
+    render(<PassCardPreviewHeader cardType="discount_card" />);
+    expect(screen.getByText('discountExpiry.label')).toBeInTheDocument();
+    expect(screen.getByText('10.30.2026')).toBeInTheDocument();
+  });
+
+  it('discount_card + discountSpecificExpiryDate = "2026-10-30" + zh-TW locale → value is formatted zh-TW (YYYY.MM.DD)', () => {
+    vi.mocked(useTranslation).mockReturnValueOnce({
+      t: vi.fn((key: string) => key),
+      i18n: { language: 'zh-TW' },
+    } as unknown as ReturnType<typeof useTranslation>);
+    useCardBuilderStore.setState({
+      discountCustomExpiryDays: null,
+      discountSpecificExpiryDate: '2026-10-30',
+    });
+    render(<PassCardPreviewHeader cardType="discount_card" />);
+    expect(screen.getByText('discountExpiry.label')).toBeInTheDocument();
+    expect(screen.getByText('2026.10.30')).toBeInTheDocument();
+  });
+
+  it('discount_card + discountCustomExpiryDays = 7 + zh-TW locale → value is today+7 days in zh-TW format', () => {
+    vi.mocked(useTranslation).mockReturnValueOnce({
+      t: vi.fn((key: string) => key),
+      i18n: { language: 'zh-TW' },
+    } as unknown as ReturnType<typeof useTranslation>);
+    useCardBuilderStore.setState({
+      discountCustomExpiryDays: 7,
+      discountSpecificExpiryDate: null,
+    });
+    render(<PassCardPreviewHeader cardType="discount_card" />);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const future = new Date(today);
+    future.setDate(future.getDate() + 7);
+    const mm = String(future.getMonth() + 1).padStart(2, '0');
+    const dd = String(future.getDate()).padStart(2, '0');
+    const yyyy = future.getFullYear();
+    const expected = `${yyyy}.${mm}.${dd}`;
+    expect(screen.getByText(expected)).toBeInTheDocument();
+  });
+
+  it('discount_card + both discountCustomExpiryDays and discountSpecificExpiryDate = null → "—" placeholder', () => {
+    // Theoretical fallback: Step 6 requires one or the other (the
+    // "bothNullError" validation enforces this). If both happen to be
+    // null at preview time, the component renders "—" defensively.
+    useCardBuilderStore.setState({
+      discountCustomExpiryDays: null,
+      discountSpecificExpiryDate: null,
+    });
+    render(<PassCardPreviewHeader cardType="discount_card" />);
+    expect(screen.getByText('discountExpiry.label')).toBeInTheDocument();
+    expect(screen.getByText('—')).toBeInTheDocument();
+  });
+
+  it('discount_card — testid "discount-expiry-preview" is rendered for test selectors', () => {
+    useCardBuilderStore.setState({
+      discountCustomExpiryDays: 30,
+      discountSpecificExpiryDate: null,
+    });
+    const { container } = render(<PassCardPreviewHeader cardType="discount_card" />);
+    expect(
+      container.querySelector('[data-testid="discount-expiry-preview"]'),
+    ).toBeInTheDocument();
+  });
+
+  it('discount_card — pill is NOT rendered (replaces the default pill with expiry block)', () => {
+    useCardBuilderStore.setState({
+      discountCustomExpiryDays: 30,
+      discountSpecificExpiryDate: null,
+    });
+    const { container } = render(<PassCardPreviewHeader cardType="discount_card" />);
+    expect(container.querySelector('span.rounded-full')).toBeNull();
+  });
+});
+
+describe('DISCOUNT_EXPIRY_PREVIEW_CARD_TYPES / shouldShowDiscountExpiryPreview — contract', () => {
+  /**
+   * 2026-09-18 — contract for which card types get the discount expiry
+   * preview. Mirrors the MEMBER_EXPIRY_PREVIEW_CARD_TYPES test block but
+   * scopes to `discount_card` only.
+   */
+  it('DISCOUNT_EXPIRY_PREVIEW_CARD_TYPES has exactly {discount_card}', () => {
+    expect(DISCOUNT_EXPIRY_PREVIEW_CARD_TYPES.size).toBe(1);
+    expect(DISCOUNT_EXPIRY_PREVIEW_CARD_TYPES.has('discount_card')).toBe(true);
+  });
+
+  it('DISCOUNT_EXPIRY_PREVIEW_CARD_TYPES excludes all other card types', () => {
+    expect(DISCOUNT_EXPIRY_PREVIEW_CARD_TYPES.has('stamp_card')).toBe(false);
+    expect(DISCOUNT_EXPIRY_PREVIEW_CARD_TYPES.has('reward_card')).toBe(false);
+    expect(DISCOUNT_EXPIRY_PREVIEW_CARD_TYPES.has('cashback_card')).toBe(false);
+    expect(DISCOUNT_EXPIRY_PREVIEW_CARD_TYPES.has('membership_card')).toBe(false);
+    expect(DISCOUNT_EXPIRY_PREVIEW_CARD_TYPES.has('coupon_card')).toBe(false);
+    expect(DISCOUNT_EXPIRY_PREVIEW_CARD_TYPES.has('multipass')).toBe(false);
+    expect(DISCOUNT_EXPIRY_PREVIEW_CARD_TYPES.has('gift_card')).toBe(false);
+  });
+
+  it('shouldShowDiscountExpiryPreview returns true for discount_card', () => {
+    expect(shouldShowDiscountExpiryPreview('discount_card')).toBe(true);
+  });
+
+  it('shouldShowDiscountExpiryPreview returns false for non-discount / null / undefined', () => {
+    expect(shouldShowDiscountExpiryPreview('stamp_card')).toBe(false);
+    expect(shouldShowDiscountExpiryPreview('membership_card')).toBe(false);
+    expect(shouldShowDiscountExpiryPreview(null)).toBe(false);
+    expect(shouldShowDiscountExpiryPreview(undefined)).toBe(false);
+  });
+});
+
+describe('PassCardPreviewHeader — non-target card types render the default pill (regression)', () => {
+  /**
+   * 2026-09-18 — discount_card is the only card type that gets the
+   * discount expiry preview. All other card types (incl. stamp/reward/
+   * cashback which get the balance preview, membership which gets the
+   * member expiry preview) must NOT render the discount expiry block.
+   * This is a regression guard against the discount block leaking into
+   * other card types.
+   */
+  it('stamp_card does NOT render the discount expiry block', () => {
+    useCardBuilderStore.setState({
+      discountCustomExpiryDays: 30,
+      discountSpecificExpiryDate: '2026-10-30',
+    });
+    const { container } = render(<PassCardPreviewHeader cardType="stamp_card" />);
+    expect(
+      container.querySelector('[data-testid="discount-expiry-preview"]'),
+    ).toBeNull();
+    // The discountExpiry.label key MUST NOT appear in the DOM.
+    expect(screen.queryByText('discountExpiry.label')).toBeNull();
+    // The balance preview renders for stamp_card instead.
+    expect(screen.getByText('balancePreview.label')).toBeInTheDocument();
+  });
+
+  it('membership_card does NOT render the discount expiry block', () => {
+    useCardBuilderStore.setState({
+      discountCustomExpiryDays: 30,
+      discountSpecificExpiryDate: '2026-10-30',
+    });
+    const { container } = render(<PassCardPreviewHeader cardType="membership_card" />);
+    expect(
+      container.querySelector('[data-testid="discount-expiry-preview"]'),
+    ).toBeNull();
+    // The member expiry preview renders for membership_card.
+    expect(screen.getByText('memberExpiry.label')).toBeInTheDocument();
+  });
+
+  it('reward_card does NOT render the discount expiry block', () => {
+    useCardBuilderStore.setState({
+      discountCustomExpiryDays: 30,
+      discountSpecificExpiryDate: '2026-10-30',
+    });
+    const { container } = render(<PassCardPreviewHeader cardType="reward_card" />);
+    expect(
+      container.querySelector('[data-testid="discount-expiry-preview"]'),
+    ).toBeNull();
+  });
+
+  it('cashback_card does NOT render the discount expiry block', () => {
+    useCardBuilderStore.setState({
+      discountCustomExpiryDays: 30,
+      discountSpecificExpiryDate: '2026-10-30',
+    });
+    const { container } = render(<PassCardPreviewHeader cardType="cashback_card" />);
+    expect(
+      container.querySelector('[data-testid="discount-expiry-preview"]'),
+    ).toBeNull();
   });
 });

@@ -932,3 +932,343 @@ describe('CardBuilderEditor — isPaid autosave (2026-09-13)', () => {
     });
   });
 });
+
+// ===== Step 2 autosave (2026-09-18) =====
+//
+// 2026-09-18 fix: Step 2 fields (cardName / issuerName / barcodeType /
+// passValidDays / expiryDate / currency / language) were only persisted
+// when the user clicked the "下一步" button. If the user edited any Step 2
+// field and then navigated away (closed tab, went back to dashboard)
+// without advancing past Step 2, the changes were lost — same UX bug as
+// the 2026-09-05 Step 4 autosave and the 2026-09-13 isPaid autosave.
+//
+// Fix: a debounced (1s) autosave effect in CardBuilderEditor persists
+// the Step 2 fields whenever the user pauses typing. The payload merges
+// the same keys `handleNext` used to write — top-level `name` (cardName
+// → SQL column) and `settings.{issuerName, barcodeType, passValidDays,
+// expiryDate, currency, language}` (JSONB merge via Rule 032). The
+// baselineArmed + loadSettled guards are shared with Step 4 / Step 5 /
+// isPaid (one outer-fetch timeline hydrates everything).
+//
+// This describe block pins:
+//   - cardName edit debounces to a PUT carrying top-level `name`.
+//   - issuerName edit debounces to a PUT carrying `settings.issuerName`.
+//   - barcodeType change debounces to a PUT carrying `settings.barcodeType`.
+//   - passValidDays change debounces to a PUT carrying `settings.passValidDays`.
+//   - expiryDate change debounces to a PUT carrying `settings.expiryDate`.
+//   - currency change debounces to a PUT carrying `settings.currency`.
+//   - language change debounces to a PUT carrying `settings.language`.
+//   - Multiple typing bursts within the debounce window collapse to ONE PUT.
+//   - Slow-network regression: when getById takes > 1s, the autosave does
+//     NOT fire with the empty defaults before loadSettings lands.
+describe('CardBuilderEditor — Step 2 autosave (2026-09-18)', () => {
+  /**
+   * Helper: filter updateCalls to find the autosave that carries ANY Step 2
+   * payload key (top-level `name` OR one of the settings Step 2 keys).
+   * Other autosave effects (Step 4 / Step 5 / isPaid / logoText) may
+   * also schedule timers that fire at the same 1s mark; this filter
+   * isolates calls produced by the Step 2 autosave effect.
+   */
+  function findStep2Update() {
+    return updateCalls.find((u) => {
+      const payload = u.payload as {
+        name?: string;
+        settings?: {
+          issuerName?: string;
+          barcodeType?: string;
+          passValidDays?: number | null;
+          expiryDate?: string;
+          currency?: string;
+          language?: string;
+        };
+      };
+      // Match on either top-level name OR any of the Step 2 settings keys.
+      if (payload.name !== undefined && payload.name !== '') return true;
+      if (payload.settings === undefined) return false;
+      return (
+        'issuerName' in payload.settings ||
+        'barcodeType' in payload.settings ||
+        'passValidDays' in payload.settings ||
+        'expiryDate' in payload.settings ||
+        'currency' in payload.settings ||
+        'language' in payload.settings
+      );
+    });
+  }
+
+  it('autosaves cardName after the user pauses typing for 1s', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderWithRouter();
+    // Flush microtasks so loadSettings resolves before user edits.
+    await flushLoadSettings();
+
+    act(() => {
+      useCardBuilderStore.getState().setCardName('VIP 黑卡 2026 Q4');
+    });
+
+    // No PUT yet — within the 1s debounce window.
+    expect(updateCalls).toHaveLength(0);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1100);
+    });
+
+    await waitFor(() => expect(findStep2Update()).toBeDefined());
+    const payload = findStep2Update()!.payload as { name?: string };
+    // cardName → SQL column `templates.name` via top-level payload.
+    expect(payload.name).toBe('VIP 黑卡 2026 Q4');
+  });
+
+  it('autosaves issuerName to settings.issuerName', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderWithRouter();
+    await flushLoadSettings();
+
+    act(() => {
+      useCardBuilderStore.getState().setIssuerName('My Brand Co.');
+    });
+
+    expect(updateCalls).toHaveLength(0);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1100);
+    });
+
+    await waitFor(() => expect(findStep2Update()).toBeDefined());
+    const payload = findStep2Update()!.payload as {
+      settings?: { issuerName?: string };
+    };
+    expect(payload.settings?.issuerName).toBe('My Brand Co.');
+  });
+
+  it('autosaves barcodeType change to settings.barcodeType', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderWithRouter();
+    await flushLoadSettings();
+
+    act(() => {
+      useCardBuilderStore.getState().setBarcodeType('pdf_417');
+    });
+
+    expect(updateCalls).toHaveLength(0);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1100);
+    });
+
+    await waitFor(() => expect(findStep2Update()).toBeDefined());
+    const payload = findStep2Update()!.payload as {
+      settings?: { barcodeType?: string };
+    };
+    expect(payload.settings?.barcodeType).toBe('pdf_417');
+  });
+
+  it('autosaves passValidDays change to settings.passValidDays', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderWithRouter();
+    await flushLoadSettings();
+
+    act(() => {
+      useCardBuilderStore.getState().setPassValidDays(30);
+    });
+
+    expect(updateCalls).toHaveLength(0);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1100);
+    });
+
+    await waitFor(() => expect(findStep2Update()).toBeDefined());
+    const payload = findStep2Update()!.payload as {
+      settings?: { passValidDays?: number | null };
+    };
+    expect(payload.settings?.passValidDays).toBe(30);
+  });
+
+  it('autosaves expiryDate change to settings.expiryDate', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderWithRouter();
+    await flushLoadSettings();
+
+    act(() => {
+      useCardBuilderStore.getState().setExpiryDate('2027-01-31');
+    });
+
+    expect(updateCalls).toHaveLength(0);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1100);
+    });
+
+    await waitFor(() => expect(findStep2Update()).toBeDefined());
+    const payload = findStep2Update()!.payload as {
+      settings?: { expiryDate?: string };
+    };
+    expect(payload.settings?.expiryDate).toBe('2027-01-31');
+  });
+
+  it('autosaves currency change to settings.currency', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderWithRouter();
+    await flushLoadSettings();
+
+    act(() => {
+      useCardBuilderStore.getState().setCurrency('ZAR');
+    });
+
+    expect(updateCalls).toHaveLength(0);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1100);
+    });
+
+    await waitFor(() => expect(findStep2Update()).toBeDefined());
+    const payload = findStep2Update()!.payload as {
+      settings?: { currency?: string };
+    };
+    expect(payload.settings?.currency).toBe('ZAR');
+  });
+
+  it('autosaves language change to settings.language', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderWithRouter();
+    await flushLoadSettings();
+
+    act(() => {
+      useCardBuilderStore.getState().setLanguage('zh-TW');
+    });
+
+    expect(updateCalls).toHaveLength(0);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1100);
+    });
+
+    await waitFor(() => expect(findStep2Update()).toBeDefined());
+    const payload = findStep2Update()!.payload as {
+      settings?: { language?: string };
+    };
+    expect(payload.settings?.language).toBe('zh-TW');
+  });
+
+  it('collapses multiple typing bursts into a single debounced PUT', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderWithRouter();
+    await flushLoadSettings();
+
+    act(() => {
+      useCardBuilderStore.getState().setCardName('a');
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(300);
+    });
+    act(() => {
+      useCardBuilderStore.getState().setCardName('ab');
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(300);
+    });
+    act(() => {
+      useCardBuilderStore.getState().setCardName('abc');
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(1100);
+    });
+
+    const step2Calls = updateCalls.filter((u) => {
+      const payload = u.payload as { name?: string };
+      return payload.name !== undefined && payload.name !== '';
+    });
+    await waitFor(() => expect(step2Calls.length).toBe(1));
+    const payload = step2Calls[0]!.payload as { name?: string };
+    expect(payload.name).toBe('abc');
+  });
+
+  it('does NOT autosave empty defaults before async fetch resolves — Step 2 (regression 2026-09-18)', async () => {
+    // Mirrors Step 4 / Step 5 / isPaid 修 3 regression — slow-network
+    // scenario where fetch is slower than debounce. Without baseline-arm
+    // + loadSettled guard, the Step 2 autosave effect would PUT empty
+    // defaults (cardName='', issuerName='', barcodeType default) into
+    // DB and (via Rule 032 silent overwrite) clobber any real Step 2
+    // data.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    // Slow fetch (3s) — well past the 1s autosave debounce.
+    const cardService = await import('@/services/cardService');
+    vi.mocked(cardService.cardService.getById).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          setTimeout(
+            () =>
+              resolve({
+                id: 'test-template-id',
+                settings: {
+                  ...FULL_SETTINGS,
+                  issuerName: '既有 Issuer',
+                  barcodeType: 'pdf_417',
+                  currency: 'ZAR',
+                  language: 'zh-TW',
+                },
+                cardType: 'membership_card',
+                name: '既有 Card Name',
+              } as unknown as Awaited<
+                ReturnType<typeof cardService.cardService.getById>
+              >),
+            3000,
+          );
+        }),
+    );
+
+    renderWithRouter();
+
+    // User types IMMEDIATELY after mount — before fetch resolves.
+    act(() => {
+      useCardBuilderStore.getState().setCardName('mid-typing');
+    });
+
+    // Drive past the 1s autosave debounce. The fix ensures NO PUT fires
+    // because loadSettings hasn't settled the store yet.
+    await act(async () => {
+      vi.advanceTimersByTime(1100);
+    });
+
+    const callsBeforeSettle = updateCalls.filter((u) => {
+      const payload = u.payload as {
+        name?: string;
+        settings?: {
+          issuerName?: string;
+          barcodeType?: string;
+          passValidDays?: number | null;
+          expiryDate?: string;
+          currency?: string;
+          language?: string;
+        };
+      };
+      if (payload.name !== undefined && payload.name !== '') return true;
+      if (payload.settings === undefined) return false;
+      return (
+        'issuerName' in payload.settings ||
+        'barcodeType' in payload.settings ||
+        'passValidDays' in payload.settings ||
+        'expiryDate' in payload.settings ||
+        'currency' in payload.settings ||
+        'language' in payload.settings
+      );
+    });
+    expect(callsBeforeSettle.length).toBe(0);
+
+    // Now let fetch resolve and verify the store hydrates correctly.
+    await act(async () => {
+      vi.advanceTimersByTime(2000); // total ~3100ms — past the 3000ms fetch
+    });
+
+    await waitFor(() => {
+      const s = useCardBuilderStore.getState();
+      expect(s.cardName).toBe('既有 Card Name');
+      expect(s.issuerName).toBe('既有 Issuer');
+      expect(s.barcodeType).toBe('pdf_417');
+      expect(s.currency).toBe('ZAR');
+      expect(s.language).toBe('zh-TW');
+    });
+  });
+});

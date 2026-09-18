@@ -41,6 +41,7 @@ export function PassCardPreview({
   firstRewardTierName,
   firstCashbackTierName,
   firstMembershipTierName,
+  firstDiscountTierName,
   membershipTiersRewards,
   isMembership,
   description,
@@ -62,10 +63,18 @@ export function PassCardPreview({
   // override in PassCardPreviewBody. Same derivation pattern as cashback.
   // The parent (CardBuilderEditorPreview) does NOT pass firstMembershipTierName
   // as a prop, so we always derive it here from the store.
+  //
+  // 2026-09-18 (extension): discountTiers from store, used to derive
+  // firstDiscountTierName for the discount_card memberLevel → first-tier-name
+  // override in PassCardPreviewBody. Same derivation pattern as
+  // cashback/membership. Distinct label (`discountLabel`) but identical
+  // value source contract: read the first row's name from the tier array.
   const cashbackTiers = useCardBuilderStore((s) => s.cashbackTiers);
   const membershipTiers = useCardBuilderStore((s) => s.membershipTiers);
+  const discountTiers = useCardBuilderStore((s) => s.discountTiers);
   const derivedFirstCashbackTierName = cashbackTiers?.[0]?.name ?? '';
   const derivedFirstMembershipTierName = membershipTiers?.[0]?.name ?? '';
+  const derivedFirstDiscountTierName = discountTiers?.[0]?.name ?? '';
   // Prefer caller-provided firstCashbackTierName (when the wrapper passes it
   // directly); otherwise derive from the store.
   const effectiveFirstCashbackTierName =
@@ -73,6 +82,9 @@ export function PassCardPreview({
   // Same pattern for membership: prefer caller-provided, fallback to derived.
   const effectiveFirstMembershipTierName =
     firstMembershipTierName ?? derivedFirstMembershipTierName;
+  // Same pattern for discount: prefer caller-provided, fallback to derived.
+  const effectiveFirstDiscountTierName =
+    firstDiscountTierName ?? derivedFirstDiscountTierName;
   return (
     <div
       className={cn(
@@ -156,6 +168,7 @@ export function PassCardPreview({
               firstRewardTierName={firstRewardTierName}
               firstCashbackTierName={effectiveFirstCashbackTierName}
               firstMembershipTierName={effectiveFirstMembershipTierName}
+              firstDiscountTierName={effectiveFirstDiscountTierName}
             />
 
             {/* Footer / Barcode */}

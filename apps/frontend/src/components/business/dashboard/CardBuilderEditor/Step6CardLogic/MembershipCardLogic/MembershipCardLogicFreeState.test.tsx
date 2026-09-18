@@ -186,10 +186,17 @@ describe('MembershipCardLogicFreeState — full editor for free membership card 
     expect(screen.queryByText('step6.membership.removeTier')).toBeNull();
   });
 
-  it('membershipTiers.length=0: renders empty-fallback section (defensive)', () => {
-    // Defensive: if for some reason setIsPaid(false) didn't auto-seed
-    // (e.g. legacy data without auto-seed logic), FreeState falls back
-    // to a hint section instead of crashing.
+  it('membershipTiers.length=0: renders empty-fallback section (defensive — should be unreachable after 2026-09-18 fix)', () => {
+    // 2026-09-18 fix: initialState now seeds `default-membership-tier` so
+    // `MembershipCardLogicFreeState` always has a tier to bind to in normal
+    // flows. This test now verifies only the defensive contract — if a
+    // test or future code path bypasses the invariant (e.g. manually
+    // setState'd an empty array), FreeState must still render the hint
+    // gracefully instead of crashing. In production this branch is
+    // unreachable; a `console.warn` fires to surface the regression.
+    //
+    // Silence the warn so the test output stays clean — we expect it.
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     useCardBuilderStore.setState({
       isPaid: false,
       membershipTiers: [],
@@ -204,5 +211,77 @@ describe('MembershipCardLogicFreeState — full editor for free membership card 
       screen.queryByText('step6.membership.freeTierNameTitle'),
     ).toBeNull();
     expect(screen.queryByRole('switch')).toBeNull();
+    // The defensive fallback must surface a warning when it fires.
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  // ====================================================================
+  // 2026-09-18 regression: first-visit fallback
+  // --------------------------------------------------------------------
+  // Before this fix: fresh card with isPaid=false (default) had
+  // membershipTiers=[] in initialState. FreeState would fall through to
+  // the defensive `freeStateHint` section because membershipTiers[0] was
+  // undefined. Only after the user toggled paid → unpaid did the
+  // setIsPaid(false) setter's seed logic kick in and the editor finally
+  // rendered.
+  //
+  // Fix: seed `default-membership-tier` in initialState + loadSettings
+  // defensive seed + console.warn in fallback.
+  // ====================================================================
+
+  it('first-visit: reset() leaves initialState with isPaid=false + 1 seed tier; FreeState renders full editor', () => {
+    // Fresh card: just reset, do NOT call setIsPaid or setState.
+    useCardBuilderStore.getState().reset();
+
+    // initialState invariant: even though isPaid=false, membershipTiers
+    // already has 1 seed tier (default-membership-tier).
+    const state = useCardBuilderStore.getState();
+    expect(state.isPaid).toBe(false);
+    expect(state.membershipTiers).toHaveLength(1);
+    expect(state.membershipTiers[0].id).toBe('default-membership-tier');
+
+    // Render and verify the FULL editor is present (NOT the fallback).
+    render(<MembershipCardLogicFreeState showValidation={false} />);
+
+    expect(
+      screen.getByText('step6.membership.freeTierNameTitle'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('step6.membership.freeStateHint'),
+    ).toBeNull();
+  });
+
+  it('idempotent: setIsPaid(true) then setIsPaid(false) does NOT double-seed membershipTiers', () => {
+    // After the 2026-09-18 fix, initialState already seeds 1 tier.
+    // Toggling paid → unpaid should NOT add a second tier (would corrupt
+    // the implicit-single-tier contract that FreeState assumes).
+    useCardBuilderStore.getState().reset();
+    expect(useCardBuilderStore.getState().membershipTiers).toHaveLength(1);
+
+    useCardBuilderStore.getState().setIsPaid(true);
+    expect(useCardBuilderStore.getState().isPaid).toBe(true);
+
+    useCardBuilderStore.getState().setIsPaid(false);
+    const tiers = useCardBuilderStore.getState().membershipTiers;
+    expect(tiers).toHaveLength(1);
+    expect(tiers[0].id).toBe('default-membership-tier');
+  });
+
+  it('loadSettings with isPaid=false + empty tiers auto-seeds default tier (legacy DB row)', () => {
+    // Simulate a legacy DB row: settings says isPaid=false but
+    // membershipTiers=[] (e.g. saved before the free-card editor existed,
+    // or a corrupted payload). The store's loadSettings should auto-seed
+    // a default tier so FreeState has something to bind to.
+    useCardBuilderStore.setState({ isPaid: false });
+
+    useCardBuilderStore.getState().loadSettings({
+      isPaid: false,
+      membershipTiers: [],
+    });
+
+    const tiers = useCardBuilderStore.getState().membershipTiers;
+    expect(tiers.length).toBeGreaterThanOrEqual(1);
+    expect(tiers[0].id).toBe('default-membership-tier');
   });
 });

@@ -82,6 +82,16 @@ export function CardBuilderEditor({
           // Step 4 — one loadSettings hydrates both. Flip the settled
           // flag for Step 5 at the same time.
           step5LoadSettledRef.current = true;
+          // Step 2 (2026-09-18) shares the same outer-fetch timeline as
+          // Step 4 / Step 5 / isPaid — one loadSettings hydrates ALL of
+          // template_settings (which contains issuerName / barcodeType /
+          // passValidDays / expiryDate / currency / language). cardName
+          // comes from the SQL `templates.name` column (loaded via
+          // `setCardName(template.name)` below), but the autosave effect
+          // needs to know loadSettings is done before it can trust any
+          // user edits as authoritative. Flip the settled flag for
+          // Step 2 at the same time.
+          step2LoadSettledRef.current = true;
           // 2026-09-13 fix (current task): isPaid autosave uses a
           // post-load snapshot ref (`isPaidAfterLoadRef`) — read it here
           // RIGHT AFTER loadSettings so the effect's "post-load baseline"
@@ -487,6 +497,140 @@ export function CardBuilderEditor({
       }
     };
   }, [cardId, initialMessage, locationsDisabled, locationsMaxDistance, locations]);
+
+  // ============================================================
+  // Auto-save: Step 2 fields (cardName + 6 JSONB settings) → debounced PUT.
+  //
+  // 2026-09-18 fix (current task): cardName / issuerName / barcodeType /
+  // passValidDays / expiryDate / currency / language were only persisted
+  // when the user clicked "下一步". Editing Step 2 then navigating away
+  // (close tab, go back to dashboard) lost the changes — same UX bug as
+  // the 2026-09-05 Step 4 autosave and the 2026-09-13 isPaid autosave.
+  //
+  // Payload shape mirrors `handleNext` (Step 2 onSave in Workspace.tsx):
+  //   - Top-level `name`: cardName → SQL column `templates.name`.
+  //   - `settings.issuerName`: JSONB (already merged via Rule 032).
+  //   - `settings.barcodeType`: JSONB.
+  //   - `settings.passValidDays`: JSONB (nullable).
+  //   - `settings.expiryDate`: JSONB (string, '' when unset).
+  //   - `settings.currency`: JSONB.
+  //   - `settings.language`: JSONB.
+  //
+  // Shared loadSettled guard: Step 2 shares the same outer-fetch timeline
+  // as Step 4 / Step 5 / isPaid (one `loadSettings` hydrates ALL of
+  // template_settings). Mirroring `step4LoadSettledRef` here keeps the
+  // pattern consistent — no extra ref state machine needed.
+  // ============================================================
+  const step2SaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastStep2SnapshotRef = useRef<string>('');
+
+  // Pull Step 2 state from the store. We select individual fields so
+  // Zustand's referential equality can short-circuit the re-render when
+  // nothing changed (matches Step 4 / Step 5 pattern).
+  // Note: `cardName` is ALSO destructured at the top of the component
+  // for the Header display + `setCardName` binding — that selector
+  // subscribes the parent component to `cardName` changes regardless
+  // of this effect's existence. Re-reading it via `useCardBuilderStore`
+  // here would double-subscribe (harmless but redundant); we just use
+  // the already-destructured `cardName` from the outer scope.
+  const cardNameForStep2Autosave = useCardBuilderStore((s) => s.cardName);
+  const issuerName = useCardBuilderStore((s) => s.issuerName);
+  const barcodeType = useCardBuilderStore((s) => s.barcodeType);
+  const passValidDays = useCardBuilderStore((s) => s.passValidDays);
+  const expiryDate = useCardBuilderStore((s) => s.expiryDate);
+  const currency = useCardBuilderStore((s) => s.currency);
+  const language = useCardBuilderStore((s) => s.language);
+
+  const step2BaselineArmedRef = useRef(false);
+  const step2LoadSettledRef = useRef(false);
+
+  // Reset on session boundary (cardId change = new template session).
+  useEffect(() => {
+    step2BaselineArmedRef.current = false;
+    step2LoadSettledRef.current = false;
+    lastStep2SnapshotRef.current = '';
+  }, [cardId]);
+
+  useEffect(() => {
+    if (!cardId) return;
+
+    const snapshot = JSON.stringify({
+      cardName: cardNameForStep2Autosave,
+      issuerName,
+      barcodeType,
+      passValidDays,
+      expiryDate,
+      currency,
+      language,
+    });
+
+    // First run after cardId is set / changed: just note the current
+    // snapshot as the baseline. We do NOT schedule a timer — the
+    // current values may be `reset()` defaults (cardName='',
+    // issuerName='', barcodeType='qr_code') if `loadSettings` hasn't
+    // completed yet. The subsequent re-run that loadSettings triggers
+    // (with real values) will diff against this baseline and
+    // legitimately schedule a save.
+    if (!step2BaselineArmedRef.current) {
+      step2BaselineArmedRef.current = true;
+      lastStep2SnapshotRef.current = snapshot;
+      return;
+    }
+
+    // If loadSettings hasn't completed yet, hold the timer. Any user
+    // edits before loadSettings settles are pre-baseline — saving them
+    // would race against the upcoming hydration (Rule 032 silent
+    // overwrite of any existing Step 2 data).
+    if (!step2LoadSettledRef.current) {
+      // Keep baseline in sync with whatever the store currently shows so
+      // the first diff after settle doesn't false-positive on the
+      // cumulative change since first run.
+      lastStep2SnapshotRef.current = snapshot;
+      return;
+    }
+
+    if (snapshot === lastStep2SnapshotRef.current) return;
+    lastStep2SnapshotRef.current = snapshot;
+
+    if (step2SaveTimerRef.current) clearTimeout(step2SaveTimerRef.current);
+    step2SaveTimerRef.current = setTimeout(() => {
+      // Read the latest values from the store at fire time so we don't
+      // capture a stale closure.
+      const s = useCardBuilderStore.getState();
+      cardService
+        .update(cardId, {
+          // Top-level SQL column value (cardName → templates.name).
+          name: s.cardName,
+          settings: {
+            issuerName: s.issuerName,
+            barcodeType: s.barcodeType,
+            passValidDays: s.passValidDays,
+            expiryDate: s.expiryDate,
+            currency: s.currency,
+            language: s.language,
+          },
+        })
+        .catch((err) => {
+          console.warn('[CardBuilderEditor] Step 2 auto-save failed:', err);
+        });
+    }, 1000);
+
+    return () => {
+      if (step2SaveTimerRef.current) {
+        clearTimeout(step2SaveTimerRef.current);
+        step2SaveTimerRef.current = null;
+      }
+    };
+  }, [
+    cardId,
+    cardNameForStep2Autosave,
+    issuerName,
+    barcodeType,
+    passValidDays,
+    expiryDate,
+    currency,
+    language,
+  ]);
 
   // ============================================================
   // Auto-save keep-alive: touch TTL every 5 minutes

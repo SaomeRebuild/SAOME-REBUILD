@@ -62,6 +62,22 @@ export const CASHBACK_CARD_TYPES: ReadonlySet<CardType> = new Set<CardType>([
 ]);
 
 /**
+ * Card types for which the discount-only display fields
+ * (pointsToNextTierDiscount / discountTierBracket / accumulatedSpendDiscount)
+ * are shown in the dropdown.
+ *
+ * Discount-specific data (spend to next discount tier, accumulated spend,
+ * current discount %) is meaningless on non-discount cards, so these
+ * options are hidden rather than rendered as a confusing placeholder.
+ *
+ * Scoped to `discount_card` only (user-confirmed scope, mirrors the
+ * REWARD / CASHBACK pattern).
+ */
+export const DISCOUNT_CARD_TYPES: ReadonlySet<CardType> = new Set<CardType>([
+  'discount_card',
+]);
+
+/**
  * Decide which `CARD_FIELDS` entries are visible for the given card type.
  *
  * - 'common' group fields are shown UNLESS they opt out via
@@ -70,6 +86,7 @@ export const CASHBACK_CARD_TYPES: ReadonlySet<CardType> = new Set<CardType>([
  * - 'stamp' group fields are shown only when cardType ∈ STAMP_CARD_TYPES.
  * - 'reward' group fields are shown only when cardType ∈ REWARD_CARD_TYPES.
  * - 'cashback' group fields are shown only when cardType ∈ CASHBACK_CARD_TYPES.
+ * - 'discount' group fields are shown only when cardType ∈ DISCOUNT_CARD_TYPES.
  *
  * The function is pure and exported so the conformance test
  * (`Step3CardFields/index.test.tsx`) can assert the filter directly
@@ -89,13 +106,15 @@ export function filterCARD_FIELDS_BY_CARD_TYPE(
   const showStampGroup = cardType !== null && STAMP_CARD_TYPES.has(cardType);
   const showRewardGroup = cardType !== null && REWARD_CARD_TYPES.has(cardType);
   const showCashbackGroup = cardType !== null && CASHBACK_CARD_TYPES.has(cardType);
+  const showDiscountGroup = cardType !== null && DISCOUNT_CARD_TYPES.has(cardType);
   return CARD_FIELDS.filter((f) => {
-    // Step 1: group-level gate (stamp / reward / cashback conditional).
+    // Step 1: group-level gate (stamp / reward / cashback / discount conditional).
     const groupOk =
       f.group === 'common' ||
       (f.group === 'stamp' && showStampGroup) ||
       (f.group === 'reward' && showRewardGroup) ||
-      (f.group === 'cashback' && showCashbackGroup);
+      (f.group === 'cashback' && showCashbackGroup) ||
+      (f.group === 'discount' && showDiscountGroup);
     if (!groupOk) return false;
 
     // Step 2: per-field hideOnCardTypes opt-out (e.g. memberName is

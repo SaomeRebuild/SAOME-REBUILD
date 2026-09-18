@@ -15,6 +15,7 @@ import { IssuerNameField } from './IssuerNameField';
 import { PassValidDaysField } from './PassValidDaysField';
 import { ExpiryDateField } from './ExpiryDateField';
 import { CurrencyField } from './CurrencyField';
+import { LanguageField } from './LanguageField';
 import { MembershipExtensionField } from './MembershipExtensionField';
 import { useCardBuilderStore } from '../CardBuilderEditor.store';
 
@@ -25,6 +26,10 @@ interface Step2CardSettingsProps {
 export function Step2CardSettings({ showValidation }: Step2CardSettingsProps) {
   const cardType = useCardBuilderStore((s) => s.cardType);
   const isMembership = cardType === 'membership_card';
+  // 2026-09-18: discount_card also has its own optional card-level expiry
+  // (handled in Step 6 via DiscountExpiryFields). Hide Step 2's two
+  // PassValidDaysField + ExpiryDateField rows to avoid double editors.
+  const isDiscount = cardType === 'discount_card';
 
   return (
     <div className="space-y-6">
@@ -33,14 +38,18 @@ export function Step2CardSettings({ showValidation }: Step2CardSettingsProps) {
       <IssuerNameField showValidation={showValidation} />
       {/* Membership cards are long-lived identity passes — valid days /
           expiry date are meaningless. Hide both fields when cardType is
-          membership_card (plan membership_card_conditional_ui_hide). */}
-      {!isMembership && (
+          membership_card (plan membership_card_conditional_ui_hide).
+          Discount cards also handle expiry in Step 6
+          (DiscountExpiryFields — mutual exclusion days vs date), so hide
+          Step 2's fields here too (2026-09-18). */}
+      {!isMembership && !isDiscount && (
         <>
           <PassValidDaysField />
           <ExpiryDateField />
         </>
       )}
       <CurrencyField />
+      <LanguageField />
       {cardType === 'membership_card' && <MembershipExtensionField />}
     </div>
   );

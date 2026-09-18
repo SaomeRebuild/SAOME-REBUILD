@@ -70,6 +70,18 @@ export const MEMBER_EXPIRY_PREVIEW_CARD_TYPES: ReadonlySet<CardType> = new Set<C
 ]);
 
 /**
+ * Card types for which the right-side pill is replaced by a 2-line discount
+ * expiry preview block (2026-09-18).
+ *
+ * Scoped to `discount_card` ONLY — mirrors the `MEMBER_EXPIRY_PREVIEW_CARD_TYPES`
+ * pattern but uses different data sources (discount card expiry is mandatory
+ * via Step 6 DiscountExpiryFields, not a toggle).
+ */
+export const DISCOUNT_EXPIRY_PREVIEW_CARD_TYPES: ReadonlySet<CardType> = new Set<CardType>([
+  'discount_card',
+]);
+
+/**
  * Default expiry date used when hasExpiry=true but expiryDate is empty.
  * Hardcoded because the membership card hides step2's PassValidDaysField +
  * ExpiryDateField by design (see membership_card_conditional_ui_hide plan),
@@ -108,6 +120,20 @@ export function shouldShowMemberExpiryPreview(
 }
 
 /**
+ * Type guard (2026-09-18): returns true iff the card type should render
+ * the discount expiry preview. Scoped to `discount_card` only.
+ */
+export function shouldShowDiscountExpiryPreview(
+  cardType: string | null | undefined,
+): cardType is CardType {
+  return (
+    cardType !== null &&
+    cardType !== undefined &&
+    DISCOUNT_EXPIRY_PREVIEW_CARD_TYPES.has(cardType as CardType)
+  );
+}
+
+/**
  * Format an ISO YYYY-MM-DD expiry date string for display, locale-aware.
  *
  *   zh-TW: YYYY.MM.DD  (e.g. "2027.10.23" per user-confirmed UX)
@@ -142,6 +168,14 @@ export function PassCardPreviewHeader({ cardType, issuerLogo, name, textColor, c
   // Step 2 via ExpiryDateField).
   const hasExpiry = useCardBuilderStore((s) => s.hasExpiry);
   const expiryDate = useCardBuilderStore((s) => s.expiryDate);
+  // 2026-09-18 discount expiry preview: read discountCustomExpiryDays +
+  // discountSpecificExpiryDate from store. Both are reactive (mutually
+  // exclusive — setDiscountCustomExpiryDays clears the date, and vice versa,
+  // per Step 6 DiscountExpiryFields). The expiry is mandatory per
+  // `discount.expiryBothNullError` validation, so the "both null" case is
+  // theoretical; we fall back to "—" defensively.
+  const discountCustomExpiryDays = useCardBuilderStore((s) => s.discountCustomExpiryDays);
+  const discountSpecificExpiryDate = useCardBuilderStore((s) => s.discountSpecificExpiryDate);
   const token = getAccessToken();
   const logoUrl = issuerLogo && templateId
     ? `${api.baseUrl}${api.paths.cardImage(templateId, 'logo')}${token ? `?token=${encodeURIComponent(token)}` : ''}&v=${issuerLogoVersion}`
@@ -149,6 +183,7 @@ export function PassCardPreviewHeader({ cardType, issuerLogo, name, textColor, c
 
   const showBalance = shouldShowBalancePreview(cardType);
   const showMemberExpiry = shouldShowMemberExpiryPreview(cardType);
+  const showDiscountExpiry = shouldShowDiscountExpiryPreview(cardType);
 
   // Member expiry value:
   //   - hasExpiry=false → "∞" (infinity, universal across locales)
@@ -159,7 +194,43 @@ export function PassCardPreviewHeader({ cardType, issuerLogo, name, textColor, c
   //      Use a hardcoded default instead of the "—" placeholder.)
   const memberExpiryValue = (() => {
     if (!hasExpiry) return '∞';
-    return formatExpiryDate(expiryDate || DEFAULT_EXPIRY_DATE, i18n.language ?? '');
+    return formatExpiryDate(expiryDate || DEFAULT_EXPIRY_DATE, i18n?.language ?? '');
+  })();
+
+  // Discount expiry value (2026-09-18):
+  //   - discountCustomExpiryDays set → today + N days formatted per locale
+  //     (zh-TW "2026.10.30" / en "10.30.2026")
+  //   - discountSpecificExpiryDate set → directly formatted per locale
+  //   - both null → "—" (theoretical fallback — Step 6 requires one)
+  //   The date math (today + N days) is a client-side approximation — the
+  //   actual displayed date may drift across time zones / DST boundaries
+  //   since `new Date()` returns local time. For the preview-only demo
+  //   this is acceptable: the production card is generated server-side
+  //   with absolute timestamps, so the printed card never never is the
+  //   same as the preview's date stamp.
+  //
+  // Defensive i18n lookup: existing PassCardPreview.test.tsx mocks do
+  // NOT provide `i18n` in the useTranslation return value, so we must
+  // tolerate a missing i18n object here (the formatExpiryDate helper
+  // already falls back to the en format when locale is empty).
+  const discountExpiryValue = (() => {
+    const locale = i18n?.language ?? '';
+    if (discountCustomExpiryDays !== null && discountCustomExpiryDays !== undefined) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);   // normalize to start of local day
+      const future = new Date(today);
+      future.setDate(future.getDate() + discountCustomExpiryDays);
+      // Convert to ISO YYYY-MM-DD (using LOCAL date components, not UTC,
+      // because the user picked the day in their local timezone).
+      const yyyy = future.getFullYear();
+      const mm = String(future.getMonth() + 1).padStart(2, '0');
+      const dd = String(future.getDate()).padStart(2, '0');
+      return formatExpiryDate(`${yyyy}-${mm}-${dd}`, locale);
+    }
+    if (discountSpecificExpiryDate) {
+      return formatExpiryDate(discountSpecificExpiryDate, locale);
+    }
+    return '—';
   })();
 
   return (
@@ -187,12 +258,33 @@ export function PassCardPreviewHeader({ cardType, issuerLogo, name, textColor, c
         </div>
       </div>
 
-      {/* 右側：membership_card → 會員到期日預覽（2-line vertical block）
+      {/* 右側：discount_card → 有效期限預覽（2-line vertical block）
+              membership_card → 會員到期日預覽（2-line vertical block）
               cardType ∈ {stamp_card, reward_card, cashback_card} → 兩行垂直「餘額」預覽
               其他卡種 → 維持原 rounded-full pill
           Typography 對齊 PassCardPreviewBody：label 10/8px、value 14/11px，字級差 4px。
           font-bold 強調數字（vs. pill 的 font-medium）。 */}
-      {showMemberExpiry ? (
+      {showDiscountExpiry ? (
+        <div
+          className={compact
+            ? 'flex flex-col items-start gap-0 leading-tight'
+            : 'flex flex-col items-start gap-0.5 leading-tight'}
+          data-testid="discount-expiry-preview"
+        >
+          <span
+            className={compact ? 'text-[8px] font-medium' : 'text-[10px] font-medium'}
+            style={textColor ? { color: textColor } : undefined}
+          >
+            {t('discountExpiry.label')}
+          </span>
+          <span
+            className={compact ? 'text-[11px] font-bold' : 'text-sm font-bold'}
+            style={textColor ? { color: textColor } : undefined}
+          >
+            {discountExpiryValue}
+          </span>
+        </div>
+      ) : showMemberExpiry ? (
         <div
           className={compact
             ? 'flex flex-col items-start gap-0 leading-tight'
