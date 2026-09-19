@@ -82,6 +82,31 @@ export const DISCOUNT_EXPIRY_PREVIEW_CARD_TYPES: ReadonlySet<CardType> = new Set
 ]);
 
 /**
+ * Card types for which the right-side pill is replaced by a 2-line coupon
+ * expiry preview block (2026-09-19).
+ *
+ * Scoped to `coupon_card` ONLY — mirrors the `DISCOUNT_EXPIRY_PREVIEW_CARD_TYPES`
+ * pattern but reads from `passValidDays` / `expiryDate` (the Step 2 card-level
+ * expiry fields, which coupon cards KEEP visible — unlike membership_card
+ * which hides them). The label string is reused from `couponExpiry.label`
+ * which intentionally duplicates `discountExpiry.label` ("有效期限" / "Expiry Date")
+ * because both communicate the same concept (card-level validity end date).
+ *
+ * Differs from `DISCOUNT_EXPIRY_PREVIEW_CARD_TYPES` in the value source:
+ *   - discount: reads `discountCustomExpiryDays` / `discountSpecificExpiryDate`
+ *     (Step 6-specific card-level expiry).
+ *   - coupon:   reads `passValidDays` / `expiryDate` (Step 2 card-level expiry,
+ *     shared with all non-membership cards).
+ *
+ * Differs from `MEMBER_EXPIRY_PREVIEW_CARD_TYPES` in that coupon cards have NO
+ * "has expiry" toggle — both fields are independent (one or the other may be
+ * set; the preview falls back to "∞" only when BOTH are empty).
+ */
+export const COUPON_EXPIRY_PREVIEW_CARD_TYPES: ReadonlySet<CardType> = new Set<CardType>([
+  'coupon_card',
+]);
+
+/**
  * Default expiry date used when hasExpiry=true but expiryDate is empty.
  * Hardcoded because the membership card hides step2's PassValidDaysField +
  * ExpiryDateField by design (see membership_card_conditional_ui_hide plan),
@@ -134,6 +159,20 @@ export function shouldShowDiscountExpiryPreview(
 }
 
 /**
+ * Type guard (2026-09-19): returns true iff the card type should render
+ * the coupon expiry preview. Scoped to `coupon_card` only.
+ */
+export function shouldShowCouponExpiryPreview(
+  cardType: string | null | undefined,
+): cardType is CardType {
+  return (
+    cardType !== null &&
+    cardType !== undefined &&
+    COUPON_EXPIRY_PREVIEW_CARD_TYPES.has(cardType as CardType)
+  );
+}
+
+/**
  * Format an ISO YYYY-MM-DD expiry date string for display, locale-aware.
  *
  *   zh-TW: YYYY.MM.DD  (e.g. "2027.10.23" per user-confirmed UX)
@@ -176,6 +215,13 @@ export function PassCardPreviewHeader({ cardType, issuerLogo, name, textColor, c
   // theoretical; we fall back to "—" defensively.
   const discountCustomExpiryDays = useCardBuilderStore((s) => s.discountCustomExpiryDays);
   const discountSpecificExpiryDate = useCardBuilderStore((s) => s.discountSpecificExpiryDate);
+  // 2026-09-19 coupon expiry preview: read passValidDays + expiryDate from
+  // the Step 2 card-level expiry fields. Unlike membership_card (which
+  // hides these fields), coupon_card KEEPS them visible — both fields
+  // may be independently set, and the preview falls back to "∞" only
+  // when BOTH are empty. Falls through to the regular `default pill`
+  // branch when cardType is not coupon_card (this read is always safe).
+  const passValidDays = useCardBuilderStore((s) => s.passValidDays);
   const token = getAccessToken();
   const logoUrl = issuerLogo && templateId
     ? `${api.baseUrl}${api.paths.cardImage(templateId, 'logo')}${token ? `?token=${encodeURIComponent(token)}` : ''}&v=${issuerLogoVersion}`
@@ -184,6 +230,7 @@ export function PassCardPreviewHeader({ cardType, issuerLogo, name, textColor, c
   const showBalance = shouldShowBalancePreview(cardType);
   const showMemberExpiry = shouldShowMemberExpiryPreview(cardType);
   const showDiscountExpiry = shouldShowDiscountExpiryPreview(cardType);
+  const showCouponExpiry = shouldShowCouponExpiryPreview(cardType);
 
   // Member expiry value:
   //   - hasExpiry=false → "∞" (infinity, universal across locales)
@@ -231,6 +278,35 @@ export function PassCardPreviewHeader({ cardType, issuerLogo, name, textColor, c
       return formatExpiryDate(discountSpecificExpiryDate, locale);
     }
     return '—';
+  })();
+
+  // Coupon expiry value (2026-09-19):
+  //   - passValidDays set → today + N days formatted per locale
+  //     (zh-TW "2026.10.30" / en "10.30.2026")
+  //   - expiryDate set → directly formatted per locale
+  //   - both null/empty → "∞" (default — coupons have no implied expiry,
+  //     mirroring membership_card hasExpiry=false behaviour; the merchant
+  //     controls the coupon validity window externally)
+  //   Reuses the discountExpiryValue date-math helper inline because the
+  //   two date sources differ (Step 6-specific for discount, Step 2-shared
+  //   for coupon) — extracting a shared helper would over-abstract two
+  //   unrelated expiry contracts.
+  const couponExpiryValue = (() => {
+    const locale = i18n?.language ?? '';
+    if (passValidDays !== null && passValidDays !== undefined) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);   // normalize to start of local day
+      const future = new Date(today);
+      future.setDate(future.getDate() + passValidDays);
+      const yyyy = future.getFullYear();
+      const mm = String(future.getMonth() + 1).padStart(2, '0');
+      const dd = String(future.getDate()).padStart(2, '0');
+      return formatExpiryDate(`${yyyy}-${mm}-${dd}`, locale);
+    }
+    if (expiryDate) {
+      return formatExpiryDate(expiryDate, locale);
+    }
+    return '∞';
   })();
 
   return (
@@ -321,6 +397,31 @@ export function PassCardPreviewHeader({ cardType, issuerLogo, name, textColor, c
             style={textColor ? { color: textColor } : undefined}
           >
             {BALANCE_PREVIEW_AMOUNTS[currency]}
+          </span>
+        </div>
+      ) : showCouponExpiry ? (
+        // 2026-09-19 coupon expiry preview: mirrors the discount/member
+        // expiry 2-line block but reads passValidDays / expiryDate (Step 2
+        // card-level fields, NOT Step 6). data-testid="coupon-expiry-preview"
+        // is the regression-test selector; falls back to "∞" when neither
+        // field is set (no implied expiry for coupons).
+        <div
+          className={compact
+            ? 'flex flex-col items-start gap-0 leading-tight'
+            : 'flex flex-col items-start gap-0.5 leading-tight'}
+          data-testid="coupon-expiry-preview"
+        >
+          <span
+            className={compact ? 'text-[8px] font-medium' : 'text-[10px] font-medium'}
+            style={textColor ? { color: textColor } : undefined}
+          >
+            {t('couponExpiry.label')}
+          </span>
+          <span
+            className={compact ? 'text-[11px] font-bold' : 'text-sm font-bold'}
+            style={textColor ? { color: textColor } : undefined}
+          >
+            {couponExpiryValue}
           </span>
         </div>
       ) : (

@@ -633,6 +633,168 @@ export function CardBuilderEditor({
   ]);
 
   // ============================================================
+  // Auto-save: Step 6 coupon card fields (couponDiscountType /
+  // couponDiscountAmount / couponDiscountPercent / couponIssueCount)
+  // → debounced PUT /cards/:id.
+  //
+  // 2026-09-19 fix (current task, coupon regression): like Step 4 / Step 5
+  // / isPaid, the Step 6 coupon fields were only persisted when the user
+  // clicked "下一步" AND `isCouponStep6Valid()` returned true. Editing
+  // Step 6 then closing the tab / going back to the dashboard lost the
+  // changes — same UX bug as 2026-09-05 Step 4.
+  //
+  // Pattern (mirrors Step 4 / Step 5 verbatim):
+  //   1. baseline-armed ref: first effect run after cardId change just
+  //      seeds the snapshot baseline (no timer scheduled).
+  //   2. shared `step4LoadSettledRef`: refuse to schedule a timer until
+  //      loadSettings has resolved (otherwise PUT with empty defaults
+  //      would clobber DB per Rule 032 silent overwrite).
+  //   3. JSON.stringify snapshot diff: skip the PUT when the serialized
+  //      payload hasn't changed since the last attempt (Zustand selectors
+  //      return new array references on every render — the diff is the
+  //      authoritative "real edit" signal).
+  //   4. Debounce 1s after the user pauses typing.
+  //   5. Field-level validation gate: skip the PUT if any field is
+  //      out-of-bounds (store setter rejects invalid values, but a
+  //      mid-edit transient may briefly surface an out-of-bounds value
+  //      that would 400 from backend zod).
+  //   6. Timer fire reads latest values from `useCardBuilderStore.getState()`
+  //      so debounce-captured closure doesn't carry stale data.
+  // ============================================================
+  const couponSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastCouponSnapshotRef = useRef<string>('');
+
+  const couponDiscountType = useCardBuilderStore((s) => s.couponDiscountType);
+  const couponDiscountAmount = useCardBuilderStore((s) => s.couponDiscountAmount);
+  const couponDiscountPercent = useCardBuilderStore((s) => s.couponDiscountPercent);
+  const couponIssueCount = useCardBuilderStore((s) => s.couponIssueCount);
+
+  const couponBaselineArmedRef = useRef(false);
+
+  // Reset baseline / load-settled flags on cardId change (new template session).
+  useEffect(() => {
+    couponBaselineArmedRef.current = false;
+    lastCouponSnapshotRef.current = '';
+  }, [cardId]);
+
+  useEffect(() => {
+    if (!cardId) return;
+
+    const snapshot = JSON.stringify({
+      couponDiscountType,
+      couponDiscountAmount,
+      couponDiscountPercent,
+      couponIssueCount,
+    });
+
+    // First run: seed the baseline. Do NOT schedule a timer — the store
+    // still holds the reset() defaults at this point.
+    if (!couponBaselineArmedRef.current) {
+      couponBaselineArmedRef.current = true;
+      lastCouponSnapshotRef.current = snapshot;
+      return;
+    }
+
+    // Hold autosave until loadSettings has resolved (shared outer-fetch
+    // timeline with Step 4 / Step 5 / Step 2 / isPaid).
+    if (!step4LoadSettledRef.current) {
+      lastCouponSnapshotRef.current = snapshot;
+      return;
+    }
+
+    if (snapshot === lastCouponSnapshotRef.current) return;
+    lastCouponSnapshotRef.current = snapshot;
+
+    if (couponSaveTimerRef.current) clearTimeout(couponSaveTimerRef.current);
+    couponSaveTimerRef.current = setTimeout(() => {
+      // Read latest values at fire time to avoid stale closure.
+      const s = useCardBuilderStore.getState();
+
+      // Field-level validation gate: skip the PUT only if the active
+      // value field is set to an OUT-OF-BOUNDS value (would 400 from
+      // backend zod). `null` is a legitimate transient state — the user
+      // may have just switched the type radio and not yet typed a value,
+      // and we still want to persist the type change.
+      //
+      // The store setters already clamp / reject invalid values at write
+      // time, so an out-of-bounds value can only surface via a corrupted
+      // DB row that leaked through loadSettings. This defensive gate is
+      // a regression guard against 400 noise.
+      const t = s.couponDiscountType;
+      const a = s.couponDiscountAmount;
+      const p = s.couponDiscountPercent;
+      const n = s.couponIssueCount;
+
+      // Type guard
+      if (t !== 'amount_off' && t !== 'percent_off') {
+        // Defensive — defaults to 'amount_off', so this only triggers
+        // if a corrupted DB row leaked through loadSettings.
+        console.warn('[CardBuilderEditor] Step 6 coupon autosave skipped — invalid couponDiscountType:', t);
+        return;
+      }
+
+      // Amount guard: only meaningful when t === 'amount_off'. Skip
+      // the PUT only when the user typed an OUT-OF-BOUNDS amount.
+      // null is OK (radio just switched, user hasn't typed yet).
+      if (
+        t === 'amount_off' &&
+        a !== null &&
+        (typeof a !== 'number' || !Number.isFinite(a) || a < 1)
+      ) {
+        return;
+      }
+
+      // Percent guard: only meaningful when t === 'percent_off'. Skip
+      // the PUT only when the user typed an OUT-OF-RANGE percent.
+      // null is OK (radio just switched, user hasn't typed yet).
+      if (
+        t === 'percent_off' &&
+        p !== null &&
+        (typeof p !== 'number' || !Number.isInteger(p) || p < 1 || p > 100)
+      ) {
+        return;
+      }
+
+      // Issue count guard (always meaningful, ≥ 1 integer)
+      if (
+        typeof n !== 'number' ||
+        !Number.isInteger(n) ||
+        n < 1
+      ) {
+        return;
+      }
+
+      cardService.update(cardId, {
+        // Wrap in `settings` — the update() type signature only knows about
+        // `settings` (the backend stores these in the JSONB blob).
+        // Mirrors the Step 6 onSave shape for coupon_card in
+        // CardBuilderEditorWorkspace.tsx handleNext step 6 region.
+        settings: {
+          couponDiscountType: t,
+          couponDiscountAmount: t === 'amount_off' ? a : null,
+          couponDiscountPercent: t === 'percent_off' ? p : null,
+          couponIssueCount: n,
+        },
+      }).catch((err) => {
+        console.warn('[CardBuilderEditor] Step 6 coupon auto-save failed:', err);
+      });
+    }, 1000);
+
+    return () => {
+      if (couponSaveTimerRef.current) {
+        clearTimeout(couponSaveTimerRef.current);
+        couponSaveTimerRef.current = null;
+      }
+    };
+  }, [
+    cardId,
+    couponDiscountType,
+    couponDiscountAmount,
+    couponDiscountPercent,
+    couponIssueCount,
+  ]);
+
+  // ============================================================
   // Auto-save keep-alive: touch TTL every 5 minutes
   // ============================================================
   const touchTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);

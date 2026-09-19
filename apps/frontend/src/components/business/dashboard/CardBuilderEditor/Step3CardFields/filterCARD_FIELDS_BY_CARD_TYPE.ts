@@ -78,15 +78,35 @@ export const DISCOUNT_CARD_TYPES: ReadonlySet<CardType> = new Set<CardType>([
 ]);
 
 /**
+ * Card types for which the coupon-only display fields
+ * (couponRemainingCount / couponDiscount) are shown in the dropdown.
+ *
+ * Coupon-specific data (remaining count, discount offer) is meaningless
+ * on non-coupon cards, so these options are hidden rather than rendered
+ * as a confusing placeholder.
+ *
+ * Scoped to `coupon_card` only (mirrors the REWARD / CASHBACK / DISCOUNT
+ * pattern). The `memberLevel` field also gets a reciprocal opt-out via
+ * `hideOnCardTypes: ['coupon_card']` in card-fields.ts — coupon cards are
+ * not tier-driven so the "會員等級" option is hidden to avoid confusing
+ * the user about a hierarchy that does not exist.
+ */
+export const COUPON_CARD_TYPES: ReadonlySet<CardType> = new Set<CardType>([
+  'coupon_card',
+]);
+
+/**
  * Decide which `CARD_FIELDS` entries are visible for the given card type.
  *
  * - 'common' group fields are shown UNLESS they opt out via
  *   `hideOnCardTypes` (e.g. `memberName` is hidden for `membership_card`,
- *   per plan `membership_card_conditional_ui_hide`, 2026-09-13).
+ *   per plan `membership_card_conditional_ui_hide`, 2026-09-13;
+ *   `memberLevel` is hidden for `coupon_card`, 2026-09-19).
  * - 'stamp' group fields are shown only when cardType ∈ STAMP_CARD_TYPES.
  * - 'reward' group fields are shown only when cardType ∈ REWARD_CARD_TYPES.
  * - 'cashback' group fields are shown only when cardType ∈ CASHBACK_CARD_TYPES.
  * - 'discount' group fields are shown only when cardType ∈ DISCOUNT_CARD_TYPES.
+ * - 'coupon' group fields are shown only when cardType ∈ COUPON_CARD_TYPES.
  *
  * The function is pure and exported so the conformance test
  * (`Step3CardFields/index.test.tsx`) can assert the filter directly
@@ -107,21 +127,23 @@ export function filterCARD_FIELDS_BY_CARD_TYPE(
   const showRewardGroup = cardType !== null && REWARD_CARD_TYPES.has(cardType);
   const showCashbackGroup = cardType !== null && CASHBACK_CARD_TYPES.has(cardType);
   const showDiscountGroup = cardType !== null && DISCOUNT_CARD_TYPES.has(cardType);
+  const showCouponGroup = cardType !== null && COUPON_CARD_TYPES.has(cardType);
   return CARD_FIELDS.filter((f) => {
-    // Step 1: group-level gate (stamp / reward / cashback / discount conditional).
+    // Step 1: group-level gate (stamp / reward / cashback / discount / coupon conditional).
     const groupOk =
       f.group === 'common' ||
       (f.group === 'stamp' && showStampGroup) ||
       (f.group === 'reward' && showRewardGroup) ||
       (f.group === 'cashback' && showCashbackGroup) ||
-      (f.group === 'discount' && showDiscountGroup);
+      (f.group === 'discount' && showDiscountGroup) ||
+      (f.group === 'coupon' && showCouponGroup);
     if (!groupOk) return false;
 
     // Step 2: per-field hideOnCardTypes opt-out (e.g. memberName is
-    // hidden for membership_card). Defaults to no exclusion — fields
-    // without `hideOnCardTypes` pass through unchanged. When
-    // cardType is null (Step 1 not yet completed), `includes(null)` is
-    // a no-op and the field is shown.
+    // hidden for membership_card; memberLevel is hidden for coupon_card).
+    // Defaults to no exclusion — fields without `hideOnCardTypes` pass
+    // through unchanged. When cardType is null (Step 1 not yet completed),
+    // `includes(null)` is a no-op and the field is shown.
     if (!f.hideOnCardTypes || f.hideOnCardTypes.length === 0) return true;
     return !(cardType !== null && f.hideOnCardTypes.includes(cardType));
   });

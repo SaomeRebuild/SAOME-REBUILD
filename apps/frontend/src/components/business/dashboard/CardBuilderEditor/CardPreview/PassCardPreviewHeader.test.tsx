@@ -31,6 +31,8 @@ import {
   MEMBER_EXPIRY_PREVIEW_CARD_TYPES,
   shouldShowDiscountExpiryPreview,
   DISCOUNT_EXPIRY_PREVIEW_CARD_TYPES,
+  shouldShowCouponExpiryPreview,
+  COUPON_EXPIRY_PREVIEW_CARD_TYPES,
   formatExpiryDate,
 } from './PassCardPreviewHeader';
 import { useCardBuilderStore } from '../CardBuilderEditor.store';
@@ -54,16 +56,21 @@ beforeEach(() => {
 });
 
 // ─── Default pill behavior (non-target card types) ────────────────────────
-// Non-target card types (NOT in {stamp_card, reward_card, cashback_card}
-// AND NOT membership_card) keep the original rounded-full pill.
+// Non-target card types keep the original rounded-full pill. The
+// COUPON_EXPIRY_PREVIEW_CARD_TYPES addition (2026-09-19) means the
+// "non-target" set narrows further: now ONLY `multipass` and `gift_card`
+// still render the pill. `coupon_card` now renders the coupon-expiry
+// block instead (its own dedicated set), and the previous removal of
+// `membership_card` to the member-expiry set still stands.
+//   - 2026-09-19: coupon_card moved OUT of this set (now renders the
+//     coupon-expiry preview block, label + value 2-line).
+//     The remaining pill card types: multipass, gift_card.
 //   - 2026-09-13: membership_card was REMOVED from this set because it
-//     now renders the member-expiry preview block (label + value 2-line).
-//     The 4 remaining pill card types: discount_card, coupon_card,
-//     multipass, gift_card.
+//     now renders the member-expiry preview block.
 //   - 2026-09-08: stamp/reward/cashback were excluded when the balance
 //     preview was added.
 describe('PassCardPreviewHeader — default pill for non-target card types', () => {
-  it.each(['coupon_card', 'multipass', 'gift_card'] as const)(
+  it.each(['multipass', 'gift_card'] as const)(
     'cardType="%s" renders rounded-full pill with raw cardType text',
     (cardType) => {
       const { container } = render(<PassCardPreviewHeader cardType={cardType} />);
@@ -649,5 +656,184 @@ describe('PassCardPreviewHeader — non-target card types render the default pil
     expect(
       container.querySelector('[data-testid="discount-expiry-preview"]'),
     ).toBeNull();
+  });
+});
+
+// ─── Coupon expiry preview (2026-09-19) ──────────────────────────────────
+// Scoped to coupon_card ONLY. Data sources:
+//   - passValidDays (int days from today) → today + N days formatted per locale
+//   - expiryDate (ISO YYYY-MM-DD) → directly formatted per locale
+//   - both null/empty → "∞" (infinity, no implied expiry for coupons)
+//
+// Differs from discount expiry in the data source contract:
+//   - discount reads discountCustomExpiryDays / discountSpecificExpiryDate
+//     (Step 6-specific, mutually exclusive via setter logic).
+//   - coupon reads passValidDays / expiryDate (Step 2-shared, both may be
+//     set independently — fallback to "∞" only when both are empty).
+//
+// Differs from member expiry in the control flow:
+//   - member uses hasExpiry toggle + expiryDate (true → show, false → "∞").
+//   - coupon uses passValidDays + expiryDate (independently; "∞" when both
+//     empty).
+describe('PassCardPreviewHeader — coupon expiry preview for coupon_card', () => {
+  it('coupon_card + passValidDays = 7 → value is today+7 days (en format)', () => {
+    useCardBuilderStore.setState({ passValidDays: 7, expiryDate: '' });
+    render(<PassCardPreviewHeader cardType="coupon_card" />);
+    expect(screen.getByText('couponExpiry.label')).toBeInTheDocument();
+
+    // Compute expected value: today + 7 days in en format (MM.DD.YYYY).
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const future = new Date(today);
+    future.setDate(future.getDate() + 7);
+    const mm = String(future.getMonth() + 1).padStart(2, '0');
+    const dd = String(future.getDate()).padStart(2, '0');
+    const yyyy = future.getFullYear();
+    const expected = `${mm}.${dd}.${yyyy}`;
+    expect(screen.getByText(expected)).toBeInTheDocument();
+  });
+
+  it('coupon_card + expiryDate = "2026-10-30" → value is formatted en (MM.DD.YYYY)', () => {
+    useCardBuilderStore.setState({ passValidDays: null, expiryDate: '2026-10-30' });
+    render(<PassCardPreviewHeader cardType="coupon_card" />);
+    expect(screen.getByText('couponExpiry.label')).toBeInTheDocument();
+    expect(screen.getByText('10.30.2026')).toBeInTheDocument();
+  });
+
+  it('coupon_card + expiryDate = "2026-10-30" + zh-TW locale → value is formatted zh-TW (YYYY.MM.DD)', () => {
+    vi.mocked(useTranslation).mockReturnValueOnce({
+      t: vi.fn((key: string) => key),
+      i18n: { language: 'zh-TW' },
+    } as unknown as ReturnType<typeof useTranslation>);
+    useCardBuilderStore.setState({ passValidDays: null, expiryDate: '2026-10-30' });
+    render(<PassCardPreviewHeader cardType="coupon_card" />);
+    expect(screen.getByText('couponExpiry.label')).toBeInTheDocument();
+    expect(screen.getByText('2026.10.30')).toBeInTheDocument();
+  });
+
+  it('coupon_card + passValidDays = 7 + zh-TW locale → value is today+7 days in zh-TW format', () => {
+    vi.mocked(useTranslation).mockReturnValueOnce({
+      t: vi.fn((key: string) => key),
+      i18n: { language: 'zh-TW' },
+    } as unknown as ReturnType<typeof useTranslation>);
+    useCardBuilderStore.setState({ passValidDays: 7, expiryDate: '' });
+    render(<PassCardPreviewHeader cardType="coupon_card" />);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const future = new Date(today);
+    future.setDate(future.getDate() + 7);
+    const mm = String(future.getMonth() + 1).padStart(2, '0');
+    const dd = String(future.getDate()).padStart(2, '0');
+    const yyyy = future.getFullYear();
+    const expected = `${yyyy}.${mm}.${dd}`;
+    expect(screen.getByText(expected)).toBeInTheDocument();
+  });
+
+  it('coupon_card + both passValidDays null AND expiryDate empty → "∞" infinity (default behaviour)', () => {
+    // Coupon default: no implied expiry. Falls back to "∞" when both
+    // fields are empty. Mirrors membership_card hasExpiry=false UX.
+    useCardBuilderStore.setState({ passValidDays: null, expiryDate: '' });
+    render(<PassCardPreviewHeader cardType="coupon_card" />);
+    expect(screen.getByText('couponExpiry.label')).toBeInTheDocument();
+    expect(screen.getByText('∞')).toBeInTheDocument();
+  });
+
+  it('coupon_card — testid "coupon-expiry-preview" is rendered for test selectors', () => {
+    useCardBuilderStore.setState({ passValidDays: 7, expiryDate: '' });
+    const { container } = render(<PassCardPreviewHeader cardType="coupon_card" />);
+    expect(
+      container.querySelector('[data-testid="coupon-expiry-preview"]'),
+    ).toBeInTheDocument();
+  });
+
+  it('coupon_card — pill is NOT rendered (replaces the default pill with expiry block)', () => {
+    useCardBuilderStore.setState({ passValidDays: 7, expiryDate: '' });
+    const { container } = render(<PassCardPreviewHeader cardType="coupon_card" />);
+    expect(container.querySelector('span.rounded-full')).toBeNull();
+  });
+});
+
+describe('COUPON_EXPIRY_PREVIEW_CARD_TYPES / shouldShowCouponExpiryPreview — contract', () => {
+  /**
+   * 2026-09-19 — contract for which card types get the coupon expiry
+   * preview. Mirrors the DISCOUNT_EXPIRY_PREVIEW_CARD_TYPES test block
+   * but scopes to `coupon_card` only. The set MUST be single-element
+   * to preserve the "exactly one preview variant per card type" guarantee.
+   */
+  it('COUPON_EXPIRY_PREVIEW_CARD_TYPES has exactly {coupon_card}', () => {
+    expect(COUPON_EXPIRY_PREVIEW_CARD_TYPES.size).toBe(1);
+    expect(COUPON_EXPIRY_PREVIEW_CARD_TYPES.has('coupon_card')).toBe(true);
+  });
+
+  it('COUPON_EXPIRY_PREVIEW_CARD_TYPES excludes all other card types', () => {
+    expect(COUPON_EXPIRY_PREVIEW_CARD_TYPES.has('stamp_card')).toBe(false);
+    expect(COUPON_EXPIRY_PREVIEW_CARD_TYPES.has('reward_card')).toBe(false);
+    expect(COUPON_EXPIRY_PREVIEW_CARD_TYPES.has('cashback_card')).toBe(false);
+    expect(COUPON_EXPIRY_PREVIEW_CARD_TYPES.has('membership_card')).toBe(false);
+    expect(COUPON_EXPIRY_PREVIEW_CARD_TYPES.has('discount_card')).toBe(false);
+    expect(COUPON_EXPIRY_PREVIEW_CARD_TYPES.has('multipass')).toBe(false);
+    expect(COUPON_EXPIRY_PREVIEW_CARD_TYPES.has('gift_card')).toBe(false);
+  });
+
+  it('shouldShowCouponExpiryPreview returns true for coupon_card', () => {
+    expect(shouldShowCouponExpiryPreview('coupon_card')).toBe(true);
+  });
+
+  it('shouldShowCouponExpiryPreview returns false for non-coupon / null / undefined', () => {
+    expect(shouldShowCouponExpiryPreview('stamp_card')).toBe(false);
+    expect(shouldShowCouponExpiryPreview('discount_card')).toBe(false);
+    expect(shouldShowCouponExpiryPreview('membership_card')).toBe(false);
+    expect(shouldShowCouponExpiryPreview(null)).toBe(false);
+    expect(shouldShowCouponExpiryPreview(undefined)).toBe(false);
+  });
+});
+
+describe('PassCardPreviewHeader — coupon expiry preview is coupon_card-only (regression)', () => {
+  /**
+   * 2026-09-19 — coupon_card is the ONLY card type that gets the coupon
+   * expiry preview. All other card types (incl. stamp/reward/cashback
+   * which get the balance preview, membership which gets the member
+   * expiry preview, discount which gets the discount expiry preview) must
+   * NOT render the coupon expiry block even when passValidDays/expiryDate
+   * are set. This is a regression guard against the coupon block leaking
+   * into other card types.
+   */
+  it('stamp_card does NOT render the coupon expiry block', () => {
+    useCardBuilderStore.setState({ passValidDays: 7, expiryDate: '2026-10-30' });
+    const { container } = render(<PassCardPreviewHeader cardType="stamp_card" />);
+    expect(
+      container.querySelector('[data-testid="coupon-expiry-preview"]'),
+    ).toBeNull();
+    expect(screen.queryByText('couponExpiry.label')).toBeNull();
+    // The balance preview renders for stamp_card instead.
+    expect(screen.getByText('balancePreview.label')).toBeInTheDocument();
+  });
+
+  it('membership_card does NOT render the coupon expiry block', () => {
+    useCardBuilderStore.setState({ passValidDays: 7, expiryDate: '2026-10-30' });
+    const { container } = render(<PassCardPreviewHeader cardType="membership_card" />);
+    expect(
+      container.querySelector('[data-testid="coupon-expiry-preview"]'),
+    ).toBeNull();
+    // The member expiry preview renders for membership_card.
+    expect(screen.getByText('memberExpiry.label')).toBeInTheDocument();
+  });
+
+  it('discount_card does NOT render the coupon expiry block (its own variant)', () => {
+    useCardBuilderStore.setState({
+      passValidDays: 7,
+      expiryDate: '2026-10-30',
+      // discount-specific fields also set, to make sure we render the discount
+      // block (not coupon) when cardType=discount_card
+      discountCustomExpiryDays: null,
+      discountSpecificExpiryDate: '2026-12-31',
+    });
+    const { container } = render(<PassCardPreviewHeader cardType="discount_card" />);
+    expect(
+      container.querySelector('[data-testid="coupon-expiry-preview"]'),
+    ).toBeNull();
+    // The discount expiry preview renders for discount_card instead.
+    expect(screen.getByText('discountExpiry.label')).toBeInTheDocument();
   });
 });

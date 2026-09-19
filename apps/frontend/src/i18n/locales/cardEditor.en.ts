@@ -161,6 +161,10 @@ export default {
         pointsToNextTierDiscount: 'Amount to Next Tier',
         discountTierBracket: 'Discount Tier Bracket',
         accumulatedSpendDiscount: 'Accumulated Spending',
+        // Coupon-only fields — only shown for coupon_card (2026-09-19).
+        // gated by group: 'coupon' + filterCARD_FIELDS_BY_CARD_TYPE.
+        couponRemainingCount: 'Remaining Count',
+        couponDiscount: 'Discount Offer',
       },
     },
     // ===== Stamp grid — added 2026-09-04 =====
@@ -702,6 +706,47 @@ export default {
         tierNameRequired: 'Tier name is required',
         thresholdInvalid: 'Cumulative spending cannot be negative',
         percentInvalid: 'Discount % must be an integer between 1 and 100',
+      },
+    },
+    // ===== Coupon Card (2026-09-19, coupon_card only) =====
+    // Single coupon: one discount value per use + issue count per transaction.
+    coupon: {
+      intro: 'Set up this coupon card',
+      introHint: 'Choose between a fixed amount or percentage discount, set the per-use value, and decide how many coupons to issue per transaction.',
+      // Discount type radio
+      discountTypeTitle: 'Discount Type',
+      discountTypeAmount: 'Fixed Amount',
+      discountTypePercent: 'Percentage',
+      discountTypeRequiredError: 'Please choose a discount type',
+      // Fixed amount
+      amountTitle: 'Discount per Use',
+      amountPlaceholder: 'e.g. 50',
+      amountUnitTWD: 'NT$',
+      amountUnitZAR: 'R',
+      amountRequiredError: 'Please enter the fixed amount',
+      amountInvalidError: 'Fixed amount must be ≥ 1',
+      // Percentage
+      percentTitle: 'Discount per Use',
+      percentPlaceholder: 'e.g. 10',
+      percentUnit: '%',
+      percentRequiredError: 'Please enter the discount %',
+      percentInvalidError: 'Discount % must be an integer between 1 and 100',
+      // Issue count
+      issueCountTitle: 'Coupons per Transaction',
+      issueCountPlaceholder: 'e.g. 1',
+      issueCountUnit: 'coupons',
+      issueCountHint: 'How many coupons to issue to the same customer per transaction (minimum 1).',
+      issueCountRequiredError: 'Please enter the number of coupons',
+      issueCountInvalidError: 'Coupon count must be ≥ 1',
+      // Validation
+      validation: {
+        discountTypeRequired: 'Please choose a discount type',
+        amountRequired: 'Please enter the fixed amount',
+        amountInvalid: 'Fixed amount must be ≥ 1',
+        percentRequired: 'Please enter the discount %',
+        percentInvalid: 'Discount % must be an integer between 1 and 100',
+        issueCountRequired: 'Please enter the number of coupons',
+        issueCountInvalid: 'Coupon count must be ≥ 1',
       },
     },
   },

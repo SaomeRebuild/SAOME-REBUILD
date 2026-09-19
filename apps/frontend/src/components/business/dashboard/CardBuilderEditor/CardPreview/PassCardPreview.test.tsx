@@ -36,10 +36,10 @@ describe('PassCardPreview', () => {
   });
 
   it('renders card type label', () => {
-    render(<PassCardPreview name="測試卡片" cardType="coupon_card" />);
+    render(<PassCardPreview name="測試卡片" cardType="multipass" />);
     // cardType is rendered directly without i18n lookup.
-    // Use a NON-balance-preview, NON-membership, NON-discount card type
-    // here so the rounded-full pill is the rendered element:
+    // Use a NON-balance-preview, NON-membership, NON-discount, NON-coupon
+    // card type here so the rounded-full pill is the rendered element:
     // - For {stamp_card, reward_card, cashback_card} the pill is replaced
     //   by the 2-line balance block (see 'balance preview for target card
     //   types' below).
@@ -47,9 +47,11 @@ describe('PassCardPreview', () => {
     //   member expiry preview.
     // - For discount_card (2026-09-18) the pill is replaced by the 2-line
     //   discount expiry preview.
+    // - For coupon_card (2026-09-19) the pill is replaced by the 2-line
+    //   coupon expiry preview.
     // See PassCardPreviewHeader.test.tsx for the dedicated tests of those
     // expiry/balance blocks.
-    expect(screen.getAllByText('coupon_card').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('multipass').length).toBeGreaterThan(0);
   });
 
   it('has correct aspect ratio', () => {
@@ -127,20 +129,22 @@ describe('PassCardPreview', () => {
 
   it('applies textColor to card type badge', () => {
     const { container } = render(
-      <PassCardPreview name="測試卡片" cardType="coupon_card" textColor="#ff0000" />
+      <PassCardPreview name="測試卡片" cardType="multipass" textColor="#ff0000" />
     );
     // The card type badge has class rounded-full (pill).
     // 2026-09-03: removed bg-neutral-200 → background is now transparent.
     // Identify the badge by its text content matching the cardType.
-    // Use coupon_card so the pill path is rendered:
+    // Use multipass so the pill path is rendered:
     // - stamp_card / reward_card / cashback_card replace the pill with the
     //   2-line balance block (its own test below).
     // - membership_card (2026-09-13) replaces the pill with the 2-line
     //   member expiry preview.
     // - discount_card (2026-09-18) replaces the pill with the 2-line
     //   discount expiry preview.
+    // - coupon_card (2026-09-19) replaces the pill with the 2-line
+    //   coupon expiry preview.
     const badge = Array.from(container.querySelectorAll('span.rounded-full')).find(
-      (el) => el.textContent === 'coupon_card',
+      (el) => el.textContent === 'multipass',
     ) as HTMLElement;
     expect(badge).toBeInTheDocument();
     expect(badge.style.color).toBe('rgb(255, 0, 0)');

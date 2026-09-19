@@ -42,6 +42,10 @@ export function PassCardPreview({
   firstCashbackTierName,
   firstMembershipTierName,
   firstDiscountTierName,
+  firstCouponRemainingCount,
+  couponDiscountType,
+  couponDiscountAmount,
+  couponDiscountPercent,
   membershipTiersRewards,
   isMembership,
   description,
@@ -169,6 +173,10 @@ export function PassCardPreview({
               firstCashbackTierName={effectiveFirstCashbackTierName}
               firstMembershipTierName={effectiveFirstMembershipTierName}
               firstDiscountTierName={effectiveFirstDiscountTierName}
+              firstCouponRemainingCount={firstCouponRemainingCount}
+              couponDiscountType={couponDiscountType}
+              couponDiscountAmount={couponDiscountAmount}
+              couponDiscountPercent={couponDiscountPercent}
             />
 
             {/* Footer / Barcode */}

@@ -1272,3 +1272,320 @@ describe('CardBuilderEditor — Step 2 autosave (2026-09-18)', () => {
     });
   });
 });
+
+// =============================================================
+// Step 6 — Coupon Card autosave (2026-09-19, coupon persistence regression)
+// =============================================================
+// Symptom: editing coupon fields in Step 6 did not persist unless the user
+// clicked "下一步". In-progress typing was lost on reload — same UX bug as
+// the 2026-09-05 Step 4 autosave.
+//
+// Root cause (2 layers):
+//   1. No autosave effect existed for Step 6 coupon fields — only the
+//      `handleNext` step 6 block in CardBuilderEditorWorkspace sent these
+//      fields to the backend. Same shape as the Step 4 / Step 5 issue
+//      fixed in earlier phases.
+//   2. The backend `templateSettingsSchema` (request.ts) and
+//      `TemplateSettings` interface (db/templates.ts) were MISSING the
+//      coupon fields. Zod's default `.object()` behavior strips unknown
+//      keys, so even when the user did click "Next", the PUT payload
+//      had its coupon fields silently stripped before reaching the DB.
+//      Fixed via Rule 019 § 4.1 layer 2 + layer 3 mirror update.
+//
+// This block pins:
+//   - autosave fires after 1s debounce when coupon fields change
+//   - autosave includes the full coupon field set in the payload
+//   - baseline-armed ref prevents empty defaults from being PUT before
+//     loadSettings resolves
+//   - backfill: when the user re-edits the card, loadSettings hydrates
+//     the store from DB and the field values round-trip correctly
+describe('CardBuilderEditor — Step 6 coupon card autosave (2026-09-19)', () => {
+  /**
+   * Helper: filter updateCalls to find the autosave that carries the
+   * Step 6 coupon payload (any of the 4 coupon keys inside `settings`).
+   */
+  function findCouponUpdate() {
+    return updateCalls.find((u) => {
+      const payload = u.payload as {
+        settings?: {
+          couponDiscountType?: string;
+          couponDiscountAmount?: number | null;
+          couponDiscountPercent?: number | null;
+          couponIssueCount?: number;
+        };
+      };
+      if (payload.settings === undefined) return false;
+      return (
+        'couponDiscountType' in payload.settings ||
+        'couponDiscountAmount' in payload.settings ||
+        'couponDiscountPercent' in payload.settings ||
+        'couponIssueCount' in payload.settings
+      );
+    });
+  }
+
+  beforeEach(() => {
+    // Reset cardId so each test gets a fresh baseline-armed ref state.
+    useCardBuilderStore.getState().reset();
+  });
+
+  it('autosaves couponDiscountType change to settings.couponDiscountType (regression 2026-09-19)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderWithRouter();
+    await flushLoadSettings();
+
+    act(() => {
+      useCardBuilderStore.getState().setCouponDiscountType('percent_off');
+    });
+
+    expect(updateCalls).toHaveLength(0);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1100);
+    });
+
+    await waitFor(() => expect(findCouponUpdate()).toBeDefined());
+    const payload = findCouponUpdate()!.payload as {
+      settings?: {
+        couponDiscountType?: string;
+        couponDiscountAmount?: number | null;
+        couponDiscountPercent?: number | null;
+        couponIssueCount?: number;
+      };
+    };
+    // couponDiscountType change clears couponDiscountAmount (store
+    // setter enforces mutual exclusion), keeps couponDiscountPercent
+    // unchanged (still null at this point), keeps couponIssueCount at
+    // default 1.
+    expect(payload.settings?.couponDiscountType).toBe('percent_off');
+    expect(payload.settings?.couponDiscountAmount).toBe(null);
+    expect(payload.settings?.couponDiscountPercent).toBe(null);
+    expect(payload.settings?.couponIssueCount).toBe(1);
+  });
+
+  it('autosaves couponDiscountAmount change to settings.couponDiscountAmount (regression 2026-09-19)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderWithRouter();
+    await flushLoadSettings();
+
+    act(() => {
+      useCardBuilderStore.getState().setCouponDiscountAmount(50);
+    });
+
+    expect(updateCalls).toHaveLength(0);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1100);
+    });
+
+    await waitFor(() => expect(findCouponUpdate()).toBeDefined());
+    const payload = findCouponUpdate()!.payload as {
+      settings?: {
+        couponDiscountType?: string;
+        couponDiscountAmount?: number | null;
+      };
+    };
+    // amount_off default type; couponDiscountAmount=50 sent.
+    expect(payload.settings?.couponDiscountType).toBe('amount_off');
+    expect(payload.settings?.couponDiscountAmount).toBe(50);
+  });
+
+  it('autosaves couponDiscountPercent change to settings.couponDiscountPercent (regression 2026-09-19)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderWithRouter();
+    await flushLoadSettings();
+
+    // Switch to percent_off first (so couponDiscountPercent is the active field).
+    act(() => {
+      useCardBuilderStore.getState().setCouponDiscountType('percent_off');
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(1100);
+    });
+
+    // Clear the first PUT (the type switch) so we can isolate the percent value change.
+    updateCalls.length = 0;
+
+    act(() => {
+      useCardBuilderStore.getState().setCouponDiscountPercent(20);
+    });
+
+    expect(updateCalls).toHaveLength(0);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1100);
+    });
+
+    await waitFor(() => expect(findCouponUpdate()).toBeDefined());
+    const payload = findCouponUpdate()!.payload as {
+      settings?: {
+        couponDiscountType?: string;
+        couponDiscountAmount?: number | null;
+        couponDiscountPercent?: number | null;
+      };
+    };
+    expect(payload.settings?.couponDiscountType).toBe('percent_off');
+    expect(payload.settings?.couponDiscountAmount).toBe(null); // cleared on type switch
+    expect(payload.settings?.couponDiscountPercent).toBe(20);
+  });
+
+  it('autosaves couponIssueCount change to settings.couponIssueCount (regression 2026-09-19)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderWithRouter();
+    await flushLoadSettings();
+
+    act(() => {
+      useCardBuilderStore.getState().setCouponIssueCount(5);
+    });
+
+    expect(updateCalls).toHaveLength(0);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1100);
+    });
+
+    await waitFor(() => expect(findCouponUpdate()).toBeDefined());
+    const payload = findCouponUpdate()!.payload as {
+      settings?: {
+        couponDiscountType?: string;
+        couponDiscountAmount?: number | null;
+        couponDiscountPercent?: number | null;
+        couponIssueCount?: number;
+      };
+    };
+    // Default values for the type+amount fields, custom issue count.
+    expect(payload.settings?.couponDiscountType).toBe('amount_off');
+    expect(payload.settings?.couponDiscountAmount).toBe(null);
+    expect(payload.settings?.couponDiscountPercent).toBe(null);
+    expect(payload.settings?.couponIssueCount).toBe(5);
+  });
+
+  it('does NOT autosave empty defaults before async fetch resolves — Step 6 coupon (regression 2026-09-19)', async () => {
+    // Mirrors Step 2 / Step 4 / Step 5 修 3 regression — slow-network
+    // scenario where fetch is slower than debounce. Without the
+    // baseline-arm + loadSettled guard, the Step 6 coupon autosave
+    // effect would PUT empty defaults (couponDiscountAmount=null,
+    // couponDiscountPercent=null) into DB and (via Rule 032 silent
+    // overwrite) clobber any real coupon data when the user
+    // re-edits the card.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    // Slow fetch (3s) — well past the 1s autosave debounce.
+    const cardService = await import('@/services/cardService');
+    vi.mocked(cardService.cardService.getById).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          setTimeout(
+            () =>
+              resolve({
+                id: 'test-template-id',
+                settings: {
+                  ...FULL_SETTINGS,
+                  cardType: 'coupon_card',
+                  couponDiscountType: 'amount_off',
+                  couponDiscountAmount: 100,
+                  couponDiscountPercent: null,
+                  couponIssueCount: 3,
+                },
+                cardType: 'coupon_card',
+                name: '既有 Coupon Card',
+              } as unknown as Awaited<
+                ReturnType<typeof cardService.cardService.getById>
+              >),
+            3000,
+          );
+        }),
+    );
+
+    renderWithRouter();
+
+    // User edits IMMEDIATELY after mount — before fetch resolves.
+    act(() => {
+      useCardBuilderStore.getState().setCouponDiscountAmount(50);
+    });
+
+    // Drive past the 1s autosave debounce. The fix ensures NO PUT fires
+    // because loadSettings hasn't settled the store yet.
+    await act(async () => {
+      vi.advanceTimersByTime(1100);
+    });
+
+    const callsBeforeSettle = updateCalls.filter((u) => {
+      const payload = u.payload as {
+        settings?: {
+          couponDiscountType?: string;
+          couponDiscountAmount?: number | null;
+          couponDiscountPercent?: number | null;
+          couponIssueCount?: number;
+        };
+      };
+      if (payload.settings === undefined) return false;
+      return (
+        'couponDiscountType' in payload.settings ||
+        'couponDiscountAmount' in payload.settings ||
+        'couponDiscountPercent' in payload.settings ||
+        'couponIssueCount' in payload.settings
+      );
+    });
+    expect(callsBeforeSettle.length).toBe(0);
+
+    // Now let fetch resolve and verify the store hydrates the coupon
+    // fields correctly (the user-reported bug: "沒有回填" — loadSettings
+    // would NOT hydrate if the backend schema was missing the coupon
+    // fields and the DB had them but they were never written).
+    await act(async () => {
+      vi.advanceTimersByTime(2000); // total ~3100ms — past the 3000ms fetch
+    });
+
+    await waitFor(() => {
+      const s = useCardBuilderStore.getState();
+      expect(s.couponDiscountType).toBe('amount_off');
+      expect(s.couponDiscountAmount).toBe(100);
+      expect(s.couponDiscountPercent).toBe(null);
+      expect(s.couponIssueCount).toBe(3);
+    });
+  });
+
+  it('full coupon_card payload round-trips through autosave (end-to-end regression 2026-09-19)', async () => {
+    // End-to-end happy path: a user fills in a coupon card Step 6 form,
+    // the autosave fires, the payload reaches the DB, and on re-edit
+    // the loadSettings round-trips correctly. The root cause fix (Rule
+    // 019 § 4.1 layer 2 + layer 3) ensures the fields aren't stripped
+    // by zod's default `.object()` behavior.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderWithRouter();
+    await flushLoadSettings();
+
+    act(() => {
+      useCardBuilderStore.getState().setCouponDiscountAmount(50);
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(1100);
+    });
+
+    updateCalls.length = 0;
+
+    act(() => {
+      useCardBuilderStore.getState().setCouponIssueCount(3);
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(1100);
+    });
+
+    await waitFor(() => expect(findCouponUpdate()).toBeDefined());
+    const payload = findCouponUpdate()!.payload as {
+      settings?: {
+        couponDiscountType?: string;
+        couponDiscountAmount?: number | null;
+        couponDiscountPercent?: number | null;
+        couponIssueCount?: number;
+      };
+    };
+    expect(payload.settings).toEqual({
+      couponDiscountType: 'amount_off',
+      couponDiscountAmount: 50,
+      couponDiscountPercent: null,
+      couponIssueCount: 3,
+    });
+  });
+});

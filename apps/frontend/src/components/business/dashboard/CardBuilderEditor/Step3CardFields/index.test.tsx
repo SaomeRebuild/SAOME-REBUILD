@@ -21,6 +21,7 @@ import {
   filterCARD_FIELDS_BY_CARD_TYPE,
   CASHBACK_CARD_TYPES,
   DISCOUNT_CARD_TYPES,
+  COUPON_CARD_TYPES,
 } from './filterCARD_FIELDS_BY_CARD_TYPE';
 import { useCardBuilderStore } from '../CardBuilderEditor.store';
 
@@ -602,6 +603,104 @@ describe('Step3CardFields — membership_card hides memberName option in dropdow
     const memberNameOption = rightSelect.querySelector('option[value="memberName"]');
     expect(memberNameOption).toBeNull();
   });
+});
+
+// ===== Coupon card Step 3 display-field extension (2026-09-19) ==========
+// Mirrors the discount_card group isolation describe block (2026-09-18).
+// COUPON_CARD_TYPES = { coupon_card }. coupon group fields
+// (couponRemainingCount, couponDiscount) must appear ONLY when
+// cardType === 'coupon_card'. They must NOT appear for any other card
+// type. Also: `memberLevel` must be HIDDEN for coupon_card per
+// `hideOnCardTypes: ['coupon_card']` (coupons are not tier-driven, so
+// the 會員等級 option is excluded to avoid confusing the user about a
+// hierarchy that does not exist).
+describe('filterCARD_FIELDS_BY_CARD_TYPE — coupon_card group isolation', () => {
+  it('returns coupon-only fields for coupon_card', () => {
+    const fields = filterCARD_FIELDS_BY_CARD_TYPE('coupon_card');
+    const keys = fields.map((f) => f.key);
+
+    expect(keys).toContain('couponRemainingCount');
+    expect(keys).toContain('couponDiscount');
+  });
+
+  it('returns common + coupon fields for coupon_card (no other group contamination)', () => {
+    const fields = filterCARD_FIELDS_BY_CARD_TYPE('coupon_card');
+    const keys = fields.map((f) => f.key);
+
+    // Common fields present (except memberLevel hidden via hideOnCardTypes).
+    expect(keys).toContain('phone');
+    expect(keys).toContain('email');
+    expect(keys).toContain('birthday');
+    expect(keys).toContain('visitCount');
+
+    // coupon group fields present.
+    expect(keys).toContain('couponRemainingCount');
+    expect(keys).toContain('couponDiscount');
+
+    // Stamp / reward / cashback / discount group fields MUST NOT appear
+    // for coupon_card (group gate isolation).
+    expect(keys).not.toContain('availableRewards');
+    expect(keys).not.toContain('totalStamps');
+    expect(keys).not.toContain('stampsRemaining');
+    expect(keys).not.toContain('pointsToNextTier');
+    expect(keys).not.toContain('currentPoints');
+    expect(keys).not.toContain('pointsToNextTierCashback');
+    expect(keys).not.toContain('accumulatedSpendCashback');
+    expect(keys).not.toContain('pointsToNextTierDiscount');
+    expect(keys).not.toContain('discountTierBracket');
+    expect(keys).not.toContain('accumulatedSpendDiscount');
+  });
+
+  it('hides memberLevel for coupon_card via hideOnCardTypes (coupons are not tier-driven)', () => {
+    // 2026-09-19: memberLevel gains hideOnCardTypes: ['coupon_card'] to
+    // avoid showing the "會員等級" option for a card type that has no
+    // tier system. Matches the membership_card memberName hide pattern.
+    const fields = filterCARD_FIELDS_BY_CARD_TYPE('coupon_card');
+    const keys = fields.map((f) => f.key);
+    expect(keys).not.toContain('memberLevel');
+
+    // Sanity baseline: memberLevel still appears for stamp_card.
+    const stampFields = filterCARD_FIELDS_BY_CARD_TYPE('stamp_card');
+    expect(stampFields.map((f) => f.key)).toContain('memberLevel');
+
+    // Sanity baseline: memberLevel still appears for reward_card.
+    const rewardFields = filterCARD_FIELDS_BY_CARD_TYPE('reward_card');
+    expect(rewardFields.map((f) => f.key)).toContain('memberLevel');
+
+    // Sanity baseline: memberLevel still appears for discount_card.
+    const discountFields = filterCARD_FIELDS_BY_CARD_TYPE('discount_card');
+    expect(discountFields.map((f) => f.key)).toContain('memberLevel');
+  });
+
+  it('coupon-only fields do NOT appear for any other card type', () => {
+    const otherCardTypes = [
+      'stamp_card',
+      'reward_card',
+      'cashback_card',
+      'membership_card',
+      'discount_card',
+      'multipass',
+      'gift_card',
+      null,
+    ] as const;
+
+    for (const cardType of otherCardTypes) {
+      const keys = filterCARD_FIELDS_BY_CARD_TYPE(cardType).map((f) => f.key);
+      expect(keys, `cardType=${String(cardType)}`).not.toContain('couponRemainingCount');
+      expect(keys, `cardType=${String(cardType)}`).not.toContain('couponDiscount');
+    }
+  });
+
+  it('COUPON_CARD_TYPES constant contains exactly coupon_card', () => {
+    expect(COUPON_CARD_TYPES.size).toBe(1);
+    expect(COUPON_CARD_TYPES.has('coupon_card')).toBe(true);
+    expect(COUPON_CARD_TYPES.has('stamp_card')).toBe(false);
+    expect(COUPON_CARD_TYPES.has('cashback_card')).toBe(false);
+    expect(COUPON_CARD_TYPES.has('reward_card')).toBe(false);
+    expect(COUPON_CARD_TYPES.has('membership_card')).toBe(false);
+    expect(COUPON_CARD_TYPES.has('discount_card')).toBe(false);
+  });
+});
 
   it('still renders other common fields in the dropdown (regression — only memberName is excluded)', () => {
     render(<Step3CardFields />);
@@ -616,4 +715,3 @@ describe('Step3CardFields — membership_card hides memberName option in dropdow
     expect(leftSelect.querySelector('option[value="birthday"]')).not.toBeNull();
     expect(leftSelect.querySelector('option[value="visitCount"]')).not.toBeNull();
   });
-});

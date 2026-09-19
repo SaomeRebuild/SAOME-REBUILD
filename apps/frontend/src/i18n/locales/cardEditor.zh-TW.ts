@@ -158,6 +158,10 @@ export default {
         pointsToNextTierDiscount: '到下一級還差',
         discountTierBracket: '折扣級距',
         accumulatedSpendDiscount: '累積消費',
+        // Coupon 卡限定欄位 — 僅在 coupon_card 顯示 (2026-09-19)
+        // 透過 group: 'coupon' + filterCARD_FIELDS_BY_CARD_TYPE 控制顯示與否
+        couponRemainingCount: '剩餘張數',
+        couponDiscount: '折扣優惠',
       },
     },
     // ===== Stamp grid (集點印章) — added 2026-09-04 =====
@@ -707,6 +711,52 @@ export default {
         tierNameRequired: '折扣等級為必填欄位',
         thresholdInvalid: '累積消費不可為負數',
         percentInvalid: '折扣%需為 1-100 之間的整數',
+      },
+    },
+    // ===== Coupon 卡 (2026-09-19, coupon_card only) =====
+    // 單一折價券：單次使用折扣額度 + 一次發給同一消費者幾張券。
+    // 與 discount_card 差異：
+    //   - 沒有「級距」概念，只有一組折扣規則。
+    //   - discountType 由 radio 切換 amount_off / percent_off（互斥，
+    //     切換時清空另一個 value 欄位）。
+    //   - 新增 couponIssueCount（一次發給同一消費者幾張券，≥1，無上限）。
+    coupon: {
+      intro: '設定此折價券的折扣與發送張數',
+      introHint: '選擇現金折扣或 % 數折扣，設定單次使用折扣額度，並決定一次發給同一消費者幾張券。',
+      // 折扣類型 radio
+      discountTypeTitle: '折扣類型',
+      discountTypeAmount: '現金折扣',
+      discountTypePercent: '% 數折扣',
+      discountTypeRequiredError: '請選擇折扣類型',
+      // 現金折扣金額
+      amountTitle: '使用一次折扣',
+      amountPlaceholder: '例如：50',
+      amountUnitTWD: '元',
+      amountUnitZAR: 'R',
+      amountRequiredError: '請輸入現金折扣金額',
+      amountInvalidError: '現金折扣金額需 ≥ 1',
+      // % 數折扣
+      percentTitle: '使用一次折扣',
+      percentPlaceholder: '例如：10',
+      percentUnit: '%',
+      percentRequiredError: '請輸入折扣 % 數',
+      percentInvalidError: '折扣 % 數需為 1-100 之間的整數',
+      // 一次發券張數
+      issueCountTitle: '一次發卷',
+      issueCountPlaceholder: '例如：1',
+      issueCountUnit: '張',
+      issueCountHint: '設定一次可發給同一個消費者幾張券（最少 1 張）',
+      issueCountRequiredError: '請輸入發券張數',
+      issueCountInvalidError: '發券張數需 ≥ 1',
+      // 驗證
+      validation: {
+        discountTypeRequired: '請選擇折扣類型',
+        amountRequired: '請輸入現金折扣金額',
+        amountInvalid: '現金折扣金額需 ≥ 1',
+        percentRequired: '請輸入折扣 % 數',
+        percentInvalid: '折扣 % 數需為 1-100 之間的整數',
+        issueCountRequired: '請輸入發券張數',
+        issueCountInvalid: '發券張數需 ≥ 1',
       },
     },
   },
