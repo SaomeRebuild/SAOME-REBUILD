@@ -1562,3 +1562,412 @@ describe('PassCardPreviewBody — discountTierBracket store-derived value (2026-
     expect(screen.queryByText(/^R\d/)).toBeNull();
   });
 });
+
+// ── 2026-09-19 coupon card: store-driven discount value via i18n templates ──
+
+describe('PassCardPreviewBody — coupon-only fields (2026-09-19, store-driven discount)', () => {
+  /**
+   * 2026-09-19 bug fix: previously the `couponDiscount` slot hardcoded
+   * "10元折扣" / "R10折扣" regardless of the user's actual input. New
+   * behaviour: read store.couponDiscountAmount / couponDiscountPercent
+   * and interpolate into i18n templates (amountFormatTWD / amountFormatZAR
+   * / percentFormat). The previous currency-driven fallback map
+   * (`COUPON_PREVIEW_AMOUNTS`) is REMOVED — values are now store-driven.
+   *
+   * Also: switching `couponDiscountType` does NOT clear the other field
+   * (regression — previously the setter nulled out the unused field,
+   * which lost the user's percent value when switching back from
+   * amount_off).
+   *
+   * These tests use a custom spy that resolves i18n keys against the
+   * actual loaded passCard.zh-TW resources (via `require()`). The
+   * default mock returns the key verbatim — that wouldn't let us
+   * assert on the interpolated string output ("50元折扣" / "R50折扣"
+   * / "10%折扣"). See buildTSpyWithResources below.
+   */
+  function buildTSpyWithResources(): ReturnType<typeof vi.fn> {
+    // Inline translation map for the coupon-specific i18n keys (2026-09-19
+    // bug fix). Reading the passCard.zh-TW resource directly via `require`
+    // does NOT work in vitest (the `@/` alias isn't resolved inside
+    // `require()` calls). Inlining the relevant keys here avoids the
+    // alias resolution issue while still exercising the interpolation
+    // contract end-to-end. The actual passCard.zh-TW file remains the
+    // source of truth — this inline map is a TEST-ONLY mirror.
+    //
+    // 2026-09-20: added `couponRemainingCount.countFormat` template
+    // ("{{count}}張") so the unit-suffix regression fix can be exercised
+    // end-to-end. Also added an optional `couponDiscount.amountFormatTWD_en`
+    // entry (default "NT${{amount}} off") so en + TWD + amount_off
+    // tests can assert on the NT$ prefix. Tests opt into the en
+    // template by overriding the map via `buildTSpyWithResources({ locale: 'en' })`.
+    const couponTranslations: Record<string, string> = {
+      'fieldPreview.couponDiscount.label': '折扣優惠',
+      'fieldPreview.couponDiscount.amountFormatTWD': '{{amount}}元折扣',
+      'fieldPreview.couponDiscount.amountFormatZAR': 'R{{amount}}折扣',
+      'fieldPreview.couponDiscount.percentFormat': '{{percent}}%折扣',
+      'fieldPreview.couponRemainingCount.label': '剩餘張數',
+      'fieldPreview.couponRemainingCount.value': '1張',
+      'fieldPreview.couponRemainingCount.countFormat': '{{count}}張',
+    };
+    return vi.fn((...args: unknown[]) => {
+      const key = args[0] as string;
+      const opts = args[1] as Record<string, unknown> | undefined;
+      const template = couponTranslations[key] ?? key;
+      if (!opts) return template;
+      return template.replace(/\{\{(\w+)\}\}/g, (_match, name) =>
+        String(opts[name] ?? ''),
+      );
+    });
+  }
+
+  /**
+   * 2026-09-20: en locale spy for coupon preview tests. Mirrors the
+   * en passCard namespace values relevant to coupon fields. Use this
+   * to assert that:
+   *   - en + TWD + amount_off + couponDiscountAmount=50 → "NT$50 off"
+   *     (the NT$ prefix was added 2026-09-20 — previously "{{amount}} off"
+   *     silently dropped the currency unit on the en side).
+   *   - en + couponRemainingCount (firstCouponRemainingCount=5) →
+   *     "5 sheets" (countFormat template, regression for the unit-suffix
+   *     bug where the body rendered bare digits).
+   */
+  function buildEnTSpyWithResources(): ReturnType<typeof vi.fn> {
+    const couponTranslations: Record<string, string> = {
+      'fieldPreview.couponDiscount.label': 'Discount Offer',
+      'fieldPreview.couponDiscount.amountFormatTWD': 'NT${{amount}} off',
+      'fieldPreview.couponDiscount.amountFormatZAR': 'R{{amount}} off',
+      'fieldPreview.couponDiscount.percentFormat': '{{percent}}% off',
+      'fieldPreview.couponRemainingCount.label': 'Remaining Count',
+      'fieldPreview.couponRemainingCount.value': '1 sheet',
+      'fieldPreview.couponRemainingCount.countFormat': '{{count}} sheets',
+    };
+    return vi.fn((...args: unknown[]) => {
+      const key = args[0] as string;
+      const opts = args[1] as Record<string, unknown> | undefined;
+      const template = couponTranslations[key] ?? key;
+      if (!opts) return template;
+      return template.replace(/\{\{(\w+)\}\}/g, (_match, name) =>
+        String(opts[name] ?? ''),
+      );
+    });
+  }
+
+  function mockUseTranslationOnce(spy: ReturnType<typeof vi.fn>) {
+    vi.mocked(useTranslation).mockReturnValueOnce({
+      t: spy,
+    } as unknown as ReturnType<typeof useTranslation>);
+  }
+
+  /**
+   * For tests that use `rerender()` (which triggers a fresh
+   * useTranslation() call each time) — `mockReturnValueOnce` only
+   * applies to the FIRST call. Use `mockImplementation` to make the
+   * spy persist across all subsequent calls within this test.
+   */
+  function mockUseTranslationPersistent(spy: ReturnType<typeof vi.fn>) {
+    vi.mocked(useTranslation).mockImplementation(
+      () => ({ t: spy } as unknown as ReturnType<typeof useTranslation>),
+    );
+  }
+
+  it('couponRemainingCount renders label via i18n + value via i18n default ("1張")', () => {
+    const tSpy = buildTSpyWithResources();
+    mockUseTranslationOnce(tSpy);
+    render(
+      <PassCardPreviewBody
+        cardType="coupon_card"
+        leftField="couponRemainingCount"
+      />,
+    );
+    // Label resolves to the i18n template "剩餘張數" via spy.
+    expect(
+      screen.getByText('剩餘張數'),
+    ).toBeInTheDocument();
+    // Body falls back to i18n value "1張" when firstCouponRemainingCount is undefined.
+    expect(
+      screen.getByText('1張'),
+    ).toBeInTheDocument();
+  });
+
+  it('couponRemainingCount + firstCouponRemainingCount=5 → "5張" via countFormat (regression 2026-09-20 unit-suffix)', () => {
+    // 2026-09-20 regression: previously the body forwarded
+    // `String(couponIssueCount)` as the value verbatim, which rendered
+    // the bare digits "5" without the i18n unit ("張" / "sheets").
+    // After the fix, firstCouponRemainingCount is a `number` and the
+    // body interpolates it into i18n `couponRemainingCount.countFormat`
+    // ("{{count}}張") so the localised unit always appears next to the
+    // user's count. Same path also covers the "user picked count=10"
+    // case (large counts), not just small ones.
+    const tSpy = buildTSpyWithResources();
+    mockUseTranslationOnce(tSpy);
+    render(
+      <PassCardPreviewBody
+        cardType="coupon_card"
+        leftField="couponRemainingCount"
+        firstCouponRemainingCount={5}
+      />,
+    );
+    expect(
+      screen.getByText('剩餘張數'),
+    ).toBeInTheDocument();
+    // Body composes the unit via i18n countFormat — "5張", NOT bare "5".
+    expect(screen.getByText('5張')).toBeInTheDocument();
+    // The bare digit "5" must NOT appear as a standalone value node
+    // (it would only do so if the body bypassed the i18n template).
+    const bareDigits = screen.queryByText((_content, node) => {
+      if (!node) return false;
+      const text = node.textContent ?? '';
+      // Match a span whose entire text content is exactly "5" (not "5張").
+      return text === '5' && node.children.length === 0;
+    });
+    expect(bareDigits).toBeNull();
+  });
+
+  it('couponDiscount + couponDiscountType="amount_off" + currency=TWD + couponDiscountAmount=null → empty (no placeholder)', () => {
+    // 2026-09-19 bug fix: previously the preview showed the hardcoded
+    // "10元折扣" placeholder regardless of the user's actual input.
+    // New behaviour: when couponDiscountAmount is null, the preview
+    // renders an empty string.
+    useCardBuilderStore.setState({
+      currency: 'TWD',
+      couponDiscountType: 'amount_off',
+      couponDiscountAmount: null,
+      couponDiscountPercent: null,
+    });
+    render(
+      <PassCardPreviewBody cardType="coupon_card" rightField="couponDiscount" />,
+    );
+    // Label resolves to "折扣優惠" via default mock.
+    expect(screen.getByText('fieldPreview.couponDiscount.label')).toBeInTheDocument();
+    // The hardcoded "10元折扣" MUST NOT appear (no placeholder text).
+    expect(screen.queryByText('10元折扣')).toBeNull();
+    // The value span should be empty.
+    const valueSpans = screen.getAllByText('');
+    expect(valueSpans.length).toBeGreaterThan(0);
+  });
+
+  it('couponDiscount + couponDiscountType="amount_off" + currency=TWD + couponDiscountAmount=50 → "50元折扣" (regression 2026-09-19)', () => {
+    // 2026-09-19 bug fix: the preview now reads the user's actual
+    // couponDiscountAmount and interpolates into the i18n template
+    // `amountFormatTWD` → "{{amount}}元折扣" → "50元折扣".
+    const tSpy = buildTSpyWithResources();
+    mockUseTranslationOnce(tSpy);
+    useCardBuilderStore.setState({
+      currency: 'TWD',
+      couponDiscountType: 'amount_off',
+      couponDiscountAmount: 50,
+      couponDiscountPercent: null,
+    });
+    render(
+      <PassCardPreviewBody cardType="coupon_card" rightField="couponDiscount" />,
+    );
+    // Label resolves to "折扣優惠" via spy.
+    expect(screen.getByText('折扣優惠')).toBeInTheDocument();
+    expect(screen.getByText('50元折扣')).toBeInTheDocument();
+  });
+
+  it('couponDiscount + couponDiscountType="amount_off" + currency=ZAR + couponDiscountAmount=50 → "R50折扣" (regression 2026-09-19)', () => {
+    // 2026-09-19 bug fix: ZAR path uses `amountFormatZAR` template →
+    // "R{{amount}}折扣" → "R50折扣".
+    const tSpy = buildTSpyWithResources();
+    mockUseTranslationOnce(tSpy);
+    useCardBuilderStore.setState({
+      currency: 'ZAR',
+      couponDiscountType: 'amount_off',
+      couponDiscountAmount: 50,
+      couponDiscountPercent: null,
+    });
+    render(
+      <PassCardPreviewBody cardType="coupon_card" rightField="couponDiscount" />,
+    );
+    expect(screen.getByText('折扣優惠')).toBeInTheDocument();
+    expect(screen.getByText('R50折扣')).toBeInTheDocument();
+  });
+
+  it('couponDiscount + couponDiscountType="amount_off" + currency=TWD + en locale + couponDiscountAmount=50 → "NT$50 off" (regression 2026-09-20 NT$ prefix)', () => {
+    // 2026-09-20 NT$ prefix fix: previously the en + TWD template was
+    // "{{amount}} off" — missing the currency unit. en + TWD in
+    // business contexts is conventionally written with the ISO 4217
+    // code NT$ (New Taiwan Dollar). zh-TW uses the Han suffix "元" so
+    // the templates diverge by locale. This test pins the en side to
+    // the fixed "NT${{amount}} off" template; the previous "50 off"
+    // rendering is the regression we're guarding against.
+    const tSpy = buildEnTSpyWithResources();
+    mockUseTranslationOnce(tSpy);
+    useCardBuilderStore.setState({
+      currency: 'TWD',
+      couponDiscountType: 'amount_off',
+      couponDiscountAmount: 50,
+      couponDiscountPercent: null,
+    });
+    render(
+      <PassCardPreviewBody cardType="coupon_card" rightField="couponDiscount" />,
+    );
+    expect(screen.getByText('Discount Offer')).toBeInTheDocument();
+    expect(screen.getByText('NT$50 off')).toBeInTheDocument();
+    // The unit-less "50 off" MUST NOT appear (regression for missing
+    // NT$ prefix on the en + TWD path).
+    expect(screen.queryByText('50 off')).toBeNull();
+  });
+
+  it('couponDiscount + couponDiscountType="amount_off" + currency=ZAR + en locale + couponDiscountAmount=50 → "R50 off" (en ZAR unchanged)', () => {
+    // 2026-09-20: en + ZAR path uses the same "R{{amount}} off"
+    // template as before (no regression). Pins that the NT$ change is
+    // TWD-specific and didn't accidentally bleed into ZAR.
+    const tSpy = buildEnTSpyWithResources();
+    mockUseTranslationOnce(tSpy);
+    useCardBuilderStore.setState({
+      currency: 'ZAR',
+      couponDiscountType: 'amount_off',
+      couponDiscountAmount: 50,
+      couponDiscountPercent: null,
+    });
+    render(
+      <PassCardPreviewBody cardType="coupon_card" rightField="couponDiscount" />,
+    );
+    expect(screen.getByText('Discount Offer')).toBeInTheDocument();
+    expect(screen.getByText('R50 off')).toBeInTheDocument();
+  });
+
+  it('couponRemainingCount + firstCouponRemainingCount=5 + en locale → "5 sheets" via countFormat (regression 2026-09-20)', () => {
+    // 2026-09-20 regression: the body used to render bare digits on
+    // the en side too ("5" instead of "5 sheets"). Same unit-suffix
+    // fix as the zh-TW test above; this pins the en-side template.
+    const tSpy = buildEnTSpyWithResources();
+    mockUseTranslationOnce(tSpy);
+    render(
+      <PassCardPreviewBody
+        cardType="coupon_card"
+        leftField="couponRemainingCount"
+        firstCouponRemainingCount={5}
+      />,
+    );
+    expect(screen.getByText('Remaining Count')).toBeInTheDocument();
+    expect(screen.getByText('5 sheets')).toBeInTheDocument();
+    // Bare "5" must NOT appear (it would if the body bypassed i18n).
+    const bareDigits = screen.queryByText((_content, node) => {
+      if (!node) return false;
+      const text = node.textContent ?? '';
+      return text === '5' && node.children.length === 0;
+    });
+    expect(bareDigits).toBeNull();
+  });
+
+  it('couponDiscount + couponDiscountType="percent_off" + couponDiscountPercent=10 → "10%折扣" (regression 2026-09-19)', () => {
+    const tSpy = buildTSpyWithResources();
+    mockUseTranslationOnce(tSpy);
+    useCardBuilderStore.setState({
+      couponDiscountType: 'percent_off',
+      couponDiscountPercent: 10,
+      couponDiscountAmount: null,
+    });
+    render(
+      <PassCardPreviewBody cardType="coupon_card" rightField="couponDiscount" />,
+    );
+    expect(screen.getByText('折扣優惠')).toBeInTheDocument();
+    expect(screen.getByText('10%折扣')).toBeInTheDocument();
+    // amount_off's "50元折扣" / "R50折扣" MUST NOT appear (mutually exclusive).
+    expect(screen.queryByText('50元折扣')).toBeNull();
+    expect(screen.queryByText('R50折扣')).toBeNull();
+  });
+
+  it('couponDiscount + couponDiscountType="percent_off" + couponDiscountPercent=null → empty (no placeholder)', () => {
+    // 2026-09-19 bug fix: percent_off selected but user hasn't typed a
+    // value yet → empty string. No more currency-driven "10元折扣" fallback.
+    useCardBuilderStore.setState({
+      currency: 'TWD',
+      couponDiscountType: 'percent_off',
+      couponDiscountPercent: null,
+      couponDiscountAmount: null,
+    });
+    render(
+      <PassCardPreviewBody cardType="coupon_card" rightField="couponDiscount" />,
+    );
+    // The hardcoded "10元折扣" MUST NOT appear.
+    expect(screen.queryByText('10元折扣')).toBeNull();
+  });
+
+  it('switching back to percent_off after amount_off preserves the percent value (regression 2026-09-19)', () => {
+    // 2026-09-19 bug fix: previously `setCouponDiscountType` cleared
+    // the other field on type-switch. User flow:
+    //   1. Pick percent_off, type 15
+    //   2. Switch to amount_off → percent cleared (was 15 → null)
+    //   3. Switch back to percent_off → percent is null, preview showed
+    //      the hardcoded "10元折扣" placeholder instead of "15%折扣".
+    // New behaviour: type-switch does NOT clear the other field. After
+    // step 1, the percent value survives the type round-trip.
+    //
+    // Uses `mockUseTranslationPersistent` (not Once) because rerender
+    // triggers fresh useTranslation() calls — mockReturnValueOnce only
+    // applies to the first call.
+    const tSpy = buildTSpyWithResources();
+    mockUseTranslationPersistent(tSpy);
+    useCardBuilderStore.setState({
+      couponDiscountType: 'amount_off',
+      couponDiscountAmount: null,
+      couponDiscountPercent: null,
+    });
+    const { rerender } = render(
+      <PassCardPreviewBody cardType="coupon_card" rightField="couponDiscount" />,
+    );
+    // Step 1: switch to percent_off + type 15
+    useCardBuilderStore.setState({
+      couponDiscountType: 'percent_off',
+      couponDiscountPercent: 15,
+    });
+    rerender(
+      <PassCardPreviewBody cardType="coupon_card" rightField="couponDiscount" />,
+    );
+    expect(screen.getByText('15%折扣')).toBeInTheDocument();
+    // Step 2: switch to amount_off → percent is NOT cleared (was the
+    // bug — store setter used to null out couponDiscountPercent on
+    // type-switch). Now it survives.
+    useCardBuilderStore.setState({
+      couponDiscountType: 'amount_off',
+    });
+    rerender(
+      <PassCardPreviewBody cardType="coupon_card" rightField="couponDiscount" />,
+    );
+    // After switching to amount_off, couponDiscountAmount is still null
+    // (user didn't type one yet), so the preview is empty for amount_off.
+    expect(screen.queryByText('10元折扣')).toBeNull();
+    expect(screen.queryByText('15%折扣')).toBeNull();
+    // Step 3: switch back to percent_off → percent is STILL 15 (preserved).
+    useCardBuilderStore.setState({
+      couponDiscountType: 'percent_off',
+    });
+    rerender(
+      <PassCardPreviewBody cardType="coupon_card" rightField="couponDiscount" />,
+    );
+    expect(screen.getByText('15%折扣')).toBeInTheDocument();
+  });
+
+  it('couponDiscount is gated by cardType=coupon_card (other card types fall through to default)', () => {
+    // For discount_card, the couponDiscount field is NOT in the dropdown
+    // (the filter restricts it to coupon_card), but defensively verify
+    // that the coupon branch is gated on cardType — passing a non-coupon
+    // cardType should NOT trigger the coupon preview override.
+    //
+    // Reset mockImplementation from the previous "switching" test (which
+    // uses mockImplementation to persist across rerenders). This test
+    // only renders once, so the default mock (returns key verbatim)
+    // is what we want — verify by NOT using the interpolation spy.
+    vi.mocked(useTranslation).mockReset();
+    vi.mocked(useTranslation).mockImplementation(
+      () => ({ t: vi.fn((key: string) => key) } as unknown as ReturnType<typeof useTranslation>),
+    );
+    useCardBuilderStore.setState({
+      couponDiscountType: 'amount_off',
+      couponDiscountPercent: null,
+      couponDiscountAmount: null,
+    });
+    render(
+      <PassCardPreviewBody cardType="discount_card" rightField="couponDiscount" />,
+    );
+    // Falls through to the default branch → label only, value = i18n default.
+    expect(screen.getByText('fieldPreview.couponDiscount.label')).toBeInTheDocument();
+    // The hardcoded "10元折扣" MUST NOT appear (the override requires
+    // cardType === 'coupon_card').
+    expect(screen.queryByText('10元折扣')).toBeNull();
+  });
+});

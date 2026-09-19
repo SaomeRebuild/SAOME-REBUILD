@@ -58,6 +58,42 @@ export default {
     pointsToNextTierDiscount: { label: '到下一級還差' },
     discountTierBracket: { label: '折扣級距' },
     accumulatedSpendDiscount: { label: '累積消費' },
+    // Coupon-only preview fields — only shown in dropdown for coupon_card
+    // (2026-09-19).
+    // couponRemainingCount value 為靜態 demo "1張" (與 phone/email/visitCount 模式對齊)。
+    // 2026-09-20 新增 countFormat: 當 user 設定 couponIssueCount != 1 時
+    // (Step 6 數量欄位),body 端用此模板 "{{count}}張" 內插顯示實際張數
+    // (修前只顯示純數字 "5",缺單位;詳見 feedback 2026-09-20 coupon
+    // preview units regression)。
+    //
+    // couponDiscount value 由 store 驅動(i18n 模板內插):
+    //   - amount_off + couponDiscountAmount=N → "{{N}}元折扣" (zh-TW) / "NT${{N}} off" (en)
+    //   - percent_off + couponDiscountPercent=N → "{{N}}%折扣" (zh-TW) / "{{N}}% off" (en)
+    //   - 任一欄位為 null(尚未填入) → 空字串(不顯示佔位文字,符合其他必填欄位 UX)
+    //
+    // 2026-09-19 bug 修正: 原本以 COUPON_PREVIEW_AMOUNTS 硬編 "10元折扣" /
+    // "R10折扣" 當 placeholder,使用者輸入 50 後仍顯示 "10元折扣"(無視輸入)。
+    // 新行為: 直接讀 store couponDiscountAmount / couponDiscountPercent
+    // 並內插到 i18n 模板,使用者輸入什麼就顯示什麼。
+    //
+    // 2026-09-20 en TWD 加 NT$ 前綴修正: en + TWD + amount_off 原為
+    // "{{amount}} off" 缺貨幣符號;TWD 在 en 慣例為 NT$ (ISO 4217)。
+    //
+    // 為什麼 amountFormat / amountFormatZAR / percentFormat 拆 3 個 key:
+    //   - zh-TW: "10元折扣" 把元放金額後面;en "NT$10 off" 把 NT$ 放金額前面;
+    //     ZAR 是 "R10折扣"(R 在前),不能共用同一個模板
+    //   - percent_format 共用,zh-TW / en 都是 "<n>%折扣" / "<n>% off"
+    couponRemainingCount: {
+      label: '剩餘張數',
+      value: '1張',
+      countFormat: '{{count}}張',
+    },
+    couponDiscount: {
+      label: '折扣優惠',
+      amountFormatTWD: '{{amount}}元折扣',
+      amountFormatZAR: 'R{{amount}}折扣',
+      percentFormat: '{{percent}}%折扣',
+    },
   },
   // ===== 餘額預覽 — 僅在 stamp_card / reward_card / cashback_card 顯示 =====
   // Step 1 選這 3 種卡時，PassCardPreviewHeader 的右側卡種 pill 會被替換成兩行垂直區塊。
@@ -97,6 +133,25 @@ export default {
   //   沿用既有 `formatExpiryDate(isoDate, locale)` helper
   //   (zh-TW YYYY.MM.DD / en MM.DD.YYYY)。
   discountExpiry: {
+    label: '有效期限',
+  },
+  // ===== Coupon 卡到期預覽 — 僅在 coupon_card 顯示 (2026-09-19) =====
+  // Step 1 選 coupon_card 時,PassCardPreviewHeader 的右側卡種 pill 會被替換成
+  // 兩行垂直區塊。
+  //   - label: "有效期限" (locale-driven, 由 i18n 提供)
+  //   - value: 由 store.passValidDays / store.expiryDate 決定
+  //     (coupon card 保留 Step 2 的 PassValidDaysField + ExpiryDateField,
+  //     跟 membership_card 不同 — membership 隱藏了這兩個欄位):
+  //       - passValidDays 設定 → today + N 天 formatted per locale
+  //         ("2026.10.30" zh-TW / "10.30.2026" en)
+  //       - expiryDate 設定 → 直接 formatted per locale
+  //       - 兩者皆 null / '' → "∞" (無限符號,跟 membership_card 的
+  //         hasExpiry=false 行為對齊 — 折價券預設無限期)
+  //   沿用既有 `formatExpiryDate(isoDate, locale)` helper
+  //   (zh-TW YYYY.MM.DD / en MM.DD.YYYY)。
+  //   Label 沿用 "有效期限" — 跟 discountExpiry 同一個詞,語意也一致
+  //   (都是「卡片層級的有效期限結束日」)。
+  couponExpiry: {
     label: '有效期限',
   },
 };

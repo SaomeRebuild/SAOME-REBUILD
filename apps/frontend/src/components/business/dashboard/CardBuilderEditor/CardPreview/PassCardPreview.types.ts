@@ -153,6 +153,51 @@ export interface PassCardPreviewProps extends HTMLAttributes<HTMLDivElement> {
    */
   firstDiscountTierName?: string;
   /**
+   * 2026-09-19 coupon card — Number of coupons to render for the
+   * `couponRemainingCount` preview slot. Forwarded to the body's
+   * resolveSlot which interpolates it into i18n
+   * `couponRemainingCount.countFormat` ("5張" / "5 sheets"). When
+   * omitted / undefined, body falls back to the i18n static demo value
+   * "1張" / "1 sheet".
+   *
+   * 2026-09-20 type change: was `string` (the preview bridged
+   * `String(couponIssueCount)` directly, which lost the i18n unit
+   * suffix and rendered bare digits like "5"). Now `number | undefined`
+   * so the body always composes the unit via i18n.
+   *
+   * Sourced from `couponIssueCount` (Step 6 發券張數 field). Default
+   * 1 → body renders the static demo "1張" / "1 sheet". User-edited
+   * value N → body renders "{{N}}張" / "{{N}} sheets".
+   */
+  firstCouponRemainingCount?: number;
+  /**
+   * 2026-09-19 coupon card — Discount type discriminator from the editor
+   * store (`couponDiscountType` ∈ `'amount_off' | 'percent_off'`). When
+   * `percent_off` and the user has set `couponDiscountPercent`, the
+   * preview shows `<percent>%折扣` for the `couponDiscount` field;
+   * otherwise it falls back to the currency-driven
+   * `COUPON_PREVIEW_AMOUNTS[currency].couponDiscount` demo string.
+   *
+   * Optional — when omitted, the body reads directly from the store
+   * (same derivation pattern as `cashbackTiers` / `discountTiers`).
+   */
+  couponDiscountType?: import('@saome/shared/constants/coupon-card').CouponDiscountType;
+  /**
+   * 2026-09-19 coupon card — Cash discount amount from the editor store.
+   * Currently not rendered directly in the preview (the discount slot
+   * uses currency-driven defaults for amount_off); reserved for future
+   * per-template override.
+   */
+  couponDiscountAmount?: number | null;
+  /**
+   * 2026-09-19 coupon card — Percent discount (1-100) from the editor
+   * store. Rendered as the value for `couponDiscount` when
+   * `couponDiscountType === 'percent_off'`. Optional — when omitted /
+   * null, falls back to the currency-driven demo (matches the
+   * `discountTierBracket` "no value yet → default fallback" UX).
+   */
+  couponDiscountPercent?: number | null;
+  /**
    * 2026-09-13 membership card — 會員獎勵 sub-rows from the first
    * membership tier (`membershipTiers[0].rewards`). Surfaced as a new
    * Section 1.5 in PassCardPreviewBack when `isMembership` is true.

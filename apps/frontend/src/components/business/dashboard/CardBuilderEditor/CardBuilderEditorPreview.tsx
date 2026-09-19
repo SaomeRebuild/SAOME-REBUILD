@@ -87,7 +87,33 @@ export function CardBuilderEditorPreview({
     description,
     backFields,
     links,
+    // 2026-09-19 coupon card Step 6 fields — these are the values the
+    // coupon-card-specific preview branches read from the store via the
+    // derivation chain (CardBuilderEditorPreview → PreviewWrapper →
+    // PassCardPreview → PassCardPreviewBody → resolveSlot). We destructure
+    // them here so any reactive update while the user edits Step 6
+    // triggers a preview re-render via Zustand's per-field selector.
+    couponDiscountType,
+    couponDiscountAmount,
+    couponDiscountPercent,
+    couponIssueCount,
   } = useCardBuilderStore();
+
+  // Computed: dynamic coupon count for `couponRemainingCount` preview.
+  // 2026-09-19: passes through `couponIssueCount` (the number of coupons
+  // the merchant issues per redemption). When the user has set
+  // `couponIssueCount` to any non-default value, the body interpolates
+  // it into i18n `fieldPreview.couponRemainingCount.countFormat` ("5張" /
+  // "5 sheets") so the unit suffix stays localised. When
+  // `couponIssueCount === 1` (the store-seeded default), the body's
+  // i18n fallback ("1張" / "1 sheet") surfaces.
+  //
+  // 2026-09-20 type correction: was `String(couponIssueCount)` which
+  // injected bare digits ("5") and lost the i18n unit ("張" / "sheets").
+  // Now passes the raw `number` so the body can compose the unit via
+  // i18n template interpolation.
+  const firstCouponRemainingCount =
+    couponIssueCount !== 1 ? couponIssueCount : undefined;
 
   // 組裝背景圖 URL（cache-busting via backgroundImageVersion）
   const backgroundImageUrl = backgroundImage && cardId
@@ -158,6 +184,13 @@ export function CardBuilderEditorPreview({
             description={description}
             backFields={backFields}
             links={links}
+            // 2026-09-19 coupon card — forward the coupon-only fields so
+            // the PassCardPreviewBody can render `couponRemainingCount` /
+            // `couponDiscount` branches keyed on `cardType === 'coupon_card'`.
+            firstCouponRemainingCount={firstCouponRemainingCount}
+            couponDiscountType={couponDiscountType}
+            couponDiscountAmount={couponDiscountAmount}
+            couponDiscountPercent={couponDiscountPercent}
             side={cardSide}
             showPhoneFrame={true}
           />

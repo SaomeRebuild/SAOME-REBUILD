@@ -66,6 +66,44 @@ export default {
     pointsToNextTierDiscount: { label: 'Amount to Next Tier' },
     discountTierBracket: { label: 'Discount Tier Bracket' },
     accumulatedSpendDiscount: { label: 'Accumulated Spending' },
+    // Coupon-only preview fields — only shown in dropdown for coupon_card
+    // (2026-09-19). couponRemainingCount value is a static demo "1 sheet"
+    // (matches the phone/email/visitCount pattern).
+    //
+    // couponDiscount value is store-driven (i18n template interpolation):
+    //   - amount_off + couponDiscountAmount=N → "{{N}} off" (en)
+    //   - percent_off + couponDiscountPercent=N → "{{N}}% off" (en)
+    //   - either field null (not yet entered) → empty string (no placeholder
+    //     text, matching other required-fields UX)
+    //
+    // 2026-09-19 bug fix: previously the preview hardcoded "10元折扣" /
+    // "R10折扣" via COUPON_PREVIEW_AMOUNTS regardless of what the user
+    // typed. New behaviour: read store.couponDiscountAmount /
+    // couponDiscountPercent directly and interpolate into i18n templates —
+    // the preview always reflects the user's actual input. The previous
+    // "10元折扣" placeholder is removed; an empty value renders as an
+    // empty string so the user sees the slot but no misleading demo text.
+    //
+    // Why amountFormat / amountFormatZAR / percentFormat are 3 separate keys:
+    //   - TWD en: "NT${{amount}} off" (NT$ is ISO 4217 symbol for New
+    //            Taiwan Dollar; zh-TW uses "元" suffix instead — kept
+    //            under different keys because the currency unit + position
+    //            differ across locales)
+    //   - ZAR:    "R{{amount}} off" (prefix R, then " off" suffix)
+    //   - percent: "{{percent}}% off" (shared structure across locales)
+    // The 3 keys allow the suffix / prefix to differ by locale without
+    // forcing a separate `currency-driven` shared constant.
+    couponRemainingCount: {
+      label: 'Remaining Count',
+      value: '1 sheet',
+      countFormat: '{{count}} sheets',
+    },
+    couponDiscount: {
+      label: 'Discount Offer',
+      amountFormatTWD: 'NT${{amount}} off',
+      amountFormatZAR: 'R{{amount}} off',
+      percentFormat: '{{percent}}% off',
+    },
   },
   // ===== Balance preview — only shown for stamp_card / reward_card / cashback_card =====
   // When Step 1 picks one of these 3 card types, PassCardPreviewHeader's right-side
@@ -108,6 +146,14 @@ export default {
   //   not a toggle. Reuses the existing `formatExpiryDate(isoDate, locale)`
   //   helper from PassCardPreviewHeader (zh-TW YYYY.MM.DD / en MM.DD.YYYY).
   discountExpiry: {
+    label: 'Expiry Date',
+  },
+  // ===== Coupon expiry preview — only shown for coupon_card (2026-09-19) =====
+  // Mirrors the discount expiry label string ("Expiry Date") — the user-
+  // visible label intentionally reuses "Expiry Date" across both expiry
+  // preview surfaces since both communicate the same concept (card-level
+  // validity end date). See passCard.zh-TW.ts couponExpiry for zh-TW copy.
+  couponExpiry: {
     label: 'Expiry Date',
   },
 };

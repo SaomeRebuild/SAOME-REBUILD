@@ -103,6 +103,43 @@ export interface PreviewWrapperProps {
    */
   firstDiscountTierName?: string;
   /**
+   * 2026-09-19 coupon card — Number of coupons to render for the
+   * `couponRemainingCount` preview slot. Forwarded to PassCardPreviewBody
+   * which interpolates it into i18n `couponRemainingCount.countFormat`
+   * template (e.g. "5張" / "5 sheets"). Mirrors the `firstXxxTierName`
+   * family for future coupon lifecycle wiring.
+   *
+   * 2026-09-20 type change: was `string` (the preview bridged
+   * `String(couponIssueCount)` directly into the value slot, which lost
+   * the i18n unit suffix and rendered bare digits like "5"). Now
+   * `number | undefined` so the body can compose the unit via i18n.
+   * When omitted / undefined, body falls back to the i18n static demo
+   * value "1張" / "1 sheet" (matching the phone / email / visitCount
+   * static-demo pattern).
+   */
+  firstCouponRemainingCount?: number;
+  /**
+   * 2026-09-19 coupon card — Discount type discriminator from the editor
+   * store (`couponDiscountType`). Forwarded to PassCardPreviewBody;
+   * body uses it to choose between the currency-driven map and the
+   * store-driven percent template. Optional — body reads from store as
+   * fallback (so we don't always need to thread this through).
+   */
+  couponDiscountType?: import('@saome/shared/constants/coupon-card').CouponDiscountType;
+  /**
+   * 2026-09-19 coupon card — Cash discount amount from the editor store.
+   * Currently not rendered directly in the preview (the discount slot
+   * uses currency-driven defaults for amount_off); reserved for future
+   * per-template override.
+   */
+  couponDiscountAmount?: number | null;
+  /**
+   * 2026-09-19 coupon card — Percent discount (1-100) from the editor
+   * store. Forwarded to PassCardPreviewBody so the `couponDiscount`
+   * slot renders `<percent>%折扣` when couponDiscountType is percent_off.
+   */
+  couponDiscountPercent?: number | null;
+  /**
    * 2026-09-13 membership card — boolean flag indicating the card is a
    * paid membership card. Gates:
    *   - PassCardPreviewStrip: switch to UserIcon + label/value pair

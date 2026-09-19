@@ -176,10 +176,11 @@ import type { CardType } from '@saome/shared/schemas/card';
 import type { Currency } from '@saome/shared/schemas/card';
 import { CASHBACK_PREVIEW_AMOUNTS } from '@saome/shared/constants/cashbackPreviewAmounts';
 import { DISCOUNT_PREVIEW_AMOUNTS } from '@saome/shared/constants/discountPreviewAmounts';
+import type { CouponDiscountType } from '@saome/shared/constants/coupon-card';
 import {
   STAMPS_PER_ROW,
   type StampGridRows,
-} from '@/components/business/stampCard/StampGridPreview';
+} from '@/components/business/stampCard/StampGridPreview/StampGridPreview.types';
 import { useCardBuilderStore } from '../CardBuilderEditor.store';
 
 interface PassCardPreviewBodyProps {
@@ -263,6 +264,66 @@ interface PassCardPreviewBodyProps {
    * reflecting the discount semantic ("tier identity", not "reward earned").
    */
   firstDiscountTierName?: string;
+  /**
+   * 2026-09-19 coupon card — Dynamic count for the `couponRemainingCount`
+   * preview slot. Surfaced as the preview `value` when
+   * `cardType === 'coupon_card'` AND the picked field is
+   * `'couponRemainingCount'`. Body interpolates this into i18n
+   * `fieldPreview.couponRemainingCount.countFormat` ("{{count}}張" /
+   * "{{count}} sheets") so the localised unit always appears next to
+   * the user's count.
+   *
+   * 2026-09-20 type change: was `string` (the preview bridged
+   * `String(couponIssueCount)` directly, which lost the i18n unit
+   * suffix and rendered bare digits like "5"). Now `number | undefined`
+   * so the body always composes the unit via i18n. Optional — when
+   * omitted / undefined, the body falls back to the static demo value
+   * "1張" / "1 sheet" (matching the phone / email / visitCount
+   * static-demo pattern).
+   *
+   * Currently sourced from `couponIssueCount` (Step 6 發券張數 field)
+   * via `CardBuilderEditorPreview`. When `couponIssueCount === 1` (the
+   * seeded default) the prop is `undefined` and the demo value
+   * surfaces; user-edited counts are passed through verbatim.
+   */
+  firstCouponRemainingCount?: number;
+  /**
+   * 2026-09-19 coupon card — Discount type discriminator from the editor
+   * store (`couponDiscountType` ∈ `'amount_off' | 'percent_off'`). When
+   * `percent_off` and the user has set `couponDiscountPercent`, the
+   * preview shows `<percent>%折扣` for the `couponDiscount` field;
+   * otherwise it falls back to the currency-driven
+   * `COUPON_PREVIEW_AMOUNTS[currency].couponDiscount` demo string.
+   */
+  couponDiscountType?: CouponDiscountType;
+  /**
+   * 2026-09-19 coupon card — Cash discount amount from the editor store.
+   * Read via `couponDiscountAmount` prop OR the body's reactive store
+   * subscription (single source of truth = store). Interpolated into the
+   * i18n template `fieldPreview.couponDiscount.amountFormatTWD|ZAR` to
+   * produce e.g. "50元折扣" (zh-TW TWD) / "R50折扣" (zh-TW ZAR) /
+   * "50 off" (en TWD) / "R50 off" (en ZAR).
+   *
+   * Optional — when omitted / null, the preview renders an empty string
+   * (matches the `discountTierBracket` "no value yet → empty" UX).
+   *
+   * 2026-09-19 bug fix: previously this prop was discarded (named
+   * `_couponDiscountAmount` with underscore prefix) because the old
+   * implementation used a hardcoded currency-driven map
+   * (`COUPON_PREVIEW_AMOUNTS[currency].couponDiscount` → "10元折扣" /
+   * "R10折扣") that ignored the user's input entirely. Now the prop
+   * participates in the resolveSlot pipeline so the preview reflects
+   * what the user actually typed.
+   */
+  couponDiscountAmount?: number | null;
+  /**
+   * 2026-09-19 coupon card — Percent discount (1-100) from the editor
+   * store. Rendered as the value for `couponDiscount` when
+   * `couponDiscountType === 'percent_off'`. Optional — when omitted /
+   * null, falls back to the currency-driven demo (matches the
+   * `discountTierBracket` "no value yet → default fallback" UX).
+   */
+  couponDiscountPercent?: number | null;
 }
 
 /**
@@ -281,15 +342,29 @@ interface PassCardPreviewBodyProps {
  *                                           memberLevel.label, value = firstMembershipTierName ?? '')
  *   6. `discount_card + memberLevel`     → discount-card override (label = discountLabel,
  *                                           value = firstDiscountTierName ?? '')
- *   7. `totalStamps`                     → rows × STAMPS_PER_ROW interpolation
- *   8. `discountTierBracket`             → store-derived "X%" (NOT i18n, NOT currency)
- *   9. cashback amount fields            → currency-driven
- *                                           (`CASHBACK_PREVIEW_AMOUNTS[currency][field]`)
- *  10. discount amount fields            → currency-driven
- *                                           (`DISCOUNT_PREVIEW_AMOUNTS[currency][field]`)
- *  11. default                           → `fieldPreview.{key}.label` + `.value`
- *                                           (NO ZAR formatter — values are demo
- *                                            data and are NOT currency-dependent)
+ *   7. `coupon_card + couponRemainingCount` → i18n countFormat ("{{count}}張" /
+ *                                            "{{count}} sheets") interpolated with
+ *                                            firstCouponRemainingCount when defined;
+ *                                            otherwise static demo value "1張" /
+ *                                            "1 sheet" (matches phone/email/
+ *                                            visitCount pattern). 2026-09-20: unit
+ *                                            suffix is now always composed via i18n,
+ *                                            no longer a raw bare-digit fallback.
+ *   8. `coupon_card + couponDiscount`    → percent_off: store-driven "<percent>%折扣";
+ *                                            amount_off: store-driven via i18n
+ *                                            amountFormatTWD (zh-TW "{{amount}}元折扣"
+ *                                            / en "NT${{amount}} off") or
+ *                                            amountFormatZAR (zh-TW "R{{amount}}折扣"
+ *                                            / en "R{{amount}} off").
+ *   9. `totalStamps`                     → rows × STAMPS_PER_ROW interpolation
+ *  10. `discountTierBracket`             → store-derived "X%" (NOT i18n, NOT currency)
+ *  11. cashback amount fields            → currency-driven
+ *                                            (`CASHBACK_PREVIEW_AMOUNTS[currency][field]`)
+ *  12. discount amount fields            → currency-driven
+ *                                            (`DISCOUNT_PREVIEW_AMOUNTS[currency][field]`)
+ *  13. default                           → `fieldPreview.{key}.label` + `.value`
+ *                                            (NO ZAR formatter — values are demo
+ *                                             data and are NOT currency-dependent)
  *
  * The stamp/reward/cashback/membership/discount-card branches are checked
  * BEFORE the `totalStamps` branch because `memberLevel` is a `common`-group
@@ -349,6 +424,10 @@ function resolveSlot(
   firstMembershipTierName: string | undefined,
   firstDiscountTierName: string | undefined,
   discountTierBracket: string | undefined,
+  couponDiscountType: CouponDiscountType | undefined,
+  couponDiscountAmount: number | null | undefined,
+  couponDiscountPercent: number | null | undefined,
+  firstCouponRemainingCount: number | undefined,
   currency: Currency,
 ): { label: string; value: string } {
   if (!field) {
@@ -413,6 +492,112 @@ function resolveSlot(
     return {
       label: t('fieldPreview.memberLevel.discountLabel'),
       value: firstDiscountTierName ?? '',
+    };
+  }
+
+  // Coupon card branches (2026-09-19, refined 2026-09-20):
+  //   - `couponRemainingCount` is now store-driven when the user has
+  //     set `couponIssueCount` to a non-default value (i18n template
+  //     `fieldPreview.couponRemainingCount.countFormat` — "5張" / "5 sheets"
+  //     etc.). When the store is at the seeded default (1), the body
+  //     falls back to the i18n static demo value "1張" / "1 sheet" to
+  //     match the phone / email / visitCount static-demo pattern.
+  //     Previously this branch forwarded `String(couponIssueCount)` raw,
+  //     which rendered bare digits ("5") without the i18n unit suffix
+  //     — fixed 2026-09-20 by switching the prop type to `number` and
+  //     composing the unit via i18n template interpolation here.
+  //   - `couponDiscount` is store-driven for both branches (2026-09-19
+  //     fix): the value is interpolated from the user's actual input
+  //     (couponDiscountAmount / couponDiscountPercent) via i18n
+  //     templates. Previously this branch used a hardcoded currency-driven
+  //     map (`COUPON_PREVIEW_AMOUNTS[currency].couponDiscount` → "10元折扣"
+  //     / "R10折扣") that ignored the user's input entirely — a
+  //     user who typed 50 still saw "10元折扣". The fix reads the store
+  //     value and interpolates into the locale-specific template:
+  //       amount_off + couponDiscountAmount=N
+  //         → i18n `fieldPreview.couponDiscount.amountFormatTWD|ZAR`
+  //           with `{ amount: N }`
+  //         → "{{N}}元折扣" (zh-TW TWD) / "R{{N}}折扣" (zh-TW ZAR)
+  //         → "NT${{N}} off" (en TWD, 2026-09-20 NT$ prefix added) /
+  //           "R{{N}} off" (en ZAR)
+  //       percent_off + couponDiscountPercent=N
+  //         → i18n `fieldPreview.couponDiscount.percentFormat` with
+  //           `{ percent: N }`
+  //         → "{{N}}%折扣" (zh-TW) / "{{N}}% off" (en)
+  //       Either value null (user hasn't entered yet) → empty string
+  //         (no misleading placeholder text). The previous "10元折扣"
+  //         / "R10折扣" currency-driven fallback is REMOVED.
+  //   Placed BEFORE the `discountTierBracket` / `totalStamps` /
+  //     cashback/discount amount branches because coupon branches are
+  //     keyed by a cardType-specific check (`cardType === 'coupon_card'`)
+  //     which is more specific than any key-only branch below.
+  if (cardType === 'coupon_card' && field === 'couponRemainingCount') {
+    // 2026-09-20: when `firstCouponRemainingCount` is a number, the
+    // body composes the value via i18n `countFormat` ("{{count}}張" /
+    // "{{count}} sheets") so the unit stays localised. When undefined
+    // (i.e. `couponIssueCount === 1` at the editor level), the static
+    // demo value "1張" / "1 sheet" surfaces instead. This replaces the
+    // previous behaviour where `String(couponIssueCount)` was passed
+    // through raw and rendered as bare digits.
+    const value =
+      firstCouponRemainingCount !== undefined
+        ? t('fieldPreview.couponRemainingCount.countFormat', {
+            count: firstCouponRemainingCount,
+          })
+        : t('fieldPreview.couponRemainingCount.value');
+    return {
+      label: t('fieldPreview.couponRemainingCount.label'),
+      value,
+    };
+  }
+
+  if (cardType === 'coupon_card' && field === 'couponDiscount') {
+    // 2026-09-19 bug fix: read store values + interpolate into i18n
+    // templates instead of using the hardcoded currency-driven map.
+    // `couponDiscountType` decides which template to use.
+    //
+    // amount_off + couponDiscountAmount=N → i18n `amountFormatTWD|ZAR`
+    //   (depends on store.currency): "{{N}}元折扣" / "R{{N}}折扣" (zh-TW)
+    //   / "{{N}} off" / "R{{N}} off" (en)
+    //
+    // percent_off + couponDiscountPercent=N → i18n `percentFormat`:
+    //   "{{N}}%折扣" (zh-TW) / "{{N}}% off" (en)
+    //
+    // Any value null (user hasn't entered yet, or cleared on type switch)
+    // → empty string. The previous "10元折扣" / "R10折扣" currency-driven
+    // fallback is REMOVED so the preview never shows a misleading demo
+    // string instead of the user's actual value.
+    let value: string;
+    if (couponDiscountType === 'amount_off') {
+      if (
+        couponDiscountAmount !== null &&
+        couponDiscountAmount !== undefined
+      ) {
+        const formatKey =
+          currency === 'ZAR'
+            ? 'fieldPreview.couponDiscount.amountFormatZAR'
+            : 'fieldPreview.couponDiscount.amountFormatTWD';
+        value = t(formatKey, { amount: couponDiscountAmount });
+      } else {
+        value = '';
+      }
+    } else if (couponDiscountType === 'percent_off') {
+      if (
+        couponDiscountPercent !== null &&
+        couponDiscountPercent !== undefined
+      ) {
+        value = t('fieldPreview.couponDiscount.percentFormat', {
+          percent: couponDiscountPercent,
+        });
+      } else {
+        value = '';
+      }
+    } else {
+      value = '';
+    }
+    return {
+      label: t('fieldPreview.couponDiscount.label'),
+      value,
     };
   }
 
@@ -498,14 +683,19 @@ export function PassCardPreviewBody({
   firstCashbackTierName,
   firstMembershipTierName,
   firstDiscountTierName,
+  firstCouponRemainingCount,
+  couponDiscountType,
+  couponDiscountAmount,
+  couponDiscountPercent,
 }: PassCardPreviewBodyProps) {
   const { t } = useTranslation('passCard');
 
   // Currency awareness (2026-09-13 ZAR pollution fix): read the current
   // card currency from the editor store so the two cashback amount fields
-  // (`pointsToNextTierCashback`, `accumulatedSpendCashback`) AND the two
+  // (`pointsToNextTierCashback`, `accumulatedSpendCashback`), the two
   // discount amount fields (`pointsToNextTierDiscount`,
-  // `accumulatedSpendDiscount`) can source their value from their
+  // `accumulatedSpendDiscount`), AND the coupon discount field
+  // (`couponDiscount`, 2026-09-19) can source their value from their
   // respective currency-driven constants. All other fields are
   // currency-agnostic demo data — they do NOT receive any ZAR prefix
   // transformation. The previous regex-based formatter (which contaminated
@@ -519,7 +709,30 @@ export function PassCardPreviewBody({
   const discountTiers = useCardBuilderStore((s) => s.discountTiers);
   const discountTierBracket = `${discountTiers?.[0]?.discountPercent ?? 0}%`;
 
+  // Coupon discount type (2026-09-19): read the active discount mode
+  // (amount_off / percent_off). The default is 'amount_off' per user
+  // decision (2026-09-19); the store seeds this. The branch in resolveSlot
+  // uses this discriminator to decide between the two i18n templates
+  // (amountFormat vs. percentFormat).
+  // We read it here from the store as the single source of truth so
+  // CardBuilderEditorPreview doesn't need to pass it as a prop (matches
+  // the cashbackTiers / membershipTiers / discountTiers pattern).
+  const storeCouponDiscountType = useCardBuilderStore((s) => s.couponDiscountType);
+  const storeCouponDiscountPercent = useCardBuilderStore((s) => s.couponDiscountPercent);
+  // 2026-09-19 bug fix: also read couponDiscountAmount from the store so
+  // the amount_off preview branch can interpolate the user's actual value
+  // into the i18n `amountFormatTWD` / `amountFormatZAR` template.
+  const storeCouponDiscountAmount = useCardBuilderStore((s) => s.couponDiscountAmount);
+
   // Demo label/value 配對（PassCreator Label + Value 格式）
+  // Prefer caller-provided prop values (when PreviewWrapper passes them
+  // through); otherwise derive from the store directly. Mirrors the
+  // cashbackTiers / membershipTiers / discountTiers derivation pattern
+  // in PassCardPreview.tsx — single source of truth = store, with the
+  // prop being an optional override.
+  const effectiveCouponDiscountType = couponDiscountType ?? storeCouponDiscountType;
+  const effectiveCouponDiscountAmount = couponDiscountAmount ?? storeCouponDiscountAmount;
+  const effectiveCouponDiscountPercent = couponDiscountPercent ?? storeCouponDiscountPercent;
   const leftPreview = resolveSlot(
     t,
     leftField,
@@ -531,6 +744,10 @@ export function PassCardPreviewBody({
     firstMembershipTierName,
     firstDiscountTierName,
     discountTierBracket,
+    effectiveCouponDiscountType,
+    effectiveCouponDiscountAmount,
+    effectiveCouponDiscountPercent,
+    firstCouponRemainingCount,
     currency,
   );
   const rightPreview = resolveSlot(
@@ -544,6 +761,10 @@ export function PassCardPreviewBody({
     firstMembershipTierName,
     firstDiscountTierName,
     discountTierBracket,
+    effectiveCouponDiscountType,
+    effectiveCouponDiscountAmount,
+    effectiveCouponDiscountPercent,
+    firstCouponRemainingCount,
     currency,
   );
 
