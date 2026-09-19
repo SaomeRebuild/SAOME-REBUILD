@@ -301,6 +301,17 @@ describe('CardBuilderEditorWorkspace — Step 6 (2026-09-07 stamp card logic int
       membershipExpiryMode: undefined,
       membershipCustomExpiryDays: undefined,
       membershipSpecificExpiryDate: undefined,
+      // 2026-09-18: Discount card fields — not applicable for this card type.
+      discountTiers: undefined,
+      discountCustomExpiryDays: undefined,
+      discountSpecificExpiryDate: undefined,
+      // 2026-09-19: Coupon card fields — not applicable for this card type.
+      // couponDiscountType always sent (default 'amount_off'); value fields
+      // are gated by cardType === 'coupon_card' (undefined otherwise).
+      couponDiscountType: 'amount_off',
+      couponDiscountAmount: undefined,
+      couponDiscountPercent: undefined,
+      couponIssueCount: undefined,
     });
 
     expect(onStepChange).toHaveBeenCalledWith(7);
@@ -364,6 +375,15 @@ describe('CardBuilderEditorWorkspace — Step 6 (2026-09-07 stamp card logic int
       membershipExpiryMode: undefined,
       membershipCustomExpiryDays: undefined,
       membershipSpecificExpiryDate: undefined,
+      // 2026-09-18: Discount card fields — not applicable for this card type.
+      discountTiers: undefined,
+      discountCustomExpiryDays: undefined,
+      discountSpecificExpiryDate: undefined,
+      // 2026-09-19: Coupon card fields — not applicable for this card type.
+      couponDiscountType: 'amount_off',
+      couponDiscountAmount: undefined,
+      couponDiscountPercent: undefined,
+      couponIssueCount: undefined,
     });
 
     expect(onStepChange).toHaveBeenCalledWith(7);
@@ -424,6 +444,15 @@ describe('CardBuilderEditorWorkspace — Step 6 (2026-09-07 stamp card logic int
       membershipExpiryMode: undefined,
       membershipCustomExpiryDays: undefined,
       membershipSpecificExpiryDate: undefined,
+      // 2026-09-18: Discount card fields — not applicable for this card type.
+      discountTiers: undefined,
+      discountCustomExpiryDays: undefined,
+      discountSpecificExpiryDate: undefined,
+      // 2026-09-19: Coupon card fields — not applicable for this card type.
+      couponDiscountType: 'amount_off',
+      couponDiscountAmount: undefined,
+      couponDiscountPercent: undefined,
+      couponIssueCount: undefined,
     });
 
     expect(onStepChange).toHaveBeenCalledWith(7);
@@ -530,6 +559,15 @@ describe('CardBuilderEditorWorkspace — Step 6 (2026-09-07 stamp card logic int
       membershipExpiryMode: undefined,
       membershipCustomExpiryDays: undefined,
       membershipSpecificExpiryDate: undefined,
+      // 2026-09-18: Discount card fields — not applicable for reward_card.
+      discountTiers: undefined,
+      discountCustomExpiryDays: undefined,
+      discountSpecificExpiryDate: undefined,
+      // 2026-09-19: Coupon card fields — not applicable for reward_card.
+      couponDiscountType: 'amount_off',
+      couponDiscountAmount: undefined,
+      couponDiscountPercent: undefined,
+      couponIssueCount: undefined,
     });
 
     expect(onStepChange).toHaveBeenCalledWith(7);
@@ -794,6 +832,15 @@ describe('CardBuilderEditorWorkspace — Step 6 (2026-09-07 stamp card logic int
       membershipExpiryMode: undefined,
       membershipCustomExpiryDays: undefined,
       membershipSpecificExpiryDate: undefined,
+      // 2026-09-18: Discount card fields — not applicable for cashback_card.
+      discountTiers: undefined,
+      discountCustomExpiryDays: undefined,
+      discountSpecificExpiryDate: undefined,
+      // 2026-09-19: Coupon card fields — not applicable for cashback_card.
+      couponDiscountType: 'amount_off',
+      couponDiscountAmount: undefined,
+      couponDiscountPercent: undefined,
+      couponIssueCount: undefined,
     });
 
     expect(onStepChange).toHaveBeenCalledWith(7);
@@ -1019,6 +1066,11 @@ describe('CardBuilderEditorWorkspace — Step 6 (2026-09-07 stamp card logic int
       // Expiry: days filled, date null. Both fields sent.
       discountCustomExpiryDays: 365,
       discountSpecificExpiryDate: null,
+      // 2026-09-19: Coupon card fields — not applicable for discount_card.
+      couponDiscountType: 'amount_off',
+      couponDiscountAmount: undefined,
+      couponDiscountPercent: undefined,
+      couponIssueCount: undefined,
     });
 
     expect(onStepChange).toHaveBeenCalledWith(7);

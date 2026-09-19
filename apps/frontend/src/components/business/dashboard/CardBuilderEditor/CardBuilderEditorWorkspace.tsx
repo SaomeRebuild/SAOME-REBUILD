@@ -209,7 +209,8 @@ export function CardBuilderEditorWorkspace({
       cardTypeValue !== 'reward_card' &&
       cardTypeValue !== 'cashback_card' &&
       cardTypeValue !== 'membership_card' &&
-      cardTypeValue !== 'discount_card'
+      cardTypeValue !== 'discount_card' &&
+      cardTypeValue !== 'coupon_card'
     ) {
       return true;
     }
@@ -224,6 +225,9 @@ export function CardBuilderEditorWorkspace({
     }
     if (cardTypeValue === 'discount_card') {
       return isDiscountStep6Valid();
+    }
+    if (cardTypeValue === 'coupon_card') {
+      return isCouponStep6Valid();
     }
     // stamp_card / multipass path
     const {
@@ -533,6 +537,70 @@ export function CardBuilderEditorWorkspace({
     return true;
   }
 
+  /**
+   * COUPON 卡 Step 6 validation (2026-09-19, coupon_card only).
+   *
+   * Mirrors packages/shared/constants/coupon-card.ts bounds:
+   *   - couponDiscountType must be one of 'amount_off' | 'percent_off'
+   *     (default = 'amount_off' per user decision 2026-09-19, so this
+   *      validation only matters when DB loadSettings returns null/undefined)
+   *   - amount_off path: couponDiscountAmount is finite number ≥ COUPON_AMOUNT_MIN=1
+   *   - percent_off path: couponDiscountPercent is integer ∈ [COUPON_PERCENT_MIN=1, COUPON_PERCENT_MAX=100]
+   *   - couponIssueCount is integer ≥ COUPON_ISSUE_COUNT_MIN=1 (no upper cap)
+   *
+   * Switching type clears the other value field via store setter, so we
+   * only need to validate the field that matches the current type.
+   */
+  function isCouponStep6Valid(): boolean {
+    const {
+      couponDiscountType,
+      couponDiscountAmount,
+      couponDiscountPercent,
+      couponIssueCount,
+    } = useCardBuilderStore.getState();
+
+    // 1. discount type 必填 (defaults to 'amount_off', but defensive check
+    //    for DB loadSettings returning null on a legacy coupon_card row).
+    if (couponDiscountType !== 'amount_off' && couponDiscountType !== 'percent_off') {
+      return false;
+    }
+
+    // 2. 對應欄位必填且合法
+    if (couponDiscountType === 'amount_off') {
+      if (
+        couponDiscountAmount === null ||
+        couponDiscountAmount === undefined ||
+        !Number.isFinite(couponDiscountAmount) ||
+        couponDiscountAmount < 1
+      ) {
+        return false;
+      }
+    }
+    if (couponDiscountType === 'percent_off') {
+      if (
+        couponDiscountPercent === null ||
+        couponDiscountPercent === undefined ||
+        !Number.isInteger(couponDiscountPercent) ||
+        couponDiscountPercent < 1 ||
+        couponDiscountPercent > 100
+      ) {
+        return false;
+      }
+    }
+
+    // 3. 發券張數（無上限，只驗 ≥ 1 整數）
+    if (
+      couponIssueCount === null ||
+      couponIssueCount === undefined ||
+      !Number.isInteger(couponIssueCount) ||
+      couponIssueCount < 1
+    ) {
+      return false;
+    }
+
+    return true;
+  }
+
   async function handleNext() {
     console.log('[handleNext] step:', step, 'cardId:', cardId);
     if (step < 8) {
@@ -712,6 +780,14 @@ export function CardBuilderEditorWorkspace({
             discountTiers,
             discountCustomExpiryDays,
             discountSpecificExpiryDate,
+            // 2026-09-19: Coupon card Step 6 fields (discount type +
+            // amount/percent + issue count). Always sent so DB always
+            // reflects store state; non-coupon cards send undefined
+            // for the value fields (schema optional accepts undefined).
+            couponDiscountType,
+            couponDiscountAmount,
+            couponDiscountPercent,
+            couponIssueCount,
           } = useCardBuilderStore.getState();
           // Strip `id` field from each reward tier before sending to backend
           // (id is a UI-only React key, not part of the data contract).
@@ -835,6 +911,19 @@ export function CardBuilderEditorWorkspace({
               cardType === 'discount_card' ? discountCustomExpiryDays : undefined,
             discountSpecificExpiryDate:
               cardType === 'discount_card' ? discountSpecificExpiryDate : undefined,
+            // ===== COUPON 卡 (2026-09-19) =====
+            // Only meaningful for `cardType === 'coupon_card'`. For
+            // other card types the value fields are undefined (schema
+            // optional accepts undefined). couponDiscountType always
+            // has a value (default 'amount_off') so we send it for
+            // every cardType — it's small + cheap + no PII.
+            couponDiscountType,
+            couponDiscountAmount:
+              cardType === 'coupon_card' ? couponDiscountAmount : undefined,
+            couponDiscountPercent:
+              cardType === 'coupon_card' ? couponDiscountPercent : undefined,
+            couponIssueCount:
+              cardType === 'coupon_card' ? couponIssueCount : undefined,
           });
           console.log('[handleNext] Step 6 card logic saved', {
             stampAccrualMode,
@@ -860,6 +949,11 @@ export function CardBuilderEditorWorkspace({
             discountTiers: sanitizedDiscountTiers,
             discountCustomExpiryDays,
             discountSpecificExpiryDate,
+            // 2026-09-19 coupon-card logging
+            couponDiscountType,
+            couponDiscountAmount,
+            couponDiscountPercent,
+            couponIssueCount,
           });
         } catch (err) {
           // Don't block step transition — let the user proceed and retry later.

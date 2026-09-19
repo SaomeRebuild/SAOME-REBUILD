@@ -7,6 +7,9 @@
  *   - multipass     → StampCardLogic (集點卡 shared)
  *   - reward_card   → RewardCardLogic (獎勵卡, 2026-09-09)
  *   - cashback_card → CashbackCardLogic (現金回饋卡, 2026-09-11)
+ *   - membership_card → MembershipCardLogic (會員卡, 2026-09-13)
+ *   - discount_card → DiscountCardLogic (折扣卡, 2026-09-18)
+ *   - coupon_card   → CouponCardLogic (折價券, 2026-09-19)
  *
  * Plan ref: step6_集點卡模組化實作 plan 2026-09-07 § Phase 6.1 dispatcher test.
  */
@@ -28,6 +31,7 @@ let rewardCardLogicRenders = 0;
 let cashbackCardLogicRenders = 0;
 let membershipCardLogicRenders = 0;
 let discountCardLogicRenders = 0;
+let couponCardLogicRenders = 0;
 let comingSoonRenders = 0;
 
 vi.mock('./StampCardLogic', () => ({
@@ -65,6 +69,13 @@ vi.mock('./DiscountCardLogic', () => ({
   },
 }));
 
+vi.mock('./CouponCardLogic', () => ({
+  CouponCardLogic: () => {
+    couponCardLogicRenders += 1;
+    return <div data-testid="coupon-card-logic">CouponCardLogic</div>;
+  },
+}));
+
 vi.mock('./Step6CardLogicComingSoon', () => ({
   Step6CardLogicComingSoon: ({ cardType }: { cardType: CardType | null }) => {
     comingSoonRenders += 1;
@@ -82,6 +93,7 @@ beforeEach(() => {
   cashbackCardLogicRenders = 0;
   membershipCardLogicRenders = 0;
   discountCardLogicRenders = 0;
+  couponCardLogicRenders = 0;
   comingSoonRenders = 0;
 });
 
@@ -170,6 +182,7 @@ describe('Step6CardLogic — dispatcher (Rule 000 § A.1)', () => {
     expect(cashbackCardLogicRenders).toBe(0);
     expect(membershipCardLogicRenders).toBe(0);
     expect(discountCardLogicRenders).toBe(1);
+    expect(couponCardLogicRenders).toBe(0);
     expect(comingSoonRenders).toBe(0);
     expect(screen.getByTestId('discount-card-logic')).toBeInTheDocument();
     // The discount branch uses discount-card-specific intro copy
@@ -177,11 +190,25 @@ describe('Step6CardLogic — dispatcher (Rule 000 § A.1)', () => {
     expect(screen.getByText('step6.discount.introHint')).toBeInTheDocument();
   });
 
-  it('renders ComingSoon for coupon_card, gift_card', () => {
-    const unsupportedTypes: CardType[] = [
-      'coupon_card',
-      'gift_card',
-    ];
+  it('renders CouponCardLogic for coupon_card (Step 6 plan 2026-09-19)', () => {
+    useCardBuilderStore.setState({ cardType: 'coupon_card' });
+    render(<Step6CardLogic showValidation={false} />);
+
+    expect(stampCardLogicRenders).toBe(0);
+    expect(rewardCardLogicRenders).toBe(0);
+    expect(cashbackCardLogicRenders).toBe(0);
+    expect(membershipCardLogicRenders).toBe(0);
+    expect(discountCardLogicRenders).toBe(0);
+    expect(couponCardLogicRenders).toBe(1);
+    expect(comingSoonRenders).toBe(0);
+    expect(screen.getByTestId('coupon-card-logic')).toBeInTheDocument();
+    // The coupon branch uses coupon-card-specific intro copy
+    expect(screen.getByText('step6.coupon.intro')).toBeInTheDocument();
+    expect(screen.getByText('step6.coupon.introHint')).toBeInTheDocument();
+  });
+
+  it('renders ComingSoon for gift_card only (coupon_card no longer in this list, 2026-09-19)', () => {
+    const unsupportedTypes: CardType[] = ['gift_card'];
 
     for (const cardType of unsupportedTypes) {
       // Reset sub-component counters for each iteration.
@@ -190,6 +217,7 @@ describe('Step6CardLogic — dispatcher (Rule 000 § A.1)', () => {
       cashbackCardLogicRenders = 0;
       membershipCardLogicRenders = 0;
       discountCardLogicRenders = 0;
+      couponCardLogicRenders = 0;
       comingSoonRenders = 0;
       cleanup();
       useCardBuilderStore.setState({ cardType });
@@ -200,6 +228,7 @@ describe('Step6CardLogic — dispatcher (Rule 000 § A.1)', () => {
       expect(cashbackCardLogicRenders).toBe(0);
       expect(membershipCardLogicRenders).toBe(0);
       expect(discountCardLogicRenders).toBe(0);
+      expect(couponCardLogicRenders).toBe(0);
       expect(comingSoonRenders).toBe(1);
       expect(screen.getByTestId('coming-soon')).toHaveAttribute(
         'data-card-type',

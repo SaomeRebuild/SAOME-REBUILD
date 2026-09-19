@@ -44,6 +44,11 @@ import {
   DISCOUNT_THRESHOLD_MAX,
   DISCOUNT_CUSTOM_EXPIRY_DAYS_MIN,
   DISCOUNT_CUSTOM_EXPIRY_DAYS_MAX,
+  COUPON_AMOUNT_MIN,
+  COUPON_PERCENT_MIN,
+  COUPON_PERCENT_MAX,
+  COUPON_ISSUE_COUNT_MIN,
+  type CouponDiscountType,
   type AccrualMode,
   type RewardType,
   type EarningMode,
@@ -659,6 +664,83 @@ interface CardBuilderState {
    */
   setDiscountSpecificExpiryDate: (date: string | null) => void;
 
+  // ===== Step 6 — Coupon 卡邏輯 (2026-09-19, coupon_card only) =====
+  // UI dispatcher (`Step6CardLogic`) conditionally renders coupon-card
+  // editor when `cardType === 'coupon_card'`.
+  //
+  // Single flat rule (one coupon = one discount value + one issue count).
+  // No tier list, no card-level expiry — coupon is per-use.
+  //
+  // `couponDiscountType` defaults to 'amount_off' per user decision
+  // 2026-09-19 (cash discount is the most common pattern). The value
+  // fields are MUTUALLY EXCLUSIVE — switching type clears the other,
+  // mirroring `setRewardType` clear behavior (store.ts `setRewardType`).
+  //
+  // Data source: passed through `templateSettingsSchema` as JSONB keys
+  // `couponDiscountType` / `couponDiscountAmount` / `couponDiscountPercent`
+  // / `couponIssueCount`. Backend mirror lives in
+  // apps/backend/src/modules/cards/schemas/request.ts and
+  // apps/backend/src/modules/cards/db/templates.ts.
+  /**
+   * 折價券折扣類型.
+   * 'amount_off' → couponDiscountAmount 生效，couponDiscountPercent 必須為 null
+   * 'percent_off' → couponDiscountPercent 生效，couponDiscountAmount 必須為 null
+   * 切換類型時 setter 自動清空對方 value 欄位.
+   */
+  couponDiscountType: CouponDiscountType;
+  /**
+   * 現金折扣金額. 僅在 couponDiscountType === 'amount_off' 時生效.
+   * ≥ COUPON_AMOUNT_MIN=1，無上限（user decision 2026-09-19）.
+   * null = 切換至 percent_off 後自動清空，或使用者尚未填入.
+   */
+  couponDiscountAmount: number | null;
+  /**
+   * % 數折扣. 僅在 couponDiscountType === 'percent_off' 時生效.
+   * 整數 ∈ [COUPON_PERCENT_MIN=1, COUPON_PERCENT_MAX=100].
+   * null = 切換至 amount_off 後自動清空，或使用者尚未填入.
+   */
+  couponDiscountPercent: number | null;
+  /**
+   * 一次發給同一消費者的折價券張數.
+   * 整數 ≥ COUPON_ISSUE_COUNT_MIN=1，無上限（user decision 2026-09-19）.
+   * Default = 1 (single coupon per transaction).
+   */
+  couponIssueCount: number;
+  /**
+   * 設定折價券折扣類型. 切換時**不**清空另一個 value 欄位.
+   *
+   * 2026-09-19 fix: 原本切換時清空另一個欄位(amount_off → 清空 percent;
+   * percent_off → 清空 amount),結果使用者輸入了 percent=10 → 切到 amount_off
+   * → 切回 percent_off 時 percent 已被清空,預覽顯示 currency-driven
+   * placeholder. 新行為: 切換類型只更新 couponDiscountType,保留兩個 value
+   * 欄位的當前值,讓使用者切換來回時預覽能正確反映他們的輸入.
+   *
+   * 預覽 resolveSlot 仍然只渲染「當前 type 對應的 value 欄位」,
+   * amount_off 用 couponDiscountAmount,percent_off 用 couponDiscountPercent.
+   * 沒有切換過的欄位仍是 null(預設),預覽顯示空字串.
+   *
+   * 後端 zod schema 在 save 時仍執行 mutual exclusion:
+   *   amount_off 路徑 → couponDiscountPercent 必為 null
+   *   percent_off 路徑 → couponDiscountAmount 必為 null
+   * (見 apps/backend/src/modules/cards/schemas/request.ts::templateSettingsSchema).
+   * 因此即使前端保留兩個 value,save 時 backend 會 reject 混用型別.
+   * 但保留 store 中兩個欄位讓 UI 切換來回時不丟資料,UX 更順暢.
+   */
+  setCouponDiscountType: (type: CouponDiscountType) => void;
+  /**
+   * 設定現金折扣金額. null = 清空; number 必須 ≥ COUPON_AMOUNT_MIN=1 且有限.
+   */
+  setCouponDiscountAmount: (amount: number | null) => void;
+  /**
+   * 設定 % 數折扣. null = 清空; number 必須為整數 ∈ [COUPON_PERCENT_MIN, COUPON_PERCENT_MAX].
+   */
+  setCouponDiscountPercent: (percent: number | null) => void;
+  /**
+   * 設定一次發給同一消費者的折價券張數. 必須為整數 ≥ COUPON_ISSUE_COUNT_MIN=1.
+   * 無上限（user decision 2026-09-19）.
+   */
+  setCouponIssueCount: (count: number) => void;
+
   // ===== Step 6 — Membership 卡邏輯 (2026-09-13, membership_card only) =====
   // UI dispatcher (`Step6CardLogic`) conditionally renders membership-card
   // editor when `cardType === 'membership_card'` AND `isPaid === true`.
@@ -1157,6 +1239,14 @@ const initialState = {
   ],
   discountCustomExpiryDays: null,
   discountSpecificExpiryDate: null,
+  // ===== Step 6 — Coupon 卡初始狀態 (2026-09-19, coupon_card only) =====
+  // Default 折扣類型 = 'amount_off' (per user decision 2026-09-19).
+  // couponDiscountAmount / couponDiscountPercent: null（使用者尚未填入）.
+  // couponIssueCount: 1 (預設單張).
+  couponDiscountType: 'amount_off' as const,
+  couponDiscountAmount: null,
+  couponDiscountPercent: null,
+  couponIssueCount: 1,
 };
 
 /**
@@ -1842,6 +1932,72 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
         return {};
       }
       return { discountSpecificExpiryDate: date };
+    }),
+
+  // ===== Step 6 — Coupon 卡邏輯 setters (2026-09-19) =====
+  /**
+   * 設定折價券折扣類型. 切換時自動清空另一個 value 欄位
+   * (mirror setRewardType clear behavior):
+   *   - amount_off → 清空 couponDiscountPercent
+   *   - percent_off → 清空 couponDiscountAmount
+   * 預設值 'amount_off'（user decision 2026-09-19）.
+   */
+  setCouponDiscountType: (type) =>
+    // 切換 type 時清空另一個對應欄位（amount_off → 清掉 percent；
+    // percent_off → 清掉 amount），mirror setRewardType 的清空行為。
+    // (CouponDiscountTypeField.test.tsx 兩條 mutual exclusion test 依賴此行為。)
+    set(() => {
+      if (type !== 'amount_off' && type !== 'percent_off') return {};
+      if (type === 'amount_off') {
+        return { couponDiscountType: type, couponDiscountPercent: null };
+      }
+      return { couponDiscountType: type, couponDiscountAmount: null };
+    }),
+  /**
+   * 設定現金折扣金額.
+   * 守門:
+   *   - null 允許（清空）
+   *   - number 必須 ≥ COUPON_AMOUNT_MIN=1 且 Number.isFinite
+   *   - 無上限（user decision 2026-09-19）
+   */
+  setCouponDiscountAmount: (amount) =>
+    set(() => {
+      if (amount === null) {
+        return { couponDiscountAmount: null };
+      }
+      if (typeof amount !== 'number' || !Number.isFinite(amount)) return {};
+      if (amount < COUPON_AMOUNT_MIN) return {};
+      return { couponDiscountAmount: amount };
+    }),
+  /**
+   * 設定 % 數折扣.
+   * 守門:
+   *   - null 允許（清空）
+   *   - number 必須為整數 ∈ [COUPON_PERCENT_MIN, COUPON_PERCENT_MAX]
+   */
+  setCouponDiscountPercent: (percent) =>
+    set(() => {
+      if (percent === null) {
+        return { couponDiscountPercent: null };
+      }
+      if (typeof percent !== 'number' || !Number.isFinite(percent)) return {};
+      if (!Number.isInteger(percent)) return {};
+      if (percent < COUPON_PERCENT_MIN || percent > COUPON_PERCENT_MAX) return {};
+      return { couponDiscountPercent: percent };
+    }),
+  /**
+   * 設定一次發給同一消費者的折價券張數.
+   * 守門: 必須為整數 ≥ COUPON_ISSUE_COUNT_MIN=1，無上限
+   * (user decision 2026-09-19).
+   * 用 Number.MAX_SAFE_INTEGER 做 sanity check（避免意外 overflow）.
+   */
+  setCouponIssueCount: (count) =>
+    set(() => {
+      if (typeof count !== 'number' || !Number.isFinite(count)) return {};
+      if (!Number.isInteger(count)) return {};
+      if (count < COUPON_ISSUE_COUNT_MIN) return {};
+      if (count > Number.MAX_SAFE_INTEGER) return {};
+      return { couponIssueCount: count };
     }),
 
   // ===== Step 6 — Membership 卡邏輯 setters (2026-09-13) =====
@@ -2679,6 +2835,48 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
             return raw;
           }
           return state.discountSpecificExpiryDate;
+        })(),
+        // ===== Coupon 卡 (2026-09-19) =====
+        // couponDiscountType: 'amount_off' | 'percent_off' | undefined (= keep default)
+        couponDiscountType: (() => {
+          const raw = resolved?.couponDiscountType;
+          if (raw === 'amount_off' || raw === 'percent_off') return raw;
+          return state.couponDiscountType;
+        })(),
+        // couponDiscountAmount: number ≥ 1 or null or undefined (= keep)
+        couponDiscountAmount: (() => {
+          const raw = resolved?.couponDiscountAmount;
+          if (raw === null) return null;
+          if (typeof raw === 'number' && Number.isFinite(raw) && raw >= COUPON_AMOUNT_MIN) {
+            return raw;
+          }
+          return state.couponDiscountAmount;
+        })(),
+        // couponDiscountPercent: integer ∈ [1, 100] or null or undefined (= keep)
+        couponDiscountPercent: (() => {
+          const raw = resolved?.couponDiscountPercent;
+          if (raw === null) return null;
+          if (
+            typeof raw === 'number' &&
+            Number.isInteger(raw) &&
+            raw >= COUPON_PERCENT_MIN &&
+            raw <= COUPON_PERCENT_MAX
+          ) {
+            return raw;
+          }
+          return state.couponDiscountPercent;
+        })(),
+        // couponIssueCount: integer ≥ 1 or undefined (= keep default 1)
+        couponIssueCount: (() => {
+          const raw = resolved?.couponIssueCount;
+          if (
+            typeof raw === 'number' &&
+            Number.isInteger(raw) &&
+            raw >= COUPON_ISSUE_COUNT_MIN
+          ) {
+            return raw;
+          }
+          return state.couponIssueCount;
         })(),
       };
     });

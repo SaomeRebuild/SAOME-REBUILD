@@ -5,7 +5,9 @@
  * Implemented: `stamp_card` / `multipass` (StampCardLogic),
  *              `reward_card` (RewardCardLogic),
  *              `cashback_card` (CashbackCardLogic),
- *              `membership_card` (MembershipCardLogic, 2026-09-13).
+ *              `membership_card` (MembershipCardLogic, 2026-09-13),
+ *              `discount_card` (DiscountCardLogic, 2026-09-18),
+ *              `coupon_card` (CouponCardLogic, 2026-09-19).
  * All other card types render a ComingSoon placeholder.
  *
  * Architecture (Rule 000 § A.1 L2 結構):
@@ -18,6 +20,8 @@
  *   - 2026-09-09: Second sub-module = RewardCardLogic (獎勵卡).
  *   - 2026-09-11: Third sub-module = CashbackCardLogic (現金回饋卡).
  *   - 2026-09-13: Fourth sub-module = MembershipCardLogic (會員卡).
+ *   - 2026-09-18: Fifth sub-module = DiscountCardLogic (折扣卡).
+ *   - 2026-09-19: Sixth sub-module = CouponCardLogic (折價券).
  */
 
 import { useTranslation } from 'react-i18next';
@@ -27,6 +31,7 @@ import { RewardCardLogic } from './RewardCardLogic';
 import { CashbackCardLogic } from './CashbackCardLogic';
 import { DiscountCardLogic } from './DiscountCardLogic';
 import { MembershipCardLogic } from './MembershipCardLogic';
+import { CouponCardLogic } from './CouponCardLogic';
 import { Step6CardLogicComingSoon } from './Step6CardLogicComingSoon';
 import type { Step6CardLogicProps } from './Step6CardLogic.types';
 
@@ -37,6 +42,9 @@ import type { Step6CardLogicProps } from './Step6CardLogic.types';
  * cardType === 'stamp_card' | 'multipass' → StampCardLogic (集點卡)
  * cardType === 'reward_card'              → RewardCardLogic (獎勵卡)
  * cardType === 'cashback_card'            → CashbackCardLogic (現金回饋卡)
+ * cardType === 'discount_card'            → DiscountCardLogic (折扣卡)
+ * cardType === 'membership_card'          → MembershipCardLogic (會員卡)
+ * cardType === 'coupon_card'              → CouponCardLogic (折價券, 2026-09-19)
  * Other card types → ComingSoon (not yet implemented)
  */
 export function Step6CardLogic({ showValidation }: Step6CardLogicProps) {
@@ -143,6 +151,23 @@ export function Step6CardLogic({ showValidation }: Step6CardLogicProps) {
           </p>
         </div>
         <MembershipCardLogic showValidation={showValidation} />
+      </div>
+    );
+  }
+
+  // coupon_card → 折價券邏輯 editor (2026-09-19). Mirrors the
+  // discount_card branch shape — hero intro with coupon-card-specific copy
+  // + delegates to CouponCardLogic sub-module which composes 4
+  // sub-components (radio + conditional amount/percent + issue count).
+  if (cardType === 'coupon_card') {
+    return (
+      <div className="flex min-w-0 flex-col gap-6">
+        {/* Step 6 hero intro — coupon-card-specific copy */}
+        <div className="flex flex-col gap-1.5 rounded-lg border border-dashed border-border bg-muted/30 p-4">
+          <p className="text-sm font-medium text-foreground">{t('step6.coupon.intro')}</p>
+          <p className="text-xs text-muted-foreground">{t('step6.coupon.introHint')}</p>
+        </div>
+        <CouponCardLogic showValidation={showValidation} />
       </div>
     );
   }
