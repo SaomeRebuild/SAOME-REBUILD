@@ -441,6 +441,45 @@ export interface TemplateSettings {
    * null = 未填 = 無到期.
    */
   discountSpecificExpiryDate?: string | null;
+  // ===== Step 6 — Coupon 卡 (Rule 019 § 4.1, layer 3 of 4, 2026-09-19) =====
+  // Mirrors `shared/templateSettingsSchema.couponDiscountType /
+  // couponDiscountAmount / couponDiscountPercent / couponIssueCount`.
+  // Step 6 plan 2026-09-19: sixth card-type-specific logic editor.
+  // Single flat rule (one coupon = one discount value + one issue count).
+  //
+  // 2026-09-19 fix (coupon persistence bug): these fields were missing
+  // from the backend interface, causing Rule 019 § 4.1 layer 3 drift
+  // from layer 1 (shared schema) and layer 2 (request.ts). The
+  // frontend sent these fields inside `settings` but the backend
+  // layer 2 + layer 3 didn't know about them, so zod stripped them
+  // (zod default `.object()` strips unknown keys) and the TypeScript
+  // type system didn't flag the missing fields.
+  /**
+   * 折價券折扣類型 (2026-09-19, coupon_card only).
+   * 'amount_off' → couponDiscountAmount 生效，couponDiscountPercent 必為 null.
+   * 'percent_off' → couponDiscountPercent 生效，couponDiscountAmount 必為 null.
+   * 兩種 type 的 value 欄位互斥（切換時清空對方，store setter 強制）.
+   * 預設 'amount_off'（user decision 2026-09-19）.
+   */
+  couponDiscountType?: 'amount_off' | 'percent_off' | null;
+  /**
+   * 折價券現金折扣金額. 僅在 couponDiscountType === 'amount_off' 時生效.
+   * 整數/小數皆可，≥ COUPON_AMOUNT_MIN=1，無上限（user decision 2026-09-19）.
+   * null = 切換至 percent_off 後自動清空，或使用者尚未填入.
+   */
+  couponDiscountAmount?: number | null;
+  /**
+   * 折價券 % 數折扣. 僅在 couponDiscountType === 'percent_off' 時生效.
+   * 整數 ∈ [COUPON_PERCENT_MIN=1, COUPON_PERCENT_MAX=100].
+   * null = 切換至 amount_off 後自動清空，或使用者尚未填入.
+   */
+  couponDiscountPercent?: number | null;
+  /**
+   * 一次發給同一消費者的折價券張數.
+   * 整數 ≥ COUPON_ISSUE_COUNT_MIN=1，無上限（user decision 2026-09-19）.
+   * 預設 1（單張）.
+   */
+  couponIssueCount?: number;
   [key: string]: unknown;
 }
 

@@ -23,6 +23,12 @@ import {
   CUSTOM_EXPIRY_DAYS_MIN,
   CUSTOM_EXPIRY_DAYS_MAX,
 } from '@saome/shared/constants/membership-card';
+import {
+  COUPON_AMOUNT_MIN,
+  COUPON_PERCENT_MIN,
+  COUPON_PERCENT_MAX,
+  COUPON_ISSUE_COUNT_MIN,
+} from '@saome/shared/constants/coupon-card';
 
 // Re-export for consumers of this module
 export { cardTypeSchema } from '@saome/shared/schemas/card';
@@ -358,6 +364,41 @@ export const templateSettingsSchema = z.object({
     .nullable()
     .optional(),
   discountSpecificExpiryDate: z.string().nullable().optional(),
+  // ===== Step 6 — Coupon 卡 (2026-09-19, Rule 019 § 4.1) =====
+  // Mirrors `shared/templateSettingsSchema.couponDiscountType /
+  // couponDiscountAmount / couponDiscountPercent / couponIssueCount`.
+  // Single source of truth:
+  //   - packages/shared/schemas/card.ts (Rule 019 § 4.1 layer 1)
+  //   - packages/shared/constants/coupon-card.ts (length / enum constants)
+  //
+  // Single flat rule (one coupon = one discount value + one issue count).
+  // No tier list, no card-level expiry. The user picks BETWEEN
+  // `couponDiscountAmount` and `couponDiscountPercent` via the
+  // `couponDiscountType` radio (mutually exclusive — switching type
+  // clears the other value field). `couponIssueCount` is integer ≥ 1
+  // with no upper cap.
+  //
+  // 2026-09-19 fix (coupon persistence bug): these fields were missing
+  // from the backend mirror, causing zod to silently strip them on
+  // PUT (zod default `.object()` behavior is to strip unknown keys).
+  // The frontend's `cardService.update({ settings: { couponDiscountType,
+  // couponDiscountAmount, ... } })` was being parsed and stripped
+  // before reaching the DB. The persistence bug ("coupon Step 6
+  // doesn't save, no backfill on re-edit") traced back to this
+  // 4-layer sync drift.
+  couponDiscountType: z
+    .enum(['amount_off', 'percent_off'])
+    .nullable()
+    .optional(),
+  couponDiscountAmount: z.number().min(COUPON_AMOUNT_MIN).nullable().optional(),
+  couponDiscountPercent: z
+    .number()
+    .int()
+    .min(COUPON_PERCENT_MIN)
+    .max(COUPON_PERCENT_MAX)
+    .nullable()
+    .optional(),
+  couponIssueCount: z.number().int().min(COUPON_ISSUE_COUNT_MIN).optional(),
 });
 
 export type TemplateSettings = z.infer<typeof templateSettingsSchema>;

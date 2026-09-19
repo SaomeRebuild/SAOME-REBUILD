@@ -23,6 +23,12 @@ import {
   CUSTOM_EXPIRY_DAYS_MIN,
   CUSTOM_EXPIRY_DAYS_MAX,
 } from '../constants/membership-card';
+import {
+  COUPON_AMOUNT_MIN,
+  COUPON_PERCENT_MIN,
+  COUPON_PERCENT_MAX,
+  COUPON_ISSUE_COUNT_MIN,
+} from '../constants/coupon-card';
 
 // ===== Card Types =====
 
@@ -607,6 +613,51 @@ export const templateSettingsSchema = z.object({
    * null = 未填 = 無到期.
    */
   discountSpecificExpiryDate: z.string().nullable().optional(),
+  // ===== Step 6 — Coupon 卡 (2026-09-19, coupon_card only) =====
+  // Single flat rule (one coupon = one discount value). Unlike discount_card
+  // which is tiered-cumulative-spend → percentage, coupon card has NO tier
+  // list — just one discount type + value + issue count.
+  //
+  // The user picks BETWEEN amount_off and percent_off via a radio group
+  // (mutually exclusive — switching type clears the other value field).
+  // `couponIssueCount` is card-level: how many coupons to issue per
+  // redemption transaction (≥ 1, no upper cap per user decision).
+  //
+  // Cross-references:
+  //   - packages/shared/constants/coupon-card.ts (single source of truth)
+  //   - apps/backend/src/modules/cards/schemas/request.ts (mirror)
+  //   - apps/backend/src/modules/cards/db/templates.ts (TemplateSettings interface)
+  /**
+   * 折價券折扣類型. amount_off = 現金折扣（couponDiscountAmount 生效）;
+   * percent_off = % 數折扣（couponDiscountPercent 生效）.
+   * 兩種 type 的 value 欄位互斥，切換時清空對方（store setter 層級強制）.
+   */
+  couponDiscountType: z.enum(['amount_off', 'percent_off']).nullable().optional(),
+  /**
+   * 折價券現金折扣金額. 僅在 couponDiscountType === 'amount_off' 時生效.
+   * 整數/小數皆可（與 rewardType=amount_off 的 rewardValue 對齊）,
+   * 但 ≥ COUPON_AMOUNT_MIN=1. 無上限（user decision 2026-09-19）.
+   * null = 未填.
+   */
+  couponDiscountAmount: z.number().min(COUPON_AMOUNT_MIN).nullable().optional(),
+  /**
+   * 折價券 % 數折扣. 僅在 couponDiscountType === 'percent_off' 時生效.
+   * 整數 ∈ [COUPON_PERCENT_MIN, COUPON_PERCENT_MAX].
+   * null = 未填.
+   */
+  couponDiscountPercent: z
+    .number()
+    .int()
+    .min(COUPON_PERCENT_MIN)
+    .max(COUPON_PERCENT_MAX)
+    .nullable()
+    .optional(),
+  /**
+   * 一次發給同一消費者的折價券張數. 整數 ≥ COUPON_ISSUE_COUNT_MIN.
+   * 無上限（user decision 2026-09-19）.
+   * Default = 1.
+   */
+  couponIssueCount: z.number().int().min(COUPON_ISSUE_COUNT_MIN).optional(),
 });
 
 export type TemplateSettings = z.infer<typeof templateSettingsSchema>;

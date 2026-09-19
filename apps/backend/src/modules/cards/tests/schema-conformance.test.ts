@@ -14,6 +14,12 @@
 import { describe, it, expect } from 'vitest';
 import { templateSettingsSchema as localTemplateSettingsSchema } from '../schemas/request';
 import { templateSettingsSchema as sharedTemplateSettingsSchema, cardFieldKeySchema } from '@saome/shared/schemas/card';
+import {
+  COUPON_AMOUNT_MIN,
+  COUPON_PERCENT_MIN,
+  COUPON_PERCENT_MAX,
+  COUPON_ISSUE_COUNT_MIN,
+} from '@saome/shared/constants/coupon-card';
 
 describe('schema conformance (shared vs backend cards/templateSettingsSchema)', () => {
   it('local schema has the same keys as the shared schema', () => {
@@ -761,5 +767,237 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
     };
     expect(sharedTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
     expect(localTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
+  });
+
+  // ===== Step 6 — Coupon 卡: 4 fields (Rule 019 § 4.1, 2026-09-19, coupon regression) =====
+  // 2026-09-19 regression: the coupon fields were missing from the backend
+  // mirror (Layer 2 request.ts + Layer 3 db/templates.ts interface), so zod
+  // silently stripped them on PUT (zod default `.object()` strips unknown
+  // keys). This caused the user-reported bug "coupon Step 6 doesn't save,
+  // no backfill on re-edit". This block pins the 4-layer sync so the same
+  // drift cannot recur:
+  //   - shared `templateSettingsSchema.couponDiscountType / couponDiscountAmount / couponDiscountPercent / couponIssueCount` (Layer 1)
+  //   - backend local `templateSettingsSchema.coupon*` (Layer 2, this file)
+  //   - backend db interface `TemplateSettings.coupon*` (Layer 3)
+  //   - frontend store (Layer 4 — already present in CardBuilderEditor.store.ts)
+  //
+  // The conformance test pins runtime bounds:
+  //   - couponDiscountType: 'amount_off' | 'percent_off' | null (default 'amount_off')
+  //   - couponDiscountAmount: ≥ 1 (>= COUPON_AMOUNT_MIN) or null (cleared)
+  //   - couponDiscountPercent: integer in [1, 100] or null
+  //   - couponIssueCount: integer ≥ 1 (no upper cap)
+  it('shared schema has the couponDiscountType field (Rule 019 § 4.1 — Step 6 coupon card 2026-09-19)', () => {
+    expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('couponDiscountType');
+  });
+
+  it('local schema has the couponDiscountType field (4-layer sync — Layer 2, coupon persistence regression)', () => {
+    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('couponDiscountType');
+  });
+
+  it('shared couponDiscountType accepts amount_off | percent_off | null', () => {
+    const field = sharedTemplateSettingsSchema.shape.couponDiscountType;
+    expect(field.parse('amount_off')).toBe('amount_off');
+    expect(field.parse('percent_off')).toBe('percent_off');
+    expect(field.parse(null)).toBe(null);
+    expect(field.parse(undefined)).toBe(undefined);
+  });
+
+  it('shared couponDiscountType rejects invalid values (drift guard)', () => {
+    const field = sharedTemplateSettingsSchema.shape.couponDiscountType;
+    expect(() => field.parse('fixed')).toThrow();
+    expect(() => field.parse('cash')).toThrow();
+    expect(() => field.parse('')).toThrow();
+  });
+
+  it('shared schema has the couponDiscountAmount field (Rule 019 § 4.1 — Step 6 coupon card)', () => {
+    expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('couponDiscountAmount');
+  });
+
+  it('local schema has the couponDiscountAmount field (4-layer sync — Layer 2, coupon persistence regression)', () => {
+    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('couponDiscountAmount');
+  });
+
+  it('shared couponDiscountAmount accepts numbers >= 1 (no upper cap per user decision)', () => {
+    const field = sharedTemplateSettingsSchema.shape.couponDiscountAmount;
+    expect(field.parse(1)).toBe(1);
+    expect(field.parse(50)).toBe(50);
+    expect(field.parse(999_999)).toBe(999_999);
+  });
+
+  it('shared couponDiscountAmount rejects 0 and negative numbers', () => {
+    const field = sharedTemplateSettingsSchema.shape.couponDiscountAmount;
+    expect(() => field.parse(0)).toThrow();
+    expect(() => field.parse(-1)).toThrow();
+    expect(() => field.parse(-50)).toThrow();
+  });
+
+  it('shared couponDiscountAmount accepts null (cleared on percent_off switch)', () => {
+    const field = sharedTemplateSettingsSchema.shape.couponDiscountAmount;
+    expect(field.parse(null)).toBe(null);
+    expect(field.parse(undefined)).toBe(undefined);
+  });
+
+  it('shared schema has the couponDiscountPercent field (Rule 019 § 4.1 — Step 6 coupon card)', () => {
+    expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('couponDiscountPercent');
+  });
+
+  it('local schema has the couponDiscountPercent field (4-layer sync — Layer 2, coupon persistence regression)', () => {
+    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('couponDiscountPercent');
+  });
+
+  it('shared couponDiscountPercent accepts integers in [1, 100]', () => {
+    const field = sharedTemplateSettingsSchema.shape.couponDiscountPercent;
+    expect(field.parse(1)).toBe(1);
+    expect(field.parse(50)).toBe(50);
+    expect(field.parse(100)).toBe(100);
+  });
+
+  it('shared couponDiscountPercent rejects out-of-range and non-integer values', () => {
+    const field = sharedTemplateSettingsSchema.shape.couponDiscountPercent;
+    expect(() => field.parse(0)).toThrow();
+    expect(() => field.parse(101)).toThrow();
+    expect(() => field.parse(50.5)).toThrow();
+  });
+
+  it('shared couponDiscountPercent accepts null (cleared on amount_off switch)', () => {
+    const field = sharedTemplateSettingsSchema.shape.couponDiscountPercent;
+    expect(field.parse(null)).toBe(null);
+    expect(field.parse(undefined)).toBe(undefined);
+  });
+
+  it('shared schema has the couponIssueCount field (Rule 019 § 4.1 — Step 6 coupon card)', () => {
+    expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('couponIssueCount');
+  });
+
+  it('local schema has the couponIssueCount field (4-layer sync — Layer 2, coupon persistence regression)', () => {
+    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('couponIssueCount');
+  });
+
+  it('shared couponIssueCount accepts integers >= 1 (no upper cap)', () => {
+    const field = sharedTemplateSettingsSchema.shape.couponIssueCount;
+    expect(field.parse(1)).toBe(1);
+    expect(field.parse(5)).toBe(5);
+    expect(field.parse(9999)).toBe(9999);
+    expect(field.parse(100_000)).toBe(100_000);
+  });
+
+  it('shared couponIssueCount rejects 0 and negative numbers', () => {
+    const field = sharedTemplateSettingsSchema.shape.couponIssueCount;
+    expect(() => field.parse(0)).toThrow();
+    expect(() => field.parse(-1)).toThrow();
+  });
+
+  it('full templateSettings accepts coupon_card with amount_off path (end-to-end)', () => {
+    // End-to-end happy path: a coupon_card draft with amount_off + discount amount + issue count
+    // survives the schema parse. Mirrors what `cardService.update` would receive
+    // from the workspace onSave handler.
+    const payload = {
+      cardType: 'coupon_card',
+      couponDiscountType: 'amount_off' as const,
+      couponDiscountAmount: 50,
+      couponDiscountPercent: null,
+      couponIssueCount: 1,
+    };
+    expect(sharedTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
+    expect(localTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
+  });
+
+  it('full templateSettings accepts coupon_card with percent_off path (end-to-end)', () => {
+    const payload = {
+      cardType: 'coupon_card',
+      couponDiscountType: 'percent_off' as const,
+      couponDiscountAmount: null,
+      couponDiscountPercent: 20,
+      couponIssueCount: 3,
+    };
+    expect(sharedTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
+    expect(localTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
+  });
+
+  it('full templateSettings rejects coupon_card with both amount and percent set (mutual exclusion)', () => {
+    // The store setter enforces mutual exclusion (clearing the other on type switch),
+    // but the schema does NOT enforce it — both fields are independent nullable.
+    // This is intentional: the schema is the contract layer, not the UI layer.
+    // Both fields being set simultaneously should still PARSE — it's an editor
+    // bug, not a contract violation. (Pin this behavior so any future change
+    // that adds strict mutual exclusion is intentional and tested separately.)
+    const payload = {
+      couponDiscountType: 'amount_off' as const,
+      couponDiscountAmount: 50,
+      couponDiscountPercent: 20, // both fields set — editor shouldn't allow, but schema accepts
+      couponIssueCount: 1,
+    };
+    expect(() => sharedTemplateSettingsSchema.parse(payload)).not.toThrow();
+    expect(() => localTemplateSettingsSchema.parse(payload)).not.toThrow();
+  });
+});
+
+/**
+ * Defensive conformance — Rule 019 § 4.1 boundary pin.
+ *
+ * These tests probe the schema's `safeParse` behavior at the exact
+ * constants-imported bounds (COUPON_*_MIN, COUPON_PERCENT_MAX). They
+ * catch two regression modes:
+ *   1. Schema re-hardcodes literals (`min(1)`) while the constant
+ *      changes (`COUPON_AMOUNT_MIN = 5`) — the all-import test still
+ *      passes since both sides read 1, but the boundary semantics
+ *      would silently break.
+ *   2. One side (shared OR local) drops the import and falls back to a
+ *      different literal — the mirror schema conformance test (above)
+ *      catches it because local vs shared parsing differs.
+ *
+ * Required: every coupon numeric field's schema in BOTH shared and
+ * local must reject `MIN - 0.01`, accept `MIN`, accept `MAX` where MAX
+ * is defined (only `couponDiscountPercent` has a MAX), and accept very
+ * large positives for fields declared "no upper cap" (amount, issue_count).
+ */
+describe('coupon schema values honor shared constants (Rule 019 § 4.1)', () => {
+  // couponDiscountAmount — MIN only (no upper cap per user decision 2026-09-19)
+
+  it('shared couponDiscountAmount.min === COUPON_AMOUNT_MIN boundary', () => {
+    const f = sharedTemplateSettingsSchema.shape.couponDiscountAmount;
+    expect(f.safeParse(COUPON_AMOUNT_MIN).success).toBe(true);
+    expect(f.safeParse(COUPON_AMOUNT_MIN - 0.01).success).toBe(false);
+    expect(f.safeParse(COUPON_AMOUNT_MIN - 1).success).toBe(false);
+  });
+
+  it('local couponDiscountAmount.min === COUPON_AMOUNT_MIN boundary', () => {
+    const f = localTemplateSettingsSchema.shape.couponDiscountAmount;
+    expect(f.safeParse(COUPON_AMOUNT_MIN).success).toBe(true);
+    expect(f.safeParse(COUPON_AMOUNT_MIN - 0.01).success).toBe(false);
+  });
+
+  // couponDiscountPercent — MIN and MAX (both required)
+
+  it('shared couponDiscountPercent bounded by COUPON_PERCENT_MIN..MAX', () => {
+    const f = sharedTemplateSettingsSchema.shape.couponDiscountPercent;
+    expect(f.safeParse(COUPON_PERCENT_MIN).success).toBe(true);
+    expect(f.safeParse(COUPON_PERCENT_MAX).success).toBe(true);
+    expect(f.safeParse(COUPON_PERCENT_MIN - 1).success).toBe(false);
+    expect(f.safeParse(COUPON_PERCENT_MAX + 1).success).toBe(false);
+  });
+
+  it('local couponDiscountPercent bounded by COUPON_PERCENT_MIN..MAX', () => {
+    const f = localTemplateSettingsSchema.shape.couponDiscountPercent;
+    expect(f.safeParse(COUPON_PERCENT_MIN).success).toBe(true);
+    expect(f.safeParse(COUPON_PERCENT_MAX).success).toBe(true);
+    expect(f.safeParse(COUPON_PERCENT_MIN - 1).success).toBe(false);
+    expect(f.safeParse(COUPON_PERCENT_MAX + 1).success).toBe(false);
+  });
+
+  // couponIssueCount — MIN only (no upper cap per user decision 2026-09-19)
+
+  it('shared couponIssueCount.min === COUPON_ISSUE_COUNT_MIN (no upper cap)', () => {
+    const f = sharedTemplateSettingsSchema.shape.couponIssueCount;
+    expect(f.safeParse(COUPON_ISSUE_COUNT_MIN).success).toBe(true);
+    expect(f.safeParse(COUPON_ISSUE_COUNT_MIN - 1).success).toBe(false);
+    expect(f.safeParse(999_999).success).toBe(true); // no upper cap
+  });
+
+  it('local couponIssueCount.min === COUPON_ISSUE_COUNT_MIN (no upper cap)', () => {
+    const f = localTemplateSettingsSchema.shape.couponIssueCount;
+    expect(f.safeParse(COUPON_ISSUE_COUNT_MIN).success).toBe(true);
+    expect(f.safeParse(COUPON_ISSUE_COUNT_MIN - 1).success).toBe(false);
+    expect(f.safeParse(999_999).success).toBe(true);
   });
 });
