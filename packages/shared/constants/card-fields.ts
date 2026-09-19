@@ -41,7 +41,7 @@
  * `templates.name`, so duplicating it as a left/right face field is
  * redundant. See plan `membership_card_conditional_ui_hide` (2026-09-13).
  */
-export type CardFieldGroup = 'common' | 'stamp' | 'reward' | 'cashback' | 'discount';
+export type CardFieldGroup = 'common' | 'stamp' | 'reward' | 'cashback' | 'discount' | 'coupon';
 
 /**
  * Canonical field keys. Order is user-visible in the dropdown for common
@@ -105,6 +105,18 @@ export const CARD_FIELD_KEYS = [
   'pointsToNextTierDiscount',
   'discountTierBracket',
   'accumulatedSpendDiscount',
+  // ── coupon: only coupon_card ───────────────────────────────────────────
+  // 2026-09-19 coupon card Step 3 display-field extension:
+  //   couponRemainingCount — 剩餘張數 / Remaining Count
+  //   couponDiscount       — 折扣優惠 / Discount Offer
+  // Coupon fields are static / currency-driven demo values (matching the
+  // existing phone/email/totalStamps pattern) — no live store-derived
+  // counter yet (no redemption/issuance flow exists). Discount slot uses
+  // `COUPON_PREVIEW_AMOUNTS[currency]` for the amount_off demo and a
+  // store-driven `couponDiscountPercent` for percent_off. Both keys are
+  // i18n-driven for label, with value sourced at runtime.
+  'couponRemainingCount',
+  'couponDiscount',
 ] as const;
 
 /**
@@ -176,7 +188,7 @@ export const CARD_FIELDS: readonly CardFieldDefinition[] = [
   // ── common: every card type ────────────────────────────────────────────
   { key: 'phone',       group: 'common', labelKey: 'step3.fieldsSection.fields.phone' },
   { key: 'email',       group: 'common', labelKey: 'step3.fieldsSection.fields.email' },
-  { key: 'memberLevel', group: 'common', labelKey: 'step3.fieldsSection.fields.memberLevel' },
+  { key: 'memberLevel', group: 'common', labelKey: 'step3.fieldsSection.fields.memberLevel', hideOnCardTypes: ['coupon_card'] },
   { key: 'birthday',    group: 'common', labelKey: 'step3.fieldsSection.fields.birthday' },
   { key: 'visitCount',  group: 'common', labelKey: 'step3.fieldsSection.fields.visitCount' },
   {
@@ -214,4 +226,15 @@ export const CARD_FIELDS: readonly CardFieldDefinition[] = [
   { key: 'pointsToNextTierDiscount',   group: 'discount', labelKey: 'step3.fieldsSection.fields.pointsToNextTierDiscount' },
   { key: 'discountTierBracket',        group: 'discount', labelKey: 'step3.fieldsSection.fields.discountTierBracket' },
   { key: 'accumulatedSpendDiscount',   group: 'discount', labelKey: 'step3.fieldsSection.fields.accumulatedSpendDiscount' },
+  // ── coupon: only coupon_card (2026-09-19) ────────────────────────────────
+  // Display-field extension for the Coupon Card editor.
+  //   - couponRemainingCount: 剩餘張數 / Remaining Count — static demo
+  //     value ("1張" / "1 sheet") sourced from passCard.*.ts fieldPreview.
+  //     No live counter yet (no redemption/issuance flow exists); the
+  //     static value matches the existing phone/email/totalStamps pattern.
+  //   - couponDiscount: 折扣優惠 / Discount Offer — currency-driven value
+  //     (`COUPON_PREVIEW_AMOUNTS[currency]`) for amount_off, and
+  //     store-driven `${couponDiscountPercent}%折扣` for percent_off.
+  { key: 'couponRemainingCount',       group: 'coupon', labelKey: 'step3.fieldsSection.fields.couponRemainingCount' },
+  { key: 'couponDiscount',             group: 'coupon', labelKey: 'step3.fieldsSection.fields.couponDiscount' },
 ];
