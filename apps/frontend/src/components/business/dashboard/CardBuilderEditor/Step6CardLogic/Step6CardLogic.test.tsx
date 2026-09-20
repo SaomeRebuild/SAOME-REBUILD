@@ -2,14 +2,14 @@
  * Step6CardLogic — Vitest + RTL Tests (Rule 003 TDD + Rule 000 L2 結構)
  *
  * Verifies the dispatcher routes to the right sub-module based on cardType:
- *   - null          → ComingSoon
- *   - stamp_card    → StampCardLogic (集點卡)
- *   - multipass     → StampCardLogic (集點卡 shared)
- *   - reward_card   → RewardCardLogic (獎勵卡, 2026-09-09)
- *   - cashback_card → CashbackCardLogic (現金回饋卡, 2026-09-11)
+ *   - null            → ComingSoon
+ *   - stamp_card      → StampCardLogic (集點卡)
+ *   - multipass       → MultipassCardLogic (多通卡, 2026-09-19 PR-3 split out)
+ *   - reward_card     → RewardCardLogic (獎勵卡, 2026-09-09)
+ *   - cashback_card   → CashbackCardLogic (現金回饋卡, 2026-09-11)
  *   - membership_card → MembershipCardLogic (會員卡, 2026-09-13)
- *   - discount_card → DiscountCardLogic (折扣卡, 2026-09-18)
- *   - coupon_card   → CouponCardLogic (折價券, 2026-09-19)
+ *   - discount_card   → DiscountCardLogic (折扣卡, 2026-09-18)
+ *   - coupon_card     → CouponCardLogic (折價券, 2026-09-19)
  *
  * Plan ref: step6_集點卡模組化實作 plan 2026-09-07 § Phase 6.1 dispatcher test.
  */
@@ -27,6 +27,7 @@ vi.mock('react-i18next', () => ({
 
 // Track which sub-component is rendered.
 let stampCardLogicRenders = 0;
+let multipassCardLogicRenders = 0;
 let rewardCardLogicRenders = 0;
 let cashbackCardLogicRenders = 0;
 let membershipCardLogicRenders = 0;
@@ -38,6 +39,13 @@ vi.mock('./StampCardLogic', () => ({
   StampCardLogic: () => {
     stampCardLogicRenders += 1;
     return <div data-testid="stamp-card-logic">StampCardLogic</div>;
+  },
+}));
+
+vi.mock('./MultipassCardLogic', () => ({
+  MultipassCardLogic: () => {
+    multipassCardLogicRenders += 1;
+    return <div data-testid="multipass-card-logic">MultipassCardLogic</div>;
   },
 }));
 
@@ -89,6 +97,7 @@ vi.mock('./Step6CardLogicComingSoon', () => ({
 
 beforeEach(() => {
   stampCardLogicRenders = 0;
+  multipassCardLogicRenders = 0;
   rewardCardLogicRenders = 0;
   cashbackCardLogicRenders = 0;
   membershipCardLogicRenders = 0;
@@ -108,6 +117,7 @@ describe('Step6CardLogic — dispatcher (Rule 000 § A.1)', () => {
     render(<Step6CardLogic showValidation={false} />);
 
     expect(stampCardLogicRenders).toBe(0);
+    expect(multipassCardLogicRenders).toBe(0);
     expect(rewardCardLogicRenders).toBe(0);
     expect(cashbackCardLogicRenders).toBe(0);
     expect(comingSoonRenders).toBe(1);
@@ -122,21 +132,29 @@ describe('Step6CardLogic — dispatcher (Rule 000 § A.1)', () => {
     render(<Step6CardLogic showValidation={false} />);
 
     expect(stampCardLogicRenders).toBe(1);
+    expect(multipassCardLogicRenders).toBe(0);
     expect(rewardCardLogicRenders).toBe(0);
     expect(cashbackCardLogicRenders).toBe(0);
     expect(comingSoonRenders).toBe(0);
     expect(screen.getByTestId('stamp-card-logic')).toBeInTheDocument();
   });
 
-  it('renders StampCardLogic for multipass (shared logic with stamp_card)', () => {
+  it('renders MultipassCardLogic for multipass (PR-3: split out from shared stamp_card branch, 2026-09-19)', () => {
+    // 2026-09-19 PR-3: multipass no longer shares the stamp card logic
+    // editor. It has its own dedicated sub-module + i18n namespace +
+    // store fields (multipassTiers).
     useCardBuilderStore.setState({ cardType: 'multipass' });
     render(<Step6CardLogic showValidation={false} />);
 
-    expect(stampCardLogicRenders).toBe(1);
+    expect(stampCardLogicRenders).toBe(0);
+    expect(multipassCardLogicRenders).toBe(1);
     expect(rewardCardLogicRenders).toBe(0);
     expect(cashbackCardLogicRenders).toBe(0);
     expect(comingSoonRenders).toBe(0);
-    expect(screen.getByTestId('stamp-card-logic')).toBeInTheDocument();
+    expect(screen.getByTestId('multipass-card-logic')).toBeInTheDocument();
+    // The multipass branch uses multipass-card-specific intro copy
+    expect(screen.getByText('step6.multipass.intro')).toBeInTheDocument();
+    expect(screen.getByText('step6.multipass.introHint')).toBeInTheDocument();
   });
 
   it('renders RewardCardLogic for reward_card (Step 6 plan 2026-09-09)', () => {
@@ -144,6 +162,7 @@ describe('Step6CardLogic — dispatcher (Rule 000 § A.1)', () => {
     render(<Step6CardLogic showValidation={false} />);
 
     expect(stampCardLogicRenders).toBe(0);
+    expect(multipassCardLogicRenders).toBe(0);
     expect(rewardCardLogicRenders).toBe(1);
     expect(cashbackCardLogicRenders).toBe(0);
     expect(comingSoonRenders).toBe(0);
@@ -155,6 +174,7 @@ describe('Step6CardLogic — dispatcher (Rule 000 § A.1)', () => {
     render(<Step6CardLogic showValidation={false} />);
 
     expect(stampCardLogicRenders).toBe(0);
+    expect(multipassCardLogicRenders).toBe(0);
     expect(rewardCardLogicRenders).toBe(0);
     expect(cashbackCardLogicRenders).toBe(1);
     expect(comingSoonRenders).toBe(0);
@@ -166,6 +186,7 @@ describe('Step6CardLogic — dispatcher (Rule 000 § A.1)', () => {
     render(<Step6CardLogic showValidation={false} />);
 
     expect(stampCardLogicRenders).toBe(0);
+    expect(multipassCardLogicRenders).toBe(0);
     expect(rewardCardLogicRenders).toBe(0);
     expect(cashbackCardLogicRenders).toBe(0);
     expect(membershipCardLogicRenders).toBe(1);
@@ -178,6 +199,7 @@ describe('Step6CardLogic — dispatcher (Rule 000 § A.1)', () => {
     render(<Step6CardLogic showValidation={false} />);
 
     expect(stampCardLogicRenders).toBe(0);
+    expect(multipassCardLogicRenders).toBe(0);
     expect(rewardCardLogicRenders).toBe(0);
     expect(cashbackCardLogicRenders).toBe(0);
     expect(membershipCardLogicRenders).toBe(0);
@@ -195,6 +217,7 @@ describe('Step6CardLogic — dispatcher (Rule 000 § A.1)', () => {
     render(<Step6CardLogic showValidation={false} />);
 
     expect(stampCardLogicRenders).toBe(0);
+    expect(multipassCardLogicRenders).toBe(0);
     expect(rewardCardLogicRenders).toBe(0);
     expect(cashbackCardLogicRenders).toBe(0);
     expect(membershipCardLogicRenders).toBe(0);
@@ -207,12 +230,13 @@ describe('Step6CardLogic — dispatcher (Rule 000 § A.1)', () => {
     expect(screen.getByText('step6.coupon.introHint')).toBeInTheDocument();
   });
 
-  it('renders ComingSoon for gift_card only (coupon_card no longer in this list, 2026-09-19)', () => {
+  it('renders ComingSoon for gift_card only (all other card types are now implemented, 2026-09-19)', () => {
     const unsupportedTypes: CardType[] = ['gift_card'];
 
     for (const cardType of unsupportedTypes) {
       // Reset sub-component counters for each iteration.
       stampCardLogicRenders = 0;
+      multipassCardLogicRenders = 0;
       rewardCardLogicRenders = 0;
       cashbackCardLogicRenders = 0;
       membershipCardLogicRenders = 0;
@@ -224,6 +248,7 @@ describe('Step6CardLogic — dispatcher (Rule 000 § A.1)', () => {
       const { unmount } = render(<Step6CardLogic showValidation={false} />);
 
       expect(stampCardLogicRenders).toBe(0);
+      expect(multipassCardLogicRenders).toBe(0);
       expect(rewardCardLogicRenders).toBe(0);
       expect(cashbackCardLogicRenders).toBe(0);
       expect(membershipCardLogicRenders).toBe(0);

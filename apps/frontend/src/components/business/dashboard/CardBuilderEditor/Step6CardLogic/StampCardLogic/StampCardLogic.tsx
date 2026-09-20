@@ -1,5 +1,13 @@
 /**
- * StampCardLogic — Step 6 sub-module for stamp_card / multipass.
+ * StampCardLogic — Step 6 sub-module for stamp_card (集點卡) ONLY.
+ *
+ * 2026-09-19 PR-3: this module is now EXCLUSIVE to `stamp_card`. The
+ * `multipass` card type has been split out into its own dedicated
+ * `MultipassCardLogic` sub-module (different tier structure, different
+ * i18n namespace `step6.multipass.*`, different store fields
+ * `multipassTiers`). The dispatcher (`Step6CardLogic.tsx`) routes
+ * `cardType === 'multipass'` to `MultipassCardLogic`, and
+ * `cardType === 'stamp_card'` to this component.
  *
  * Composes 6 sub-components in order:
  *   1. <StampAccrualModeField />  — 3-option radio group

@@ -2,7 +2,11 @@
  * Step6CardLogic — Generic dispatcher.
  *
  * Routes to the appropriate card-type-specific logic sub-module.
- * Implemented: `stamp_card` / `multipass` (StampCardLogic),
+ * Implemented: `stamp_card` (StampCardLogic),
+ *              `multipass` (MultipassCardLogic, 2026-09-19 PR-3 split out
+ *                           from the shared `stamp_card` branch — multipass
+ *                           now has its own dedicated sub-module + tier
+ *                           structure + i18n namespace),
  *              `reward_card` (RewardCardLogic),
  *              `cashback_card` (CashbackCardLogic),
  *              `membership_card` (MembershipCardLogic, 2026-09-13),
@@ -16,12 +20,17 @@
  *   - Future card types add their own sub-module without changing this file
  *
  * History:
- *   - 2026-09-07: First sub-module = StampCardLogic (集點卡).
+ *   - 2026-09-07: First sub-module = StampCardLogic (集點卡, shared with multipass).
  *   - 2026-09-09: Second sub-module = RewardCardLogic (獎勵卡).
  *   - 2026-09-11: Third sub-module = CashbackCardLogic (現金回饋卡).
  *   - 2026-09-13: Fourth sub-module = MembershipCardLogic (會員卡).
  *   - 2026-09-18: Fifth sub-module = DiscountCardLogic (折扣卡).
  *   - 2026-09-19: Sixth sub-module = CouponCardLogic (折價券).
+ *   - 2026-09-19 PR-3: Seventh sub-module = MultipassCardLogic (多通卡).
+ *                       Split out of the shared `stamp_card` branch because
+ *                       multipass cards have a fundamentally different tier
+ *                       structure (5 tiers × {name + stampsNeeded + reward
+ *                       type + reward value} instead of a single flat rule).
  */
 
 import { useTranslation } from 'react-i18next';
@@ -32,6 +41,7 @@ import { CashbackCardLogic } from './CashbackCardLogic';
 import { DiscountCardLogic } from './DiscountCardLogic';
 import { MembershipCardLogic } from './MembershipCardLogic';
 import { CouponCardLogic } from './CouponCardLogic';
+import { MultipassCardLogic } from './MultipassCardLogic';
 import { Step6CardLogicComingSoon } from './Step6CardLogicComingSoon';
 import type { Step6CardLogicProps } from './Step6CardLogic.types';
 
@@ -39,7 +49,8 @@ import type { Step6CardLogicProps } from './Step6CardLogic.types';
  * Step 6 dispatcher — routes to the right sub-module based on cardType.
  *
  * cardType === null (no type selected yet) → ComingSoon
- * cardType === 'stamp_card' | 'multipass' → StampCardLogic (集點卡)
+ * cardType === 'stamp_card'              → StampCardLogic (集點卡)
+ * cardType === 'multipass'                → MultipassCardLogic (多通卡, 2026-09-19)
  * cardType === 'reward_card'              → RewardCardLogic (獎勵卡)
  * cardType === 'cashback_card'            → CashbackCardLogic (現金回饋卡)
  * cardType === 'discount_card'            → DiscountCardLogic (折扣卡)
@@ -61,8 +72,8 @@ export function Step6CardLogic({ showValidation }: Step6CardLogicProps) {
     );
   }
 
-  // stamp_card and multipass share the same stamp card logic editor.
-  if (cardType === 'stamp_card' || cardType === 'multipass') {
+  // stamp_card → 集點卡 editor (single flat rule; shared StampCardLogic).
+  if (cardType === 'stamp_card') {
     return (
       <div className="flex min-w-0 flex-col gap-6">
         {/* Step 6 hero intro */}
@@ -71,6 +82,22 @@ export function Step6CardLogic({ showValidation }: Step6CardLogicProps) {
           <p className="text-xs text-muted-foreground">{t('step6.introHint')}</p>
         </div>
         <StampCardLogic showValidation={showValidation} />
+      </div>
+    );
+  }
+
+  // multipass → 多通卡 editor (2026-09-19 PR-3, split out from shared
+  // stamp_card branch). Uses multipass-card-specific intro copy +
+  // tier-based structure (NOT the stamp card's flat single-rule shape).
+  if (cardType === 'multipass') {
+    return (
+      <div className="flex min-w-0 flex-col gap-6">
+        {/* Step 6 hero intro — multipass-card-specific copy */}
+        <div className="flex flex-col gap-1.5 rounded-lg border border-dashed border-border bg-muted/30 p-4">
+          <p className="text-sm font-medium text-foreground">{t('step6.multipass.intro')}</p>
+          <p className="text-xs text-muted-foreground">{t('step6.multipass.introHint')}</p>
+        </div>
+        <MultipassCardLogic showValidation={showValidation} />
       </div>
     );
   }

@@ -312,6 +312,8 @@ describe('CardBuilderEditorWorkspace — Step 6 (2026-09-07 stamp card logic int
       couponDiscountAmount: undefined,
       couponDiscountPercent: undefined,
       couponIssueCount: undefined,
+      // 2026-09-19 PR-3: Multipass card fields — not applicable for this card type.
+      multipassTiers: undefined,
     });
 
     expect(onStepChange).toHaveBeenCalledWith(7);
@@ -384,6 +386,8 @@ describe('CardBuilderEditorWorkspace — Step 6 (2026-09-07 stamp card logic int
       couponDiscountAmount: undefined,
       couponDiscountPercent: undefined,
       couponIssueCount: undefined,
+      // 2026-09-19 PR-3: Multipass card fields — not applicable for stamp_card.
+      multipassTiers: undefined,
     });
 
     expect(onStepChange).toHaveBeenCalledWith(7);
@@ -453,6 +457,8 @@ describe('CardBuilderEditorWorkspace — Step 6 (2026-09-07 stamp card logic int
       couponDiscountAmount: undefined,
       couponDiscountPercent: undefined,
       couponIssueCount: undefined,
+      // 2026-09-19 PR-3: Multipass card fields — not applicable for stamp_card (per_spend mode).
+      multipassTiers: undefined,
     });
 
     expect(onStepChange).toHaveBeenCalledWith(7);
@@ -568,6 +574,8 @@ describe('CardBuilderEditorWorkspace — Step 6 (2026-09-07 stamp card logic int
       couponDiscountAmount: undefined,
       couponDiscountPercent: undefined,
       couponIssueCount: undefined,
+      // 2026-09-19 PR-3: Multipass card fields — not applicable for reward_card.
+      multipassTiers: undefined,
     });
 
     expect(onStepChange).toHaveBeenCalledWith(7);
@@ -841,6 +849,8 @@ describe('CardBuilderEditorWorkspace — Step 6 (2026-09-07 stamp card logic int
       couponDiscountAmount: undefined,
       couponDiscountPercent: undefined,
       couponIssueCount: undefined,
+      // 2026-09-19 PR-3: Multipass card fields — not applicable for cashback_card.
+      multipassTiers: undefined,
     });
 
     expect(onStepChange).toHaveBeenCalledWith(7);
@@ -1000,6 +1010,272 @@ describe('CardBuilderEditorWorkspace — Step 6 (2026-09-07 stamp card logic int
     expect(screen.getByText('step1.next')).not.toBeDisabled();
   });
 
+  // ===== 2026-09-19 PR-3 isMultipassStep6Valid tests =====
+  // Mirrors the isCashbackStep6Valid / isDiscountStep6Valid test patterns.
+  // Each multipass tier has 4 fields:
+  //   name (required) + stampsNeeded (integer 0..999) + rewardType (amount_off | percent_off)
+  //   + rewardValue (positive; percent_off ≤ 100).
+  it('multipass: Next disabled when multipassTiers is empty (defense-in-depth guard)', () => {
+    useCardBuilderStore.setState({
+      cardType: 'multipass',
+      multipassTiers: [],
+    });
+    render(
+      <CardBuilderEditorWorkspace
+        step={6}
+        onStepChange={vi.fn()}
+        cardType="multipass"
+        cardId="mp-empty"
+        onCardTypeChange={vi.fn()}
+        onSave={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('step1.next')).toBeDisabled();
+  });
+
+  it('multipass: Next disabled when tier name is empty', () => {
+    useCardBuilderStore.setState({
+      cardType: 'multipass',
+      multipassTiers: [
+        { id: 't-1', name: '', stampsNeeded: 0, rewardType: 'amount_off', rewardValue: 10, perVisitCount: null, perVisitStamps: null, perSpendAmount: null, perSpendStamps: null },
+      ],
+    });
+    render(
+      <CardBuilderEditorWorkspace
+        step={6}
+        onStepChange={vi.fn()}
+        cardType="multipass"
+        cardId="mp-noname"
+        onCardTypeChange={vi.fn()}
+        onSave={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('step1.next')).toBeDisabled();
+  });
+
+  it('multipass: Next disabled when rewardType is null', () => {
+    useCardBuilderStore.setState({
+      cardType: 'multipass',
+      multipassTiers: [
+        { id: 't-1', name: '歡迎禮', stampsNeeded: 0, rewardType: null, rewardValue: null, perVisitCount: null, perVisitStamps: null, perSpendAmount: null, perSpendStamps: null },
+      ],
+    });
+    render(
+      <CardBuilderEditorWorkspace
+        step={6}
+        onStepChange={vi.fn()}
+        cardType="multipass"
+        cardId="mp-nort"
+        onCardTypeChange={vi.fn()}
+        onSave={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('step1.next')).toBeDisabled();
+  });
+
+  it('multipass: Next enabled for default tier (stampsNeeded=0 + amount_off)', () => {
+    useCardBuilderStore.setState({
+      cardType: 'multipass',
+      multipassTiers: [
+        { id: 't-1', name: '歡迎禮', stampsNeeded: 0, rewardType: 'amount_off', rewardValue: 10, perVisitCount: null, perVisitStamps: null, perSpendAmount: null, perSpendStamps: null },
+      ],
+    });
+    render(
+      <CardBuilderEditorWorkspace
+        step={6}
+        onStepChange={vi.fn()}
+        cardType="multipass"
+        cardId="mp-welcome"
+        onCardTypeChange={vi.fn()}
+        onSave={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('step1.next')).not.toBeDisabled();
+  });
+
+  it('multipass: Next enabled for multi-tier (sorted ASC by stampsNeeded; 0 = welcome gift first)', () => {
+    useCardBuilderStore.setState({
+      cardType: 'multipass',
+      multipassTiers: [
+        { id: 't-1', name: '歡迎禮', stampsNeeded: 0, rewardType: 'amount_off', rewardValue: 10, perVisitCount: null, perVisitStamps: null, perSpendAmount: null, perSpendStamps: null },
+        { id: 't-2', name: '銀卡', stampsNeeded: 5, rewardType: 'percent_off', rewardValue: 5, perVisitCount: null, perVisitStamps: null, perSpendAmount: null, perSpendStamps: null },
+        { id: 't-3', name: '金卡', stampsNeeded: 10, rewardType: 'percent_off', rewardValue: 10, perVisitCount: null, perVisitStamps: null, perSpendAmount: null, perSpendStamps: null },
+      ],
+    });
+    render(
+      <CardBuilderEditorWorkspace
+        step={6}
+        onStepChange={vi.fn()}
+        cardType="multipass"
+        cardId="mp-multi"
+        onCardTypeChange={vi.fn()}
+        onSave={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('step1.next')).not.toBeDisabled();
+  });
+
+  it('multipass: Next disabled when stampsNeeded > 999 (corrupted DB bypass of store clamp)', () => {
+    // Store setter clamps to [0, 999]; loadSettings could surface a
+    // corrupted DB row with out-of-range value. Bypass the setter by
+    // writing directly to the state shape.
+    useCardBuilderStore.setState({
+      cardType: 'multipass',
+      multipassTiers: [
+        { id: 't-1', name: 'X', stampsNeeded: 1500, rewardType: 'amount_off', rewardValue: 10, perVisitCount: null, perVisitStamps: null, perSpendAmount: null, perSpendStamps: null },
+      ],
+    });
+    render(
+      <CardBuilderEditorWorkspace
+        step={6}
+        onStepChange={vi.fn()}
+        cardType="multipass"
+        cardId="mp-bad-stamps"
+        onCardTypeChange={vi.fn()}
+        onSave={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('step1.next')).toBeDisabled();
+  });
+
+  it('multipass: Next disabled when percent_off rewardValue > 100', () => {
+    useCardBuilderStore.setState({
+      cardType: 'multipass',
+      multipassTiers: [
+        { id: 't-1', name: 'X', stampsNeeded: 5, rewardType: 'percent_off', rewardValue: 150, perVisitCount: null, perVisitStamps: null, perSpendAmount: null, perSpendStamps: null },
+      ],
+    });
+    render(
+      <CardBuilderEditorWorkspace
+        step={6}
+        onStepChange={vi.fn()}
+        cardType="multipass"
+        cardId="mp-pct-high"
+        onCardTypeChange={vi.fn()}
+        onSave={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('step1.next')).toBeDisabled();
+  });
+
+  it('multipass: handleNext forwards sanitized multipassTiers (sorted ASC by stampsNeeded; id stripped)', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    useCardBuilderStore.setState({
+      cardType: 'multipass',
+      // Deliberately unsorted — store sorts ASC on save.
+      multipassTiers: [
+        { id: 't-3', name: '金卡', stampsNeeded: 10, rewardType: 'percent_off', rewardValue: 10, perVisitCount: null, perVisitStamps: null, perSpendAmount: null, perSpendStamps: null },
+        { id: 't-1', name: '歡迎禮', stampsNeeded: 0, rewardType: 'amount_off', rewardValue: 10, perVisitCount: null, perVisitStamps: null, perSpendAmount: null, perSpendStamps: null },
+        { id: 't-2', name: '銀卡', stampsNeeded: 5, rewardType: 'percent_off', rewardValue: 5, perVisitCount: null, perVisitStamps: null, perSpendAmount: null, perSpendStamps: null },
+      ],
+    });
+
+    const onStepChange = vi.fn();
+    render(
+      <CardBuilderEditorWorkspace
+        step={6}
+        onStepChange={onStepChange}
+        cardType="multipass"
+        cardId="mp-save"
+        onCardTypeChange={vi.fn()}
+        onSave={onSave}
+        onBack={vi.fn()}
+      />,
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByText('step1.next'));
+
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalledTimes(1);
+    });
+
+    expect(onSave).toHaveBeenCalledWith('mp-save', {
+      // Stamp / reward / cashback / membership / discount / coupon fields
+      // (not applicable for multipass_card)
+      stampAccrualMode: null,
+      rewardName: '',
+      rewardType: null,
+      rewardValue: null,
+      maxDiscountAmount: null,
+      stampsPerVisitCount: null,
+      stampsPerVisitStamps: null,
+      stampsPerSpendAmount: null,
+      stampsPerSpendStamps: null,
+      earningMode: null,
+      hasExpiry: false,
+      membershipTiers: [],
+      rewardTiers: [],
+      cashbackTiers: [],
+      // 2026-09-19 PR-3: Multipass tiers sorted ASC by stampsNeeded
+      // (0 = welcome gift first); id stripped.
+      // 2026-09-20 PR-5: 每個 tier 加了 4 個 per-tier 門檻欄位
+      // (perVisitCount / perVisitStamps / perSpendAmount / perSpendStamps,
+      // 全部 null 因為 card-wide multipassAccrualMode 也是 null).
+      // 2026-09-20 PR-6: maxDiscountAmount 欄位 (percent_off 時有意義).
+      multipassTiers: [
+        { name: '歡迎禮', stampsNeeded: 0, rewardType: 'amount_off', rewardValue: 10, maxDiscountAmount: null, perVisitCount: null, perVisitStamps: null, perSpendAmount: null, perSpendStamps: null },
+        { name: '銀卡', stampsNeeded: 5, rewardType: 'percent_off', rewardValue: 5, maxDiscountAmount: null, perVisitCount: null, perVisitStamps: null, perSpendAmount: null, perSpendStamps: null },
+        { name: '金卡', stampsNeeded: 10, rewardType: 'percent_off', rewardValue: 10, maxDiscountAmount: null, perVisitCount: null, perVisitStamps: null, perSpendAmount: null, perSpendStamps: null },
+      ],
+      // 2026-09-20 PR-5: card-wide multipass 蓋章方式
+      multipassAccrualMode: null,
+    });
+
+    expect(onStepChange).toHaveBeenCalledWith(7);
+  });
+
+  it('multipass: handleNext sends undefined multipassTiers for non-multipass cardType (e.g. stamp_card)', async () => {
+    // Per serializer contract (2026-09-19 PR-3): multipassTiers is
+    // only sent when cardType === 'multipass'. Other card types get
+    // undefined so backend schema doesn't see multipass-specific
+    // shape.
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    useCardBuilderStore.setState({
+      cardType: 'stamp_card',
+      stampAccrualMode: 'per_stamp',
+      rewardName: '10元折價',
+      rewardType: 'amount_off',
+      rewardValue: 10,
+      // multipassTiers should NOT be sent even if non-empty (e.g. user
+      // switched cardType from multipass to stamp_card mid-edit).
+      multipassTiers: [
+        { id: 'orphan', name: 'orphan', stampsNeeded: 5, rewardType: 'amount_off', rewardValue: 1, perVisitCount: null, perVisitStamps: null, perSpendAmount: null, perSpendStamps: null },
+      ],
+    });
+
+    render(
+      <CardBuilderEditorWorkspace
+        step={6}
+        onStepChange={vi.fn()}
+        cardType="stamp_card"
+        cardId="stamp-no-mp"
+        onCardTypeChange={vi.fn()}
+        onSave={onSave}
+        onBack={vi.fn()}
+      />,
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByText('step1.next'));
+
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalledTimes(1);
+    });
+
+    const callArgs = onSave.mock.calls[0]![1] as {
+      multipassTiers?: unknown;
+    };
+    expect(callArgs.multipassTiers).toBeUndefined();
+  });
+
   it('discount_card: handleNext forwards sanitized discountTiers + both expiry fields (REQUIRED both sent)', async () => {
     // Per user clarification 2026-09-18: discount card MUST have an expiry;
     // both expiry fields are forwarded on save (the API contract preserves
@@ -1071,6 +1347,8 @@ describe('CardBuilderEditorWorkspace — Step 6 (2026-09-07 stamp card logic int
       couponDiscountAmount: undefined,
       couponDiscountPercent: undefined,
       couponIssueCount: undefined,
+      // 2026-09-19 PR-3: Multipass card fields — not applicable for discount_card.
+      multipassTiers: undefined,
     });
 
     expect(onStepChange).toHaveBeenCalledWith(7);

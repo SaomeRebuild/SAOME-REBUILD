@@ -665,9 +665,20 @@ function resolveSlot(
   // names, dates, counts, etc. have no concept of currency), so we do
   // NOT apply any ZAR-prefix transformation here. Only the two cashback
   // amount fields (handled in the branch above) are currency-driven.
+  //
+  // 2026-09-20 defensive guard: if `t()` returns the same string it
+  // was given (i.e. the translation key was not found in the locale),
+  // fall back to an empty string instead of leaking the raw i18n key
+  // path into the preview. This catches future schema drift where a new
+  // display field is added to the dropdown but its i18n entry is
+  // forgotten.
+  const label = t(`fieldPreview.${field}.label`);
+  const value = t(`fieldPreview.${field}.value`);
+  const safeLabel = label.startsWith('fieldPreview.') ? '' : label;
+  const safeValue = value.startsWith('fieldPreview.') ? '' : value;
   return {
-    label: t(`fieldPreview.${field}.label`),
-    value: t(`fieldPreview.${field}.value`),
+    label: safeLabel,
+    value: safeValue,
   };
 }
 

@@ -229,7 +229,10 @@ export function CardBuilderEditorWorkspace({
     if (cardTypeValue === 'coupon_card') {
       return isCouponStep6Valid();
     }
-    // stamp_card / multipass path
+    if (cardTypeValue === 'multipass') {
+      return isMultipassStep6Valid();
+    }
+    // stamp_card path
     const {
       stampAccrualMode,
       rewardName,
@@ -268,6 +271,67 @@ export function CardBuilderEditorWorkspace({
     }
     // per_stamp — no threshold fields
     return baseRewardValid;
+  }
+
+  /**
+   * MULTIPASS 卡 Step 6 validation (2026-09-19 PR-3).
+   *
+   * Mirrors packages/shared/constants/multipass-card.ts bounds:
+   *   - multipassTiers.length ≥ 1 (the store auto-seeds one default tier;
+   *     removeMultipassTier re-adds 1 if the array becomes empty, and the
+   *     MultipassCardLogic mount-effect is a defense-in-depth — see
+   *     MultipassCardLogic.tsx auto-add useEffect).
+   *   - each tier: name.trim() !== ''
+   *           && 0 ≤ stampsNeeded ≤ MULTIPASS_STAMPS_NEEDED_MAX (=999)
+   *           && stampsNeeded is an integer
+   *           && rewardType is one of 'amount_off' | 'percent_off' | null
+   *           && (when rewardType is set) rewardValue > 0
+   *
+   * stampsNeeded = 0 is a LEGITIMATE value (welcome gift "辦卡立刻送").
+   * The store setter already clamps stampsNeeded to [0, 999] and rejects
+   * non-integer values, so the upper bound check here is defensive
+   * (catches a corrupted DB row that bypassed the setter).
+   *
+   * The rewardType field can be `null` (user hasn't picked yet), in
+   * which case rewardValue should also be `null` (or have no value
+   * validation). Validation only fires the rewardValue check when
+   * rewardType is set.
+   */
+  function isMultipassStep6Valid(): boolean {
+    const { multipassTiers } = useCardBuilderStore.getState();
+
+    if (!multipassTiers || multipassTiers.length === 0) return false;
+
+    return multipassTiers.every((tier) => {
+      // Tier identity: name required.
+      if (tier.name.trim() === '') return false;
+      // stampsNeeded must be an integer in [0, 999].
+      if (
+        !Number.isInteger(tier.stampsNeeded) ||
+        tier.stampsNeeded < 0 ||
+        tier.stampsNeeded > 999
+      ) {
+        return false;
+      }
+      // rewardType must be set; rewardValue must be positive.
+      if (tier.rewardType !== 'amount_off' && tier.rewardType !== 'percent_off') {
+        return false;
+      }
+      if (
+        tier.rewardValue === null ||
+        tier.rewardValue === undefined ||
+        !Number.isFinite(tier.rewardValue) ||
+        tier.rewardValue <= 0
+      ) {
+        return false;
+      }
+      // percent_off must be ≤ 100 (integer-equivalent — already enforced
+      // by the store setter but defensive recheck).
+      if (tier.rewardType === 'percent_off' && tier.rewardValue > 100) {
+        return false;
+      }
+      return true;
+    });
   }
 
   /**
@@ -788,6 +852,16 @@ export function CardBuilderEditorWorkspace({
             couponDiscountAmount,
             couponDiscountPercent,
             couponIssueCount,
+            // 2026-09-19 PR-3: Multipass card Step 6 fields (tiers with
+            // name + stampsNeeded + rewardType + rewardValue). Always
+            // sent so DB always reflects store state; non-multipass
+            // cards send undefined for the tiers (schema optional
+            // accepts undefined).
+            multipassTiers,
+            // 2026-09-20 PR-5: 卡片層級 multipass 蓋章方式 enum. 對齊
+            // settings.stampAccrualMode 設計 — 一張卡一個 mode,
+            // per-tier 門檻輸入框在每個 row 內 render.
+            multipassAccrualMode,
           } = useCardBuilderStore.getState();
           // Strip `id` field from each reward tier before sending to backend
           // (id is a UI-only React key, not part of the data contract).
@@ -840,6 +914,27 @@ export function CardBuilderEditorWorkspace({
               name: tier.name,
               thresholdSpend: tier.thresholdSpend,
               discountPercent: tier.discountPercent,
+            }));
+          // 2026-09-19 PR-3 Multipass: strip `id` from each multipass
+          // tier and sort by stampsNeeded ASC (0 = welcome gift first)
+          // so the persisted array matches the UI sort order. Mirrors
+          // sortMultipassTiers() invariant.
+          const sanitizedMultipassTiers = (multipassTiers ?? [])
+            .slice()
+            .sort((a, b) => a.stampsNeeded - b.stampsNeeded)
+            .map((tier) => ({
+              name: tier.name,
+              stampsNeeded: tier.stampsNeeded,
+              rewardType: tier.rewardType,
+              rewardValue: tier.rewardValue,
+              // PR-5 (2026-09-20): 4 個 per-tier 門檻欄位也需序列化出去
+              // (null 表示該欄位未填 — store loadSettings 會保衛 defensive parse).
+              // 對齊 store.sanitizeMultipassTiers 行為 — null 在
+              // 未填的 tier 上保留,不主動丟掉 (使用者切換模式回來時資料還在).
+              perVisitCount: tier.perVisitCount,
+              perVisitStamps: tier.perVisitStamps,
+              perSpendAmount: tier.perSpendAmount,
+              perSpendStamps: tier.perSpendStamps,
             }));
           await onSave(cardId, {
             stampAccrualMode,
@@ -924,6 +1019,16 @@ export function CardBuilderEditorWorkspace({
               cardType === 'coupon_card' ? couponDiscountPercent : undefined,
             couponIssueCount:
               cardType === 'coupon_card' ? couponIssueCount : undefined,
+            // ===== MULTIPASS 卡 (2026-09-19 PR-3) =====
+            // Only meaningful for `cardType === 'multipass'`. For
+            // other card types the tiers field is undefined (schema
+            // optional accepts undefined). Tiers sorted ASC by
+            // stampsNeeded (welcome gift 0 first); id stripped.
+            multipassTiers:
+              cardType === 'multipass' ? sanitizedMultipassTiers : undefined,
+            // 2026-09-20: also persist card-wide accrual mode
+            multipassAccrualMode:
+              cardType === 'multipass' ? multipassAccrualMode : undefined,
           });
           console.log('[handleNext] Step 6 card logic saved', {
             stampAccrualMode,
@@ -954,6 +1059,11 @@ export function CardBuilderEditorWorkspace({
             couponDiscountAmount,
             couponDiscountPercent,
             couponIssueCount,
+            // 2026-09-19 PR-3 multipass-card logging
+            multipassTiers: sanitizedMultipassTiers,
+            // 2026-09-20 PR-5: 卡片層級 multipass 蓋章方式
+            // (對齊 stamp_card.stampAccrualMode 的 settings-key 設計).
+            multipassAccrualMode,
           });
         } catch (err) {
           // Don't block step transition — let the user proceed and retry later.

@@ -48,6 +48,12 @@ import {
   COUPON_PERCENT_MIN,
   COUPON_PERCENT_MAX,
   COUPON_ISSUE_COUNT_MIN,
+  MAX_MULTIPASS_TIERS,
+  MULTIPASS_TIER_NAME_MAX_LENGTH,
+  MULTIPASS_STAMPS_NEEDED_MIN,
+  MULTIPASS_STAMPS_NEEDED_MAX,
+  MULTIPASS_STAMPS_PER_VISIT_MIN,
+  MULTIPASS_STAMPS_PER_SPEND_MIN,
   type CouponDiscountType,
   type AccrualMode,
   type RewardType,
@@ -55,6 +61,9 @@ import {
   type RewardTierShape,
   type CashbackTierShape,
   type DiscountTierShape,
+  type MultipassTierShape,
+  type MultipassRewardType,
+  type MultipassAccrualMode,
 } from '@saome/shared/constants';
 import type { LocationInput } from '@saome/shared/logic/locations';
 import { normalizeHex } from '@saome/shared/logic/color';
@@ -741,6 +750,93 @@ interface CardBuilderState {
    */
   setCouponIssueCount: (count: number) => void;
 
+  // ===== Step 6 — Multipass 卡邏輯 (2026-09-19, multipass only) =====
+  // UI dispatcher (`Step6CardLogic`) conditionally renders multipass-card
+  // editor when `cardType === 'multipass'`.
+  //
+  // Differs structurally from stamp_card:
+  //   - Multipass card has UP TO 5 tiers, each with its own
+  //     name + stampsNeeded + rewardType + rewardValue.
+  //   - stampsNeeded = 0 is legitimate ("歡迎禮" — reward unlocked
+  //     immediately upon download).
+  //   - stampsNeeded is COMPLETELY DECOUPLED from Step 3 stamp grid
+  //     (multipass cards can stack stamps across multiple physical visits).
+  //
+  // Differs structurally from discount_card:
+  //   - thresholdSpend → stampsNeeded (the axis is "stamps to unlock"
+  //     instead of "spend to qualify").
+  //   - discountPercent → rewardType + rewardValue (multipass uses the
+  //     stamp_card pattern of amount_off / percent_off + value, not the
+  //     cashback/discount pattern of single percent).
+  //
+  // Default 1 tier per user requirement (welcome gift at stampsNeeded=0).
+  // The stable id `default-multipass-tier` ensures the auto-add useEffect
+  // in MultipassCardLogic.tsx (PR-3) does NOT fire on every mount.
+  //
+  // Guards:
+  //   - `addMultipassTier` is no-op at MAX_MULTIPASS_TIERS=5.
+  //   - `removeMultipassTier` RE-ADDS 1 default tier if array becomes
+  //     empty (matches `removeDiscountTier` behavior; the multipass
+  //     editor must always show at least 1 tier row).
+  //   - `updateMultipassTier` switching `rewardType` clears `rewardValue`
+  //     (different valid ranges for amount_off vs percent_off).
+  //   - `updateMultipassTier` rejects stampsNeeded ≤ 0 (must be ≥
+  //     MULTIPASS_STAMPS_NEEDED_MIN=0 inclusive) or > 999 (safety valve).
+  //   - `updateMultipassTier` rejects non-integer stampsNeeded.
+  //   - `updateMultipassTier` rejects rewardValue ≤ 0 (must be positive;
+  //     null is allowed when rewardType is null).
+  //   - `sortMultipassTiers` orders by stampsNeeded ASC (0 first = welcome gift).
+
+  // ===== Step 6 — Multipass 卡 card-wide mode (2026-09-20 PR-5) =====
+  // 對齊 stamp_card.stampAccrualMode (在 settings 內 card-wide 的 enum).
+  // Mirrors `shared/templateSettingsSchema.multipassAccrualMode` (Rule 019 § 4.1).
+  // 4-layer sync (Rule 019 § 4.1):
+  //   - packages/shared/constants/multipass-card.ts (MULTIPASS_ACCRUAL_MODES)
+  //   - packages/shared/schemas/card.ts (templateSettingsSchema.multipassAccrualMode)
+  //   - apps/backend/src/modules/cards/schemas/request.ts (backend mirror)
+  //   - apps/backend/src/modules/cards/db/templates.ts (TemplateSettings interface)
+  //
+  // UI 顯示規則 (component 層級,見 MultipassTierAccrualThresholdField.tsx):
+  //   - null / 'per_stamp' → 不顯示門檻輸入框
+  //   - 'per_visit' → 每個 row 顯示 [N] 次拜訪 = [M] 個蓋章
+  //   - 'per_spend' → 每個 row 顯示 消費 [N] 元(R[N],currency-aware) = [M] 個蓋章
+  //
+  // 切換 multipassAccrualMode **不**清空 per-tier 門檻欄位 (UI 條件渲染隱藏,
+  // store 保留值讓使用者切換回來時資料還在).
+  /** multipass 卡片層級蓋章方式 (2026-09-20 PR-5). null = 未選. */
+  multipassAccrualMode: MultipassAccrualMode | null;
+  /**
+   * 設定 multipass 卡片層級蓋章方式. null = 未選.
+   * 不會主動清空 per-tier 門檻欄位 (UI 條件渲染隱藏切換, store 保留值).
+   */
+  setMultipassAccrualMode: (mode: MultipassAccrualMode | null) => void;
+
+  /** multipass 級距陣列（最多 5 組). Always >= 1 row (UI 層 auto-add 保護). */
+  multipassTiers: Array<MultipassTierShape & { id: string }>;
+
+  /** 新增一組空白 multipass 級距. 在 MAX_MULTIPASS_TIERS=5 時為 no-op. */
+  addMultipassTier: () => void;
+  /**
+   * 移除指定 id 的 multipass 級距. 若陣列變空，自動補回 1 個預設級距
+   * （對齊 discountTiers / removeDiscountTier 行為).
+   */
+  removeMultipassTier: (id: string) => void;
+  /**
+   * 更新指定 id 的 multipass 級距（partial patch).
+   *
+   * 守門:
+   *   - name: slice 到 MULTIPASS_TIER_NAME_MAX_LENGTH=40
+   *   - stampsNeeded: integer [0, 999]; 拒絕 NaN / 非整數; clamp 上下界
+   *   - rewardType 切換時清空 rewardValue（type 變了舊值不合新規範圍）
+   *   - rewardValue: positive; 拒絕 <= 0; null 允許
+   */
+  updateMultipassTier: (id: string, patch: Partial<MultipassTierShape>) => void;
+  /**
+   * 依 stampsNeeded 由小到大排序（存檔前自動呼叫，0 在最前).
+   * 對齊 sortDiscountTiers / sortCashbackTiers pattern.
+   */
+  sortMultipassTiers: () => void;
+
   // ===== Step 6 — Membership 卡邏輯 (2026-09-13, membership_card only) =====
   // UI dispatcher (`Step6CardLogic`) conditionally renders membership-card
   // editor when `cardType === 'membership_card'` AND `isPaid === true`.
@@ -1103,6 +1199,114 @@ function sanitizeMembershipTiers(
   return trimmed;
 }
 
+/**
+ * Defensive parser for the Step 6 `multipassTiers` array (Rule 019 + 032).
+ *
+ * Each tier entry is coerced to `{ id, name, stampsNeeded, rewardType,
+ * rewardValue, perVisitCount, perVisitStamps, perSpendAmount, perSpendStamps }`:
+ *   - id: random UUID if missing.
+ *   - name: slice to MULTIPASS_TIER_NAME_MAX_LENGTH=40; default '' if not a string.
+ *   - stampsNeeded: integer in [MULTIPASS_STAMPS_NEEDED_MIN=0,
+ *     MULTIPASS_STAMPS_NEEDED_MAX=999]. Non-integer / out-of-range -> 0
+ *     (歡迎禮 fallback; non-blocking).
+ *   - rewardType: 'amount_off' | 'percent_off' | null. Anything else -> null.
+ *   - rewardValue: positive number or null. <= 0 or non-finite -> null.
+ *   - perVisitCount (PR-5): integer ≥ MULTIPASS_STAMPS_PER_VISIT_MIN=1 or null.
+ *   - perVisitStamps (PR-5): integer ≥ 1 or null.
+ *   - perSpendAmount (PR-5): positive number ≥ MULTIPASS_STAMPS_PER_SPEND_MIN=0.01 or null.
+ *   - perSpendStamps (PR-5): integer ≥ 1 or null.
+ *
+ * Truncates to MAX_MULTIPASS_TIERS=5 so a corrupted DB row with > 5
+ * entries cannot blow up the UI editor. Each invalid entry (non-object)
+ * is skipped (Rule 032 defensive stance).
+ */
+function sanitizeMultipassTiers(
+  raw: unknown,
+  current: Array<MultipassTierShape & { id: string }>,
+): Array<MultipassTierShape & { id: string }> {
+  if (!Array.isArray(raw)) return current;
+  const trimmed: Array<MultipassTierShape & { id: string }> = [];
+  for (const entry of raw.slice(0, MAX_MULTIPASS_TIERS)) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+    const obj = entry as Record<string, unknown>;
+    const name =
+      typeof obj.name === 'string'
+        ? obj.name.slice(0, MULTIPASS_TIER_NAME_MAX_LENGTH)
+        : '';
+    const rawStamps = obj.stampsNeeded;
+    const stampsNeeded =
+      typeof rawStamps === 'number' &&
+      Number.isFinite(rawStamps) &&
+      Number.isInteger(rawStamps)
+        ? Math.max(MULTIPASS_STAMPS_NEEDED_MIN, Math.min(MULTIPASS_STAMPS_NEEDED_MAX, rawStamps))
+        : 0;
+    const rewardType: MultipassRewardType | null =
+      obj.rewardType === 'amount_off' || obj.rewardType === 'percent_off'
+        ? (obj.rewardType as MultipassRewardType)
+        : null;
+    const rewardValue =
+      typeof obj.rewardValue === 'number' &&
+      Number.isFinite(obj.rewardValue) &&
+      obj.rewardValue > 0
+        ? obj.rewardValue
+        : null;
+    // PR-5 per-tier 門檻 fields — defensive parsing aligned with stamp_card pattern.
+    const perVisitCount =
+      obj.perVisitCount === null
+        ? null
+        : typeof obj.perVisitCount === 'number' &&
+            Number.isFinite(obj.perVisitCount) &&
+            Number.isInteger(obj.perVisitCount) &&
+            obj.perVisitCount >= MULTIPASS_STAMPS_PER_VISIT_MIN
+          ? obj.perVisitCount
+          : null;
+    const perVisitStamps =
+      obj.perVisitStamps === null
+        ? null
+        : typeof obj.perVisitStamps === 'number' &&
+            Number.isFinite(obj.perVisitStamps) &&
+            Number.isInteger(obj.perVisitStamps) &&
+            obj.perVisitStamps >= 1
+          ? obj.perVisitStamps
+          : null;
+    const perSpendAmount =
+      obj.perSpendAmount === null
+        ? null
+        : typeof obj.perSpendAmount === 'number' &&
+            Number.isFinite(obj.perSpendAmount) &&
+            obj.perSpendAmount >= MULTIPASS_STAMPS_PER_SPEND_MIN
+          ? obj.perSpendAmount
+          : null;
+    const perSpendStamps =
+      obj.perSpendStamps === null
+        ? null
+        : typeof obj.perSpendStamps === 'number' &&
+            Number.isFinite(obj.perSpendStamps) &&
+            Number.isInteger(obj.perSpendStamps) &&
+            obj.perSpendStamps >= 1
+          ? obj.perSpendStamps
+          : null;
+    const id =
+      typeof obj.id === 'string'
+        ? obj.id
+        : typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `multipass-tier-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    trimmed.push({
+      id,
+      name,
+      stampsNeeded,
+      rewardType,
+      rewardValue,
+      perVisitCount,
+      perVisitStamps,
+      perSpendAmount,
+      perSpendStamps,
+    });
+  }
+  return trimmed;
+}
+
 const initialState = {
   cardId: null,
   cardName: '',
@@ -1247,6 +1451,30 @@ const initialState = {
   couponDiscountAmount: null,
   couponDiscountPercent: null,
   couponIssueCount: 1,
+  // ===== Step 6 — Multipass 卡初始狀態 (2026-09-19, multipass only) =====
+  // 預設 seed 1 個空 tier (stampsNeeded=0 = 歡迎禮預設)。
+  // 穩定 id `default-multipass-tier` 確保 PR-3 MultipassCardLogic.tsx 內的
+  // auto-add useEffect 不會在每次 mount 觸發（既有初始 row 已滿足
+  // ">= 1 row" 條件）。
+  //
+  // 2026-09-20 PR-5: 加上 4 個 per-tier 門檻欄位初始值 (perVisitCount /
+  // perVisitStamps / perSpendAmount / perSpendStamps) 全為 null (= 未填).
+  // 加上 card-wide `multipassAccrualMode` 初始值 null (= 未選).
+  multipassAccrualMode: null,
+  multipassTiers: [
+    {
+      id: 'default-multipass-tier',
+      name: '',
+      stampsNeeded: 0,
+      rewardType: null,
+      rewardValue: null,
+      maxDiscountAmount: null,
+      perVisitCount: null,
+      perVisitStamps: null,
+      perSpendAmount: null,
+      perSpendStamps: null,
+    },
+  ],
 };
 
 /**
@@ -1999,6 +2227,216 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
       if (count > Number.MAX_SAFE_INTEGER) return {};
       return { couponIssueCount: count };
     }),
+
+  // ===== Step 6 — Multipass 卡邏輯 setters (2026-09-19) =====
+  // 2026-09-20 PR-5: 加上 card-wide `setMultipassAccrualMode` setter + 4 個
+  // per-tier 門檻欄位 setter 邏輯 (extends `updateMultipassTier`).
+  /**
+   * 設定 multipass 卡片層級蓋章方式 (2026-09-20 PR-5).
+   * null 允許 (= 未選). No-op if value unchanged.
+   *
+   * 切換時**不**清空 per-tier 門檻欄位 (UI 條件渲染隱藏切換, store
+   * 保留值讓使用者切換回來時資料還在). 對齊 Rule 030 baseline-armed
+   * 精神:資料不主動丟失.
+   */
+  setMultipassAccrualMode: (mode) =>
+    set((state) => {
+      if (mode === state.multipassAccrualMode) return {};
+      return { multipassAccrualMode: mode };
+    }),
+
+  /**
+   * 新增一組空白 multipass 級距. 在 MAX_MULTIPASS_TIERS=5 時為 no-op.
+   * 預設 stampsNeeded=0（歡迎禮預設 = 辦卡立刻送).
+   *
+   * 2026-09-20 PR-5: 加上 4 個 per-tier 門檻欄位初始值 (全部 null).
+   */
+  addMultipassTier: () =>
+    set((state) => {
+      if (state.multipassTiers.length >= MAX_MULTIPASS_TIERS) return {};
+      const newId =
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `multipass-tier-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      return {
+        multipassTiers: [
+          ...state.multipassTiers,
+          {
+            id: newId,
+            name: '',
+            stampsNeeded: 0,
+            rewardType: null,
+            rewardValue: null,
+            maxDiscountAmount: null,
+            perVisitCount: null,
+            perVisitStamps: null,
+            perSpendAmount: null,
+            perSpendStamps: null,
+          },
+        ],
+      };
+    }),
+  /**
+   * 移除指定 id 的 multipass 級距. 空陣列時自動補回 1 個預設級距
+   * （對齊 removeDiscountTier 行為；multipass editor 必須至少 1 row).
+   *
+   * 2026-09-20 PR-5: 加上 4 個 per-tier 門檻欄位 (default null).
+   */
+  removeMultipassTier: (id) =>
+    set((state) => {
+      const next = state.multipassTiers.filter((tier) => tier.id !== id);
+      if (next.length === 0) {
+        const seedId =
+          typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : `multipass-tier-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        return {
+          multipassTiers: [
+            {
+              id: seedId,
+              name: '',
+              stampsNeeded: 0,
+              rewardType: null,
+              rewardValue: null,
+              maxDiscountAmount: null,
+              perVisitCount: null,
+              perVisitStamps: null,
+              perSpendAmount: null,
+              perSpendStamps: null,
+            },
+          ],
+        };
+      }
+      return { multipassTiers: next };
+    }),
+  /**
+   * 更新指定 id 的 multipass 級距（partial patch，含守門).
+   * 守門:
+   *   - name: slice 到 MULTIPASS_TIER_NAME_MAX_LENGTH=40
+   *   - stampsNeeded: 拒絕 NaN / 非有限數 / 非整數；clamp 到
+   *     [MULTIPASS_STAMPS_NEEDED_MIN=0, MULTIPASS_STAMPS_NEEDED_MAX=999]
+   *   - rewardType 切換時清空 rewardValue（type 變了舊值不合新規範圍）
+   *   - rewardValue: positive (> 0) 且 Number.isFinite；null 允許
+   *
+   * 2026-09-20 PR-5 加上 4 個 per-tier 門檻欄位守門:
+   *   - perVisitCount: integer ≥ MULTIPASS_STAMPS_PER_VISIT_MIN=1 或 null
+   *   - perVisitStamps: integer ≥ 1 或 null
+   *   - perSpendAmount: positive number ≥ MULTIPASS_STAMPS_PER_SPEND_MIN=0.01 或 null
+   *   - perSpendStamps: integer ≥ 1 或 null
+   */
+  updateMultipassTier: (id, patch) =>
+    set((state) => ({
+      multipassTiers: state.multipassTiers.map((tier) => {
+        if (tier.id !== id) return tier;
+        const next: MultipassTierShape & { id: string } = { ...tier };
+        if (patch.name !== undefined) {
+          next.name = patch.name.slice(0, MULTIPASS_TIER_NAME_MAX_LENGTH);
+        }
+        if (patch.stampsNeeded !== undefined) {
+          const raw = patch.stampsNeeded;
+          // 拒絕 NaN / 非有限數 / 非整數
+          if (
+            typeof raw !== 'number' ||
+            !Number.isFinite(raw) ||
+            !Number.isInteger(raw)
+          ) {
+            // 保留原值，不更新
+          } else {
+            next.stampsNeeded = Math.max(
+              MULTIPASS_STAMPS_NEEDED_MIN,
+              Math.min(MULTIPASS_STAMPS_NEEDED_MAX, raw),
+            );
+          }
+        }
+        if (patch.rewardType !== undefined) {
+          next.rewardType = patch.rewardType;
+          // type 切換時清空 rewardValue + maxDiscountAmount（type 變了舊值不合新規範圍）
+          if (tier.rewardType !== patch.rewardType) {
+            next.rewardValue = null;
+            next.maxDiscountAmount = null;
+          }
+        }
+        if (patch.rewardValue !== undefined) {
+          if (patch.rewardValue === null) {
+            next.rewardValue = null;
+          } else if (
+            typeof patch.rewardValue === 'number' &&
+            Number.isFinite(patch.rewardValue) &&
+            patch.rewardValue > 0
+          ) {
+            next.rewardValue = patch.rewardValue;
+          }
+        }
+        // ★ PR-6: maxDiscountAmount patch handler (rewardType === 'percent_off' 時有意義)
+        if (patch.maxDiscountAmount !== undefined) {
+          if (patch.maxDiscountAmount === null) {
+            next.maxDiscountAmount = null;
+          } else if (
+            typeof patch.maxDiscountAmount === 'number' &&
+            Number.isFinite(patch.maxDiscountAmount) &&
+            patch.maxDiscountAmount >= 0
+          ) {
+            next.maxDiscountAmount = Math.min(patch.maxDiscountAmount, MAX_DISCOUNT_AMOUNT_MAX);
+          }
+        }
+        // ===== Per-tier 門檻欄位守門 (PR-5) =====
+        if (patch.perVisitCount !== undefined) {
+          if (patch.perVisitCount === null) {
+            next.perVisitCount = null;
+          } else if (
+            typeof patch.perVisitCount === 'number' &&
+            Number.isFinite(patch.perVisitCount) &&
+            Number.isInteger(patch.perVisitCount) &&
+            patch.perVisitCount >= MULTIPASS_STAMPS_PER_VISIT_MIN
+          ) {
+            next.perVisitCount = patch.perVisitCount;
+          }
+        }
+        if (patch.perVisitStamps !== undefined) {
+          if (patch.perVisitStamps === null) {
+            next.perVisitStamps = null;
+          } else if (
+            typeof patch.perVisitStamps === 'number' &&
+            Number.isFinite(patch.perVisitStamps) &&
+            Number.isInteger(patch.perVisitStamps) &&
+            patch.perVisitStamps >= 1
+          ) {
+            next.perVisitStamps = patch.perVisitStamps;
+          }
+        }
+        if (patch.perSpendAmount !== undefined) {
+          if (patch.perSpendAmount === null) {
+            next.perSpendAmount = null;
+          } else if (
+            typeof patch.perSpendAmount === 'number' &&
+            Number.isFinite(patch.perSpendAmount) &&
+            patch.perSpendAmount >= MULTIPASS_STAMPS_PER_SPEND_MIN
+          ) {
+            next.perSpendAmount = patch.perSpendAmount;
+          }
+        }
+        if (patch.perSpendStamps !== undefined) {
+          if (patch.perSpendStamps === null) {
+            next.perSpendStamps = null;
+          } else if (
+            typeof patch.perSpendStamps === 'number' &&
+            Number.isFinite(patch.perSpendStamps) &&
+            Number.isInteger(patch.perSpendStamps) &&
+            patch.perSpendStamps >= 1
+          ) {
+            next.perSpendStamps = patch.perSpendStamps;
+          }
+        }
+        return next;
+      }),
+    })),
+  /** 依 stampsNeeded 由小到大排序（0 在最前). 對齊 sortDiscountTiers pattern. */
+  sortMultipassTiers: () =>
+    set((state) => ({
+      multipassTiers: [...state.multipassTiers].sort(
+        (a, b) => a.stampsNeeded - b.stampsNeeded,
+      ),
+    })),
 
   // ===== Step 6 — Membership 卡邏輯 setters (2026-09-13) =====
   /**
@@ -2877,6 +3315,62 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
             return raw;
           }
           return state.couponIssueCount;
+        })(),
+        // ===== Step 6 — Multipass 卡 loadSettings (2026-09-19) =====
+        // Defensive parse of `resolved.multipassTiers` array.
+        // Each tier: { name (1..40 chars), stampsNeeded (0..999 int),
+        // rewardType ('amount_off' | 'percent_off' | null),
+        // rewardValue (>0 | null),
+        // perVisitCount (>=1 int | null),
+        // perVisitStamps (>=1 int | null),
+        // perSpendAmount (>=0.01 | null),
+        // perSpendStamps (>=1 int | null) }.
+        //
+        // Sort by stampsNeeded ASC (0 first = welcome gift).
+        // Falls back to current state if not present / malformed.
+        //
+        // Second-layer defensive seed: if the loaded row is empty AND
+        // this is a multipass card (legacy DB row that pre-dates the
+        // multipass editor, or a corrupted settings payload), seed one
+        // default tier so the multipass editor has something to bind to.
+        // Fresh cards never hit this branch — initialState already seeds
+        // the tier.
+        //
+        // 2026-09-20 PR-5: 加上 4 個 per-tier 門檻欄位到 defensive seed
+        // (default 全 null).
+        multipassTiers: (() => {
+          const trimmed = sanitizeMultipassTiers(
+            resolved?.multipassTiers,
+            state.multipassTiers,
+          );
+          if (trimmed.length === 0 && resolved?.cardType === 'multipass') {
+            return [
+              {
+                id: 'default-multipass-tier',
+                name: '',
+                stampsNeeded: 0,
+                rewardType: null,
+                rewardValue: null,
+                perVisitCount: null,
+                perVisitStamps: null,
+                perSpendAmount: null,
+                perSpendStamps: null,
+              },
+            ];
+          }
+          return trimmed.sort((a, b) => a.stampsNeeded - b.stampsNeeded);
+        })(),
+        // ===== Step 6 — Multipass 卡 card-wide mode (2026-09-20 PR-5) =====
+        // multipassAccrualMode: 'per_stamp' | 'per_visit' | 'per_spend' | null.
+        // Defensive coerce — anything else falls back to current state.
+        // null = 未選 (使用者尚未選過).
+        multipassAccrualMode: (() => {
+          const raw = resolved?.multipassAccrualMode;
+          if (raw === null) return null;
+          if (raw === 'per_stamp' || raw === 'per_visit' || raw === 'per_spend') {
+            return raw;
+          }
+          return state.multipassAccrualMode;
         })(),
       };
     });

@@ -7,9 +7,10 @@
  *   - PercentModeWithCap: shows max discount field
  *   - ComingSoon: cashback_card (placeholder)
  *   - NoCardType: cardType is null (placeholder)
- *   - Multipass: shares stamp card logic editor
+ *   - Multipass: multipass with default 1-row tier (PR-3 split out 2026-09-19)
  *
  * Plan ref: step6_集點卡模組化實作 plan 2026-09-07 § Phase 6.3.
+ * Plan ref: step6_multipass_模組化實作 plan 2026-09-19 § Phase 6.3 stories.
  */
 
 import type { Meta, StoryObj } from '@storybook/react';
@@ -109,12 +110,15 @@ export const NoCardType: Story = {
 
 export const Multipass: Story = {
   render: () => {
+    // 2026-09-19 PR-3: multipass now uses its own dedicated sub-module
+    // (MultipassCardLogic). The dispatcher routes multipass_card to
+    // MultipassCardLogic instead of sharing the stamp_card editor.
     useCardBuilderStore.setState({
       cardType: 'multipass',
-      stampAccrualMode: 'per_stamp',
-      rewardName: '10元折價',
-      rewardType: 'amount_off',
-      rewardValue: 10,
+      multipassTiers: [
+        { id: 't-0', name: '新戶禮', stampsNeeded: 0, rewardType: 'amount_off', rewardValue: 10 },
+        { id: 't-1', name: '滿 5 次回訪', stampsNeeded: 5, rewardType: 'percent_off', rewardValue: 5 },
+      ],
     });
     return <Step6CardLogic showValidation={false} />;
   },
