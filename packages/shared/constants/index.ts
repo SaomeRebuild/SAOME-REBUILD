@@ -17,6 +17,7 @@ export * from './cashback-card';
 export * from './membership-card';
 export * from './discount-card';
 export * from './coupon-card';
+export * from './multipass-card';
 export * from './balancePreview';
 export * from './cashbackPreviewAmounts';
 export * from './discountPreviewAmounts';

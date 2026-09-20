@@ -189,6 +189,58 @@ export const cardTypeExtensions = {
     stampsPerVisitStamps: z.number().int().min(1).nullable().optional(),
     stampsPerSpendAmount: z.number().positive().nullable().optional(),
     stampsPerSpendStamps: z.number().int().min(1).nullable().optional(),
+    // ===== Step 6 — multipass 多 tier 邏輯 (2026-09-19, multipass only) =====
+    // 取代既有共用 stamp_card 邏輯（PR-3 拆 dispatcher 後會移除 stamp 共用欄位）.
+    // Multipass 有 N 個 tier（最多 MAX_MULTIPASS_TIERS=5 組），每個 tier 自帶
+    // name + stampsNeeded + rewardType + rewardValue。stampsNeeded 允許 0
+    // （歡迎禮「辦卡立刻送」語意）與 1..999（設計自由選擇，後端 zod 純作安全閥）。
+    //
+    // 4-layer sync (Rule 019 § 4.1):
+    //   - packages/shared/constants/multipass-card.ts (single source of truth, layer 0)
+    //   - packages/shared/schemas/card.ts (layer 1)
+    //   - apps/backend/src/modules/cards/schemas/request.ts (layer 2 mirror)
+    //   - apps/backend/src/modules/cards/db/templates.ts (layer 3 db interface)
+    //   - apps/backend/src/modules/cards/services/cardService.ts (layer 4 — auto via Partial<TemplateSettings>)
+    //
+    // 2026-09-20 PR-5: multipassAccrualMode (card-wide) + 4 個 per-tier
+    // 門檻欄位 (perVisitCount / perVisitStamps / perSpendAmount /
+    // perSpendStamps). 對齊 stamp_card 既有 stampAccrualMode + card-wide
+    // 門檻模式, 但 Multipass 把門檻欄位放 per-tier (使用者確認: 「在
+    // 大規則下每個 tier 有細微可控制的邏輯」).
+    /**
+     * 卡片層級蓋章方式 (2026-09-20 PR-5). 對齊 stamp_card.stampAccrualMode.
+     * null = 未選. Multipass 與 stamp 卡差異: 門檻欄位是 per-tier 的
+     * (見 multipassTierSchema 新增欄位).
+     */
+    multipassAccrualMode: z.enum(['per_stamp', 'per_visit', 'per_spend']).nullable().optional(),
+    multipassTiers: z
+      .array(
+        z.object({
+          /** Tier name shown on the pass (e.g. "新戶禮", "VIP 回饋"). 1-40 chars. */
+          name: z.string().min(1).max(40),
+          /** Stamps required to unlock this tier reward. 0 = welcome gift; 1..999 = design choice. */
+          stampsNeeded: z.number().int().min(0).max(999),
+          /** Reward type. Mirrors stamp_card rewardType. null when user hasn't picked. */
+          rewardType: z.enum(['amount_off', 'percent_off']).nullable().optional(),
+          /** Discount amount (amount_off) or percentage integer 1-100 (percent_off). null when unselected. */
+          rewardValue: z.number().positive().nullable().optional(),
+          // ★ PR-5 新增 per-tier 門檻欄位 (對齊 stamp_card stampsPerVisitCount 等
+          // card-wide 欄位的 per-tier 變體).
+          /**
+           * 來訪門檻拜訪次數 (2026-09-20 PR-5, multipassAccrualMode === 'per_visit').
+           * integer ≥ 1. null = 未填.
+           */
+          perVisitCount: z.number().int().min(1).nullable().optional(),
+          /** 來訪門檻獲得蓋章數. integer ≥ 1. null = 未填. */
+          perVisitStamps: z.number().int().min(1).nullable().optional(),
+          /** 消費門檻消費金額. positive number ≥ 0.01. null = 未填. */
+          perSpendAmount: z.number().positive().nullable().optional(),
+          /** 消費門檻獲得蓋章數. integer ≥ 1. null = 未填. */
+          perSpendStamps: z.number().int().min(1).nullable().optional(),
+        }),
+      )
+      .max(5)
+      .optional(),
   }),
 } as const;
 

@@ -658,6 +658,75 @@ export const templateSettingsSchema = z.object({
    * Default = 1.
    */
   couponIssueCount: z.number().int().min(COUPON_ISSUE_COUNT_MIN).optional(),
+  // ===== Step 6 — Multipass 卡 (2026-09-19, Rule 019 § 4.1, multipass only) =====
+  // Mirrors `shared/templateSettingsSchema.multipassTiers`.
+  // Multipass card has UP TO 5 tiers; each tier carries name +
+  // stampsNeeded + rewardType + rewardValue. Differs structurally from
+  // stamp_card's single reward: stampsNeeded = 0 represents "歡迎禮
+  // 辦卡立刻送" (immediate reward on download). stampsNeeded is
+  // COMPLETELY DECOUPLED from the Step 3 stamp grid (stampGridRows × 5)
+  // — multipass cards may stack stamps across multiple physical
+  // cards. Backend zod caps stampsNeeded at 999 purely as a safety
+  // valve against typos (e.g. user types 99999).
+  //
+  // Cross-references:
+  //   - packages/shared/constants/multipass-card.ts (single source of truth — bounds)
+  //   - packages/shared/schemas/cardBuilder.ts (cardTypeExtensions.multipass)
+  //   - apps/backend/src/modules/cards/schemas/request.ts (mirror)
+  //   - apps/backend/src/modules/cards/db/templates.ts (TemplateSettings interface)
+  /**
+   * Multipass 多 tier 陣列 (最多 MAX_MULTIPASS_TIERS=5 組).
+   * 每個 tier 自帶 name + stampsNeeded + rewardType + rewardValue.
+   *
+   * stampsNeeded:
+   *   - 0 = 歡迎禮「辦卡立刻送」(immediate reward on download)
+   *   - 1..999 = 設計自由選擇，後端 zod 純作安全閥
+   * 與 Step 3 stamp grid 解耦，multipass 卡片可跨多張實體卡堆疊蓋章.
+   */
+  multipassTiers: z
+    .array(
+      z.object({
+        /** Tier name shown on the pass (e.g. "新戶禮", "VIP 回饋"). 1-40 chars. */
+        name: z.string().min(1).max(40),
+        /** Stamps required to unlock this tier reward. 0 = welcome gift; 1..999 = design choice. */
+        stampsNeeded: z.number().int().min(0).max(999),
+        /** Reward type. Mirrors stamp_card rewardType. null when user hasn't picked. */
+        rewardType: z.enum(['amount_off', 'percent_off']).nullable().optional(),
+        /** Discount amount (amount_off) or percentage integer 1-100 (percent_off). null when unselected. */
+        rewardValue: z.number().positive().nullable().optional(),
+        // ★ PR-5 新增 per-tier 門檻欄位 — 對齊 stamp_card 的 card-wide
+        // stampsPerVisitCount / stampsPerSpendAmount 等欄位的 per-tier 變體.
+        // 差異: stamp_card 的 4 個門檻欄位是 card-wide 共用,Multipass 把
+        // 它們放 per-tier (使用者確認: 「在大規則下每個 tier 有細微
+        // 可控制的邏輯」).
+        /**
+         * 來訪門檻拜訪次數 (multipassAccrualMode === 'per_visit').
+         * integer ≥ 1. null = 未填.
+         */
+        perVisitCount: z.number().int().min(1).nullable().optional(),
+        /** 來訪門檻獲得蓋章數. integer ≥ 1. null = 未填. */
+        perVisitStamps: z.number().int().min(1).nullable().optional(),
+        /** 消費門檻消費金額. positive number ≥ 0.01. null = 未填. */
+        perSpendAmount: z.number().positive().nullable().optional(),
+        /** 消費門檻獲得蓋章數. integer ≥ 1. null = 未填. */
+        perSpendStamps: z.number().int().min(1).nullable().optional(),
+      }),
+    )
+    .max(5)
+    .optional(),
+  /**
+   * 卡片層級 multipass 蓋章方式 (2026-09-20 PR-5, multipass only).
+   * 對齊 stamp_card.stampAccrualMode (在 settings 內 card-wide).
+   * Mirrors `shared/templateSettingsSchema.stampAccrualMode` (Rule 019 § 4.1).
+   * null = 未選.
+   *
+   * Cross-references:
+   *   - packages/shared/constants/multipass-card.ts (MULTIPASS_ACCRUAL_MODES)
+   *   - packages/shared/schemas/cardBuilder.ts (cardTypeExtensions.multipass.multipassAccrualMode)
+   *   - apps/backend/src/modules/cards/schemas/request.ts (backend mirror)
+   *   - apps/backend/src/modules/cards/db/templates.ts (TemplateSettings interface)
+   */
+  multipassAccrualMode: z.enum(['per_stamp', 'per_visit', 'per_spend']).nullable().optional(),
 });
 
 export type TemplateSettings = z.infer<typeof templateSettingsSchema>;
