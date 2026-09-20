@@ -140,6 +140,42 @@ export interface PreviewWrapperProps {
    */
   couponDiscountPercent?: number | null;
   /**
+   * 2026-09-20 multipass card — First multipass tier reward type from the
+   * editor store (Step 6 `multipassTiers[0].rewardType`). Forwarded to
+   * PassCardPreviewBody so the `multipassRewardContent` slot can render
+   * amount_off → amountFormatTWD/ZAR or percent_off → percentFormat.
+   */
+  firstMultipassRewardType?: import('@saome/shared/constants/multipass-card').MultipassRewardType | null;
+  /**
+   * 2026-09-20 multipass card — First multipass tier reward value from the
+   * editor store (Step 6 `multipassTiers[0].rewardValue`). Interpolated
+   * into the amountFormatTWD / amountFormatZAR / percentFormat i18n template
+   * for the `multipassRewardContent` preview slot.
+   */
+  firstMultipassRewardValue?: number | null;
+  /**
+   * 2026-09-20 multipass card — First multipass tier name from the editor
+   * store (Step 6 `multipassTiers[0].name`). Surfaced as the preview
+   * `value` for the COMMON `memberLevel` slot when `cardType === 'multipass'`
+   * (PassCardPreviewBody applies the multipass override branch — mirrors
+   * the `membership_card` pattern). The label uses the default
+   * `fieldPreview.memberLevel.label` ("會員等級" / "Member Level"), NOT
+   * `stampLabel` — multipass is a tier-identity card.
+   *
+   * Optional — when omitted / undefined / when `multipassTiers` is empty,
+   * the preview renders an empty value (matches stamp/reward/cashback/
+   * membership empty-input UX).
+   *
+   * Note: the original 2026-09-20 implementation used a dedicated
+   * `multipassMemberLevel` CardFieldKey + a `fieldPreview.multipassMemberLevel`
+   * translation. After 2026-09-20 review, the dedicated key was found
+   * redundant: the common `memberLevel` slot already exists in the
+   * dropdown (its `hideOnCardTypes: ['coupon_card']` does NOT exclude
+   * multipass), and mirroring the `membership_card` override pattern
+   * keeps the label semantic consistent. Removed the dedicated key.
+   */
+  firstMultipassTierName?: string;
+  /**
    * 2026-09-13 membership card — boolean flag indicating the card is a
    * paid membership card. Gates:
    *   - PassCardPreviewStrip: switch to UserIcon + label/value pair

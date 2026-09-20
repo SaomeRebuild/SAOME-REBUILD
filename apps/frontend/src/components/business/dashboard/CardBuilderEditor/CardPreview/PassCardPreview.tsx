@@ -46,6 +46,9 @@ export function PassCardPreview({
   couponDiscountType,
   couponDiscountAmount,
   couponDiscountPercent,
+  firstMultipassRewardType,
+  firstMultipassRewardValue,
+  firstMultipassTierName,
   membershipTiersRewards,
   isMembership,
   description,
@@ -177,6 +180,9 @@ export function PassCardPreview({
               couponDiscountType={couponDiscountType}
               couponDiscountAmount={couponDiscountAmount}
               couponDiscountPercent={couponDiscountPercent}
+              firstMultipassRewardType={firstMultipassRewardType}
+              firstMultipassRewardValue={firstMultipassRewardValue}
+              firstMultipassTierName={firstMultipassTierName}
             />
 
             {/* Footer / Barcode */}

@@ -53,6 +53,9 @@ export function PreviewWrapper({
   couponDiscountType,
   couponDiscountAmount,
   couponDiscountPercent,
+  firstMultipassRewardType,
+  firstMultipassRewardValue,
+  firstMultipassTierName,
   membershipTiersRewards,
   isMembership,
   description,
@@ -96,6 +99,9 @@ export function PreviewWrapper({
             couponDiscountType={couponDiscountType}
             couponDiscountAmount={couponDiscountAmount}
             couponDiscountPercent={couponDiscountPercent}
+            firstMultipassRewardType={firstMultipassRewardType}
+            firstMultipassRewardValue={firstMultipassRewardValue}
+            firstMultipassTierName={firstMultipassTierName}
             membershipTiersRewards={membershipTiersRewards}
             isMembership={isMembership}
             description={description}
@@ -137,6 +143,9 @@ export function PreviewWrapper({
       couponDiscountType={couponDiscountType}
       couponDiscountAmount={couponDiscountAmount}
       couponDiscountPercent={couponDiscountPercent}
+      firstMultipassRewardType={firstMultipassRewardType}
+      firstMultipassRewardValue={firstMultipassRewardValue}
+      firstMultipassTierName={firstMultipassTierName}
       membershipTiersRewards={membershipTiersRewards}
       isMembership={isMembership}
       description={description}

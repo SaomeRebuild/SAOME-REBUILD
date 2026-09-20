@@ -83,6 +83,12 @@ export function CardBuilderEditorPreview({
     // affect what the strip shows. isPaid's autosave is handled in
     // CardBuilderEditor.tsx.
     membershipTiers,
+    // Step 6 — MultiPass 卡邏輯 (2026-09-20, multipass only):
+    // `multipassTiers[0].rewardType` + `rewardValue` → firstMultipassRewardType
+    // + firstMultipassRewardValue. Forwarded to PassCardPreviewBody so the
+    // `multipassRewardContent` preview slot can render amount_off/percent_off
+    // based on the user's first tier reward configuration.
+    multipassTiers,
     // Step 4 — 卡片資訊（對應 templateSettings.description / backFields / links）
     description,
     backFields,
@@ -114,6 +120,27 @@ export function CardBuilderEditorPreview({
   // i18n template interpolation.
   const firstCouponRemainingCount =
     couponIssueCount !== 1 ? couponIssueCount : undefined;
+
+  // 2026-09-20 multipass card — first tier reward type + value for the
+  // `multipassRewardContent` preview slot. Mirrors the firstRewardTierName
+  // derivation pattern: read the first tier from `multipassTiers` and forward
+  // its `rewardType` + `rewardValue` to PassCardPreviewBody.
+  const firstMultipassRewardType = multipassTiers?.[0]?.rewardType ?? null;
+  const firstMultipassRewardValue = multipassTiers?.[0]?.rewardValue ?? null;
+  // 2026-09-20 multipass memberLevel (reuse common `memberLevel`):
+  // first tier name for the COMMON `memberLevel` preview slot when
+  // cardType === 'multipass'. PassCardPreviewBody applies a multipass
+  // override branch (mirrors the membership_card / firstMembershipTierName
+  // pattern): label uses the default `fieldPreview.memberLevel.label`
+  // ("會員等級" / "Member Level"), value = first tier name. Note: the
+  // original 2026-09-20 implementation used a dedicated
+  // `multipassMemberLevel` CardFieldKey + a `fieldPreview.multipassMemberLevel`
+  // translation. After review, the dedicated key was found redundant:
+  // the common `memberLevel` slot already exists in the dropdown (its
+  // `hideOnCardTypes: ['coupon_card']` does NOT exclude multipass),
+  // and mirroring the `membership_card` override pattern keeps the label
+  // semantic consistent. Removed the dedicated key.
+  const firstMultipassTierName = multipassTiers?.[0]?.name ?? '';
 
   // 組裝背景圖 URL（cache-busting via backgroundImageVersion）
   const backgroundImageUrl = backgroundImage && cardId
@@ -191,6 +218,9 @@ export function CardBuilderEditorPreview({
             couponDiscountType={couponDiscountType}
             couponDiscountAmount={couponDiscountAmount}
             couponDiscountPercent={couponDiscountPercent}
+            firstMultipassRewardType={firstMultipassRewardType}
+            firstMultipassRewardValue={firstMultipassRewardValue}
+            firstMultipassTierName={firstMultipassTierName}
             side={cardSide}
             showPhoneFrame={true}
           />

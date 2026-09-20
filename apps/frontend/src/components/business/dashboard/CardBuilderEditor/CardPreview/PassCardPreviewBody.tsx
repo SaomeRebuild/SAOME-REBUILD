@@ -177,6 +177,7 @@ import type { Currency } from '@saome/shared/schemas/card';
 import { CASHBACK_PREVIEW_AMOUNTS } from '@saome/shared/constants/cashbackPreviewAmounts';
 import { DISCOUNT_PREVIEW_AMOUNTS } from '@saome/shared/constants/discountPreviewAmounts';
 import type { CouponDiscountType } from '@saome/shared/constants/coupon-card';
+import type { MultipassRewardType } from '@saome/shared/constants/multipass-card';
 import {
   STAMPS_PER_ROW,
   type StampGridRows,
@@ -324,6 +325,45 @@ interface PassCardPreviewBodyProps {
    * `discountTierBracket` "no value yet → default fallback" UX).
    */
   couponDiscountPercent?: number | null;
+  /**
+   * 2026-09-20 multipass card — First multipass tier reward type from the
+   * editor store (Step 6 `multipassTiers[0].rewardType`).
+   * Used to render the `multipassRewardContent` preview slot:
+   *   - `amount_off` + `firstMultipassRewardValue` → amountFormatTWD/ZAR
+   *   - `percent_off` + `firstMultipassRewardValue` → percentFormat
+   *   - null / undefined → empty string (no placeholder).
+   */
+  firstMultipassRewardType?: MultipassRewardType | null;
+  /**
+   * 2026-09-20 multipass card — First multipass tier reward value from the
+   * editor store (Step 6 `multipassTiers[0].rewardValue`).
+   * Interpolated into the amountFormatTWD / amountFormatZAR / percentFormat
+   * i18n template for the `multipassRewardContent` preview slot.
+   * Optional — when omitted / null, renders as empty string.
+   */
+  firstMultipassRewardValue?: number | null;
+  /**
+   * 2026-09-20 multipass card — First multipass tier name from the editor
+   * store (Step 6 `multipassTiers[0].name`). Surfaced as the preview
+   * `value` for the COMMON `memberLevel` slot when `cardType === 'multipass'`
+   * (PassCardPreviewBody applies the multipass override branch — mirrors
+   * the `membership_card` pattern). The label uses the default
+   * `fieldPreview.memberLevel.label` ("會員等級" / "Member Level"), NOT
+   * `stampLabel` — multipass is a tier-identity card.
+   *
+   * Optional — when omitted / undefined / when `multipassTiers` is empty,
+   * the preview renders an empty value (matches stamp/reward/cashback/
+   * membership empty-input UX).
+   *
+   * Note: the original 2026-09-20 implementation used a dedicated
+   * `multipassMemberLevel` CardFieldKey + a `fieldPreview.multipassMemberLevel`
+   * translation. After 2026-09-20 review, the dedicated key was found
+   * redundant: the common `memberLevel` slot already exists in the
+   * dropdown (its `hideOnCardTypes: ['coupon_card']` does NOT exclude
+   * multipass), and mirroring the `membership_card` override pattern
+   * keeps the label semantic consistent. Removed the dedicated key.
+   */
+  firstMultipassTierName?: string;
 }
 
 /**
@@ -340,9 +380,15 @@ interface PassCardPreviewBodyProps {
  *                                           value = firstCashbackTierName ?? '')
  *   5. `membership_card + memberLevel`   → membership-card override (label = default
  *                                           memberLevel.label, value = firstMembershipTierName ?? '')
- *   6. `discount_card + memberLevel`     → discount-card override (label = discountLabel,
+ *   6. `multipass + memberLevel`         → multipass override (label = default
+ *                                           memberLevel.label, value = firstMultipassTierName ?? '')
+ *                                           — mirrors the membership_card pattern;
+ *                                           the multipass card intentionally reuses
+ *                                           the existing common `memberLevel` key
+ *                                           (no dedicated `multipassMemberLevel`).
+ *   7. `discount_card + memberLevel`     → discount-card override (label = discountLabel,
  *                                           value = firstDiscountTierName ?? '')
- *   7. `coupon_card + couponRemainingCount` → i18n countFormat ("{{count}}張" /
+ *   8. `coupon_card + couponRemainingCount` → i18n countFormat ("{{count}}張" /
  *                                            "{{count}} sheets") interpolated with
  *                                            firstCouponRemainingCount when defined;
  *                                            otherwise static demo value "1張" /
@@ -350,19 +396,27 @@ interface PassCardPreviewBodyProps {
  *                                            visitCount pattern). 2026-09-20: unit
  *                                            suffix is now always composed via i18n,
  *                                            no longer a raw bare-digit fallback.
- *   8. `coupon_card + couponDiscount`    → percent_off: store-driven "<percent>%折扣";
+ *   9. `coupon_card + couponDiscount`    → percent_off: store-driven "<percent>%折扣";
  *                                            amount_off: store-driven via i18n
  *                                            amountFormatTWD (zh-TW "{{amount}}元折扣"
  *                                            / en "NT${{amount}} off") or
  *                                            amountFormatZAR (zh-TW "R{{amount}}折扣"
  *                                            / en "R{{amount}} off").
- *   9. `totalStamps`                     → rows × STAMPS_PER_ROW interpolation
- *  10. `discountTierBracket`             → store-derived "X%" (NOT i18n, NOT currency)
- *  11. cashback amount fields            → currency-driven
+ *  10. multipass amount branches         → multipassCompleted (static demo),
+ *                                            multipassPointsToNextTier (static demo),
+ *                                            multipassRewardContent (store-driven via
+ *                                            amountFormatTWD/ZAR + percentFormat).
+ *                                            Placed AFTER the coupon branches because
+ *                                            they're keyed by `cardType === 'multipass'`
+ *                                            which is no more specific than the
+ *                                            coupon key-only gates below.
+ *  11. `totalStamps`                     → rows × STAMPS_PER_ROW interpolation
+ *  12. `discountTierBracket`             → store-derived "X%" (NOT i18n, NOT currency)
+ *  13. cashback amount fields            → currency-driven
  *                                            (`CASHBACK_PREVIEW_AMOUNTS[currency][field]`)
- *  12. discount amount fields            → currency-driven
+ *  14. discount amount fields            → currency-driven
  *                                            (`DISCOUNT_PREVIEW_AMOUNTS[currency][field]`)
- *  13. default                           → `fieldPreview.{key}.label` + `.value`
+ *  15. default                           → `fieldPreview.{key}.label` + `.value`
  *                                            (NO ZAR formatter — values are demo
  *                                             data and are NOT currency-dependent)
  *
@@ -401,15 +455,17 @@ interface PassCardPreviewBodyProps {
  *                                           value = firstCashbackTierName ?? '')
  *   5. `membership_card + memberLevel`   → membership-card override (label = default
  *                                           memberLevel.label, value = firstMembershipTierName ?? '')
- *   6. `discount_card + memberLevel`     → discount-card override (label = discountLabel,
+ *   6. `multipass + memberLevel`         → multipass override (label = default
+ *                                           memberLevel.label, value = firstMultipassTierName ?? '')
+ *   7. `discount_card + memberLevel`     → discount-card override (label = discountLabel,
  *                                           value = firstDiscountTierName ?? '')
- *   7. `totalStamps`                     → rows × STAMPS_PER_ROW interpolation
- *   8. `discountTierBracket`             → store-derived "X%" (NOT i18n, NOT currency)
- *   9. cashback amount fields            → CASHBACK_PREVIEW_AMOUNTS[currency][field]
+ *   8. `totalStamps`                     → rows × STAMPS_PER_ROW interpolation
+ *   9. `discountTierBracket`             → store-derived "X%" (NOT i18n, NOT currency)
+ *  10. cashback amount fields            → CASHBACK_PREVIEW_AMOUNTS[currency][field]
  *                                           (currency-driven, like balance preview)
- *  10. discount amount fields            → DISCOUNT_PREVIEW_AMOUNTS[currency][field]
+ *  11. discount amount fields            → DISCOUNT_PREVIEW_AMOUNTS[currency][field]
  *                                           (currency-driven, like balance preview)
- *  11. default                           → `fieldPreview.{key}.label` + `.value`
+ *  12. default                           → `fieldPreview.{key}.label` + `.value`
  *                                           (NO ZAR formatter — values are demo
  *                                            data and are NOT currency-dependent)
  */
@@ -429,6 +485,9 @@ function resolveSlot(
   couponDiscountPercent: number | null | undefined,
   firstCouponRemainingCount: number | undefined,
   currency: Currency,
+  firstMultipassRewardType: MultipassRewardType | null | undefined,
+  firstMultipassRewardValue: number | null | undefined,
+  firstMultipassTierName: string | undefined,
 ): { label: string; value: string } {
   if (!field) {
     return { label: t('fieldLabelLeft'), value: t('fieldLabelRight') };
@@ -478,6 +537,27 @@ function resolveSlot(
     return {
       label: t('fieldPreview.memberLevel.label'),
       value: firstMembershipTierName ?? '',
+    };
+  }
+
+  // MultiPass override (2026-09-20): reuses the existing common
+  // `memberLevel` key (no dedicated `multipassMemberLevel` is needed).
+  // Mirrors the membership_card pattern above:
+  //   label = default `fieldPreview.memberLevel.label` ("會員等級" /
+  //           "Member Level") — NOT stampLabel (multipass is a tier-
+  //           identity card, not a reward card)
+  //   value = `firstMultipassTierName ?? ''` (the FIRST row of
+  //           `multipassTiers`, store-driven via Step 6
+  //           `MultipassTierNameField`).
+  // Empty / undefined / no-tiers → empty string (matches stamp/reward/
+  // cashback/membership empty-input UX).
+  // Placed between membership_card and discount_card overrides because
+  // the label semantic ("會員等級" / "Member Level") matches membership's,
+  // not discount's "折扣等級" / "Discount Tier".
+  if (cardType === 'multipass' && field === 'memberLevel') {
+    return {
+      label: t('fieldPreview.memberLevel.label'),
+      value: firstMultipassTierName ?? '',
     };
   }
 
@@ -609,6 +689,47 @@ function resolveSlot(
   // option to `discount_card`). Empty `discountTierBracket` (which
   // shouldn't happen — the store always seeds a default tier) renders
   // as an empty string rather than crashing.
+
+  // MultiPass amount branches (2026-09-20): placed after the coupon
+  // branches and the memberLevel override cluster because they're keyed
+  // by `cardType === 'multipass'` (no more specific than the coupon
+  // branches). The multipass "Member Level" slot is NOT here — it
+  // reuses the common `memberLevel` key via the override branch above
+  // (mirror of the membership_card pattern).
+  //
+  // multipassCompleted: static demo ("1次"), matching availableRewards pattern.
+  // multipassPointsToNextTier: static demo ("2次集滿").
+  // multipassRewardContent: store-driven — amount_off → amountFormatTWD/ZAR;
+  //   percent_off → percentFormat. Null/undefined → empty string.
+  if (cardType === 'multipass' && field === 'multipassCompleted') {
+    return {
+      label: t('fieldPreview.multipassCompleted.label'),
+      value: t('fieldPreview.multipassCompleted.value'),
+    };
+  }
+
+  if (cardType === 'multipass' && field === 'multipassPointsToNextTier') {
+    return {
+      label: t('fieldPreview.multipassPointsToNextTier.label'),
+      value: t('fieldPreview.multipassPointsToNextTier.value'),
+    };
+  }
+
+  if (cardType === 'multipass' && field === 'multipassRewardContent') {
+    let value = '';
+    if (firstMultipassRewardType === 'amount_off' && firstMultipassRewardValue != null) {
+      value = currency === 'ZAR'
+        ? t('fieldPreview.multipassRewardContent.amountFormatZAR', { amount: firstMultipassRewardValue })
+        : t('fieldPreview.multipassRewardContent.amountFormatTWD', { amount: firstMultipassRewardValue });
+    } else if (firstMultipassRewardType === 'percent_off' && firstMultipassRewardValue != null) {
+      value = t('fieldPreview.multipassRewardContent.percentFormat', { percent: firstMultipassRewardValue });
+    }
+    return {
+      label: t('fieldPreview.multipassRewardContent.label'),
+      value,
+    };
+  }
+
   if (field === 'discountTierBracket') {
     return {
       label: t(`fieldPreview.${field}.label`),
@@ -698,6 +819,9 @@ export function PassCardPreviewBody({
   couponDiscountType,
   couponDiscountAmount,
   couponDiscountPercent,
+  firstMultipassRewardType,
+  firstMultipassRewardValue,
+  firstMultipassTierName,
 }: PassCardPreviewBodyProps) {
   const { t } = useTranslation('passCard');
 
@@ -760,6 +884,9 @@ export function PassCardPreviewBody({
     effectiveCouponDiscountPercent,
     firstCouponRemainingCount,
     currency,
+    firstMultipassRewardType,
+    firstMultipassRewardValue,
+    firstMultipassTierName,
   );
   const rightPreview = resolveSlot(
     t,
@@ -777,6 +904,9 @@ export function PassCardPreviewBody({
     effectiveCouponDiscountPercent,
     firstCouponRemainingCount,
     currency,
+    firstMultipassRewardType,
+    firstMultipassRewardValue,
+    firstMultipassTierName,
   );
 
   // PassCreator typography: label 永遠比 value 小。
