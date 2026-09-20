@@ -20,6 +20,12 @@ import {
   COUPON_PERCENT_MAX,
   COUPON_ISSUE_COUNT_MIN,
 } from '@saome/shared/constants/coupon-card';
+import {
+  MAX_MULTIPASS_TIERS,
+  MULTIPASS_TIER_NAME_MAX_LENGTH,
+  MULTIPASS_STAMPS_NEEDED_MIN,
+  MULTIPASS_STAMPS_NEEDED_MAX,
+} from '@saome/shared/constants/multipass-card';
 
 describe('schema conformance (shared vs backend cards/templateSettingsSchema)', () => {
   it('local schema has the same keys as the shared schema', () => {
@@ -930,6 +936,473 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
     expect(() => sharedTemplateSettingsSchema.parse(payload)).not.toThrow();
     expect(() => localTemplateSettingsSchema.parse(payload)).not.toThrow();
   });
+
+  // ===== Step 6 — Multipass 卡: multipassTiers (Rule 019 § 4.1, 2026-09-19) =====
+  // 2026-09-19 PR-1: the multipass card is the seventh card-type-specific
+  // logic editor. Differs structurally from stamp_card:
+  //   - stamp_card has a SINGLE flat reward (one rewardName + rewardType +
+  //     rewardValue + maxDiscountAmount).
+  //   - multipass has UP TO MAX_MULTIPASS_TIERS=5 tiers, each tier carries
+  //     its own name + stampsNeeded + rewardType + rewardValue.
+  //   - stampsNeeded = 0 IS legitimate (= 歡迎禮「辦卡立刻送」).
+  //   - stampsNeeded is COMPLETELY DECOUPLED from the Step 3 stamp grid.
+  //
+  // This block pins the 4-layer sync (Rule 019 § 4.1):
+  //   - shared `templateSettingsSchema.multipassTiers` (Layer 1)
+  //   - backend local `templateSettingsSchema.multipassTiers` (Layer 2)
+  //   - backend db interface `TemplateSettings.multipassTiers` (Layer 3 — TS type system)
+  //   - frontend store (Layer 4 — deferred to PR-2)
+  it('shared schema has the multipassTiers field (Rule 019 § 4.1 — Step 6 multipass card 2026-09-19)', () => {
+    expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('multipassTiers');
+  });
+
+  it('local schema has the multipassTiers field (4-layer sync — Layer 2, Step 6 multipass card)', () => {
+    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('multipassTiers');
+  });
+
+  it('shared multipassTiers caps at MAX_MULTIPASS_TIERS=5', () => {
+    const field = sharedTemplateSettingsSchema.shape.multipassTiers;
+    // 6 tiers rejected
+    expect(() =>
+      field.parse(
+        Array.from({ length: 6 }, (_, i) => ({
+          name: `tier-${i}`,
+          stampsNeeded: i,
+          rewardType: 'amount_off' as const,
+          rewardValue: 10,
+        })),
+      ),
+    ).toThrow();
+    // 5 tiers allowed
+    expect(() =>
+      field.parse(
+        Array.from({ length: 5 }, (_, i) => ({
+          name: `tier-${i}`,
+          stampsNeeded: i,
+          rewardType: 'amount_off' as const,
+          rewardValue: 10,
+        })),
+      ),
+    ).not.toThrow();
+  });
+
+  it('local multipassTiers caps at MAX_MULTIPASS_TIERS=5', () => {
+    const field = localTemplateSettingsSchema.shape.multipassTiers;
+    expect(() =>
+      field.parse(
+        Array.from({ length: 6 }, (_, i) => ({
+          name: `tier-${i}`,
+          stampsNeeded: i,
+          rewardType: 'amount_off' as const,
+          rewardValue: 10,
+        })),
+      ),
+    ).toThrow();
+  });
+
+  it('shared multipassTiers requires name (1..40 chars)', () => {
+    const field = sharedTemplateSettingsSchema.shape.multipassTiers;
+    // empty name rejected
+    expect(() =>
+      field.parse([
+        { name: '', stampsNeeded: 0, rewardType: 'amount_off', rewardValue: 50 },
+      ]),
+    ).toThrow();
+    // name too long rejected
+    expect(() =>
+      field.parse([
+        { name: 'x'.repeat(41), stampsNeeded: 0, rewardType: 'amount_off', rewardValue: 50 },
+      ]),
+    ).toThrow();
+    // 40-char name accepted
+    expect(() =>
+      field.parse([
+        { name: 'x'.repeat(40), stampsNeeded: 0, rewardType: 'amount_off', rewardValue: 50 },
+      ]),
+    ).not.toThrow();
+  });
+
+  it('local multipassTiers requires name (1..40 chars)', () => {
+    const field = localTemplateSettingsSchema.shape.multipassTiers;
+    expect(() =>
+      field.parse([
+        { name: '', stampsNeeded: 0, rewardType: 'amount_off', rewardValue: 50 },
+      ]),
+    ).toThrow();
+    expect(() =>
+      field.parse([
+        { name: 'x'.repeat(41), stampsNeeded: 0, rewardType: 'amount_off', rewardValue: 50 },
+      ]),
+    ).toThrow();
+  });
+
+  it('shared multipassTiers stampsNeeded accepts 0 (welcome gift 歡迎禮)', () => {
+    // 0 is legitimate — 歡迎禮「辦卡立刻送」, reward triggers on card download.
+    const field = sharedTemplateSettingsSchema.shape.multipassTiers;
+    expect(() =>
+      field.parse([
+        { name: '新戶禮', stampsNeeded: 0, rewardType: 'amount_off', rewardValue: 50 },
+      ]),
+    ).not.toThrow();
+  });
+
+  it('local multipassTiers stampsNeeded accepts 0 (welcome gift 歡迎禮)', () => {
+    const field = localTemplateSettingsSchema.shape.multipassTiers;
+    expect(() =>
+      field.parse([
+        { name: '新戶禮', stampsNeeded: 0, rewardType: 'amount_off', rewardValue: 50 },
+      ]),
+    ).not.toThrow();
+  });
+
+  it('shared multipassTiers stampsNeeded rejects negatives', () => {
+    const field = sharedTemplateSettingsSchema.shape.multipassTiers;
+    expect(() =>
+      field.parse([
+        { name: 'tier', stampsNeeded: -1, rewardType: 'amount_off', rewardValue: 50 },
+      ]),
+    ).toThrow();
+  });
+
+  it('shared multipassTiers stampsNeeded rejects > 999 (safety valve)', () => {
+    const field = sharedTemplateSettingsSchema.shape.multipassTiers;
+    expect(() =>
+      field.parse([
+        { name: 'tier', stampsNeeded: 1000, rewardType: 'amount_off', rewardValue: 50 },
+      ]),
+    ).toThrow();
+  });
+
+  it('shared multipassTiers stampsNeeded requires integer (no decimals)', () => {
+    const field = sharedTemplateSettingsSchema.shape.multipassTiers;
+    expect(() =>
+      field.parse([
+        { name: 'tier', stampsNeeded: 1.5, rewardType: 'amount_off', rewardValue: 50 },
+      ]),
+    ).toThrow();
+  });
+
+  it('shared multipassTiers stampsNeeded accepts 999 (top of safety valve)', () => {
+    const field = sharedTemplateSettingsSchema.shape.multipassTiers;
+    expect(() =>
+      field.parse([
+        { name: 'tier', stampsNeeded: 999, rewardType: 'amount_off', rewardValue: 50 },
+      ]),
+    ).not.toThrow();
+  });
+
+  it('shared multipassTiers rewardType accepts amount_off | percent_off | null', () => {
+    const field = sharedTemplateSettingsSchema.shape.multipassTiers;
+    expect(() =>
+      field.parse([{ name: 'tier', stampsNeeded: 0, rewardType: 'amount_off', rewardValue: 50 }]),
+    ).not.toThrow();
+    expect(() =>
+      field.parse([{ name: 'tier', stampsNeeded: 0, rewardType: 'percent_off', rewardValue: 20 }]),
+    ).not.toThrow();
+    expect(() =>
+      field.parse([{ name: 'tier', stampsNeeded: 0, rewardType: null, rewardValue: null }]),
+    ).not.toThrow();
+  });
+
+  it('local multipassTiers rewardType accepts amount_off | percent_off | null', () => {
+    const field = localTemplateSettingsSchema.shape.multipassTiers;
+    expect(() =>
+      field.parse([{ name: 'tier', stampsNeeded: 0, rewardType: 'amount_off', rewardValue: 50 }]),
+    ).not.toThrow();
+    expect(() =>
+      field.parse([{ name: 'tier', stampsNeeded: 0, rewardType: 'percent_off', rewardValue: 20 }]),
+    ).not.toThrow();
+    expect(() =>
+      field.parse([{ name: 'tier', stampsNeeded: 0, rewardType: null, rewardValue: null }]),
+    ).not.toThrow();
+  });
+
+  it('shared multipassTiers rewardType rejects invalid values', () => {
+    const field = sharedTemplateSettingsSchema.shape.multipassTiers;
+    expect(() =>
+      field.parse([
+        { name: 'tier', stampsNeeded: 0, rewardType: 'fixed', rewardValue: 50 } as unknown,
+      ]),
+    ).toThrow();
+  });
+
+  it('shared multipassTiers rewardValue accepts positive numbers', () => {
+    const field = sharedTemplateSettingsSchema.shape.multipassTiers;
+    expect(() =>
+      field.parse([
+        { name: 'tier', stampsNeeded: 0, rewardType: 'amount_off', rewardValue: 50 },
+      ]),
+    ).not.toThrow();
+    expect(() =>
+      field.parse([
+        { name: 'tier', stampsNeeded: 0, rewardType: 'percent_off', rewardValue: 20 },
+      ]),
+    ).not.toThrow();
+  });
+
+  it('shared multipassTiers rewardValue rejects zero and negatives', () => {
+    const field = sharedTemplateSettingsSchema.shape.multipassTiers;
+    expect(() =>
+      field.parse([
+        { name: 'tier', stampsNeeded: 0, rewardType: 'amount_off', rewardValue: 0 },
+      ]),
+    ).toThrow();
+    expect(() =>
+      field.parse([
+        { name: 'tier', stampsNeeded: 0, rewardType: 'amount_off', rewardValue: -1 },
+      ]),
+    ).toThrow();
+  });
+
+  it('shared multipassTiers rewardValue accepts null (when rewardType is null)', () => {
+    const field = sharedTemplateSettingsSchema.shape.multipassTiers;
+    expect(() =>
+      field.parse([
+        { name: 'tier', stampsNeeded: 0, rewardType: null, rewardValue: null },
+      ]),
+    ).not.toThrow();
+  });
+
+  it('full templateSettings accepts multipass with welcome-gift tier (end-to-end)', () => {
+    // End-to-end happy path: a multipass draft with a 歡迎禮 tier
+    // (stampsNeeded=0) + a follow-up tier (stampsNeeded=10) survives the
+    // schema parse. Mirrors what `cardService.update` would receive
+    // from the workspace onSave handler.
+    const payload = {
+      cardType: 'multipass',
+      multipassTiers: [
+        { name: '新戶禮', stampsNeeded: 0, rewardType: 'amount_off', rewardValue: 50 },
+        { name: 'VIP 回饋', stampsNeeded: 10, rewardType: 'percent_off', rewardValue: 15 },
+      ],
+    };
+    expect(sharedTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
+    expect(localTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
+  });
+
+  it('full templateSettings accepts multipass with empty tiers array (no tiers yet)', () => {
+    // Edge case: user hasn't added any tiers. An empty array is a
+    // legitimate intermediate state during editing.
+    const payload = {
+      cardType: 'multipass',
+      multipassTiers: [],
+    };
+    expect(sharedTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
+    expect(localTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
+  });
+
+  // ===== Step 6 — Multipass 卡 PR-5 (2026-09-20): card-wide mode + per-tier threshold fields =====
+  // PR-5 extends Multipass with:
+  //   - card-wide `multipassAccrualMode` enum (per_stamp | per_visit | per_spend | null)
+  //   - 4 per-tier threshold fields:
+  //       perVisitCount / perVisitStamps (per_visit mode)
+  //       perSpendAmount / perSpendStamps (per_spend mode)
+  //
+  // 4-layer sync (Rule 019 § 4.1) pins that the contract layer (shared),
+  // backend Layer 2 mirror (request.ts), and `multipassTiers[*]` shape
+  // are coherent across the new fields. Constants imported from
+  // `@saome/shared/constants/multipass-card` enforce bounds:
+  //   - MULTIPASS_STAMPS_PER_VISIT_MIN=1, MULTIPASS_STAMPS_PER_SPEND_MIN=0.01
+
+  it('shared schema has the multipassAccrualMode field (Rule 019 § 4.1 — Step 6 multipass card PR-5)', () => {
+    expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('multipassAccrualMode');
+  });
+
+  it('local schema has the multipassAccrualMode field (4-layer sync — Layer 2, Step 6 multipass PR-5)', () => {
+    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('multipassAccrualMode');
+  });
+
+  it('shared multipassAccrualMode accepts per_stamp | per_visit | per_spend | null', () => {
+    const field = sharedTemplateSettingsSchema.shape.multipassAccrualMode;
+    expect(field.parse('per_stamp')).toBe('per_stamp');
+    expect(field.parse('per_visit')).toBe('per_visit');
+    expect(field.parse('per_spend')).toBe('per_spend');
+    expect(field.parse(null)).toBe(null);
+    expect(field.parse(undefined)).toBe(undefined);
+  });
+
+  it('shared multipassAccrualMode rejects invalid values', () => {
+    const field = sharedTemplateSettingsSchema.shape.multipassAccrualMode;
+    expect(() => field.parse('manual')).toThrow();
+    expect(() => field.parse('auto')).toThrow();
+  });
+
+  it('local multipassAccrualMode accepts per_stamp | per_visit | per_spend | null', () => {
+    const field = localTemplateSettingsSchema.shape.multipassAccrualMode;
+    expect(field.parse('per_stamp')).toBe('per_stamp');
+    expect(field.parse('per_visit')).toBe('per_visit');
+    expect(field.parse('per_spend')).toBe('per_spend');
+    expect(field.parse(null)).toBe(null);
+  });
+
+  it('shared multipassTiers[*] perVisitCount / perVisitStamps accepted (PR-5 per-tier threshold)', () => {
+    const f = sharedTemplateSettingsSchema.shape.multipassTiers;
+    expect(() =>
+      f.parse([
+        {
+          name: 'tier',
+          stampsNeeded: 5,
+          rewardType: null,
+          rewardValue: null,
+          perVisitCount: 2,
+          perVisitStamps: 1,
+        },
+      ]),
+    ).not.toThrow();
+  });
+
+  it('local multipassTiers[*] perVisitCount / perVisitStamps accepted (PR-5 per-tier threshold)', () => {
+    const f = localTemplateSettingsSchema.shape.multipassTiers;
+    expect(() =>
+      f.parse([
+        {
+          name: 'tier',
+          stampsNeeded: 5,
+          rewardType: null,
+          rewardValue: null,
+          perVisitCount: 2,
+          perVisitStamps: 1,
+        },
+      ]),
+    ).not.toThrow();
+  });
+
+  it('shared multipassTiers[*] perSpendAmount / perSpendStamps accepted (PR-5 per-tier threshold)', () => {
+    const f = sharedTemplateSettingsSchema.shape.multipassTiers;
+    expect(() =>
+      f.parse([
+        {
+          name: 'tier',
+          stampsNeeded: 5,
+          rewardType: null,
+          rewardValue: null,
+          perSpendAmount: 100,
+          perSpendStamps: 1,
+        },
+      ]),
+    ).not.toThrow();
+  });
+
+  it('local multipassTiers[*] perSpendAmount / perSpendStamps accepted (PR-5 per-tier threshold)', () => {
+    const f = localTemplateSettingsSchema.shape.multipassTiers;
+    expect(() =>
+      f.parse([
+        {
+          name: 'tier',
+          stampsNeeded: 5,
+          rewardType: null,
+          rewardValue: null,
+          perSpendAmount: 100,
+          perSpendStamps: 1,
+        },
+      ]),
+    ).not.toThrow();
+  });
+
+  it('shared multipassTiers[*] perVisitCount / perVisitStamps accepted as null (per-tier toggle)', () => {
+    const f = sharedTemplateSettingsSchema.shape.multipassTiers;
+    expect(() =>
+      f.parse([
+        {
+          name: 'tier',
+          stampsNeeded: 5,
+          rewardType: null,
+          rewardValue: null,
+          perVisitCount: null,
+          perVisitStamps: null,
+        },
+      ]),
+    ).not.toThrow();
+  });
+
+  it('shared multipassTiers[*] perVisitCount rejects 0 or negative (≥ 1)', () => {
+    const f = sharedTemplateSettingsSchema.shape.multipassTiers;
+    expect(() =>
+      f.parse([
+        {
+          name: 'tier',
+          stampsNeeded: 5,
+          rewardType: null,
+          rewardValue: null,
+          perVisitCount: 0,
+          perVisitStamps: 1,
+        },
+      ]),
+    ).toThrow();
+    expect(() =>
+      f.parse([
+        {
+          name: 'tier',
+          stampsNeeded: 5,
+          rewardType: null,
+          rewardValue: null,
+          perVisitCount: -1,
+          perVisitStamps: 1,
+        },
+      ]),
+    ).toThrow();
+  });
+
+  it('shared multipassTiers[*] perSpendAmount must be ≥ MULTIPASS_STAMPS_PER_SPEND_MIN=0.01', () => {
+    const f = sharedTemplateSettingsSchema.shape.multipassTiers;
+    expect(() =>
+      f.parse([
+        {
+          name: 'tier',
+          stampsNeeded: 5,
+          rewardType: null,
+          rewardValue: null,
+          perSpendAmount: 0,
+          perSpendStamps: 1,
+        },
+      ]),
+    ).toThrow();
+    expect(() =>
+      f.parse([
+        {
+          name: 'tier',
+          stampsNeeded: 5,
+          rewardType: null,
+          rewardValue: null,
+          perSpendAmount: 0.01,
+          perSpendStamps: 1,
+        },
+      ]),
+    ).not.toThrow();
+  });
+
+  it('full templateSettings accepts multipass card with both PR-5 fields (per_visit + per_spend mix end-to-end)', () => {
+    // End-to-end happy path: a multipass draft with card-wide
+    // multipassAccrualMode='per_visit' + per-tier perVisitCount /
+    // perVisitStamps set, all preserved through parse.
+    const payload = {
+      cardType: 'multipass',
+      multipassAccrualMode: 'per_visit' as const,
+      multipassTiers: [
+        {
+          name: 'Welcome gift',
+          stampsNeeded: 0,
+          rewardType: null,
+          rewardValue: null,
+          perVisitCount: 2,
+          perVisitStamps: 1,
+          perSpendAmount: null,
+          perSpendStamps: null,
+        },
+        {
+          name: 'Bronze',
+          stampsNeeded: 5,
+          rewardType: 'percent_off',
+          rewardValue: 5,
+          perVisitCount: 3,
+          perVisitStamps: 1,
+          perSpendAmount: null,
+          perSpendStamps: null,
+        },
+      ],
+    };
+    expect(sharedTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
+    expect(localTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
+  });
 });
 
 /**
@@ -999,5 +1472,153 @@ describe('coupon schema values honor shared constants (Rule 019 § 4.1)', () => 
     expect(f.safeParse(COUPON_ISSUE_COUNT_MIN).success).toBe(true);
     expect(f.safeParse(COUPON_ISSUE_COUNT_MIN - 1).success).toBe(false);
     expect(f.safeParse(999_999).success).toBe(true);
+  });
+});
+
+/**
+ * Defensive conformance — Rule 019 § 4.1 boundary pin for multipass.
+ *
+ * Mirrors the coupon boundary describe block above. Each numeric field
+ * in multipassTiers must honor the constants imported from
+ * `@saome/shared/constants/multipass-card`:
+ *   - MULTIPASS_TIER_NAME_MAX_LENGTH=40 (name length cap)
+ *   - MULTIPASS_STAMPS_NEEDED_MIN=0 (welcome gift 歡迎禮 floor)
+ *   - MULTIPASS_STAMPS_NEEDED_MAX=999 (safety valve ceiling)
+ *   - MAX_MULTIPASS_TIERS=5 (array length cap)
+ *
+ * If the schema re-hardcodes literals while the constant changes, or
+ * one side drops the import, these tests catch the drift.
+ */
+describe('multipass schema values honor shared constants (Rule 019 § 4.1)', () => {
+  // tier name length cap
+
+  it('shared multipassTiers name.max === MULTIPASS_TIER_NAME_MAX_LENGTH boundary', () => {
+    const f = sharedTemplateSettingsSchema.shape.multipassTiers;
+    expect(
+      f.safeParse([
+        { name: 'x'.repeat(MULTIPASS_TIER_NAME_MAX_LENGTH), stampsNeeded: 0, rewardType: 'amount_off', rewardValue: 50 },
+      ]).success,
+    ).toBe(true);
+    expect(
+      f.safeParse([
+        { name: 'x'.repeat(MULTIPASS_TIER_NAME_MAX_LENGTH + 1), stampsNeeded: 0, rewardType: 'amount_off', rewardValue: 50 },
+      ]).success,
+    ).toBe(false);
+  });
+
+  it('local multipassTiers name.max === MULTIPASS_TIER_NAME_MAX_LENGTH boundary', () => {
+    const f = localTemplateSettingsSchema.shape.multipassTiers;
+    expect(
+      f.safeParse([
+        { name: 'x'.repeat(MULTIPASS_TIER_NAME_MAX_LENGTH), stampsNeeded: 0, rewardType: 'amount_off', rewardValue: 50 },
+      ]).success,
+    ).toBe(true);
+    expect(
+      f.safeParse([
+        { name: 'x'.repeat(MULTIPASS_TIER_NAME_MAX_LENGTH + 1), stampsNeeded: 0, rewardType: 'amount_off', rewardValue: 50 },
+      ]).success,
+    ).toBe(false);
+  });
+
+  // stampsNeeded bounded by MULTIPASS_STAMPS_NEEDED_MIN..MAX (with safety-valve semantics)
+
+  it('shared multipassTiers stampsNeeded bounded by MULTIPASS_STAMPS_NEEDED_MIN..MAX', () => {
+    const f = sharedTemplateSettingsSchema.shape.multipassTiers;
+    expect(
+      f.safeParse([
+        { name: 'tier', stampsNeeded: MULTIPASS_STAMPS_NEEDED_MIN, rewardType: 'amount_off', rewardValue: 50 },
+      ]).success,
+    ).toBe(true);
+    expect(
+      f.safeParse([
+        { name: 'tier', stampsNeeded: MULTIPASS_STAMPS_NEEDED_MAX, rewardType: 'amount_off', rewardValue: 50 },
+      ]).success,
+    ).toBe(true);
+    expect(
+      f.safeParse([
+        { name: 'tier', stampsNeeded: MULTIPASS_STAMPS_NEEDED_MIN - 1, rewardType: 'amount_off', rewardValue: 50 },
+      ]).success,
+    ).toBe(false);
+    expect(
+      f.safeParse([
+        { name: 'tier', stampsNeeded: MULTIPASS_STAMPS_NEEDED_MAX + 1, rewardType: 'amount_off', rewardValue: 50 },
+      ]).success,
+    ).toBe(false);
+  });
+
+  it('local multipassTiers stampsNeeded bounded by MULTIPASS_STAMPS_NEEDED_MIN..MAX', () => {
+    const f = localTemplateSettingsSchema.shape.multipassTiers;
+    expect(
+      f.safeParse([
+        { name: 'tier', stampsNeeded: MULTIPASS_STAMPS_NEEDED_MIN, rewardType: 'amount_off', rewardValue: 50 },
+      ]).success,
+    ).toBe(true);
+    expect(
+      f.safeParse([
+        { name: 'tier', stampsNeeded: MULTIPASS_STAMPS_NEEDED_MAX, rewardType: 'amount_off', rewardValue: 50 },
+      ]).success,
+    ).toBe(true);
+    expect(
+      f.safeParse([
+        { name: 'tier', stampsNeeded: MULTIPASS_STAMPS_NEEDED_MIN - 1, rewardType: 'amount_off', rewardValue: 50 },
+      ]).success,
+    ).toBe(false);
+    expect(
+      f.safeParse([
+        { name: 'tier', stampsNeeded: MULTIPASS_STAMPS_NEEDED_MAX + 1, rewardType: 'amount_off', rewardValue: 50 },
+      ]).success,
+    ).toBe(false);
+  });
+
+  // Array length cap (MAX_MULTIPASS_TIERS=5)
+
+  it('shared multipassTiers.max === MAX_MULTIPASS_TIERS boundary', () => {
+    const f = sharedTemplateSettingsSchema.shape.multipassTiers;
+    // 5 tiers accepted
+    expect(
+      f.safeParse(
+        Array.from({ length: MAX_MULTIPASS_TIERS }, (_, i) => ({
+          name: `tier-${i}`,
+          stampsNeeded: i,
+          rewardType: 'amount_off' as const,
+          rewardValue: 10,
+        })),
+      ).success,
+    ).toBe(true);
+    // 6 tiers rejected
+    expect(
+      f.safeParse(
+        Array.from({ length: MAX_MULTIPASS_TIERS + 1 }, (_, i) => ({
+          name: `tier-${i}`,
+          stampsNeeded: i,
+          rewardType: 'amount_off' as const,
+          rewardValue: 10,
+        })),
+      ).success,
+    ).toBe(false);
+  });
+
+  it('local multipassTiers.max === MAX_MULTIPASS_TIERS boundary', () => {
+    const f = localTemplateSettingsSchema.shape.multipassTiers;
+    expect(
+      f.safeParse(
+        Array.from({ length: MAX_MULTIPASS_TIERS }, (_, i) => ({
+          name: `tier-${i}`,
+          stampsNeeded: i,
+          rewardType: 'amount_off' as const,
+          rewardValue: 10,
+        })),
+      ).success,
+    ).toBe(true);
+    expect(
+      f.safeParse(
+        Array.from({ length: MAX_MULTIPASS_TIERS + 1 }, (_, i) => ({
+          name: `tier-${i}`,
+          stampsNeeded: i,
+          rewardType: 'amount_off' as const,
+          rewardValue: 10,
+        })),
+      ).success,
+    ).toBe(false);
   });
 });

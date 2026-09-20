@@ -480,6 +480,79 @@ export interface TemplateSettings {
    * 預設 1（單張）.
    */
   couponIssueCount?: number;
+  // ===== Step 6 — Multipass 卡 (Rule 019 § 4.1, layer 3 of 4, 2026-09-19) =====
+  // Mirrors `shared/templateSettingsSchema.multipassTiers` (Layer 1).
+  // Step 6 plan 2026-09-19: seventh card-type-specific logic editor.
+  // multipass differs structurally from stamp_card:
+  //   - Stamp card has a SINGLE flat reward (one rewardName + rewardType +
+  //     rewardValue + maxDiscountAmount).
+  //   - Multipass card has UP TO MAX_MULTIPASS_TIERS=5 tiers, each tier
+  //     carries its own name + stampsNeeded + rewardType + rewardValue.
+  //   - stampsNeeded = 0 IS legitimate (= 歡迎禮「辦卡立刻送」, immediate
+  //     reward on download). stampsNeeded ∈ [0, MULTIPASS_STAMPS_NEEDED_MAX=999]
+  //     is purely a safety valve against typos.
+  //   - stampsNeeded is COMPLETELY DECOUPLED from the Step 3 stamp grid
+  //     (stampGridRows × 5). Multipass cards may stack stamps across
+  //     multiple physical visit-passes onto one virtual multipass.
+  //
+  // The frontend store enforces the "stampsNeeded 重複警告" via a
+  // soft-warning UI (deferred to PR-4); backend does NOT reject
+  // duplicates — the contract is monotonic-tolerant (user spec
+  // 2026-09-19, stampsNeeded 強制遞增: 不強制).
+  //
+  // 4-layer sync:
+  //   - packages/shared/schemas/card.ts (Layer 1, single source of truth)
+  //   - apps/backend/src/modules/cards/schemas/request.ts (Layer 2 mirror)
+  //   - apps/backend/src/modules/cards/db/templates.ts (Layer 3 — this interface)
+  //   - apps/backend/src/modules/cards/services/cardService.ts (Layer 4 — auto via Partial<TemplateSettings>)
+  /**
+   * Multipass 多 tier 陣列 (最多 MAX_MULTIPASS_TIERS=5 組).
+   *
+   * Each tier shape:
+   *   - `name` (1..MULTIPASS_TIER_NAME_MAX_LENGTH=40 chars): tier name.
+   *   - `stampsNeeded` (≥ 0, ≤ MULTIPASS_STAMPS_NEEDED_MAX=999): stamps
+   *       required to unlock the tier reward. 0 = 歡迎禮「辦卡立刻送」
+   *       (immediate reward on download). NO enforcement of monotonic
+   *       order — tenant design freedom (user decision 2026-09-19).
+   *   - `rewardType` ('amount_off' | 'percent_off' | null): null when
+   *       user hasn't picked a type.
+   *   - `rewardValue` (> 0 or null): cash amount for amount_off;
+   *       percentage integer 1-100 for percent_off. null when type is null.
+   */
+  multipassTiers?: Array<{
+    name: string;
+    stampsNeeded: number;
+    /**
+     * Reward type ('amount_off' | 'percent_off' | null). Optional in
+     * the DB interface to match the zod schema's `.nullable().optional()`
+     * — the frontend may emit `undefined` when the user hasn't picked a
+     * type. Mirrors `rewardValue` (also optional).
+     */
+    rewardType?: 'amount_off' | 'percent_off' | null;
+    /**
+     * Reward value (> 0 or null). Optional in the DB interface to match
+     * the zod schema's `.nullable().optional()` — null means "user hasn't
+     * picked a value yet"; undefined means "field not present in payload".
+     */
+    rewardValue?: number | null;
+    /**
+     * 2026-09-20 PR-5: per-tier 門檻欄位. 對齊 stamp_card card-wide
+     * stampsPerVisitCount / stampsPerSpendAmount 等欄位的 per-tier 變體.
+     * Mirrors `shared/templateSettingsSchema.multipassTiers[*].perVisitCount`
+     * (Rule 019 § 4.1 layer 3).
+     */
+    perVisitCount?: number | null;
+    perVisitStamps?: number | null;
+    perSpendAmount?: number | null;
+    perSpendStamps?: number | null;
+  }>;
+  /**
+   * 2026-09-20 PR-5: card-wide multipass 蓋章方式. 對齊
+   * stamp_card.stampAccrualMode (在 settings 內 card-wide 的 enum).
+   * Mirrors `shared/templateSettingsSchema.multipassAccrualMode`
+   * (Rule 019 § 4.1 layer 3).
+   */
+  multipassAccrualMode?: 'per_stamp' | 'per_visit' | 'per_spend' | null;
   [key: string]: unknown;
 }
 

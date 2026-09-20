@@ -29,6 +29,15 @@ import {
   COUPON_PERCENT_MAX,
   COUPON_ISSUE_COUNT_MIN,
 } from '@saome/shared/constants/coupon-card';
+import {
+  MAX_MULTIPASS_TIERS,
+  MULTIPASS_TIER_NAME_MAX_LENGTH,
+  MULTIPASS_STAMPS_NEEDED_MIN,
+  MULTIPASS_STAMPS_NEEDED_MAX,
+  MULTIPASS_STAMPS_PER_VISIT_MIN,
+  MULTIPASS_STAMPS_PER_SPEND_MIN,
+  MULTIPASS_ACCRUAL_MODES,
+} from '@saome/shared/constants/multipass-card';
 
 // Re-export for consumers of this module
 export { cardTypeSchema } from '@saome/shared/schemas/card';
@@ -399,6 +408,96 @@ export const templateSettingsSchema = z.object({
     .nullable()
     .optional(),
   couponIssueCount: z.number().int().min(COUPON_ISSUE_COUNT_MIN).optional(),
+  // ===== Step 6 — Multipass 卡 (2026-09-19, Rule 019 § 4.1, multipass only) =====
+  // Mirrors shared `templateSettingsSchema.multipassTiers` (Layer 2 of 4).
+  // 4-layer sync:
+  //   - packages/shared/schemas/card.ts (Layer 1, single source of truth)
+  //   - apps/backend/src/modules/cards/schemas/request.ts (Layer 2 — this file)
+  //   - apps/backend/src/modules/cards/db/templates.ts (Layer 3, TemplateSettings interface)
+  //   - apps/backend/src/modules/cards/services/cardService.ts (Layer 4 — auto via Partial<TemplateSettings>)
+  //
+  // Multipass card has UP TO 5 tiers, each carries name + stampsNeeded +
+  // rewardType + rewardValue. stampsNeeded = 0 is legitimate (歡迎禮
+  // 「辦卡立刻送」). stampsNeeded is decoupled from stampGridRows —
+  // multipass cards may stack stamps across multiple physical cards.
+  // Backend zod caps stampsNeeded at MULTIPASS_STAMPS_NEEDED_MAX=999
+  // purely as a safety valve.
+  //
+  // 2026-09-20 PR-5: Multipass PR-5 extension — add card-wide
+  // `multipassAccrualMode` + 4 per-tier 門檻 fields
+  // (perVisitCount / perVisitStamps / perSpendAmount / perSpendStamps).
+  //
+  // - card-wide `multipassAccrualMode`: 對齊 stamp_card.stampAccrualMode
+  //   (在 settings 內 card-wide). 4-layer sync 跟現有 stamp card pattern 一致.
+  //   null = 未選.
+  //
+  // - per-tier 門檻 fields: 對齊 stamp_card 的 card-wide
+  //   stampsPerVisitCount / stampsPerVisitStamps /
+  //   stampsPerSpendAmount / stampsPerSpendStamps 欄位的 per-tier 變體.
+  //   差異: stamp_card 把 4 個欄位放 card-wide;Multipass 把這 4 個欄位
+  //   放 per-tier (使用者確認: 「在大規則下每個 tier 有細微可控制的邏輯」).
+  //   切換 card-wide multipassAccrualMode **不會**清空 per-tier 欄位
+  //   (UI 層條件渲染隱藏切換, store 保留值讓使用者切換回來時資料還在).
+  multipassAccrualMode: z
+    .enum(MULTIPASS_ACCRUAL_MODES)
+    .nullable()
+    .optional(),
+  multipassTiers: z
+    .array(
+      z.object({
+        /** Tier name shown on the pass (e.g. "新戶禮", "VIP 回饋"). 1..MULTIPASS_TIER_NAME_MAX_LENGTH chars. */
+        name: z.string().min(1).max(MULTIPASS_TIER_NAME_MAX_LENGTH),
+        /** Stamps required to unlock this tier reward. 0 = welcome gift; 1..MULTIPASS_STAMPS_NEEDED_MAX = design choice. */
+        stampsNeeded: z
+          .number()
+          .int()
+          .min(MULTIPASS_STAMPS_NEEDED_MIN)
+          .max(MULTIPASS_STAMPS_NEEDED_MAX),
+        /** Reward type. Mirrors stamp_card rewardType. null when user hasn't picked. */
+        rewardType: z.enum(['amount_off', 'percent_off']).nullable().optional(),
+        /** Discount amount (amount_off) or percentage integer 1-100 (percent_off). null when unselected. */
+        rewardValue: z.number().positive().nullable().optional(),
+        // ★ PR-5 新增 per-tier 門檻欄位 — 對齊 stamp_card card-wide
+        // stampsPerVisitCount / stampsPerSpendAmount 等欄位的 per-tier 變體.
+        // 差異: stamp_card 是 card-wide;Multipass 是 per-tier.
+        // null = 未填 (UI 條件渲染隱藏). store 不主動清空欄位 (切換
+        // multipassAccrualMode 時保留所有 per-tier 值).
+        /**
+         * 來訪門檻拜訪次數 (multipassAccrualMode === 'per_visit').
+         * integer ≥ MULTIPASS_STAMPS_PER_VISIT_MIN=1.
+         */
+        perVisitCount: z
+          .number()
+          .int()
+          .min(MULTIPASS_STAMPS_PER_VISIT_MIN)
+          .nullable()
+          .optional(),
+        /**
+         * 來訪門檻獲得蓋章數 (multipassAccrualMode === 'per_visit').
+         * integer ≥ 1 (sister of MULTIPASS_STAMPS_PER_VISIT_MIN; reused
+         * since "獲得蓋章數" 也是從 1 開始;the stamp card convention uses
+         * STAMPS_PER_VISIT_STAMPS_MIN for the stamp side).
+         */
+        perVisitStamps: z.number().int().min(1).nullable().optional(),
+        /**
+         * 消費門檻消費金額 (multipassAccrualMode === 'per_spend').
+         * positive number ≥ MULTIPASS_STAMPS_PER_SPEND_MIN=0.01.
+         */
+        perSpendAmount: z
+          .number()
+          .positive()
+          .min(MULTIPASS_STAMPS_PER_SPEND_MIN)
+          .nullable()
+          .optional(),
+        /**
+         * 消費門檻獲得蓋章數 (multipassAccrualMode === 'per_spend').
+         * integer ≥ 1.
+         */
+        perSpendStamps: z.number().int().min(1).nullable().optional(),
+      }),
+    )
+    .max(MAX_MULTIPASS_TIERS)
+    .optional(),
 });
 
 export type TemplateSettings = z.infer<typeof templateSettingsSchema>;
