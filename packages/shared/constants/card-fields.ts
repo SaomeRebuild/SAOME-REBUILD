@@ -22,10 +22,14 @@
  *
  *   - 'common' : every card type sees this option in the Step 3 left/right
  *                field selector (phone, email, member level, etc).
- *   - 'stamp'  : only cardType ∈ {stamp_card, multipass} sees this option.
+ *   - 'stamp'  : only cardType === 'stamp_card' sees this option.
  *                Stamp-specific data (point balance, stamp progress, etc.)
  *                is meaningless on non-stamp cards, so these options are
  *                hidden rather than rendered as a confusing placeholder.
+ *                (Decoupled from multipass on 2026-09-20 — multipass now
+ *                has its own 'multipass' group.)
+ *   - 'multipass': only cardType === 'multipass' sees this option.
+ *                Multipass-specific fields will be defined by the user.
  *   - 'reward' : only cardType === 'reward_card' sees this option.
  *                Reward-specific data (points to next tier, current point
  *                balance) is meaningless on non-reward cards.
@@ -41,13 +45,14 @@
  * `templates.name`, so duplicating it as a left/right face field is
  * redundant. See plan `membership_card_conditional_ui_hide` (2026-09-13).
  */
-export type CardFieldGroup = 'common' | 'stamp' | 'reward' | 'cashback' | 'discount' | 'coupon';
+export type CardFieldGroup = 'common' | 'stamp' | 'multipass' | 'reward' | 'cashback' | 'discount' | 'coupon';
 
 /**
  * Canonical field keys. Order is user-visible in the dropdown for common
  * keys; stamp-group keys are appended after the common keys (and only shown
- * when cardType ∈ {stamp_card, multipass}); reward-group keys are appended
- * last (only shown when cardType === 'reward_card').
+ * when cardType === 'stamp_card'); multipass-group keys are appended after
+ * stamp keys (only shown when cardType === 'multipass'); reward-group keys
+ * are appended last (only shown when cardType === 'reward_card').
  *
  * IMPORTANT: Adding a new key requires syncing:
  *   1. cardFieldKeySchema in packages/shared/schemas/card.ts (auto-derived
@@ -136,11 +141,12 @@ export interface CardFieldDefinition {
   labelKey: string;
   /**
    * Which card types see this option in the Step 3 selector.
-   * - 'common'  : always shown
-   * - 'stamp'   : only shown when cardType ∈ {stamp_card, multipass}
-   * - 'reward'  : only shown when cardType === 'reward_card'
-   * - 'cashback': only shown when cardType === 'cashback_card'
-   * - 'discount': only shown when cardType === 'discount_card'
+   * - 'common'    : always shown
+   * - 'stamp'     : only shown when cardType === 'stamp_card'
+   * - 'multipass' : only shown when cardType === 'multipass'
+   * - 'reward'    : only shown when cardType === 'reward_card'
+   * - 'cashback'  : only shown when cardType === 'cashback_card'
+   * - 'discount'  : only shown when cardType === 'discount_card'
    */
   group: CardFieldGroup;
   /**
@@ -197,7 +203,7 @@ export const CARD_FIELDS: readonly CardFieldDefinition[] = [
     labelKey: 'step3.fieldsSection.fields.memberName',
     hideOnCardTypes: ['membership_card'],
   },
-  // ── stamp: only stamp_card / multipass ─────────────────────────────────
+  // ── stamp: only stamp_card (decoupled from multipass 2026-09-20) ────────────
   { key: 'availableRewards', group: 'stamp', labelKey: 'step3.fieldsSection.fields.availableRewards' },
   { key: 'totalStamps',      group: 'stamp', labelKey: 'step3.fieldsSection.fields.totalStamps' },
   { key: 'stampsRemaining',  group: 'stamp', labelKey: 'step3.fieldsSection.fields.stampsRemaining' },

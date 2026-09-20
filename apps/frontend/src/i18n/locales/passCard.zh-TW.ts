@@ -23,7 +23,7 @@ export default {
     birthday: { label: '生日', value: '05/11/1999' },
     visitCount: { label: '拜訪次數', value: '5 次' },
     memberName: { label: '會員姓名', value: '王大明' },
-    // 印章卡專用欄位預覽 — 僅在 stamp_card / multipass 時顯示於下拉選單
+    // 印章卡專用欄位預覽 — 僅在 stamp_card 時顯示於下拉選單（2026-09-20 與 multipass 解耦）
     // totalStamps 的 value 使用 {{rows}} 內插，由 PassCardPreviewBody 帶入 stampGridRows
     availableRewards: { label: '可用獎勵', value: '2 次' },
     totalStamps: { label: '總印章數', value: '3/{{rows}}' },

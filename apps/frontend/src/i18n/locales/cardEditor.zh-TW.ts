@@ -123,7 +123,7 @@ export default {
     },
     fieldsSection: {
       title: '顯示欄位',
-      hint: '選擇要顯示在卡片正面的兩個欄位。選擇「集點卡」或「多通卡」時，會額外顯示印章相關欄位（可用獎勵、總印章數、還差幾個章）。',
+      hint: '選擇要顯示在卡片正面的兩個欄位。選擇「集點卡」時，會額外顯示印章相關欄位（可用獎勵、總印章數、還差幾個章）。',
       leftField: '左欄位',
       rightField: '右欄位',
       placeholder: '請選擇',
@@ -143,7 +143,7 @@ export default {
         birthday: '生日',
         visitCount: '拜訪次數',
         memberName: '會員姓名',
-        // 印章卡專用欄位 — 僅在 stamp_card / multipass 顯示（見 card-fields.ts 的 group 篩選）
+        // 印章卡專用欄位 — 僅在 stamp_card 顯示（見 card-fields.ts 的 group 篩選；2026-09-20 與 multipass 解耦）
         availableRewards: '可用獎勵',
         totalStamps: '總印章數',
         stampsRemaining: '還差幾個章',
@@ -168,7 +168,7 @@ export default {
     // Conditional section: shown only when cardType ∈ {stamp_card, multipass}.
     stampSection: {
       title: '印章與格數',
-      hint: '選擇印章圖示與集點格數。本區塊僅在 Step 1 選擇「集點卡」或「多通卡」時顯示。',
+      hint: '選擇印章圖示與集點格數。本區塊僅在 Step 1 選擇「集點卡」時顯示。',
       gridCount: {
         label: '集點格數',
         rows: '{{rows}} 列',

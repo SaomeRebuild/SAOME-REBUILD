@@ -20,6 +20,10 @@ import type { CardType } from '@saome/shared/schemas/card';
  * Card types for which the stamp-only display fields (availableRewards /
  * totalStamps / stampsRemaining) are shown in the dropdown.
  *
+ * Scope: stamp_card only. multipass is now decoupled and uses its own
+ * MULTIPASS_CARD_TYPES set — stamp_card and multipass no longer share
+ * this group. Any future changes to stamp fields will not affect multipass.
+ *
  * Mirrors the conditional render guard used in `CardBuilderEditorWorkspace`
  * for `<Step3StampGrid />` — both are driven by the same `cardType` value,
  * so the user sees the stamp fields only when the stamp grid section is
@@ -29,6 +33,17 @@ import type { CardType } from '@saome/shared/schemas/card';
  */
 export const STAMP_CARD_TYPES: ReadonlySet<CardType> = new Set<CardType>([
   'stamp_card',
+]);
+
+/**
+ * Card types for which the multipass-only display fields are shown in the
+ * dropdown.
+ *
+ * Decoupled from STAMP_CARD_TYPES on 2026-09-20 (direction 1 of the
+ * multipass-stamp_card decoupling plan). multipass has its own field
+ * structure and should not inherit stamp_card fields.
+ */
+export const MULTIPASS_CARD_TYPES: ReadonlySet<CardType> = new Set<CardType>([
   'multipass',
 ]);
 
@@ -38,11 +53,11 @@ export const STAMP_CARD_TYPES: ReadonlySet<CardType> = new Set<CardType>([
  *
  * Scope is intentionally narrower than STAMP_CARD_TYPES: only
  * `reward_card` gets the points-related fields. `multipass` does NOT
- * share this group even though it shares the stamp-only group — the two
- * systems (stamps vs points) are conceptually distinct and the user's
- * UX intent was confirmed to keep the reward fields scoped to
- * `reward_card` only (matches the Step 6 RewardTierRow dispatcher guard
- * at `Step6CardLogic.tsx`).
+ * share this group — it is now decoupled (MULTIPASS_CARD_TYPES) and will
+ * have its own field structure. The two systems (stamps vs points) are
+ * conceptually distinct; the user's UX intent was confirmed to keep the
+ * reward fields scoped to `reward_card` only (matches the Step 6
+ * RewardTierRow dispatcher guard at `Step6CardLogic.tsx`).
  */
 export const REWARD_CARD_TYPES: ReadonlySet<CardType> = new Set<CardType>([
   'reward_card',
@@ -103,6 +118,8 @@ export const COUPON_CARD_TYPES: ReadonlySet<CardType> = new Set<CardType>([
  *   per plan `membership_card_conditional_ui_hide`, 2026-09-13;
  *   `memberLevel` is hidden for `coupon_card`, 2026-09-19).
  * - 'stamp' group fields are shown only when cardType ∈ STAMP_CARD_TYPES.
+ * - 'multipass' group fields are shown only when cardType ∈ MULTIPASS_CARD_TYPES.
+ *   (Decoupled from stamp on 2026-09-20 — multipass has its own field group.)
  * - 'reward' group fields are shown only when cardType ∈ REWARD_CARD_TYPES.
  * - 'cashback' group fields are shown only when cardType ∈ CASHBACK_CARD_TYPES.
  * - 'discount' group fields are shown only when cardType ∈ DISCOUNT_CARD_TYPES.
@@ -124,15 +141,17 @@ export function filterCARD_FIELDS_BY_CARD_TYPE(
   cardType: CardType | null,
 ): readonly CardFieldDefinition[] {
   const showStampGroup = cardType !== null && STAMP_CARD_TYPES.has(cardType);
+  const showMultipassGroup = cardType !== null && MULTIPASS_CARD_TYPES.has(cardType);
   const showRewardGroup = cardType !== null && REWARD_CARD_TYPES.has(cardType);
   const showCashbackGroup = cardType !== null && CASHBACK_CARD_TYPES.has(cardType);
   const showDiscountGroup = cardType !== null && DISCOUNT_CARD_TYPES.has(cardType);
   const showCouponGroup = cardType !== null && COUPON_CARD_TYPES.has(cardType);
   return CARD_FIELDS.filter((f) => {
-    // Step 1: group-level gate (stamp / reward / cashback / discount / coupon conditional).
+    // Step 1: group-level gate (stamp / multipass / reward / cashback / discount / coupon conditional).
     const groupOk =
       f.group === 'common' ||
       (f.group === 'stamp' && showStampGroup) ||
+      (f.group === 'multipass' && showMultipassGroup) ||
       (f.group === 'reward' && showRewardGroup) ||
       (f.group === 'cashback' && showCashbackGroup) ||
       (f.group === 'discount' && showDiscountGroup) ||

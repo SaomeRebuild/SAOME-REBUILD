@@ -23,7 +23,8 @@ export default {
     birthday: { label: 'Birthday', value: '05/11/1999' },
     visitCount: { label: 'Visit Count', value: '5 times' },
     memberName: { label: 'Member Name', value: 'Thabo Mokoena' },
-    // Stamp-only preview fields — only shown in the dropdown for stamp_card / multipass.
+    // Stamp-only preview fields — only shown in the dropdown for stamp_card
+    // (decoupled from multipass 2026-09-20).
     // totalStamps.value uses {{rows}} interpolation; PassCardPreviewBody passes stampGridRows in.
     availableRewards: { label: 'Available Rewards', value: '2 times' },
     totalStamps: { label: 'Total Stamps', value: '3 / {{rows}}' },
