@@ -30,6 +30,9 @@ export function Step2CardSettings({ showValidation }: Step2CardSettingsProps) {
   // (handled in Step 6 via DiscountExpiryFields). Hide Step 2's two
   // PassValidDaysField + ExpiryDateField rows to avoid double editors.
   const isDiscount = cardType === 'discount_card';
+  // 2026-09-20: multipass has no time concept (no expiry, no valid days).
+  // Hide both fields for multipass cards.
+  const isMultipass = cardType === 'multipass';
 
   return (
     <div className="space-y-6">
@@ -42,7 +45,7 @@ export function Step2CardSettings({ showValidation }: Step2CardSettingsProps) {
           Discount cards also handle expiry in Step 6
           (DiscountExpiryFields — mutual exclusion days vs date), so hide
           Step 2's fields here too (2026-09-18). */}
-      {!isMembership && !isDiscount && (
+      {!isMembership && !isDiscount && !isMultipass && (
         <>
           <PassValidDaysField />
           <ExpiryDateField />

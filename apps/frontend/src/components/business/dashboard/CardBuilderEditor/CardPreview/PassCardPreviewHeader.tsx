@@ -59,6 +59,7 @@ export const BALANCE_PREVIEW_CARD_TYPES: ReadonlySet<CardType> = new Set<CardTyp
   'stamp_card',
   'reward_card',
   'cashback_card',
+  'multipass', // 2026-09-20: 餘額預覽也顯示在 multipass 右側
 ]);
 
 /**

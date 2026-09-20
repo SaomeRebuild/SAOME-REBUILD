@@ -64,13 +64,15 @@ beforeEach(() => {
 // `membership_card` to the member-expiry set still stands.
 //   - 2026-09-19: coupon_card moved OUT of this set (now renders the
 //     coupon-expiry preview block, label + value 2-line).
-//     The remaining pill card types: multipass, gift_card.
+//     The remaining pill card types: gift_card.
+//   - 2026-09-20: multipass moved OUT of this set (now renders the
+//     balance preview block, label + value 2-line).
 //   - 2026-09-13: membership_card was REMOVED from this set because it
 //     now renders the member-expiry preview block.
 //   - 2026-09-08: stamp/reward/cashback were excluded when the balance
 //     preview was added.
 describe('PassCardPreviewHeader — default pill for non-target card types', () => {
-  it.each(['multipass', 'gift_card'] as const)(
+  it.each(['gift_card'] as const)(
     'cardType="%s" renders rounded-full pill with raw cardType text',
     (cardType) => {
       const { container } = render(<PassCardPreviewHeader cardType={cardType} />);
@@ -262,18 +264,18 @@ describe('PassCardPreviewHeader — balance block layout', () => {
 // The exported BALANCE_PREVIEW_CARD_TYPES and shouldShowBalancePreview are
 // the contract for "which card types get the balance preview". Pin them.
 describe('BALANCE_PREVIEW_CARD_TYPES / shouldShowBalancePreview — contract', () => {
-  it('BALANCE_PREVIEW_CARD_TYPES has exactly {stamp_card, reward_card, cashback_card}', () => {
-    expect(BALANCE_PREVIEW_CARD_TYPES.size).toBe(3);
+  it('BALANCE_PREVIEW_CARD_TYPES has exactly {stamp_card, reward_card, cashback_card, multipass}', () => {
+    expect(BALANCE_PREVIEW_CARD_TYPES.size).toBe(4);
     expect(BALANCE_PREVIEW_CARD_TYPES.has('stamp_card')).toBe(true);
     expect(BALANCE_PREVIEW_CARD_TYPES.has('reward_card')).toBe(true);
     expect(BALANCE_PREVIEW_CARD_TYPES.has('cashback_card')).toBe(true);
+    expect(BALANCE_PREVIEW_CARD_TYPES.has('multipass')).toBe(true);
   });
 
-  it('BALANCE_PREVIEW_CARD_TYPES excludes the other 5 card types', () => {
+  it('BALANCE_PREVIEW_CARD_TYPES excludes the other 4 card types', () => {
     expect(BALANCE_PREVIEW_CARD_TYPES.has('membership_card')).toBe(false);
     expect(BALANCE_PREVIEW_CARD_TYPES.has('discount_card')).toBe(false);
     expect(BALANCE_PREVIEW_CARD_TYPES.has('coupon_card')).toBe(false);
-    expect(BALANCE_PREVIEW_CARD_TYPES.has('multipass')).toBe(false);
     expect(BALANCE_PREVIEW_CARD_TYPES.has('gift_card')).toBe(false);
   });
 
@@ -281,6 +283,7 @@ describe('BALANCE_PREVIEW_CARD_TYPES / shouldShowBalancePreview — contract', (
     expect(shouldShowBalancePreview('stamp_card')).toBe(true);
     expect(shouldShowBalancePreview('reward_card')).toBe(true);
     expect(shouldShowBalancePreview('cashback_card')).toBe(true);
+    expect(shouldShowBalancePreview('multipass')).toBe(true);
   });
 
   it('shouldShowBalancePreview returns false for non-target / null / undefined', () => {
