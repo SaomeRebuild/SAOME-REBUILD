@@ -90,6 +90,13 @@ export default {
     },
     couponDiscount: {
       label: '折扣優惠',
+      // 2026-09-20: 加 value: '' 作為 defensive fallback。PassCardPreviewBody
+      // 的 default branch 會做 `t('fieldPreview.${field}.value')` 兜底，
+      // 若 couponDiscount 沒有 value key，會回傳原始 key 字串
+      // 「fieldPreview.couponDiscount.value」污染預覽。
+      // 真正的 coupon 路徑走 amountFormatTWD/ZAR/percentFormat 模板，
+      // value: '' 只是「若 default branch 被誤觸發」的保險絲。
+      value: '',
       amountFormatTWD: '{{amount}}元折扣',
       amountFormatZAR: 'R{{amount}}折扣',
       percentFormat: '{{percent}}%折扣',

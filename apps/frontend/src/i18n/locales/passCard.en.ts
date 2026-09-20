@@ -100,6 +100,13 @@ export default {
     },
     couponDiscount: {
       label: 'Discount Offer',
+      // 2026-09-20: defensive empty value fallback. PassCardPreviewBody's
+      // default branch does `t('fieldPreview.${field}.value')`; without
+      // this key the lookup returns the raw key string
+      // "fieldPreview.couponDiscount.value" which leaks into the preview.
+      // The actual coupon path uses amountFormatTWD/ZAR/percentFormat;
+      // value: '' is purely a safety net for the default branch fallback.
+      value: '',
       amountFormatTWD: 'NT${{amount}} off',
       amountFormatZAR: 'R{{amount}} off',
       percentFormat: '{{percent}}% off',

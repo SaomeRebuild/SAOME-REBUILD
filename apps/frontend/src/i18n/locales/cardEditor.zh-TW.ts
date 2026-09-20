@@ -759,6 +759,100 @@ export default {
         issueCountInvalid: '發券張數需 ≥ 1',
       },
     },
+    // ===== Multipass 卡 (2026-09-19, multipass only) =====
+    // 與 stamp_card / discount_card / coupon_card 結構差異：
+    //   - 多 tier 結構（最多 5 組），每個 tier 自帶 stampsNeeded +
+    //     rewardType + rewardValue
+    //   - stampsNeeded 下限 0 = 歡迎禮「辦卡立刻送」
+    //   - stampsNeeded 上限 999 = 純安全閥，不跟 grid 連動
+    //   - stampsNeeded 重複會顯示警告（PR-4 處理）
+    multipass: {
+      intro: '設定此多通卡的累積蓋章與獎勵兌換規則',
+      introHint: '會員可在多張卡累積蓋章，集滿指定數量後即可兌換不同等級的獎勵。',
+      // 級距列表
+      tiersTitle: '獎勵級距',
+      tiersHint: '設定會員集滿指定印章數可兌換的獎勵。最多可設定 5 組級距。',
+      addTier: '新增獎勵級距',
+      maxTiersReached: '已達到最大級距數量 (5 組)',
+      // 移除確認（如果 UI 需要）
+      removeTierConfirm: '確定要移除此級距？',
+      // ★ PR-5 卡片層級蓋章方式 (2026-09-20)
+      accrualModeTitle: '蓋章方式',
+      accrualModeDescription: '選擇此多通卡要採用哪一種蓋章方式',
+      modes: {
+        per_stamp: {
+          label: '基於蓋章',
+          helper: '由店員手動在顧客的多通卡上蓋印章',
+        },
+        per_visit: {
+          label: '基於拜訪',
+          helper: '顧客每次到訪即自動獲得印章',
+        },
+        per_spend: {
+          label: '基於消費',
+          helper: '顧客每次消費達指定金額即自動獲得印章',
+        },
+      },
+      // 各欄位
+      tier: {
+        nameTitle: '會員等級',
+        namePlaceholder: '例如：銅卡 / 銀卡 / 金卡',
+        nameCounter: '{{count}} / 40',
+        nameRequiredError: '請輸入會員等級',
+        // ★ multipass 獨特欄位
+        stampsNeededTitle: '需集滿幾次',
+        stampsNeededPlaceholder: '例如：5（0 = 辦卡立刻送的歡迎禮）',
+        stampsNeededHelper: '0 = 歡迎禮「辦卡立刻送」。上限 999 為純安全閥。',
+        stampsNeededUnit: '次',
+        stampsNeededRequiredError: '請輸入需集滿的次數',
+        stampsNeededMinError: '次數不能小於 0',
+        stampsNeededMaxError: '次數不能超過 999',
+        stampsNeededNotIntegerError: '次數需為整數',
+        stampsNeededDuplicateWarning: '已有其他級距使用相同的集滿次數，重複的級距可能造成預期外的行為。',
+        // ★ PR-5 per-tier 門檻欄位 (2026-09-20)
+        perVisitTitle: '拜訪門檻',
+        perVisitVisitsLabel: '次拜訪',
+        perVisitStampsLabel: '個蓋章',
+        perVisitHelper: '每 N 次拜訪可獲得 M 個蓋章',
+        perSpendTitle: '消費門檻',
+        perSpendAmountLabelTWD: '元消費',
+        perSpendAmountLabelZAR: 'R',
+        perSpendStampsLabel: '個蓋章',
+        perSpendHelper: '每消費 N 元可獲得 M 個蓋章',
+        accrualThresholdRequiredError: '請輸入門檻值',
+        perVisitCountMinError: '拜訪次數需大於 0',
+        perVisitStampsMinError: '蓋章數需大於 0',
+        perSpendAmountMinError: '消費金額需大於 0',
+        perSpendStampsMinError: '蓋章數需大於 0',
+        // Reward 設定（沿用 stamp_card 的 amount_off / percent_off pattern）
+        rewardTypeTitle: '獎勵類型',
+        rewardTypePlaceholder: '請選擇獎勵類型',
+        rewardTypeAmount: '訂單折抵現金',
+        rewardTypeAmountHint: '例如：集滿可兌換 10 元折價',
+        rewardTypePercent: '訂單折抵百分比',
+        rewardTypePercentHint: '例如：集滿可享 8% 折扣',
+        rewardValueTitle: '獎勵數量',
+        rewardValueAmountPlaceholder: '輸入折抵金額，例如 10',
+        rewardValuePercentPlaceholder: '輸入折抵百分比，例如 8',
+        rewardValueAmountUnitTWD: '元',
+        rewardValueAmountUnitZAR: 'R',
+        rewardValuePercentUnit: '%',
+        rewardValueRequiredError: '請輸入獎勵數量',
+        rewardValueInvalidError: '請輸入有效的數字',
+        rewardValueTooSmallError: '獎勵數量需大於 0',
+        rewardValueTooLargeError: '百分比不能超過 100',
+        // ★ PR-6 per-tier 最高折抵金額 (2026-09-20, rewardType === 'percent_off' 時顯示)
+        maxDiscountTitle: '最高折抵金額',
+        maxDiscountPlaceholder: '例如：50（留空表示無上限）',
+        maxDiscountHelper: '設定上限可避免大筆消費時折扣金額過高，確保店家利潤。',
+        maxDiscountUnitTWD: '元',
+        maxDiscountUnitZAR: 'R',
+        maxDiscountOptional: '（選填，留空表示無上限）',
+        maxDiscountZeroIsNoCap: '輸入 0 = 無上限',
+        // 移除按鈕
+        removeTier: '移除此級距',
+      },
+    },
   },
   // Step 7: 客製化桌牌
   step7: {
