@@ -457,6 +457,11 @@ export const templateSettingsSchema = z.object({
         rewardType: z.enum(['amount_off', 'percent_off']).nullable().optional(),
         /** Discount amount (amount_off) or percentage integer 1-100 (percent_off). null when unselected. */
         rewardValue: z.number().positive().nullable().optional(),
+        // ★ PR-6 (2026-09-20) per-tier 最高折抵金額 — 對齊 stamp_card.maxDiscountAmount.
+        // 0 = 無上限; 1..MAX_DISCOUNT_AMOUNT_MAX = 折抵上限. null = 未填 (= 無上限).
+        // 只有 rewardType === 'percent_off' 才有語意,amount_off 用不到這個欄位.
+        // 對齊 `packages/shared/schemas/card.ts::templateSettingsSchema.multipassTiers[*].maxDiscountAmount`.
+        maxDiscountAmount: z.number().min(0).nullable().optional(),
         // ★ PR-5 新增 per-tier 門檻欄位 — 對齊 stamp_card card-wide
         // stampsPerVisitCount / stampsPerSpendAmount 等欄位的 per-tier 變體.
         // 差異: stamp_card 是 card-wide;Multipass 是 per-tier.

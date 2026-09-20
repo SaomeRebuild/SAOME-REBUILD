@@ -536,6 +536,17 @@ export interface TemplateSettings {
      */
     rewardValue?: number | null;
     /**
+     * 2026-09-20 PR-6: per-tier 最高折抵金額 (rewardType === 'percent_off' 時有意義).
+     * 對齊 stamp_card.maxDiscountAmount 的 per-tier 變體. Mirrors
+     * `shared/templateSettingsSchema.multipassTiers[*].maxDiscountAmount`
+     * (Rule 019 § 4.1 layer 3).
+     * - `0` = 無上限 (使用者輸入 0)
+     * - `1..MAX_DISCOUNT_AMOUNT_MAX` = 折抵上限
+     * - `null` = 已清空欄位（但先前有值，使用者主動清空）
+     * - `undefined` = 從未填過欄位
+     */
+    maxDiscountAmount?: number | null;
+    /**
      * 2026-09-20 PR-5: per-tier 門檻欄位. 對齊 stamp_card card-wide
      * stampsPerVisitCount / stampsPerSpendAmount 等欄位的 per-tier 變體.
      * Mirrors `shared/templateSettingsSchema.multipassTiers[*].perVisitCount`

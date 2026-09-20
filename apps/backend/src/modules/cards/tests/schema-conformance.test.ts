@@ -1403,6 +1403,181 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
     expect(sharedTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
     expect(localTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
   });
+
+  // ===== Step 6 — Multipass 卡 PR-6 (2026-09-20): per-tier maxDiscountAmount =====
+  // ★ PR-6 修補: `MultipassTierMaxDiscountAmountField` UI 元件在 PR-6 建立時,
+  // Layer 1-3 schema 漏加 `maxDiscountAmount` 欄位, 導致:
+  //   1. PUT 時 serializer 沒有序列化 maxDiscountAmount (4-layer drift)
+  //   2. Backend zod schema 沒有這個欄位 (strip unknown field → silent drop)
+  //   3. DB type 沒有這個欄位
+  //   4. Loader 不讀 obj.maxDiscountAmount
+  // 結果: 使用者輸入最高折抵金額 → 存不到 → 沒有回填
+  //
+  // 修法: 4 層同步加欄位 (Rule 019 § 4.1). 對齊 stamp_card.maxDiscountAmount.
+  //
+  // 4-layer sync pins:
+  //   - shared `templateSettingsSchema.multipassTiers[*].maxDiscountAmount` (Layer 1)
+  //   - backend local `templateSettingsSchema.multipassTiers[*].maxDiscountAmount` (Layer 2)
+  //   - backend db `TemplateSettings.multipassTiers[*].maxDiscountAmount` (Layer 3 — TS type)
+  //   - frontend store already had it via MultipassTierShape (Layer 4 — OK)
+
+  it('shared multipassTiers[*].maxDiscountAmount accepts null (no cap sentinel)', () => {
+    const f = sharedTemplateSettingsSchema.shape.multipassTiers;
+    expect(() =>
+      f.parse([
+        {
+          name: 'tier',
+          stampsNeeded: 10,
+          rewardType: 'percent_off',
+          rewardValue: 10,
+          maxDiscountAmount: null,
+        },
+      ]),
+    ).not.toThrow();
+  });
+
+  it('local multipassTiers[*].maxDiscountAmount accepts null (no cap sentinel)', () => {
+    const f = localTemplateSettingsSchema.shape.multipassTiers;
+    expect(() =>
+      f.parse([
+        {
+          name: 'tier',
+          stampsNeeded: 10,
+          rewardType: 'percent_off',
+          rewardValue: 10,
+          maxDiscountAmount: null,
+        },
+      ]),
+    ).not.toThrow();
+  });
+
+  it('shared multipassTiers[*].maxDiscountAmount accepts 0 (zero = no cap)', () => {
+    const f = sharedTemplateSettingsSchema.shape.multipassTiers;
+    expect(() =>
+      f.parse([
+        {
+          name: 'tier',
+          stampsNeeded: 10,
+          rewardType: 'percent_off',
+          rewardValue: 10,
+          maxDiscountAmount: 0,
+        },
+      ]),
+    ).not.toThrow();
+  });
+
+  it('shared multipassTiers[*].maxDiscountAmount accepts positive numbers', () => {
+    const f = sharedTemplateSettingsSchema.shape.multipassTiers;
+    expect(() =>
+      f.parse([
+        {
+          name: 'tier',
+          stampsNeeded: 10,
+          rewardType: 'percent_off',
+          rewardValue: 10,
+          maxDiscountAmount: 50,
+        },
+      ]),
+    ).not.toThrow();
+    expect(() =>
+      f.parse([
+        {
+          name: 'tier',
+          stampsNeeded: 10,
+          rewardType: 'percent_off',
+          rewardValue: 10,
+          maxDiscountAmount: 1_000_000,
+        },
+      ]),
+    ).not.toThrow();
+  });
+
+  it('local multipassTiers[*].maxDiscountAmount accepts positive numbers', () => {
+    const f = localTemplateSettingsSchema.shape.multipassTiers;
+    expect(() =>
+      f.parse([
+        {
+          name: 'tier',
+          stampsNeeded: 10,
+          rewardType: 'percent_off',
+          rewardValue: 10,
+          maxDiscountAmount: 50,
+        },
+      ]),
+    ).not.toThrow();
+  });
+
+  it('shared multipassTiers[*].maxDiscountAmount rejects negative numbers', () => {
+    const f = sharedTemplateSettingsSchema.shape.multipassTiers;
+    expect(() =>
+      f.parse([
+        {
+          name: 'tier',
+          stampsNeeded: 10,
+          rewardType: 'percent_off',
+          rewardValue: 10,
+          maxDiscountAmount: -1,
+        },
+      ]),
+    ).toThrow();
+  });
+
+  it('shared multipassTiers[*].maxDiscountAmount accepts undefined (field not present)', () => {
+    const f = sharedTemplateSettingsSchema.shape.multipassTiers;
+    expect(() =>
+      f.parse([
+        {
+          name: 'tier',
+          stampsNeeded: 10,
+          rewardType: 'percent_off',
+          rewardValue: 10,
+          // maxDiscountAmount omitted
+        },
+      ]),
+    ).not.toThrow();
+  });
+
+  it('full templateSettings round-trips multipass with maxDiscountAmount (shared)', () => {
+    const payload = {
+      cardType: 'multipass',
+      multipassTiers: [
+        {
+          name: 'Basic',
+          stampsNeeded: 0,
+          rewardType: 'amount_off',
+          rewardValue: 50,
+          maxDiscountAmount: null,
+        },
+        {
+          name: 'VIP',
+          stampsNeeded: 10,
+          rewardType: 'percent_off',
+          rewardValue: 15,
+          maxDiscountAmount: 100,
+        },
+      ],
+    };
+    const parsed = sharedTemplateSettingsSchema.parse(payload);
+    expect(parsed.multipassTiers?.[0].maxDiscountAmount).toBeNull();
+    expect(parsed.multipassTiers?.[1].maxDiscountAmount).toBe(100);
+  });
+
+  it('full templateSettings round-trips multipass with maxDiscountAmount (local/backend)', () => {
+    const payload = {
+      cardType: 'multipass',
+      multipassTiers: [
+        {
+          name: 'Gold',
+          stampsNeeded: 5,
+          rewardType: 'percent_off',
+          rewardValue: 20,
+          maxDiscountAmount: 500,
+        },
+      ],
+    };
+    const parsed = localTemplateSettingsSchema.parse(payload);
+    expect(parsed.multipassTiers?.[0].maxDiscountAmount).toBe(500);
+  });
 });
 
 /**

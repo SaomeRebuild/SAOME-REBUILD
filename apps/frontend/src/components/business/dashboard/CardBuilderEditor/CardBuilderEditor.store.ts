@@ -1250,6 +1250,18 @@ function sanitizeMultipassTiers(
       obj.rewardValue > 0
         ? obj.rewardValue
         : null;
+    // ★ PR-6 (2026-09-20) per-tier 最高折抵金額. 對齊 stamp_card.maxDiscountAmount
+    // 的 per-tier 變體. 0 = 無上限; 1..MAX = 折抵上限; null = 已清空欄位.
+    // Defensive parsing: 拒絕 NaN / 非有限數 / 負數. clamp 到 MAX_DISCOUNT_AMOUNT_MAX.
+    const rawMaxDiscount = obj.maxDiscountAmount;
+    const maxDiscountAmount =
+      rawMaxDiscount === null
+        ? null
+        : typeof rawMaxDiscount === 'number' &&
+            Number.isFinite(rawMaxDiscount) &&
+            rawMaxDiscount >= 0
+          ? Math.min(rawMaxDiscount, MAX_DISCOUNT_AMOUNT_MAX)
+          : null;
     // PR-5 per-tier 門檻 fields — defensive parsing aligned with stamp_card pattern.
     const perVisitCount =
       obj.perVisitCount === null
@@ -1298,6 +1310,8 @@ function sanitizeMultipassTiers(
       stampsNeeded,
       rewardType,
       rewardValue,
+      // ★ PR-6 (2026-09-20) per-tier 最高折抵金額 — 對齊 stamp_card.
+      maxDiscountAmount,
       perVisitCount,
       perVisitStamps,
       perSpendAmount,
@@ -3351,6 +3365,8 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
                 stampsNeeded: 0,
                 rewardType: null,
                 rewardValue: null,
+                // ★ PR-6 (2026-09-20) per-tier 最高折抵金額 fallback.
+                maxDiscountAmount: null,
                 perVisitCount: null,
                 perVisitStamps: null,
                 perSpendAmount: null,
