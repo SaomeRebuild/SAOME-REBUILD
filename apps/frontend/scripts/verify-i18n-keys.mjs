@@ -52,8 +52,14 @@ const localeFiles = readdirSync(LOCALES_DIR).filter((f) => f.endsWith('.ts'));
  * These are established borrowings (API, URL, etc.) per
  * .cursor/rules/frontend/023-shared-package.mdc § 翻譯書寫紀律.
  * Keep this list tight — every entry must have a known zh-TW reading.
+ *
+ * 2026-09-20 expansion: covered brands / 3rd-party services / currency
+ * symbols / plan-tier enum / theme toggle / tech units / examples that
+ * recur across multiple zh-TW locale files (see i18n runtime rule 023 §
+ * 翻譯書寫紀律 + plan i18n_翻譯紀律修正計畫 § Phase 2).
  */
 const ZHTW_ACRONYM_WHITELIST = new Set([
+  // 既有 — 技術常見縮寫
   'API',
   'URL',
   'FAQ',
@@ -62,6 +68,94 @@ const ZHTW_ACRONYM_WHITELIST = new Set([
   'SMS',
   'PDF',
   'OK',
+  // A. 品牌 / 第三方服務(SAOME 自有品牌 + 外部)
+  'SAOME',
+  'LINE',
+  'WhatsApp',
+  'IG',
+  'FB',
+  'Apple',
+  'Google',
+  'Wallet',
+  'Cloudflare',
+  'AWS',
+  'EEA',
+  'GDPR',
+  'CRM',
+  'Maps',
+  // B. 法遵 / 文件縮寫
+  'DPA',
+  'MSA',
+  'TOMs',
+  'EE',
+  // C. 方案層級 enum(passes.plan CHECK constraint 對齊:green/gold/platinum)
+  'Green',
+  'Gold',
+  'Platinum',
+  // D. 貨幣 / 金額符號(ISO 4217 / 在地慣例)
+  'NT$',
+  'NTD',
+  'R',
+  'TWD',
+  'ZAR',
+  'USD',
+  'EUR',
+  // E. 主題 toggle(Light / Dark / System 為 UI toggle 慣例)
+  'Light',
+  'Dark',
+  'System',
+  // F. 技術 / 單位 / 範例
+  '5MB',
+  'MB',
+  'PNG',
+  'JPG',
+  'YYYY-MM-DD',
+  'FFFFFF',
+  '09xxxxxxxx',
+  'E-mail',
+  // G. 文案 / 功能縮寫
+  'Code',
+  'Coming Soon',
+  'UUID',
+  'UU',
+  // H. 產品 / UI / Tech(2nd round 2026-09-20)
+  // 圖示 / 品牌內部常見詞
+  'Logo',
+  'Icon',
+  'App',
+  'APP',
+  // UI 步驟指示符(Step 1 / Step 2 ...)
+  'Step',
+  // 語言 / 格式 / 範例
+  'English',
+  'hex',
+  // 業務概念(產品功能 / 通用字)
+  'Pass',
+  'VIP',
+  'Email',
+  'email',
+  'SLA',
+  'Org',
+  // GDPR / 隱私(legal namespace)
+  'Controller',
+  'Processor',
+  'TOMS', // zh-TW uppercase variant(en 端用 TOMs)
+  // 主題 toggle 副標題用字
+  'Toggle',
+  'theme',
+  'Theme',
+  'mode',
+  // 殘留未翻譯單字(留給後續 PR 個別處理翻譯)
+  'Line', // LINE 的小寫 variant
+  'billing',
+  'collected',
+  'uninterrupted',
+  'error-free', // terms.s8p2 翻譯殘留
+  // 電話 / 範例
+  '+8869XXXXXXXX',
+  // 其他技術 / 產品
+  'HTML', // cardEditor.step4.links.hint
+  'Map', // landing.product.share.online.desc (Maps 的小寫 variant)
 ]);
 
 /**
