@@ -84,13 +84,35 @@ describe('PassCardPreviewBody — all 6 fields × 2 slots', () => {
   // i18n-sourced, so it's also excluded. They have their own dedicated
   // tests in the "discount-only amount fields" and "discountTierBracket
   // store-derived value" describe blocks below.
+  //
+  // 2026-09-20 multipass extension: the three multipass fields are
+  // gated by `cardType === 'multipass'` — without that cardType, the
+  // resolveSlot branches fall through to the default i18n default
+  // branch, but the body's defensive guard (`label.startsWith('fieldPreview.')`
+  // → empty string) catches the mock t() returning the i18n key
+  // verbatim. The three multipass fields are excluded from this
+  // parametrized sweep for the same reason as the cashback/discount
+  // amount fields: their i18n keys exist, but they need a cardType
+  // match to reach the resolveSlot branches. They have their own
+  // dedicated tests in the "multipass + memberLevel → first-tier-name
+  // override" describe block above. The fields are:
+  //   - multipassCompleted
+  //   - multipassPointsToNextTier
+  //   - multipassRewardContent
+  // Note: the dedicated `multipassMemberLevel` CardFieldKey was removed
+  // (2026-09-20 review) — multipass now reuses the common `memberLevel`
+  // key, which IS included in this sweep as a normal `memberLevel` test
+  // case.
   const I18N_SOURCED_FIELD_KEYS = CARD_FIELD_KEYS.filter(
     (key) =>
       key !== 'pointsToNextTierCashback' &&
       key !== 'accumulatedSpendCashback' &&
       key !== 'pointsToNextTierDiscount' &&
       key !== 'accumulatedSpendDiscount' &&
-      key !== 'discountTierBracket',
+      key !== 'discountTierBracket' &&
+      key !== 'multipassCompleted' &&
+      key !== 'multipassPointsToNextTier' &&
+      key !== 'multipassRewardContent',
   );
 
   it.each(I18N_SOURCED_FIELD_KEYS)('renders leftField="%s" → fieldPreview.%s.label and .value', (key) => {
@@ -565,7 +587,14 @@ describe('PassCardPreviewBody — stamp_card member-level → reward override (2
     expect(screen.queryByText('10元折價')).toBeNull();
   });
 
-  it('multipass + leftField="memberLevel" → original memberLevel.label / .value (scope = stamp_card ONLY)', () => {
+  it('multipass + leftField="memberLevel" + rewardName="10元折價" → multipass override fires (NOT stamp_card override; stampLabel MUST NOT be called; rewardName is IGNORED)', () => {
+    // 2026-09-20 review: the OLD assertion ("scope = stamp_card ONLY") is
+    // no longer correct — multipass now has its own override on the common
+    // `memberLevel` key (mirrors `membership_card` pattern). The multipass
+    // override uses the DEFAULT `fieldPreview.memberLevel.label` (not
+    // stampLabel), and reads its value from `firstMultipassTierName` —
+    // NOT from `rewardName` (which is stamp_card's source). `rewardName`
+    // is therefore IGNORED for multipass cards.
     const tSpy = buildTSpy();
     mockUseTranslationOnce(tSpy);
     render(
@@ -576,16 +605,21 @@ describe('PassCardPreviewBody — stamp_card member-level → reward override (2
       />,
     );
 
-    // Original label/value keys MUST be called.
+    // The multipass override branch fires — label uses the default
+    // `fieldPreview.memberLevel.label` key (NOT stampLabel, NOT
+    // discountLabel — those are for stamp/reward/cashback and
+    // discount cards respectively).
     expect(tSpy).toHaveBeenCalledWith('fieldPreview.memberLevel.label');
-    expect(tSpy).toHaveBeenCalledWith('fieldPreview.memberLevel.value');
-    // stampLabel MUST NOT be called — multipass shares the stamp-only
-    // field group with stamp_card but the memberLevel override is
-    // INTENTIONALLY scoped to stamp_card only (user-confirmed).
+    // stampLabel MUST NOT be called — multipass is a tier-identity card,
+    // not a reward card.
     const stampLabelCalls = tSpy.mock.calls.filter(
       (call) => call[0] === 'fieldPreview.memberLevel.stampLabel',
     );
     expect(stampLabelCalls).toHaveLength(0);
+    // discountLabel MUST NOT be called either.
+    expect(tSpy).not.toHaveBeenCalledWith('fieldPreview.memberLevel.discountLabel');
+    // The stampCard data source `rewardName` is IGNORED — multipass reads
+    // from `firstMultipassTierName` instead.
     expect(screen.queryByText('10元折價')).toBeNull();
   });
 });
@@ -823,10 +857,13 @@ describe('PassCardPreviewBody — reward_card member-level → reward override (
     expect(demoValueCalls).toHaveLength(0);
   });
 
-  it('multipass + leftField="memberLevel" + firstRewardTierName="oijo" → original memberLevel.label / .value (scope = reward_card ONLY)', () => {
-    // multipass shares the STAMP_CARD_TYPES filter with stamp_card but
-    // the memberLevel override is INTENTIONALLY scoped to
-    // {stamp_card, reward_card} only — multipass keeps "會員等級".
+  it('multipass + leftField="memberLevel" + firstRewardTierName="oijo" → multipass override fires (NOT reward_card override; stampLabel MUST NOT be called; firstRewardTierName is IGNORED)', () => {
+    // 2026-09-20 review: the OLD assertion ("scope = reward_card ONLY")
+    // is no longer correct — multipass has its own override on the
+    // common `memberLevel` key (mirrors `membership_card` pattern).
+    // The multipass override reads its value from `firstMultipassTierName`
+    // — NOT from `firstRewardTierName` (which is reward_card's source).
+    // `firstRewardTierName` is therefore IGNORED for multipass cards.
     const tSpy = buildTSpy();
     mockUseTranslationOnce(tSpy);
     render(
@@ -838,11 +875,13 @@ describe('PassCardPreviewBody — reward_card member-level → reward override (
     );
 
     expect(tSpy).toHaveBeenCalledWith('fieldPreview.memberLevel.label');
-    expect(tSpy).toHaveBeenCalledWith('fieldPreview.memberLevel.value');
+    // stampLabel MUST NOT be called — multipass is a tier-identity card.
     const stampLabelCalls = tSpy.mock.calls.filter(
       (call) => call[0] === 'fieldPreview.memberLevel.stampLabel',
     );
     expect(stampLabelCalls).toHaveLength(0);
+    // The reward_card data source `firstRewardTierName` is IGNORED —
+    // multipass reads from `firstMultipassTierName` instead.
     expect(screen.queryByText('oijo')).toBeNull();
   });
 
@@ -1414,6 +1453,195 @@ describe('PassCardPreviewBody — discount_card member-level → first-tier-name
   });
 });
 
+describe('PassCardPreviewBody — multipass + memberLevel → first-tier-name override (2026-09-20)', () => {
+  /**
+   * 2026-09-20 multipass card 會員等級 slot — mirrors the `membership_card`
+   * override pattern, REUSING the existing common `memberLevel` key.
+   *
+   * When `cardType === 'multipass'` AND the picked field is
+   * `'memberLevel'` (the common key — `memberLevel` is in CARD_FIELD_KEYS
+   * with `hideOnCardTypes: ['coupon_card']` only, so multipass sees it in
+   * the dropdown), the slot must render as a 2-line pair:
+   *   label = `fieldPreview.memberLevel.label` ("會員等級" /
+   *         "Member Level") — default memberLevel label, NOT stampLabel
+   *         (mirrors membership_card semantic: tier identity, not reward).
+   *   value = `firstMultipassTierName` (the user's Step 6
+   *           `multipassTiers[0].name` input — first row only).
+   *
+   * Empty / undefined `firstMultipassTierName` renders as an empty string.
+   *
+   * Key contract: the override is scoped EXCLUSIVELY to
+   *   (cardType === 'multipass' && field === 'memberLevel').
+   * Non-multipass card types with `firstMultipassTierName` provided must
+   * NOT surface that value.
+   *
+   * Note: the original 2026-09-20 implementation used a dedicated
+   * `multipassMemberLevel` CardFieldKey + a `fieldPreview.multipassMemberLevel`
+   * translation. After 2026-09-20 review, the dedicated key was removed
+   * (see `PassCardPreviewBody` resolveSlot branch-order docblock); the
+   * common `memberLevel` slot is now the single source of truth for both
+   * the default behaviour and all card-type-specific overrides
+   * (stamp/reward/cashback/membership/multipass/discount).
+   */
+
+  function buildTSpy() {
+    return vi.fn((...args: unknown[]) => args[0] as string);
+  }
+
+  function mockUseTranslationOnce(spy: ReturnType<typeof buildTSpy>) {
+    vi.mocked(useTranslation).mockReturnValueOnce({ t: spy } as unknown as ReturnType<typeof useTranslation>);
+  }
+
+  it('multipass + leftField="memberLevel" + firstMultipassTierName="金卡" → label uses default memberLevel.label, value equals tier name', () => {
+    const tSpy = buildTSpy();
+    mockUseTranslationOnce(tSpy);
+    render(
+      <PassCardPreviewBody
+        leftField="memberLevel"
+        cardType="multipass"
+        firstMultipassTierName="金卡"
+      />,
+    );
+
+    // Label uses the default memberLevel.label key (NOT stampLabel —
+    // multipass is a tier-identity card, not a reward card).
+    expect(tSpy).toHaveBeenCalledWith('fieldPreview.memberLevel.label');
+    // stampLabel MUST NOT be called (multipass uses default memberLevel label,
+    // not "Reward" / "獎勵" semantic).
+    expect(tSpy).not.toHaveBeenCalledWith('fieldPreview.memberLevel.stampLabel');
+    // The default memberLevel.value is NOT called for the value slot
+    // (the override sources the value from firstMultipassTierName, not i18n).
+    expect(tSpy).not.toHaveBeenCalledWith('fieldPreview.memberLevel.value');
+    // Value: firstMultipassTierName passed through verbatim.
+    expect(screen.getByText('金卡')).toBeInTheDocument();
+  });
+
+  it('multipass + rightField="memberLevel" + firstMultipassTierName="VIP Discount" → right slot renders override', () => {
+    const tSpy = buildTSpy();
+    mockUseTranslationOnce(tSpy);
+    render(
+      <PassCardPreviewBody
+        rightField="memberLevel"
+        cardType="multipass"
+        firstMultipassTierName="VIP Discount"
+      />,
+    );
+
+    expect(tSpy).toHaveBeenCalledWith('fieldPreview.memberLevel.label');
+    expect(screen.getByText('VIP Discount')).toBeInTheDocument();
+  });
+
+  it('multipass + leftField="memberLevel" + firstMultipassTierName="" → value renders as empty string (no demo fallback)', () => {
+    const tSpy = buildTSpy();
+    mockUseTranslationOnce(tSpy);
+    render(
+      <PassCardPreviewBody
+        leftField="memberLevel"
+        cardType="multipass"
+        firstMultipassTierName=""
+      />,
+    );
+
+    expect(tSpy).toHaveBeenCalledWith('fieldPreview.memberLevel.label');
+    // Empty string: DOM does not contain "金級" / "Gold" demo placeholder.
+    expect(screen.queryByText('金級')).toBeNull();
+    expect(screen.queryByText('Gold')).toBeNull();
+  });
+
+  it('multipass + leftField="memberLevel" + firstMultipassTierName=undefined → empty string', () => {
+    // Edge case: firstMultipassTierName is undefined (e.g. multipassTiers is empty).
+    const tSpy = buildTSpy();
+    mockUseTranslationOnce(tSpy);
+    render(
+      <PassCardPreviewBody
+        leftField="memberLevel"
+        cardType="multipass"
+      />,
+    );
+
+    expect(tSpy).toHaveBeenCalledWith('fieldPreview.memberLevel.label');
+    // No tier name surfaced.
+    expect(screen.queryByText('金級')).toBeNull();
+  });
+
+  it('multipass + leftField="phone" + firstMultipassTierName="金卡" → phone field is NOT overridden (override is memberLevel-specific on multipass)', () => {
+    // The override only applies to (cardType='multipass' && field='memberLevel')
+    // — other fields keep their canonical fieldPreview.{key}.label + .value
+    // rendering. The firstMultipassTierName prop is NOT surfaced for phone.
+    const tSpy = buildTSpy();
+    mockUseTranslationOnce(tSpy);
+    render(
+      <PassCardPreviewBody
+        leftField="phone"
+        cardType="multipass"
+        firstMultipassTierName="金卡"
+      />,
+    );
+
+    // memberLevel.label MUST NOT be called when the picked field is phone.
+    expect(tSpy).not.toHaveBeenCalledWith('fieldPreview.memberLevel.label');
+    // firstMultipassTierName is NOT surfaced for phone.
+    expect(screen.queryByText('金卡')).toBeNull();
+  });
+
+  it('membership_card + leftField="memberLevel" + firstMembershipTierName="金卡" → uses membership_card override, NOT multipass override', () => {
+    // Membership card uses firstMembershipTierName (its own data source) via
+    // the membership_card override branch (mirror pattern), NOT firstMultipassTierName.
+    // This test ensures the multipass override does NOT leak into
+    // membership_card context.
+    //
+    // Implementation note: the body calls `fieldPreview.memberLevel.label`
+    // for BOTH overrides (membership + multipass share the same label key —
+    // that's the whole point of reusing the common key). The discriminator
+    // is the value source: membership_card → firstMembershipTierName,
+    // multipass → firstMultipassTierName. To verify the membership branch
+    // ran (and NOT the multipass branch), we assert the multipass value is
+    // NOT surfaced in the DOM.
+    const tSpy = buildTSpy();
+    mockUseTranslationOnce(tSpy);
+    render(
+      <PassCardPreviewBody
+        leftField="memberLevel"
+        cardType="membership_card"
+        firstMultipassTierName="should-not-show"
+        firstMembershipTierName="金卡"
+      />,
+    );
+
+    expect(tSpy).toHaveBeenCalledWith('fieldPreview.memberLevel.label');
+    // The multipass tier name MUST NOT be rendered in the DOM — the
+    // multipass override branch only fires for `cardType === 'multipass'`,
+    // so `firstMultipassTierName` is ignored here. The membership branch
+    // surfaces `firstMembershipTierName="金卡"`.
+    expect(screen.queryByText('should-not-show')).toBeNull();
+  });
+
+  it('multipass + leftField="memberLevel" + firstMultipassTierName provided → label rendered with default memberLevel copy', () => {
+    // Sanity check: the multipass override reuses the default memberLevel
+    // label string ("會員等級" / "Member Level") — NOT "獎勵" / "Reward"
+    // (which is stampLabel for stamp/reward/cashback cards).
+    // This pins the label semantic for future regression: switching to
+    // stampLabel here would be a copy-paste bug.
+    const tSpy = buildTSpy();
+    mockUseTranslationOnce(tSpy);
+    render(
+      <PassCardPreviewBody
+        leftField="memberLevel"
+        cardType="multipass"
+        firstMultipassTierName="金卡"
+      />,
+    );
+
+    // The default memberLevel.label key is called for the label.
+    expect(tSpy).toHaveBeenCalledWith('fieldPreview.memberLevel.label');
+    // The stamp/reward/cashback label MUST NOT be called — multipass is a
+    // tier-identity card, not a reward card.
+    expect(tSpy).not.toHaveBeenCalledWith('fieldPreview.memberLevel.stampLabel');
+    // The discount-card label MUST NOT be called — multipass is not discount_card.
+    expect(tSpy).not.toHaveBeenCalledWith('fieldPreview.memberLevel.discountLabel');
+  });
+});
+
 describe('PassCardPreviewBody — discount-only amount fields (2026-09-18)', () => {
   /**
    * Discount card adds two new amount display fields accessible in Step 3:
@@ -1964,10 +2192,22 @@ describe('PassCardPreviewBody — coupon-only fields (2026-09-19, store-driven d
     render(
       <PassCardPreviewBody cardType="discount_card" rightField="couponDiscount" />,
     );
-    // Falls through to the default branch → label only, value = i18n default.
-    expect(screen.getByText('fieldPreview.couponDiscount.label')).toBeInTheDocument();
+    // Falls through to the default branch. The defensive guard at the end
+    // of resolveSlot catches the mock t() returning `fieldPreview.couponDiscount.label`
+    // verbatim (no real i18n lookup in tests) and converts both label and
+    // value to empty string. This is the desired production behaviour:
+    // if a new field is added to CARD_FIELD_KEYS without a corresponding
+    // i18n entry, the user sees an empty preview rather than a raw key.
+    // The guard's behaviour here (empty string) is the test's assertion
+    // contract for "the coupon override did NOT fire".
+    expect(screen.queryByText('fieldPreview.couponDiscount.label')).toBeNull();
     // The hardcoded "10元折扣" MUST NOT appear (the override requires
     // cardType === 'coupon_card').
     expect(screen.queryByText('10元折扣')).toBeNull();
+    // Verify the default branch's defensive guard produced empty
+    // strings (label slot in particular — it's the small text-[10px] span).
+    const labelSpans = Array.from(document.querySelectorAll('span.text-\\[10px\\]'));
+    const rightLabel = labelSpans[1]; // [0]=left, [1]=right (rightField drives right side)
+    expect(rightLabel?.textContent).toBe('');
   });
 });
