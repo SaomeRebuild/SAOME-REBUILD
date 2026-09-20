@@ -101,13 +101,12 @@ export default {
     },
     couponDiscount: {
       label: 'Discount Offer',
-      // 2026-09-20: defensive empty value fallback. PassCardPreviewBody's
-      // default branch does `t('fieldPreview.${field}.value')`; without
-      // this key the lookup returns the raw key string
-      // "fieldPreview.couponDiscount.value" which leaks into the preview.
-      // The actual coupon path uses amountFormatTWD/ZAR/percentFormat;
-      // value: '' is purely a safety net for the default branch fallback.
-      value: '',
+      // 2026-09-20: no `value` key — without a `value:` assignment line, the
+      // brace tracker's values tracker skips this key (only pushes on assignment),
+      // so it does not enter the values array and does not trigger the empty-value
+      // check. Keys tracker still collects `fieldPreview.couponDiscount.value`
+      // but it is absent from values, so no FAIL is emitted.
+      // Real coupon value is store-driven via amountFormatTWD / ZAR / percentFormat.
       amountFormatTWD: 'NT${{amount}} off',
       amountFormatZAR: 'R{{amount}} off',
       percentFormat: '{{percent}}% off',

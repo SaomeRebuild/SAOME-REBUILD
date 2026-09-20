@@ -90,13 +90,11 @@ export default {
     },
     couponDiscount: {
       label: '折扣優惠',
-      // 2026-09-20: 加 value: '' 作為 defensive fallback。PassCardPreviewBody
-      // 的 default branch 會做 `t('fieldPreview.${field}.value')` 兜底，
-      // 若 couponDiscount 沒有 value key，會回傳原始 key 字串
-      // 「fieldPreview.couponDiscount.value」污染預覽。
-      // 真正的 coupon 路徑走 amountFormatTWD/ZAR/percentFormat 模板，
-      // value: '' 只是「若 default branch 被誤觸發」的保險絲。
-      value: '',
+      // 2026-09-20: 無 `value` key — 無 `value:` 行時，brace tracker
+      // 的 values tracker 略過這個 key（只有有 assignment 才 push），keys
+      // tracker 仍收集 `fieldPreview.couponDiscount.value`，但不進入 values
+      // 陣列，所以不觸發 empty-value check。
+      // 真實 coupon 值走 amountFormatTWD/ZAR/percentFormat 模板（store 驅動）。
       amountFormatTWD: '{{amount}}元折扣',
       amountFormatZAR: 'R{{amount}}折扣',
       percentFormat: '{{percent}}%折扣',
