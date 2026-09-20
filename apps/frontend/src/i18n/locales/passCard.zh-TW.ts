@@ -101,6 +101,24 @@ export default {
       amountFormatZAR: 'R{{amount}}折扣',
       percentFormat: '{{percent}}%折扣',
     },
+    // ===== MultiPass 卡預覽欄位 (2026-09-20) =====
+    // Step 3 選 multipass 時，leftField / rightField 下拉選到此三個 key 時的預覽值。
+    //   - multipassCompleted: 靜態 demo "1次"（與 availableRewards "2 次" pattern 對齊）
+    //   - multipassPointsToNextTier: 靜態 demo "2次集滿"
+    //   - multipassRewardContent: store 驅動，amount_off → amountFormatTWD/ZAR，
+    //     percent_off → percentFormat（TWD → "10元折扣"、ZAR → "R10折扣"）
+    // multipass 卡的「會員等級」slot 不在此處 — 它直接複用既有 common 欄位
+    // `memberLevel`，由 PassCardPreviewBody 的 `multipass + memberLevel` override
+    // branch 處理（mirror `membership_card` 模式：label 走 `fieldPreview.memberLevel.label`
+    // default、value 走 `firstMultipassTierName ?? ''`）。
+    multipassCompleted: { label: '累積已滿', value: '1次' },
+    multipassPointsToNextTier: { label: '到下個等級還差', value: '2次集滿' },
+    multipassRewardContent: {
+      label: '獎勵內容',
+      amountFormatTWD: '{{amount}}元折扣',
+      amountFormatZAR: 'R{{amount}}折扣',
+      percentFormat: '{{percent}}%折扣',
+    },
   },
   // ===== 餘額預覽 — 僅在 stamp_card / reward_card / cashback_card 顯示 =====
   // Step 1 選這 3 種卡時，PassCardPreviewHeader 的右側卡種 pill 會被替換成兩行垂直區塊。

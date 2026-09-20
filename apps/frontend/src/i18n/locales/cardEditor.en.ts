@@ -165,6 +165,16 @@ export default {
         // gated by group: 'coupon' + filterCARD_FIELDS_BY_CARD_TYPE.
         couponRemainingCount: 'Remaining Count',
         couponDiscount: 'Discount Offer',
+        // MultiPass-only fields — only shown for multipass (2026-09-20).
+        // gated by group: 'multipass' + filterCARD_FIELDS_BY_CARD_TYPE.
+        multipassCompleted: 'Cumulative',
+        multipassPointsToNextTier: 'To Next Tier',
+        multipassRewardContent: 'Reward',
+        // The multipass "Member Level" slot is NOT a dedicated dropdown entry —
+        // it reuses the existing common `memberLevel` field (whose
+        // `hideOnCardTypes: ['coupon_card']` does NOT exclude multipass).
+        // PassCardPreviewBody's `multipass + memberLevel` override branch
+        // surfaces `firstMultipassTierName` as the value for that slot.
       },
     },
     // ===== Stamp grid — added 2026-09-04 =====

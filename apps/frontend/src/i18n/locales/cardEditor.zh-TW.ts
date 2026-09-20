@@ -162,6 +162,15 @@ export default {
         // 透過 group: 'coupon' + filterCARD_FIELDS_BY_CARD_TYPE 控制顯示與否
         couponRemainingCount: '剩餘張數',
         couponDiscount: '折扣優惠',
+        // MultiPass 卡限定欄位 — 僅在 multipass 顯示（2026-09-20）
+        // 透過 group: 'multipass' + filterCARD_FIELDS_BY_CARD_TYPE 控制顯示與否
+        multipassCompleted: '累積已滿',
+        multipassPointsToNextTier: '到下個等級還差',
+        multipassRewardContent: '獎勵內容',
+        // multipass 卡的「會員等級」slot 不在此 dropdown — 直接複用既有 common
+        // 欄位 `memberLevel`（`hideOnCardTypes: ['coupon_card']`，對 multipass
+        // 不排除）。PassCardPreviewBody 的 `multipass + memberLevel` override
+        // branch 會把 value 替換成 `firstMultipassTierName`。
       },
     },
     // ===== Stamp grid (集點印章) — added 2026-09-04 =====

@@ -112,6 +112,25 @@ export default {
       amountFormatZAR: 'R{{amount}} off',
       percentFormat: '{{percent}}% off',
     },
+    // ===== MultiPass preview fields (2026-09-20) =====
+    // Step 3 left/right dropdown for multipass cards.
+    //   - multipassCompleted: static demo "1x" (matches availableRewards "2 times" pattern)
+    //   - multipassPointsToNextTier: static demo "2x to complete"
+    //   - multipassRewardContent: store-driven, amount_off → amountFormatTWD/ZAR,
+    //     percent_off → percentFormat (TWD → "NT$10 off", ZAR → "R10 off")
+    // The multipass "Member Level" slot is NOT a dedicated entry here — it
+    // reuses the existing common `memberLevel` field, handled by
+    // PassCardPreviewBody's `multipass + memberLevel` override branch
+    // (mirrors `membership_card` pattern: label = `fieldPreview.memberLevel.label`
+    // default, value = `firstMultipassTierName ?? ''`).
+    multipassCompleted: { label: 'Cumulative', value: '1x' },
+    multipassPointsToNextTier: { label: 'To Next Tier', value: '2x to complete' },
+    multipassRewardContent: {
+      label: 'Reward',
+      amountFormatTWD: 'NT${{amount}} off',
+      amountFormatZAR: 'R{{amount}} off',
+      percentFormat: '{{percent}}% off',
+    },
   },
   // ===== Balance preview — only shown for stamp_card / reward_card / cashback_card =====
   // When Step 1 picks one of these 3 card types, PassCardPreviewHeader's right-side

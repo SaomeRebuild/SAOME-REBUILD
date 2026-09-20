@@ -122,6 +122,28 @@ export const CARD_FIELD_KEYS = [
   // i18n-driven for label, with value sourced at runtime.
   'couponRemainingCount',
   'couponDiscount',
+  // ── multipass: only multipass (2026-09-20) ────────────────────────
+  // MultiPass card Step 3 display-field extension:
+  //   multipassCompleted        — 累積已滿 / Cumulative Completed
+  //   multipassPointsToNextTier — 到下個等級還差 / Points to Next Tier
+  //   multipassRewardContent    — 獎勵內容 / Reward Content
+  // All three keys use the static demo pattern (matching availableRewards /
+  // totalStamps / visitCount). The `multipassRewardContent` value is
+  // store-driven for amount_off/percent_off (same as couponDiscount), but
+  // sourced from `multipassTiers[0].rewardType` + `rewardValue`.
+  //
+  // The multipass "Member Level" slot intentionally reuses the existing
+  // common `memberLevel` key (its `hideOnCardTypes: ['coupon_card']` does
+  // not exclude multipass) — PassCardPreviewBody handles the override via
+  // its `multipass + memberLevel` branch, mirroring the `membership_card`
+  // pattern (label = default `fieldPreview.memberLevel.label`, value =
+  // `firstMultipassTierName ?? ''`). No dedicated `multipassMemberLevel`
+  // key is needed; the dropdown option surfaces the same "會員等級" /
+  // "Member Level" entry for both `memberLevel` (any common usage) and
+  // multipass's first-tier-name value source.
+  'multipassCompleted',
+  'multipassPointsToNextTier',
+  'multipassRewardContent',
 ] as const;
 
 /**
@@ -243,4 +265,23 @@ export const CARD_FIELDS: readonly CardFieldDefinition[] = [
   //     store-driven `${couponDiscountPercent}%折扣` for percent_off.
   { key: 'couponRemainingCount',       group: 'coupon', labelKey: 'step3.fieldsSection.fields.couponRemainingCount' },
   { key: 'couponDiscount',             group: 'coupon', labelKey: 'step3.fieldsSection.fields.couponDiscount' },
+  // ── multipass: only multipass (2026-09-20) ──────────────────────────────
+  // Display-field extension for the MultiPass Card editor.
+  //   - multipassCompleted: 累積已滿 / Cumulative Completed — static demo
+  //     value ("1次") matching the availableRewards "2 次" pattern.
+  //   - multipassPointsToNextTier: 到下個等級還差 / Points to Next Tier —
+  //     static demo value ("2次集滿").
+  //   - multipassRewardContent: 獎勵內容 / Reward Content — store-driven via
+  //     `multipassTiers[0].rewardType` + `rewardValue`, using the same
+  //     amountFormatTWD / amountFormatZAR / percentFormat i18n pattern as
+  //     couponDiscount.
+  { key: 'multipassCompleted',         group: 'multipass', labelKey: 'step3.fieldsSection.fields.multipassCompleted' },
+  { key: 'multipassPointsToNextTier',  group: 'multipass', labelKey: 'step3.fieldsSection.fields.multipassPointsToNextTier' },
+  { key: 'multipassRewardContent',     group: 'multipass', labelKey: 'step3.fieldsSection.fields.multipassRewardContent' },
+  // The multipass "Member Level" slot is NOT a dedicated entry here — it
+  // reuses the common `memberLevel` field, whose `hideOnCardTypes:
+  // ['coupon_card']` does NOT exclude multipass. PassCardPreviewBody handles
+  // the override via its `multipass + memberLevel` branch (mirrors
+  // `membership_card` pattern: label = default memberLevel label, value =
+  // `firstMultipassTierName ?? ''`).
 ];
