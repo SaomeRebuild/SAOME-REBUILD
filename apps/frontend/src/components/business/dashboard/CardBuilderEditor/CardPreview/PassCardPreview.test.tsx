@@ -10,9 +10,19 @@ import { PassCardPreview } from './PassCardPreview';
 import { PassCardPreviewBack } from './PassCardPreviewBack';
 import { BALANCE_PREVIEW_AMOUNTS } from '@saome/shared/constants/balancePreview';
 
-// Mock: vi.fn(key => key) makes t() return the key as text
+// Mock: t() returns the key path but with the `fieldPreview.` prefix
+// stripped. The component's `resolveSlot` defensive guard converts any
+// returned string starting with `fieldPreview.` into an empty string
+// (defense against i18n key path misplacement), so a mock that returns
+// the raw key would always render as empty and break DOM-level
+// assertions. Stripping the prefix in the mock lets the rendered text
+// pass through the guard.
 vi.mock('react-i18next', () => {
-  return { useTranslation: vi.fn(() => ({ t: vi.fn((key: string) => key) })) };
+  return {
+    useTranslation: vi.fn(() => ({
+      t: vi.fn((key: string) => key.replace(/^fieldPreview\./, '')),
+    })),
+  };
 });
 
 describe('PassCardPreview', () => {
@@ -36,22 +46,16 @@ describe('PassCardPreview', () => {
   });
 
   it('renders card type label', () => {
-    render(<PassCardPreview name="測試卡片" cardType="multipass" />);
+    render(<PassCardPreview name="測試卡片" cardType="gift_card" />);
     // cardType is rendered directly without i18n lookup.
-    // Use a NON-balance-preview, NON-membership, NON-discount, NON-coupon
-    // card type here so the rounded-full pill is the rendered element:
-    // - For {stamp_card, reward_card, cashback_card} the pill is replaced
-    //   by the 2-line balance block (see 'balance preview for target card
-    //   types' below).
-    // - For membership_card (2026-09-13) the pill is replaced by the 2-line
-    //   member expiry preview.
-    // - For discount_card (2026-09-18) the pill is replaced by the 2-line
-    //   discount expiry preview.
-    // - For coupon_card (2026-09-19) the pill is replaced by the 2-line
-    //   coupon expiry preview.
+    // Use a NON-balance-preview, NON-membership, NON-discount, NON-coupon,
+    // NON-multipass card type here so the rounded-full pill is the
+    // rendered element. As of 2026-09-20, ONLY `gift_card` still renders
+    // the pill — all other cardTypes now render their respective preview
+    // blocks (balance / expiry / coupon-expiry).
     // See PassCardPreviewHeader.test.tsx for the dedicated tests of those
-    // expiry/balance blocks.
-    expect(screen.getAllByText('multipass').length).toBeGreaterThan(0);
+    // preview blocks.
+    expect(screen.getAllByText('gift_card').length).toBeGreaterThan(0);
   });
 
   it('has correct aspect ratio', () => {
@@ -129,22 +133,15 @@ describe('PassCardPreview', () => {
 
   it('applies textColor to card type badge', () => {
     const { container } = render(
-      <PassCardPreview name="測試卡片" cardType="multipass" textColor="#ff0000" />
+      <PassCardPreview name="測試卡片" cardType="gift_card" textColor="#ff0000" />
     );
     // The card type badge has class rounded-full (pill).
     // 2026-09-03: removed bg-neutral-200 → background is now transparent.
     // Identify the badge by its text content matching the cardType.
-    // Use multipass so the pill path is rendered:
-    // - stamp_card / reward_card / cashback_card replace the pill with the
-    //   2-line balance block (its own test below).
-    // - membership_card (2026-09-13) replaces the pill with the 2-line
-    //   member expiry preview.
-    // - discount_card (2026-09-18) replaces the pill with the 2-line
-    //   discount expiry preview.
-    // - coupon_card (2026-09-19) replaces the pill with the 2-line
-    //   coupon expiry preview.
+    // As of 2026-09-20, ONLY `gift_card` renders the pill — all other
+    // cardTypes render their respective preview blocks.
     const badge = Array.from(container.querySelectorAll('span.rounded-full')).find(
-      (el) => el.textContent === 'multipass',
+      (el) => el.textContent === 'gift_card',
     ) as HTMLElement;
     expect(badge).toBeInTheDocument();
     expect(badge.style.color).toBe('rgb(255, 0, 0)');
@@ -281,19 +278,21 @@ describe('PassCardPreview', () => {
   });
 
   // ─── PassCreator Label/Value regression (2026-09-04 v2 plan) ───
-  it('renders fieldPreview.memberLevel.label when leftField="memberLevel"', () => {
+  it('renders memberLevel.label when leftField="memberLevel"', () => {
     render(<PassCardPreview name="測試卡片" leftField="memberLevel" />);
     // Body renders 4 spans: left label + left value + right label + right value.
-    // leftField=memberLevel → left row reads "fieldPreview.memberLevel.label" / "fieldPreview.memberLevel.value".
-    expect(screen.getByText('fieldPreview.memberLevel.label')).toBeInTheDocument();
-    expect(screen.getByText('fieldPreview.memberLevel.value')).toBeInTheDocument();
+    // leftField=memberLevel → left row reads "memberLevel.label" / "memberLevel.value".
+    // (Mock t() strips the `fieldPreview.` prefix; the component's defensive
+    // guard does not strip the stripped form.)
+    expect(screen.getByText('memberLevel.label')).toBeInTheDocument();
+    expect(screen.getByText('memberLevel.value')).toBeInTheDocument();
   });
 
-  it('renders fieldPreview.birthday.value when rightField="birthday"', () => {
+  it('renders birthday.value when rightField="birthday"', () => {
     render(<PassCardPreview name="測試卡片" rightField="birthday" />);
-    // rightField=birthday → right row reads "fieldPreview.birthday.label" / "fieldPreview.birthday.value".
-    expect(screen.getByText('fieldPreview.birthday.label')).toBeInTheDocument();
-    expect(screen.getByText('fieldPreview.birthday.value')).toBeInTheDocument();
+    // rightField=birthday → right row reads "birthday.label" / "birthday.value".
+    expect(screen.getByText('birthday.label')).toBeInTheDocument();
+    expect(screen.getByText('birthday.value')).toBeInTheDocument();
   });
 
   // ─── Back side fills PhoneFrame height (2026-09-05) ───

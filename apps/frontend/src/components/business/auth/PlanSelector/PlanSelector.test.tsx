@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { I18nextProvider } from 'react-i18next';
-import i18n from '@/test/i18n';
+import { i18n } from '@/test/i18n';
 import { AuthProvider } from '@/hooks/useAuth';
 import { PlanSelector } from './PlanSelector';
 import type { PricingTier } from '@/components/pricing';
