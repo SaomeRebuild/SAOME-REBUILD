@@ -17,14 +17,26 @@ import { describe, expect, it, vi } from 'vitest';
 import { PassCardPreviewBody } from './PassCardPreviewBody';
 import { CARD_FIELD_KEYS } from '@saome/shared/constants/card-fields';
 
-// Mock: vi.fn(key => key) makes t() return the key as text. This lets the
-// i18n key path itself be asserted (e.g. 'fieldPreview.phone.label') in the
-// parametrized "all 9 fields × 2 slots" block. For the stamp interpolation
-// tests we additionally assert on the `t()` call arguments to verify that
-// `totalStamps.value` is called WITH `{ rows }` opts (the actual
-// interpolation is done by react-i18next at runtime, not by this mock).
+// Mock: t() returns the key path but with the `fieldPreview.` prefix
+// stripped. The component's `resolveSlot` defensive guard converts any
+// returned string starting with `fieldPreview.` into an empty string
+// (defense against i18n key path misplacement — see DEV/09-2026/0920
+// -step3-multipass-new-fields-i18n-fix.md), so a mock that returns the
+// raw key would always render as empty and break DOM-level assertions.
+// Stripping the prefix in the mock lets the rendered text pass through
+// the guard, while still preserving the structural contract that the
+// test asserts on (the suffix after `fieldPreview.`).
+//
+// For the stamp interpolation tests we additionally assert on the
+// `t()` call arguments to verify that `totalStamps.value` is called
+// WITH `{ rows }` opts (the actual interpolation is done by
+// react-i18next at runtime, not by this mock).
 vi.mock('react-i18next', () => {
-  return { useTranslation: vi.fn(() => ({ t: vi.fn((key: string) => key) })) };
+  return {
+    useTranslation: vi.fn(() => ({
+      t: vi.fn((key: string) => key.replace(/^fieldPreview\./, '')),
+    })),
+  };
 });
 
 describe('PassCardPreviewBody — placeholder behavior', () => {
@@ -37,30 +49,30 @@ describe('PassCardPreviewBody — placeholder behavior', () => {
 
   it('renders placeholder for left only when rightField is null', () => {
     render(<PassCardPreviewBody leftField="phone" />);
-    // Left = fieldPreview.phone.label, right = fieldLabelRight placeholder
-    expect(screen.getByText('fieldPreview.phone.label')).toBeInTheDocument();
+    // Mock strips `fieldPreview.` prefix; rendered text is the suffix.
+    expect(screen.getByText('phone.label')).toBeInTheDocument();
     expect(screen.getAllByText('fieldLabelRight').length).toBeGreaterThanOrEqual(1);
   });
 
   it('renders placeholder for right only when leftField is null', () => {
     render(<PassCardPreviewBody rightField="email" />);
     expect(screen.getAllByText('fieldLabelLeft').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText('fieldPreview.email.value')).toBeInTheDocument();
+    expect(screen.getByText('email.value')).toBeInTheDocument();
   });
 });
 
 describe('PassCardPreviewBody — demo label/value rendering', () => {
   it('renders phone label/value on left and email label/value on right', () => {
     render(<PassCardPreviewBody leftField="phone" rightField="email" />);
-    expect(screen.getByText('fieldPreview.phone.label')).toBeInTheDocument();
-    expect(screen.getByText('fieldPreview.phone.value')).toBeInTheDocument();
-    expect(screen.getByText('fieldPreview.email.label')).toBeInTheDocument();
-    expect(screen.getByText('fieldPreview.email.value')).toBeInTheDocument();
+    expect(screen.getByText('phone.label')).toBeInTheDocument();
+    expect(screen.getByText('phone.value')).toBeInTheDocument();
+    expect(screen.getByText('email.label')).toBeInTheDocument();
+    expect(screen.getByText('email.value')).toBeInTheDocument();
   });
 
   it('renders memberLevel value (Gold) when leftField is memberLevel', () => {
     render(<PassCardPreviewBody leftField="memberLevel" />);
-    expect(screen.getByText('fieldPreview.memberLevel.value')).toBeInTheDocument();
+    expect(screen.getByText('memberLevel.value')).toBeInTheDocument();
   });
 });
 
@@ -115,17 +127,17 @@ describe('PassCardPreviewBody — all 6 fields × 2 slots', () => {
       key !== 'multipassRewardContent',
   );
 
-  it.each(I18N_SOURCED_FIELD_KEYS)('renders leftField="%s" → fieldPreview.%s.label and .value', (key) => {
+  it.each(I18N_SOURCED_FIELD_KEYS)('renders leftField="%s" → ${key}.label and .value', (key) => {
     const { unmount } = render(<PassCardPreviewBody leftField={key} />);
-    expect(screen.getByText(`fieldPreview.${key}.label`)).toBeInTheDocument();
-    expect(screen.getByText(`fieldPreview.${key}.value`)).toBeInTheDocument();
+    expect(screen.getByText(`${key}.label`)).toBeInTheDocument();
+    expect(screen.getByText(`${key}.value`)).toBeInTheDocument();
     unmount();
   });
 
-  it.each(I18N_SOURCED_FIELD_KEYS)('renders rightField="%s" → fieldPreview.%s.label and .value', (key) => {
+  it.each(I18N_SOURCED_FIELD_KEYS)('renders rightField="%s" → ${key}.label and .value', (key) => {
     const { unmount } = render(<PassCardPreviewBody rightField={key} />);
-    expect(screen.getByText(`fieldPreview.${key}.label`)).toBeInTheDocument();
-    expect(screen.getByText(`fieldPreview.${key}.value`)).toBeInTheDocument();
+    expect(screen.getByText(`${key}.label`)).toBeInTheDocument();
+    expect(screen.getByText(`${key}.value`)).toBeInTheDocument();
     unmount();
   });
 });
@@ -159,8 +171,8 @@ describe('PassCardPreviewBody — compact mode', () => {
       <PassCardPreviewBody leftField="phone" rightField="email" compact />
     );
     const valueSpans = Array.from(container.querySelectorAll('span')).filter(
-      (el) => el.textContent === 'fieldPreview.phone.value'
-        || el.textContent === 'fieldPreview.email.value',
+      (el) => el.textContent === 'phone.value'
+        || el.textContent === 'email.value',
     );
     expect(valueSpans.length).toBe(2);
     valueSpans.forEach((span) => {
@@ -173,8 +185,8 @@ describe('PassCardPreviewBody — compact mode', () => {
       <PassCardPreviewBody leftField="phone" rightField="email" />
     );
     const valueSpans = Array.from(container.querySelectorAll('span')).filter(
-      (el) => el.textContent === 'fieldPreview.phone.value'
-        || el.textContent === 'fieldPreview.email.value',
+      (el) => el.textContent === 'phone.value'
+        || el.textContent === 'email.value',
     );
     valueSpans.forEach((span) => {
       expect(span.className).not.toContain('truncate');
@@ -188,10 +200,10 @@ describe('PassCardPreviewBody — PassCreator typography hierarchy', () => {
       <PassCardPreviewBody leftField="phone" rightField="email" />
     );
     const labelSpan = Array.from(container.querySelectorAll('span')).find(
-      (el) => el.textContent === 'fieldPreview.phone.label',
+      (el) => el.textContent === 'phone.label',
     ) as HTMLElement;
     const valueSpan = Array.from(container.querySelectorAll('span')).find(
-      (el) => el.textContent === 'fieldPreview.phone.value',
+      (el) => el.textContent === 'phone.value',
     ) as HTMLElement;
     expect(labelSpan).toBeInTheDocument();
     expect(valueSpan).toBeInTheDocument();
@@ -205,10 +217,10 @@ describe('PassCardPreviewBody — PassCreator typography hierarchy', () => {
       <PassCardPreviewBody leftField="phone" rightField="email" compact />
     );
     const labelSpan = Array.from(container.querySelectorAll('span')).find(
-      (el) => el.textContent === 'fieldPreview.phone.label',
+      (el) => el.textContent === 'phone.label',
     ) as HTMLElement;
     const valueSpan = Array.from(container.querySelectorAll('span')).find(
-      (el) => el.textContent === 'fieldPreview.phone.value',
+      (el) => el.textContent === 'phone.value',
     ) as HTMLElement;
     expect(labelSpan.className).toContain('text-[8px]');
     expect(valueSpan.className).toContain('text-[11px]');
@@ -257,10 +269,10 @@ describe('PassCardPreviewBody — label < value font-size invariant', () => {
       <PassCardPreviewBody leftField="phone" rightField="email" />
     );
     const labelSpan = Array.from(container.querySelectorAll('span')).find(
-      (el) => el.textContent === 'fieldPreview.phone.label',
+      (el) => el.textContent === 'phone.label',
     ) as HTMLElement;
     const valueSpan = Array.from(container.querySelectorAll('span')).find(
-      (el) => el.textContent === 'fieldPreview.phone.value',
+      (el) => el.textContent === 'phone.value',
     ) as HTMLElement;
     const labelPx = getFontSizePxFromClass(labelSpan);
     const valuePx = getFontSizePxFromClass(valueSpan);
@@ -273,10 +285,10 @@ describe('PassCardPreviewBody — label < value font-size invariant', () => {
       <PassCardPreviewBody leftField="phone" rightField="email" compact />
     );
     const labelSpan = Array.from(container.querySelectorAll('span')).find(
-      (el) => el.textContent === 'fieldPreview.phone.label',
+      (el) => el.textContent === 'phone.label',
     ) as HTMLElement;
     const valueSpan = Array.from(container.querySelectorAll('span')).find(
-      (el) => el.textContent === 'fieldPreview.phone.value',
+      (el) => el.textContent === 'phone.value',
     ) as HTMLElement;
     const labelPx = getFontSizePxFromClass(labelSpan);
     const valuePx = getFontSizePxFromClass(valueSpan);
@@ -338,10 +350,10 @@ describe('PassCardPreviewBody — column layout (left/right side-by-side, L&V ve
       <PassCardPreviewBody leftField="phone" rightField="email" />,
     );
     // 找出兩欄：透過 textContent 鎖定 column（column 內含 phone.label / phone.value / email.label / email.value）
-    const phoneLabel = screen.getByText('fieldPreview.phone.label');
-    const phoneValue = screen.getByText('fieldPreview.phone.value');
-    const emailLabel = screen.getByText('fieldPreview.email.label');
-    const emailValue = screen.getByText('fieldPreview.email.value');
+    const phoneLabel = screen.getByText('phone.label');
+    const phoneValue = screen.getByText('phone.value');
+    const emailLabel = screen.getByText('email.label');
+    const emailValue = screen.getByText('email.value');
 
     // phone 的 label 和 value 必須在同一個 flex-col parent（= 左欄）
     const phoneColumn = phoneLabel.parentElement;
@@ -1095,7 +1107,7 @@ describe('PassCardPreviewBody — cashback-only display fields (2026-09-12, refi
     const { unmount } = render(
       <PassCardPreviewBody leftField="pointsToNextTierCashback" />,
     );
-    expect(screen.getByText('fieldPreview.pointsToNextTierCashback.label')).toBeInTheDocument();
+    expect(screen.getByText('pointsToNextTierCashback.label')).toBeInTheDocument();
     expect(screen.getByText('562元')).toBeInTheDocument();
     unmount();
   });
@@ -1104,7 +1116,7 @@ describe('PassCardPreviewBody — cashback-only display fields (2026-09-12, refi
     const { unmount } = render(
       <PassCardPreviewBody rightField="accumulatedSpendCashback" />,
     );
-    expect(screen.getByText('fieldPreview.accumulatedSpendCashback.label')).toBeInTheDocument();
+    expect(screen.getByText('accumulatedSpendCashback.label')).toBeInTheDocument();
     expect(screen.getByText('3301元')).toBeInTheDocument();
     unmount();
   });
@@ -1186,9 +1198,10 @@ describe('PassCardPreviewBody — ZAR pollution regression (2026-09-13)', () => 
     useCardBuilderStore.setState({ currency: 'ZAR' });
 
     const { unmount } = render(<PassCardPreviewBody leftField="phone" />);
-    // Mock t() returns key verbatim. Old behavior: "R8869XXXXXXXX" (regex
-    // extracted digits + prepended R). New behavior: the raw i18n key.
-    expect(screen.getByText('fieldPreview.phone.value')).toBeInTheDocument();
+    // Mock t() strips `fieldPreview.` prefix; rendered text omits it.
+    // Old behavior: "R8869XXXXXXXX" (regex extracted digits + prepended R).
+    // New behavior: the raw i18n key (sans prefix).
+    expect(screen.getByText('phone.value')).toBeInTheDocument();
     expect(screen.queryByText(/^R\d/)).toBeNull();
     unmount();
   });
@@ -1197,7 +1210,7 @@ describe('PassCardPreviewBody — ZAR pollution regression (2026-09-13)', () => 
     useCardBuilderStore.setState({ currency: 'ZAR' });
 
     const { unmount } = render(<PassCardPreviewBody leftField="birthday" />);
-    expect(screen.getByText('fieldPreview.birthday.value')).toBeInTheDocument();
+    expect(screen.getByText('birthday.value')).toBeInTheDocument();
     expect(screen.queryByText(/^R\d/)).toBeNull();
     unmount();
   });
@@ -1206,7 +1219,7 @@ describe('PassCardPreviewBody — ZAR pollution regression (2026-09-13)', () => 
     useCardBuilderStore.setState({ currency: 'ZAR' });
 
     const { unmount } = render(<PassCardPreviewBody leftField="visitCount" />);
-    expect(screen.getByText('fieldPreview.visitCount.value')).toBeInTheDocument();
+    expect(screen.getByText('visitCount.value')).toBeInTheDocument();
     expect(screen.queryByText(/^R\d/)).toBeNull();
     unmount();
   });
@@ -1231,7 +1244,7 @@ describe('PassCardPreviewBody — ZAR pollution regression (2026-09-13)', () => 
     useCardBuilderStore.setState({ currency: 'ZAR' });
 
     const { unmount } = render(<PassCardPreviewBody leftField="pointsToNextTier" />);
-    expect(screen.getByText('fieldPreview.pointsToNextTier.value')).toBeInTheDocument();
+    expect(screen.getByText('pointsToNextTier.value')).toBeInTheDocument();
     expect(screen.queryByText(/^R\d/)).toBeNull();
     unmount();
   });
@@ -1240,7 +1253,7 @@ describe('PassCardPreviewBody — ZAR pollution regression (2026-09-13)', () => 
     useCardBuilderStore.setState({ currency: 'ZAR' });
 
     const { unmount } = render(<PassCardPreviewBody leftField="stampsRemaining" />);
-    expect(screen.getByText('fieldPreview.stampsRemaining.value')).toBeInTheDocument();
+    expect(screen.getByText('stampsRemaining.value')).toBeInTheDocument();
     expect(screen.queryByText(/^R\d/)).toBeNull();
     unmount();
   });
@@ -1250,7 +1263,7 @@ describe('PassCardPreviewBody — ZAR pollution regression (2026-09-13)', () => 
     // the value is the raw i18n key. This pins that the TWD path is
     // unchanged.
     const { unmount } = render(<PassCardPreviewBody leftField="phone" />);
-    expect(screen.getByText('fieldPreview.phone.value')).toBeInTheDocument();
+    expect(screen.getByText('phone.value')).toBeInTheDocument();
     expect(screen.queryByText(/^R\d/)).toBeNull();
     unmount();
   });
@@ -1666,7 +1679,7 @@ describe('PassCardPreviewBody — discount-only amount fields (2026-09-18)', () 
     const { unmount } = render(
       <PassCardPreviewBody leftField="pointsToNextTierDiscount" />,
     );
-    expect(screen.getByText('fieldPreview.pointsToNextTierDiscount.label')).toBeInTheDocument();
+    expect(screen.getByText('pointsToNextTierDiscount.label')).toBeInTheDocument();
     expect(screen.getByText('234元')).toBeInTheDocument();
     unmount();
   });
@@ -1676,7 +1689,7 @@ describe('PassCardPreviewBody — discount-only amount fields (2026-09-18)', () 
     const { unmount } = render(
       <PassCardPreviewBody rightField="accumulatedSpendDiscount" />,
     );
-    expect(screen.getByText('fieldPreview.accumulatedSpendDiscount.label')).toBeInTheDocument();
+    expect(screen.getByText('accumulatedSpendDiscount.label')).toBeInTheDocument();
     expect(screen.getByText('556元')).toBeInTheDocument();
     unmount();
   });
@@ -1744,6 +1757,9 @@ describe('PassCardPreviewBody — discountTierBracket store-derived value (2026-
   it('discountTierBracket renders label via i18n + value via discountTiers[0].discountPercent (default 1%)', () => {
     // Store seeds a default tier with `discountPercent = 1`, so the
     // preview defaults to "1%" before the user has edited any tier.
+    // NOTE: this test uses `mockUseTranslationOnce` (spy), which returns
+    // the full key verbatim — the `fieldPreview.` prefix-stripping in the
+    // top-level mock does NOT apply here.
     const tSpy = buildTSpy();
     mockUseTranslationOnce(tSpy);
     render(<PassCardPreviewBody leftField="discountTierBracket" />);
@@ -1765,7 +1781,7 @@ describe('PassCardPreviewBody — discountTierBracket store-derived value (2026-
       ],
     });
     render(<PassCardPreviewBody rightField="discountTierBracket" />);
-    expect(screen.getByText('fieldPreview.discountTierBracket.label')).toBeInTheDocument();
+    expect(screen.getByText('discountTierBracket.label')).toBeInTheDocument();
     expect(screen.getByText('10%')).toBeInTheDocument();
   });
 
@@ -1965,8 +1981,8 @@ describe('PassCardPreviewBody — coupon-only fields (2026-09-19, store-driven d
     render(
       <PassCardPreviewBody cardType="coupon_card" rightField="couponDiscount" />,
     );
-    // Label resolves to "折扣優惠" via default mock.
-    expect(screen.getByText('fieldPreview.couponDiscount.label')).toBeInTheDocument();
+    // Label resolves to "折扣優惠" via default mock (mock strips `fieldPreview.` prefix).
+    expect(screen.getByText('couponDiscount.label')).toBeInTheDocument();
     // The hardcoded "10元折扣" MUST NOT appear (no placeholder text).
     expect(screen.queryByText('10元折扣')).toBeNull();
     // The value span should be empty.

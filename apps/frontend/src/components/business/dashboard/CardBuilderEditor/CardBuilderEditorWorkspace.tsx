@@ -931,8 +931,9 @@ export function CardBuilderEditorWorkspace({
               // 只有 rewardType === 'percent_off' 才有語意;amount_off / null 時仍
               // 序列化出去 (schema optional 接受 null/undefined),store 持有值
               // (使用者切換類型時 store setter 會清空,符合 silent-clear invariant).
-              // null = 已清空 / undefined = 從未填,backend zod 兩者都接受.
-              maxDiscountAmount: tier.maxDiscountAmount,
+              // null = 已清空 / undefined = 從未填 — mapper 把 undefined fallback 成 null,
+              // 對齊 cashback / discount tier 的「未填 = null」contract,跟 backend zod 兩者都接受.
+              maxDiscountAmount: tier.maxDiscountAmount ?? null,
               // PR-5 (2026-09-20): 4 個 per-tier 門檻欄位也需序列化出去
               // (null 表示該欄位未填 — store loadSettings 會保衛 defensive parse).
               // 對齊 store.sanitizeMultipassTiers 行為 — null 在

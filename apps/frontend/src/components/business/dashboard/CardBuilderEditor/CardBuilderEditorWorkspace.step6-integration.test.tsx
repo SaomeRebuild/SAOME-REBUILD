@@ -1210,16 +1210,37 @@ describe('CardBuilderEditorWorkspace — Step 6 (2026-09-07 stamp card logic int
       stampsPerSpendAmount: null,
       stampsPerSpendStamps: null,
       earningMode: null,
-      hasExpiry: false,
-      membershipTiers: [],
+      // 2026-09-09 mixed refactor: reward / cashback tiers + membership
+      // fields are always sent (空 array / false / empty for non-matching
+      // card types). Mirrors cashback_card / reward_card serializer contract.
       rewardTiers: [],
       cashbackTiers: [],
+      hasExpiry: false,
+      membershipTiers: [],
+      // 2026-09-14 free-card membership fields — not applicable for multipass_card.
+      membershipExpiryMode: undefined,
+      membershipCustomExpiryDays: undefined,
+      membershipSpecificExpiryDate: undefined,
+      // 2026-09-18: Discount card fields — not applicable for multipass_card.
+      discountTiers: undefined,
+      discountCustomExpiryDays: undefined,
+      discountSpecificExpiryDate: undefined,
+      // 2026-09-19: Coupon card fields — not applicable for multipass_card.
+      // couponDiscountType is always sent (default 'amount_off') per
+      // serializer contract; the value fields are gated by
+      // cardType === 'coupon_card'.
+      couponDiscountType: 'amount_off',
+      couponDiscountAmount: undefined,
+      couponDiscountPercent: undefined,
+      couponIssueCount: undefined,
       // 2026-09-19 PR-3: Multipass tiers sorted ASC by stampsNeeded
       // (0 = welcome gift first); id stripped.
       // 2026-09-20 PR-5: 每個 tier 加了 4 個 per-tier 門檻欄位
       // (perVisitCount / perVisitStamps / perSpendAmount / perSpendStamps,
       // 全部 null 因為 card-wide multipassAccrualMode 也是 null).
       // 2026-09-20 PR-6: maxDiscountAmount 欄位 (percent_off 時有意義).
+      // 對齊 cashback / discount tier 的「未填 = null」contract:
+      // store 沒給值時 mapper fallback 到 null (不是 undefined).
       multipassTiers: [
         { name: '歡迎禮', stampsNeeded: 0, rewardType: 'amount_off', rewardValue: 10, maxDiscountAmount: null, perVisitCount: null, perVisitStamps: null, perSpendAmount: null, perSpendStamps: null },
         { name: '銀卡', stampsNeeded: 5, rewardType: 'percent_off', rewardValue: 5, maxDiscountAmount: null, perVisitCount: null, perVisitStamps: null, perSpendAmount: null, perSpendStamps: null },

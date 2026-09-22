@@ -10,6 +10,7 @@ coverage/
 test-results/
 playwright-report/
 test-outputs/
+.vitest-result.json
 
 # Lockfiles
 # Root package-lock.json IS committed (required for CI `npm ci` at workspace root).
