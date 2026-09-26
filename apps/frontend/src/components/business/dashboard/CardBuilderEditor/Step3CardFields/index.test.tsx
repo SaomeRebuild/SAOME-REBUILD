@@ -672,6 +672,22 @@ describe('filterCARD_FIELDS_BY_CARD_TYPE — coupon_card group isolation', () =>
     expect(discountFields.map((f) => f.key)).toContain('memberLevel');
   });
 
+  it('hides memberLevel for gift_card via hideOnCardTypes (gift cards have no tier system, 2026-09-27)', () => {
+    // 2026-09-27: memberLevel's hideOnCardTypes grew from ['coupon_card']
+    // to ['coupon_card', 'gift_card']. Gift cards are a prepaid model
+    // (X 元 = Y 點) with no tier hierarchy — the "會員等級" option
+    // would be confusing.
+    const fields = filterCARD_FIELDS_BY_CARD_TYPE('gift_card');
+    const keys = fields.map((f) => f.key);
+    expect(keys).not.toContain('memberLevel');
+
+    // Sanity baseline: memberLevel still appears for stamp_card /
+    // reward_card / discount_card (which are NOT in hideOnCardTypes).
+    expect(filterCARD_FIELDS_BY_CARD_TYPE('stamp_card').map((f) => f.key)).toContain('memberLevel');
+    expect(filterCARD_FIELDS_BY_CARD_TYPE('reward_card').map((f) => f.key)).toContain('memberLevel');
+    expect(filterCARD_FIELDS_BY_CARD_TYPE('discount_card').map((f) => f.key)).toContain('memberLevel');
+  });
+
   it('coupon-only fields do NOT appear for any other card type', () => {
     const otherCardTypes = [
       'stamp_card',

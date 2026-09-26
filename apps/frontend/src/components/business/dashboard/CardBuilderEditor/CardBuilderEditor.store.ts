@@ -55,6 +55,8 @@ import {
   MULTIPASS_STAMPS_PER_VISIT_MIN,
   MULTIPASS_STAMPS_PER_SPEND_MIN,
   type CouponDiscountType,
+  GIFT_CARD_DEFAULT_AMOUNT,
+  GIFT_CARD_DEFAULT_POINTS,
   type AccrualMode,
   type RewardType,
   type EarningMode,
@@ -814,6 +816,57 @@ interface CardBuilderState {
   /** multipass 級距陣列（最多 5 組). Always >= 1 row (UI 層 auto-add 保護). */
   multipassTiers: Array<MultipassTierShape & { id: string }>;
 
+  // ===== Step 6 — Gift Card 卡邏輯 (2026-09-27, gift_card only) =====
+  // UI dispatcher (`Step6CardLogic`) conditionally renders gift-card editor
+  // when `cardType === 'gift_card'`. Simplest of the Step 6 sub-modules
+  // structurally: single flat rule (X 元 = Y 點), no tier list, no earning
+  // mode, no card-level expiry. Step 2 hides PassValidDaysField +
+  // ExpiryDateField for gift_card (matching membership_card / discount_card
+  // / multipass behavior — gift cards have no time concept).
+  //
+  // Default 1:1 (1 元 = 1 點) per user decision 2026-09-27. The two
+  // fields together form the exchange rate. Both are positive integers
+  // (store setter enforces > 0 + integer; backend zod is the authoritative
+  // gate on save per Rule 032 § 1).
+  //
+  // Differs from coupon_card (2026-09-19): coupon card is a single discount
+  // value + issue count, gift card is an exchange rate (amount ↔ points).
+  //
+  // Mirrors `shared/templateSettingsSchema.giftCardAmount / giftCardPoints`
+  // (Rule 019 § 4.1).
+  //
+  // Data source: passed through `templateSettingsSchema` as JSONB keys
+  // `giftCardAmount` / `giftCardPoints`. Backend mirror lives in
+  // apps/backend/src/modules/cards/schemas/request.ts and
+  // apps/backend/src/modules/cards/db/templates.ts.
+  //
+  // Guards:
+  //   - `setGiftCardAmount` rejects ≤ 0; coerces to integer (mirrors
+  //     `setRewardValue` pattern). null is NOT allowed (defaults to 1
+  //     instead — gift card must always have a defined rate to be valid).
+  //   - `setGiftCardPoints` rejects ≤ 0; coerces to integer. Same
+  //     null-handling as amount.
+  /**
+   * 禮品卡兌換比率：消費金額（顧客付多少元）. 整數 ≥ 1. 預設 1.
+   * Mirrors `shared/templateSettingsSchema.giftCardAmount`.
+   */
+  giftCardAmount: number;
+  /**
+   * 禮品卡兌換比率：獲得點數（顧客獲得多少點）. 整數 ≥ 1. 預設 1.
+   * Mirrors `shared/templateSettingsSchema.giftCardPoints`.
+   */
+  giftCardPoints: number;
+  /**
+   * 設定禮品卡兌換比率的消費金額. 整數 ≥ 1. 拒絕 ≤ 0、非整數、NaN.
+   * 預設 1.
+   */
+  setGiftCardAmount: (amount: number) => void;
+  /**
+   * 設定禮品卡兌換比率的獲得點數. 整數 ≥ 1. 拒絕 ≤ 0、非整數、NaN.
+   * 預設 1.
+   */
+  setGiftCardPoints: (points: number) => void;
+
   /** 新增一組空白 multipass 級距. 在 MAX_MULTIPASS_TIERS=5 時為 no-op. */
   addMultipassTier: () => void;
   /**
@@ -1489,6 +1542,10 @@ const initialState = {
       perSpendStamps: null,
     },
   ],
+  // ===== Step 6 — Gift Card 卡初始狀態 (2026-09-27, gift_card only) =====
+  // 預設兌換比率 1:1 (1 元 = 1 點). per user decision 2026-09-27.
+  giftCardAmount: GIFT_CARD_DEFAULT_AMOUNT,
+  giftCardPoints: GIFT_CARD_DEFAULT_POINTS,
 };
 
 /**
@@ -2258,6 +2315,34 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
       if (mode === state.multipassAccrualMode) return {};
       return { multipassAccrualMode: mode };
     }),
+
+  // ===== Step 6 — Gift Card 卡 setters (2026-09-27) =====
+  /**
+   * 設定禮品卡兌換比率的消費金額.
+   * 守門:
+   *   - 拒絕 ≤ 0、NaN、非有限數字、非整數（與 setRewardValue 同源邏輯）
+   *   - 強制 Math.round() 確保存進 store 的值是整數
+   *   - 與 setRewardValue 差異: 不支援 null（禮品卡必須永遠有定義的比率，
+   *     否則 isStep6Valid 會擋下一步;預設 1 已經在 initialState 設好）
+   */
+  setGiftCardAmount: (amount) => {
+    if (typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0) {
+      return;
+    }
+    if (!Number.isInteger(amount)) return;
+    set({ giftCardAmount: amount });
+  },
+  /**
+   * 設定禮品卡兌換比率的獲得點數.
+   * 守門: 同 setGiftCardAmount.
+   */
+  setGiftCardPoints: (points) => {
+    if (typeof points !== 'number' || !Number.isFinite(points) || points <= 0) {
+      return;
+    }
+    if (!Number.isInteger(points)) return;
+    set({ giftCardPoints: points });
+  },
 
   /**
    * 新增一組空白 multipass 級距. 在 MAX_MULTIPASS_TIERS=5 時為 no-op.
@@ -3387,6 +3472,34 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
             return raw;
           }
           return state.multipassAccrualMode;
+        })(),
+        // ===== Step 6 — Gift Card 卡 loadSettings (2026-09-27) =====
+        // giftCardAmount: 整數 ≥ 1. 預設 1. Defensive coerce —
+        // corrupted DB rows with non-positive / non-integer fall back to
+        // the default 1 (mirrors how the other Step 6 fields handle
+        // bad data without crashing the editor).
+        giftCardAmount: (() => {
+          const raw = resolved?.giftCardAmount;
+          if (
+            typeof raw === 'number' &&
+            Number.isInteger(raw) &&
+            raw >= 1
+          ) {
+            return raw;
+          }
+          return state.giftCardAmount;
+        })(),
+        // giftCardPoints: 整數 ≥ 1. 預設 1. 同上.
+        giftCardPoints: (() => {
+          const raw = resolved?.giftCardPoints;
+          if (
+            typeof raw === 'number' &&
+            Number.isInteger(raw) &&
+            raw >= 1
+          ) {
+            return raw;
+          }
+          return state.giftCardPoints;
         })(),
       };
     });

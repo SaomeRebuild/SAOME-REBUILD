@@ -47,6 +47,7 @@ const aliasArray: { find: string | RegExp; replacement: string }[] = [
   { find: '@saome/shared/constants/cashbackPreviewAmounts', replacement: resolve(sharedRoot, 'constants/cashbackPreviewAmounts.ts') },
   { find: '@saome/shared/constants/discountPreviewAmounts', replacement: resolve(sharedRoot, 'constants/discountPreviewAmounts.ts') },
   { find: '@saome/shared/constants/couponPreviewAmounts', replacement: resolve(sharedRoot, 'constants/couponPreviewAmounts.ts') },
+  { find: '@saome/shared/constants/gift-card', replacement: resolve(sharedRoot, 'constants/gift-card.ts') },
   { find: '@saome/shared/constants/stamp-card', replacement: resolve(sharedRoot, 'constants/stamp-card.ts') },
   { find: '@saome/shared/constants/reward-card', replacement: resolve(sharedRoot, 'constants/reward-card.ts') },
   { find: '@saome/shared/constants/cashback-card', replacement: resolve(sharedRoot, 'constants/cashback-card.ts') },

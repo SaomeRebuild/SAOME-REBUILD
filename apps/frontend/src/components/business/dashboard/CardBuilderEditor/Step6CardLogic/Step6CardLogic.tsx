@@ -11,7 +11,9 @@
  *              `cashback_card` (CashbackCardLogic),
  *              `membership_card` (MembershipCardLogic, 2026-09-13),
  *              `discount_card` (DiscountCardLogic, 2026-09-18),
- *              `coupon_card` (CouponCardLogic, 2026-09-19).
+ *              `coupon_card` (CouponCardLogic, 2026-09-19),
+ *              `multipass` (MultipassCardLogic, 2026-09-19 PR-3),
+ *              `gift_card` (GiftCardLogic, 2026-09-27).
  * All other card types render a ComingSoon placeholder.
  *
  * Architecture (Rule 000 § A.1 L2 結構):
@@ -31,6 +33,9 @@
  *                       multipass cards have a fundamentally different tier
  *                       structure (5 tiers × {name + stampsNeeded + reward
  *                       type + reward value} instead of a single flat rule).
+ *   - 2026-09-27: Eighth sub-module = GiftCardLogic (禮品卡).
+ *                  Prepaid model — single exchange rate (X 元 = Y 點),
+ *                  no tier list, no accrual mode, no expiry.
  */
 
 import { useTranslation } from 'react-i18next';
@@ -42,6 +47,7 @@ import { DiscountCardLogic } from './DiscountCardLogic';
 import { MembershipCardLogic } from './MembershipCardLogic';
 import { CouponCardLogic } from './CouponCardLogic';
 import { MultipassCardLogic } from './MultipassCardLogic';
+import { GiftCardLogic } from './GiftCardLogic';
 import { Step6CardLogicComingSoon } from './Step6CardLogicComingSoon';
 import type { Step6CardLogicProps } from './Step6CardLogic.types';
 
@@ -56,6 +62,7 @@ import type { Step6CardLogicProps } from './Step6CardLogic.types';
  * cardType === 'discount_card'            → DiscountCardLogic (折扣卡)
  * cardType === 'membership_card'          → MembershipCardLogic (會員卡)
  * cardType === 'coupon_card'              → CouponCardLogic (折價券, 2026-09-19)
+ * cardType === 'gift_card'                → GiftCardLogic (禮品卡, 2026-09-27)
  * Other card types → ComingSoon (not yet implemented)
  */
 export function Step6CardLogic({ showValidation }: Step6CardLogicProps) {
@@ -195,6 +202,22 @@ export function Step6CardLogic({ showValidation }: Step6CardLogicProps) {
           <p className="text-xs text-muted-foreground">{t('step6.coupon.introHint')}</p>
         </div>
         <CouponCardLogic showValidation={showValidation} />
+      </div>
+    );
+  }
+
+  // gift_card → 禮品卡邏輯 editor (2026-09-27). Prepaid model — single
+  // exchange rate (X 元 = Y 點). Hero intro uses gift-card-specific copy
+  // (mirrors the coupon_card branch shape).
+  if (cardType === 'gift_card') {
+    return (
+      <div className="flex min-w-0 flex-col gap-6">
+        {/* Step 6 hero intro — gift-card-specific copy */}
+        <div className="flex flex-col gap-1.5 rounded-lg border border-dashed border-border bg-muted/30 p-4">
+          <p className="text-sm font-medium text-foreground">{t('step6.gift.intro')}</p>
+          <p className="text-xs text-muted-foreground">{t('step6.gift.introHint')}</p>
+        </div>
+        <GiftCardLogic showValidation={showValidation} />
       </div>
     );
   }

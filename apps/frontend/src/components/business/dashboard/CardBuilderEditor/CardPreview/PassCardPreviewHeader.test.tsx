@@ -33,10 +33,13 @@ import {
   DISCOUNT_EXPIRY_PREVIEW_CARD_TYPES,
   shouldShowCouponExpiryPreview,
   COUPON_EXPIRY_PREVIEW_CARD_TYPES,
+  shouldShowGiftPointsPreview,
+  GIFT_POINTS_PREVIEW_CARD_TYPES,
   formatExpiryDate,
 } from './PassCardPreviewHeader';
 import { useCardBuilderStore } from '../CardBuilderEditor.store';
 import { BALANCE_PREVIEW_AMOUNTS } from '@saome/shared/constants/balancePreview';
+import { GIFT_POINTS_PREVIEW_VALUE } from '@saome/shared/constants/gift-card';
 
 // Mock i18n — vi.fn(key => key) makes t() return the key as text.
 // This lets us assert against key paths directly without depending on the
@@ -56,32 +59,23 @@ beforeEach(() => {
 });
 
 // ─── Default pill behavior (non-target card types) ────────────────────────
-// Non-target card types keep the original rounded-full pill. The
-// COUPON_EXPIRY_PREVIEW_CARD_TYPES addition (2026-09-19) means the
-// "non-target" set narrows further: now ONLY `multipass` and `gift_card`
-// still render the pill. `coupon_card` now renders the coupon-expiry
-// block instead (its own dedicated set), and the previous removal of
-// `membership_card` to the member-expiry set still stands.
-//   - 2026-09-19: coupon_card moved OUT of this set (now renders the
-//     coupon-expiry preview block, label + value 2-line).
-//     The remaining pill card types: gift_card.
-//   - 2026-09-20: multipass moved OUT of this set (now renders the
-//     balance preview block, label + value 2-line).
-//   - 2026-09-13: membership_card was REMOVED from this set because it
-//     now renders the member-expiry preview block.
+// Non-target card types keep the original rounded-full pill. As of
+// 2026-09-27, EVERY cardType has a dedicated 2-line preview block:
+//   - stamp_card / reward_card / cashback_card / multipass → balance
+//   - membership_card → member expiry
+//   - discount_card → discount expiry
+//   - coupon_card → coupon expiry
+//   - gift_card → gift points preview (hardcoded value)
+// That leaves ONLY `cardType={null|undefined}` to render the i18n
+// fallback pill (defaultCardType key).
+//   - 2026-09-27: gift_card moved OUT of this set (now renders the
+//     gift-points preview block, label "點數" + hardcoded "2363點").
+//   - 2026-09-20: multipass moved OUT of this set (balance preview).
+//   - 2026-09-19: coupon_card moved OUT of this set (coupon-expiry).
+//   - 2026-09-13: membership_card moved OUT of this set (member-expiry).
 //   - 2026-09-08: stamp/reward/cashback were excluded when the balance
 //     preview was added.
 describe('PassCardPreviewHeader — default pill for non-target card types', () => {
-  it.each(['gift_card'] as const)(
-    'cardType="%s" renders rounded-full pill with raw cardType text',
-    (cardType) => {
-      const { container } = render(<PassCardPreviewHeader cardType={cardType} />);
-      const pill = container.querySelector('span.rounded-full');
-      expect(pill).toBeInTheDocument();
-      expect(pill?.textContent).toBe(cardType);
-    },
-  );
-
   it('cardType=null renders the i18n fallback (defaultCardType key)', () => {
     const { container } = render(<PassCardPreviewHeader cardType={null} />);
     const pill = container.querySelector('span.rounded-full');
@@ -838,5 +832,59 @@ describe('PassCardPreviewHeader — coupon expiry preview is coupon_card-only (r
     ).toBeNull();
     // The discount expiry preview renders for discount_card instead.
     expect(screen.getByText('discountExpiry.label')).toBeInTheDocument();
+  });
+});
+
+// ─── Gift points preview for gift_card (2026-09-27) ───────────────────────
+// 2026-09-27: gift_card now renders a 2-line "點數 / 2363點" block instead
+// of the rounded-full pill. The value is hardcoded (GIFT_POINTS_PREVIEW_VALUE
+// from shared/constants/gift-card.ts), the label is locale-driven
+// ("點數" / "Points" — i18n key "giftPointsPreview.label").
+//
+// Scenarios covered:
+//   1. Renders the 2-line block (no pill, label + value visible)
+//   2. Value is GIFT_POINTS_PREVIEW_VALUE ("2363點"), not store-derived
+//   3. Currency invariant: switching store.currency does NOT change value
+//   4. shouldShowGiftPointsPreview type guard: true for 'gift_card',
+//      false for everything else
+describe('PassCardPreviewHeader — gift points preview for gift_card (2026-09-27)', () => {
+  it('gift_card renders the 2-line gift-points block (no pill)', () => {
+    const { container } = render(<PassCardPreviewHeader cardType="gift_card" />);
+    // No pill for gift_card
+    expect(container.querySelector('span.rounded-full')).toBeNull();
+    // Label is an i18n key (mock returns key as text)
+    expect(screen.getByText('giftPointsPreview.label')).toBeInTheDocument();
+    // Value is the hardcoded GIFT_POINTS_PREVIEW_VALUE
+    expect(screen.getByText(GIFT_POINTS_PREVIEW_VALUE)).toBeInTheDocument();
+  });
+
+  it('gift_card value is the hardcoded constant, NOT store-derived (currency switch test)', () => {
+    // Start with TWD, verify the same hardcoded value renders
+    useCardBuilderStore.setState({ currency: 'TWD' });
+    const { unmount } = render(<PassCardPreviewHeader cardType="gift_card" />);
+    expect(screen.getByText(GIFT_POINTS_PREVIEW_VALUE)).toBeInTheDocument();
+    expect(screen.queryByText(BALANCE_PREVIEW_AMOUNTS.TWD)).toBeNull();
+    expect(screen.queryByText(BALANCE_PREVIEW_AMOUNTS.ZAR)).toBeNull();
+    unmount();
+
+    // Switch to ZAR and re-render — value must still be the hardcoded
+    // GIFT_POINTS_PREVIEW_VALUE (NOT the ZAR currency-driven balance).
+    useCardBuilderStore.setState({ currency: 'ZAR' });
+    render(<PassCardPreviewHeader cardType="gift_card" />);
+    expect(screen.getByText(GIFT_POINTS_PREVIEW_VALUE)).toBeInTheDocument();
+    expect(screen.queryByText(BALANCE_PREVIEW_AMOUNTS.TWD)).toBeNull();
+    expect(screen.queryByText(BALANCE_PREVIEW_AMOUNTS.ZAR)).toBeNull();
+  });
+
+  it('shouldShowGiftPointsPreview type guard: true for gift_card, false elsewhere', () => {
+    expect(shouldShowGiftPointsPreview('gift_card')).toBe(true);
+    expect(shouldShowGiftPointsPreview(null)).toBe(false);
+    expect(shouldShowGiftPointsPreview(undefined)).toBe(false);
+    expect(shouldShowGiftPointsPreview('stamp_card')).toBe(false);
+    expect(shouldShowGiftPointsPreview('membership_card')).toBe(false);
+    expect(shouldShowGiftPointsPreview('coupon_card')).toBe(false);
+    // GIFT_POINTS_PREVIEW_CARD_TYPES contains only gift_card
+    expect(GIFT_POINTS_PREVIEW_CARD_TYPES.has('gift_card')).toBe(true);
+    expect(GIFT_POINTS_PREVIEW_CARD_TYPES.has('stamp_card')).toBe(false);
   });
 });

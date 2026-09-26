@@ -317,6 +317,20 @@ export const templateSettingsSchema = z.object({
    */
   stampsPerSpendAmount: z.number().positive().nullable().optional(),
   stampsPerSpendStamps: z.number().int().min(1).nullable().optional(),
+  // ===== Step 6 — Gift Card 卡 (2026-09-27, gift_card only) =====
+  // Prepaid model: customers pay X currency units to receive Y points;
+  // points are then redeemed for in-store products at a tenant-defined
+  // exchange rate. Simpler than stamp/reward cards — single flat rule,
+  // no tier list, no point accrual over time.
+  //
+  //   - giftCardAmount: positive integer (currency units the customer pays)
+  //   - giftCardPoints: positive integer (points the customer receives)
+  //
+  // Default 1:1 (1 元 = 1 點) per user decision 2026-09-27.
+  // Store setter enforces `> 0` and integer; backend zod is the
+  // authoritative gate on save (Rule 032 § 1).
+  giftCardAmount: z.number().int().positive().optional(),
+  giftCardPoints: z.number().int().positive().optional(),
   // ===== Step 6 — REWARD 卡 (2026-09-09, reward_card only) =====
   // Mirrors mu-plugins `SAOME-Points-Engine/modules/cards/reward-card.php` earning mode
   // and `SAOME-Passcreator-Engine/modules/passcreator-reward-card.php` tier structure.

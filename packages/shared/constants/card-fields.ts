@@ -216,7 +216,7 @@ export const CARD_FIELDS: readonly CardFieldDefinition[] = [
   // ── common: every card type ────────────────────────────────────────────
   { key: 'phone',       group: 'common', labelKey: 'step3.fieldsSection.fields.phone' },
   { key: 'email',       group: 'common', labelKey: 'step3.fieldsSection.fields.email' },
-  { key: 'memberLevel', group: 'common', labelKey: 'step3.fieldsSection.fields.memberLevel', hideOnCardTypes: ['coupon_card'] },
+  { key: 'memberLevel', group: 'common', labelKey: 'step3.fieldsSection.fields.memberLevel', hideOnCardTypes: ['coupon_card', 'gift_card'] },
   { key: 'birthday',    group: 'common', labelKey: 'step3.fieldsSection.fields.birthday' },
   { key: 'visitCount',  group: 'common', labelKey: 'step3.fieldsSection.fields.visitCount' },
   {

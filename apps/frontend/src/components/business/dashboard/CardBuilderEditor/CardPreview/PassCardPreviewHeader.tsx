@@ -35,6 +35,7 @@ import { getAccessToken } from '@/services/authStore';
 import { useCardBuilderStore } from '../CardBuilderEditor.store';
 import type { CardType } from '../CardBuilderEditor.types';
 import { BALANCE_PREVIEW_AMOUNTS } from '@saome/shared/constants/balancePreview';
+import { GIFT_POINTS_PREVIEW_VALUE } from '@saome/shared/constants/gift-card';
 
 interface PassCardPreviewHeaderProps {
   cardType?: string | null;
@@ -108,6 +109,29 @@ export const COUPON_EXPIRY_PREVIEW_CARD_TYPES: ReadonlySet<CardType> = new Set<C
 ]);
 
 /**
+ * Card types for which the right-side pill is replaced by a 2-line gift
+ * points preview block (2026-09-27).
+ *
+ * Scoped to `gift_card` ONLY — mirrors the other 2-line preview patterns
+ * (`MEMBER_EXPIRY_PREVIEW_CARD_TYPES`, `DISCOUNT_EXPIRY_PREVIEW_CARD_TYPES`,
+ * `COUPON_EXPIRY_PREVIEW_CARD_TYPES`) but with a HARD-CODED value source.
+ *
+ * Why hardcoded: per user decision 2026-09-27, the preview value
+ * "2363點" is a pure visual showcase — not derived from store. Future
+ * implementation may wire this to the member's actual point balance
+ * (Rule 019 § future). The label is locale-driven ("點數" / "Points");
+ * the value lives in shared/constants/gift-card.ts (`GIFT_POINTS_PREVIEW_VALUE`)
+ * to satisfy Rule 023 § 翻譯書寫紀律 (no Han characters in passCard.en.ts).
+ *
+ * Differs from `BALANCE_PREVIEW_CARD_TYPES` in that:
+ *   - balance: currency-driven (TWD → 200元, ZAR → R100)
+ *   - gift:    currency-invariant (always "2363點")
+ */
+export const GIFT_POINTS_PREVIEW_CARD_TYPES: ReadonlySet<CardType> = new Set<CardType>([
+  'gift_card',
+]);
+
+/**
  * Default expiry date used when hasExpiry=true but expiryDate is empty.
  * Hardcoded because the membership card hides step2's PassValidDaysField +
  * ExpiryDateField by design (see membership_card_conditional_ui_hide plan),
@@ -174,6 +198,20 @@ export function shouldShowCouponExpiryPreview(
 }
 
 /**
+ * Type guard (2026-09-27): returns true iff the card type should render
+ * the gift points preview. Scoped to `gift_card` only.
+ */
+export function shouldShowGiftPointsPreview(
+  cardType: string | null | undefined,
+): cardType is CardType {
+  return (
+    cardType !== null &&
+    cardType !== undefined &&
+    GIFT_POINTS_PREVIEW_CARD_TYPES.has(cardType as CardType)
+  );
+}
+
+/**
  * Format an ISO YYYY-MM-DD expiry date string for display, locale-aware.
  *
  *   zh-TW: YYYY.MM.DD  (e.g. "2027.10.23" per user-confirmed UX)
@@ -232,6 +270,7 @@ export function PassCardPreviewHeader({ cardType, issuerLogo, name, textColor, c
   const showMemberExpiry = shouldShowMemberExpiryPreview(cardType);
   const showDiscountExpiry = shouldShowDiscountExpiryPreview(cardType);
   const showCouponExpiry = shouldShowCouponExpiryPreview(cardType);
+  const showGiftPoints = shouldShowGiftPointsPreview(cardType);
 
   // Member expiry value:
   //   - hasExpiry=false → "∞" (infinity, universal across locales)
@@ -423,6 +462,32 @@ export function PassCardPreviewHeader({ cardType, issuerLogo, name, textColor, c
             style={textColor ? { color: textColor } : undefined}
           >
             {couponExpiryValue}
+          </span>
+        </div>
+      ) : showGiftPoints ? (
+        // 2026-09-27 gift points preview: 2-line block mirroring the other
+        // 2-line preview patterns (balance / member / discount / coupon
+        // expiry). Label is locale-driven ("點數" / "Points"); value is
+        // the hardcoded GIFT_POINTS_PREVIEW_VALUE constant (per user
+        // decision 2026-09-27 — pure visual showcase, not store-driven).
+        // data-testid="gift-points-preview" is the regression-test selector.
+        <div
+          className={compact
+            ? 'flex flex-col items-start gap-0 leading-tight'
+            : 'flex flex-col items-start gap-0.5 leading-tight'}
+          data-testid="gift-points-preview"
+        >
+          <span
+            className={compact ? 'text-[8px] font-medium' : 'text-[10px] font-medium'}
+            style={textColor ? { color: textColor } : undefined}
+          >
+            {t('giftPointsPreview.label')}
+          </span>
+          <span
+            className={compact ? 'text-[11px] font-bold' : 'text-sm font-bold'}
+            style={textColor ? { color: textColor } : undefined}
+          >
+            {GIFT_POINTS_PREVIEW_VALUE}
           </span>
         </div>
       ) : (

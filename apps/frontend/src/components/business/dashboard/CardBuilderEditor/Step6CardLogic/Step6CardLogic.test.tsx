@@ -33,6 +33,7 @@ let cashbackCardLogicRenders = 0;
 let membershipCardLogicRenders = 0;
 let discountCardLogicRenders = 0;
 let couponCardLogicRenders = 0;
+let giftCardLogicRenders = 0;
 let comingSoonRenders = 0;
 
 vi.mock('./StampCardLogic', () => ({
@@ -84,6 +85,13 @@ vi.mock('./CouponCardLogic', () => ({
   },
 }));
 
+vi.mock('./GiftCardLogic', () => ({
+  GiftCardLogic: () => {
+    giftCardLogicRenders += 1;
+    return <div data-testid="gift-card-logic">GiftCardLogic</div>;
+  },
+}));
+
 vi.mock('./Step6CardLogicComingSoon', () => ({
   Step6CardLogicComingSoon: ({ cardType }: { cardType: CardType | null }) => {
     comingSoonRenders += 1;
@@ -103,6 +111,7 @@ beforeEach(() => {
   membershipCardLogicRenders = 0;
   discountCardLogicRenders = 0;
   couponCardLogicRenders = 0;
+  giftCardLogicRenders = 0;
   comingSoonRenders = 0;
 });
 
@@ -230,8 +239,13 @@ describe('Step6CardLogic — dispatcher (Rule 000 § A.1)', () => {
     expect(screen.getByText('step6.coupon.introHint')).toBeInTheDocument();
   });
 
-  it('renders ComingSoon for gift_card only (all other card types are now implemented, 2026-09-19)', () => {
-    const unsupportedTypes: CardType[] = ['gift_card'];
+  it('renders ComingSoon for no card types (all 8 supported types are implemented, 2026-09-27)', () => {
+    // 2026-09-27: gift_card was the last remaining ComingSoon — GiftCardLogic
+    // is now implemented (8th sub-module). All 8 card types have a
+    // dedicated sub-module, so the empty unsupportedTypes array means
+    // this test now verifies the dispatcher never falls through to
+    // ComingSoon for any supported cardType.
+    const unsupportedTypes: CardType[] = [];
 
     for (const cardType of unsupportedTypes) {
       // Reset sub-component counters for each iteration.
@@ -242,6 +256,7 @@ describe('Step6CardLogic — dispatcher (Rule 000 § A.1)', () => {
       membershipCardLogicRenders = 0;
       discountCardLogicRenders = 0;
       couponCardLogicRenders = 0;
+      giftCardLogicRenders = 0;
       comingSoonRenders = 0;
       cleanup();
       useCardBuilderStore.setState({ cardType });
@@ -254,6 +269,7 @@ describe('Step6CardLogic — dispatcher (Rule 000 § A.1)', () => {
       expect(membershipCardLogicRenders).toBe(0);
       expect(discountCardLogicRenders).toBe(0);
       expect(couponCardLogicRenders).toBe(0);
+      expect(giftCardLogicRenders).toBe(0);
       expect(comingSoonRenders).toBe(1);
       expect(screen.getByTestId('coming-soon')).toHaveAttribute(
         'data-card-type',
@@ -262,6 +278,29 @@ describe('Step6CardLogic — dispatcher (Rule 000 § A.1)', () => {
 
       unmount();
     }
+  });
+
+  it('renders GiftCardLogic for gift_card (Step 6 plan 2026-09-27)', () => {
+    // 2026-09-27: gift_card now has its own dedicated sub-module
+    // (GiftCardLogic — the eighth Step 6 sub-module). Prepaid model
+    // with single flat exchange rate (X 元 = Y 點), no tier list,
+    // no accrual mode, no expiry.
+    useCardBuilderStore.setState({ cardType: 'gift_card' });
+    render(<Step6CardLogic showValidation={false} />);
+
+    expect(stampCardLogicRenders).toBe(0);
+    expect(multipassCardLogicRenders).toBe(0);
+    expect(rewardCardLogicRenders).toBe(0);
+    expect(cashbackCardLogicRenders).toBe(0);
+    expect(membershipCardLogicRenders).toBe(0);
+    expect(discountCardLogicRenders).toBe(0);
+    expect(couponCardLogicRenders).toBe(0);
+    expect(giftCardLogicRenders).toBe(1);
+    expect(comingSoonRenders).toBe(0);
+    expect(screen.getByTestId('gift-card-logic')).toBeInTheDocument();
+    // The gift branch uses gift-card-specific intro copy
+    expect(screen.getByText('step6.gift.intro')).toBeInTheDocument();
+    expect(screen.getByText('step6.gift.introHint')).toBeInTheDocument();
   });
 
   it('renders the Step 6 intro hero text inside the dispatcher (when supported)', () => {

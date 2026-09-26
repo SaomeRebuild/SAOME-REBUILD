@@ -795,6 +795,126 @@ export function CardBuilderEditor({
   ]);
 
   // ============================================================
+  // Auto-save: Step 6 gift card fields (giftCardAmount / giftCardPoints)
+  // — debounced PUT /cards/:id.
+  //
+  // 2026-09-27 (current task): mirrors the coupon card pattern verbatim.
+  // Gift card has only 2 fields (the exchange rate: X 元 = Y 點), but
+  // the baseline-armed + loadSettled + snapshot diff + 1s debounce +
+  // timer-fire-read-latest pattern is identical. Schema-conformance test
+  // in apps/backend/.../tests/gift-card-schema-conformance.test.ts pins
+  // the field set drift.
+  //
+  // Why Step 6 fields need their own timer refs / baseline-armed refs:
+  //   - Each Step 6 sub-module has its own fields. Sibling fields can
+  //     have wildly different update cadences (e.g. user may type in
+  //     coupon fields while leaving gift fields alone). Sharing refs
+  //     across sub-modules would cause one sub-module's snapshot diff
+  //     to false-positive on the other's state.
+  //   - Each subscribes to its own slice of the store, so the effect
+  //     deps are per-sub-module (matches the coupon pattern).
+  //
+  // Reuses `step4LoadSettledRef` (shared outer-fetch timeline — one
+  // loadSettings hydrates ALL template_settings). No new ref needed.
+  // ============================================================
+  const giftSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastGiftSnapshotRef = useRef<string>('');
+
+  const giftCardAmount = useCardBuilderStore((s) => s.giftCardAmount);
+  const giftCardPoints = useCardBuilderStore((s) => s.giftCardPoints);
+
+  const giftBaselineArmedRef = useRef(false);
+
+  // Reset baseline / snapshot flags on cardId change (new template session).
+  useEffect(() => {
+    giftBaselineArmedRef.current = false;
+    lastGiftSnapshotRef.current = '';
+  }, [cardId]);
+
+  useEffect(() => {
+    if (!cardId) return;
+
+    const snapshot = JSON.stringify({
+      giftCardAmount,
+      giftCardPoints,
+    });
+
+    // First run: seed the baseline. Do NOT schedule a timer — the store
+    // still holds reset() defaults (1:1) at this point.
+    if (!giftBaselineArmedRef.current) {
+      giftBaselineArmedRef.current = true;
+      lastGiftSnapshotRef.current = snapshot;
+      return;
+    }
+
+    // Hold autosave until loadSettings has resolved (shared outer-fetch
+    // timeline with Step 2 / Step 4 / Step 5 / Step 6 coupon).
+    if (!step4LoadSettledRef.current) {
+      lastGiftSnapshotRef.current = snapshot;
+      return;
+    }
+
+    if (snapshot === lastGiftSnapshotRef.current) return;
+    lastGiftSnapshotRef.current = snapshot;
+
+    if (giftSaveTimerRef.current) clearTimeout(giftSaveTimerRef.current);
+    giftSaveTimerRef.current = setTimeout(() => {
+      // Read latest values at fire time to avoid stale closure.
+      const s = useCardBuilderStore.getState();
+      const a = s.giftCardAmount;
+      const p = s.giftCardPoints;
+
+      // Field-level validation gate: skip the PUT only when the value
+      // is OUT-OF-BOUNDS (would 400 from backend zod). The store
+      // setters already clamp / reject invalid values at write time, so
+      // an out-of-bounds value can only surface via a corrupted DB row
+      // that leaked through loadSettings.
+      if (
+        typeof a !== 'number' ||
+        !Number.isInteger(a) ||
+        a < 1
+      ) {
+        return;
+      }
+      if (
+        typeof p !== 'number' ||
+        !Number.isInteger(p) ||
+        p < 1
+      ) {
+        return;
+      }
+
+      // Gate by cardType === 'gift_card' to avoid wasting RTT when the
+      // user has switched to a different cardType (the field may still
+      // hold stale values from a previous gift_card session). Mirrors
+      // the coupon autosave pattern (which is unconditional — coupon's
+      // default type is 'amount_off' which always has valid defaults).
+      const currentCardType = useCardBuilderStore.getState().cardType;
+      if (currentCardType !== 'gift_card') return;
+
+      cardService.update(cardId, {
+        // Wrap in `settings` — the update() type signature only knows
+        // about `settings` (the backend stores these in the JSONB blob).
+        // Mirrors the Step 6 onSave shape for gift_card in
+        // CardBuilderEditorWorkspace.tsx handleNext step 6 region.
+        settings: {
+          giftCardAmount: a,
+          giftCardPoints: p,
+        },
+      }).catch((err) => {
+        console.warn('[CardBuilderEditor] Step 6 gift auto-save failed:', err);
+      });
+    }, 1000);
+
+    return () => {
+      if (giftSaveTimerRef.current) {
+        clearTimeout(giftSaveTimerRef.current);
+        giftSaveTimerRef.current = null;
+      }
+    };
+  }, [cardId, giftCardAmount, giftCardPoints]);
+
+  // ============================================================
   // Auto-save keep-alive: touch TTL every 5 minutes
   // ============================================================
   const touchTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);

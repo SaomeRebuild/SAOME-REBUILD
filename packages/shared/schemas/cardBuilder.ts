@@ -56,7 +56,35 @@ export const cardTypeExtensions = {
     stampsPerSpendAmount: z.number().positive().nullable().optional(),
     stampsPerSpendStamps: z.number().int().min(1).nullable().optional(),
   }),
-  gift_card: z.object({}),
+  /**
+   * Gift card (禮品卡) — Step 6 Gift Card 卡實作 (2026-09-27).
+   *
+   * Prepaid model: customers pay X currency units to receive Y points;
+   * points are then redeemed for in-store products at a tenant-defined
+   * exchange rate. Simpler than the other Step 6 sub-modules:
+   *   - NO tier list — single flat rule (one exchange rate per card).
+   *   - NO earning-mode switch (gift card is spend-driven by definition).
+   *   - NO card-level expiry — gift cards are long-lived identity passes
+   *     (Step 2 hides PassValidDaysField + ExpiryDateField for gift_card,
+   *     matching membership_card / discount_card / multipass behavior).
+   *
+   * The 2 fields together form the exchange rate:
+   *   - giftCardAmount: positive integer (currency units the customer pays)
+   *   - giftCardPoints: positive integer (points the customer receives)
+   *
+   * Default 1:1 (per user decision 2026-09-27). Store setter enforces
+   * `> 0` and integer; backend zod is the authoritative gate on save.
+   *
+   * Mirrors `shared/templateSettingsSchema.giftCardAmount / giftCardPoints`
+   * (Rule 019 § 4.1 layer 1).
+   */
+  gift_card: z.object({
+    // ===== Step 6 — 禮品卡兌換設定 (2026-09-27) =====
+    /** 消費金額（顧客付多少元）. 整數 ≥ 1. 預設 1. */
+    giftCardAmount: z.number().int().positive().optional(),
+    /** 獲得點數（顧客獲得多少點）. 整數 ≥ 1. 預設 1. */
+    giftCardPoints: z.number().int().positive().optional(),
+  }),
   /**
    * Membership card (會員卡) — Step 6 Membership 卡實作 (2026-09-13).
    *

@@ -182,4 +182,12 @@ export default {
   couponExpiry: {
     label: 'Expiry Date',
   },
+  // ===== Gift Card points preview (only shown in gift_card preview, 2026-09-27) =====
+  // The 2-line block (label "Points" / value "2363點"). Value is
+  // hardcoded per user decision 2026-09-27 (Rule 023 — non-locale Han
+  // characters stay in shared/constants/, not passCard.en.ts). Label is
+  // the locale-driven part.
+  giftPointsPreview: {
+    label: 'Points',
+  },
 };

@@ -841,6 +841,27 @@ export default {
         removeTier: 'Remove this tier',
       },
     },
+    // ===== Gift Card (2026-09-27, gift_card only) =====
+    // Prepaid model — single flat exchange rate (X currency = Y points).
+    // No tier list, no accrual mode, no expiry. See zh-TW comment for full
+    // architecture rationale.
+    gift: {
+      intro: 'Set how much currency customers spend to earn points.',
+      introHint: 'Points can be redeemed for in-store products.',
+      title: 'Points Exchange',
+      amountLabel: 'Spend Amount',
+      pointsLabel: 'Points Earned',
+      amountUnitTWD: 'NT$',
+      amountUnitZAR: 'R',
+      separator: '=',
+      placeholderAmount: 'e.g. 100',
+      placeholderPoints: 'e.g. 100',
+      ratePreview: '{{amount}} {{unit}} = {{points}} pts',
+      validation: {
+        required: 'Please fill in the exchange rate',
+        positive: 'Value must be greater than zero',
+      },
+    },
   },
   // Step 7: Customize Table Card
   step7: {

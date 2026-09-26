@@ -210,7 +210,8 @@ export function CardBuilderEditorWorkspace({
       cardTypeValue !== 'cashback_card' &&
       cardTypeValue !== 'membership_card' &&
       cardTypeValue !== 'discount_card' &&
-      cardTypeValue !== 'coupon_card'
+      cardTypeValue !== 'coupon_card' &&
+      cardTypeValue !== 'gift_card'
     ) {
       return true;
     }
@@ -231,6 +232,9 @@ export function CardBuilderEditorWorkspace({
     }
     if (cardTypeValue === 'multipass') {
       return isMultipassStep6Valid();
+    }
+    if (cardTypeValue === 'gift_card') {
+      return isGiftCardStep6Valid();
     }
     // stamp_card path
     const {
@@ -665,6 +669,43 @@ export function CardBuilderEditorWorkspace({
     return true;
   }
 
+  /**
+   * GIFT CARD — Step 6 validation (2026-09-27, gift_card only).
+   *
+   * Mirrors packages/shared/constants/gift-card.ts bounds:
+   *   - giftCardAmount: positive integer ≥ 1
+   *   - giftCardPoints: positive integer ≥ 1
+   *
+   * Both fields must be present and valid for the user to advance past
+   * Step 6. Defaults are seeded at 1:1 (per GIFT_CARD_DEFAULT_AMOUNT /
+   * GIFT_CARD_DEFAULT_POINTS) so a fresh gift_card has a valid rate out
+   * of the box.
+   *
+   * The store setter already enforces positive-integer guards, so this
+   * is mostly a defensive re-check for corrupted DB rows that bypassed
+   * the setter via loadSettings.
+   */
+  function isGiftCardStep6Valid(): boolean {
+    const { giftCardAmount, giftCardPoints } = useCardBuilderStore.getState();
+
+    if (
+      typeof giftCardAmount !== 'number' ||
+      !Number.isInteger(giftCardAmount) ||
+      giftCardAmount < 1
+    ) {
+      return false;
+    }
+    if (
+      typeof giftCardPoints !== 'number' ||
+      !Number.isInteger(giftCardPoints) ||
+      giftCardPoints < 1
+    ) {
+      return false;
+    }
+
+    return true;
+  }
+
   async function handleNext() {
     console.log('[handleNext] step:', step, 'cardId:', cardId);
     if (step < 8) {
@@ -862,6 +903,13 @@ export function CardBuilderEditorWorkspace({
             // settings.stampAccrualMode 設計 — 一張卡一個 mode,
             // per-tier 門檻輸入框在每個 row 內 render.
             multipassAccrualMode,
+            // 2026-09-27: Gift card Step 6 fields (single flat exchange
+            // rate: X 元 = Y 點). Only meaningful for `cardType ===
+            // 'gift_card'`. Always sent (small + cheap + no PII) so the
+            // DB reflects the current store state, matching the
+            // coupon_card pattern.
+            giftCardAmount,
+            giftCardPoints,
           } = useCardBuilderStore.getState();
           // Strip `id` field from each reward tier before sending to backend
           // (id is a UI-only React key, not part of the data contract).
@@ -1036,6 +1084,15 @@ export function CardBuilderEditorWorkspace({
             // 2026-09-20: also persist card-wide accrual mode
             multipassAccrualMode:
               cardType === 'multipass' ? multipassAccrualMode : undefined,
+            // ===== GIFT CARD (2026-09-27) =====
+            // Only meaningful for `cardType === 'gift_card'`. For other
+            // card types the values are undefined (schema optional
+            // accepts undefined). Mirrors the coupon card pattern —
+            // always send the field but only when the cardType matches.
+            giftCardAmount:
+              cardType === 'gift_card' ? giftCardAmount : undefined,
+            giftCardPoints:
+              cardType === 'gift_card' ? giftCardPoints : undefined,
           });
           console.log('[handleNext] Step 6 card logic saved', {
             stampAccrualMode,
@@ -1071,6 +1128,9 @@ export function CardBuilderEditorWorkspace({
             // 2026-09-20 PR-5: 卡片層級 multipass 蓋章方式
             // (對齊 stamp_card.stampAccrualMode 的 settings-key 設計).
             multipassAccrualMode,
+            // 2026-09-27 gift-card logging
+            giftCardAmount,
+            giftCardPoints,
           });
         } catch (err) {
           // Don't block step transition — let the user proceed and retry later.

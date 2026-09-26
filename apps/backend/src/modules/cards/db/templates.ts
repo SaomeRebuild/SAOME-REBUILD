@@ -244,6 +244,32 @@ export interface TemplateSettings {
    */
   stampsPerSpendAmount?: number | null;
   stampsPerSpendStamps?: number | null;
+  // ===== Step 6 — Gift Card 卡 (Rule 019 § 4.1, layer 3 of 4, 2026-09-27) =====
+  // Mirrors `shared/templateSettingsSchema.giftCardAmount / giftCardPoints`.
+  // Prepaid model — single flat exchange rate (X 元 = Y 點). Step 6 plan
+  // 2026-09-27: eighth card-type-specific logic editor (after stamp_card /
+  // multipass / reward_card / cashback_card / membership_card /
+  // discount_card / coupon_card).
+  //
+  //   - giftCardAmount: 消費金額（顧客付多少元）. 整數 ≥ 1. 預設 1.
+  //   - giftCardPoints: 獲得點數（顧客獲得多少點）. 整數 ≥ 1. 預設 1.
+  //
+  // The dispatcher lives at
+  // `apps/frontend/src/components/business/dashboard/CardBuilderEditor/Step6CardLogic/GiftCardLogic/`.
+  // Step 2 hides PassValidDaysField + ExpiryDateField for gift_card (matching
+  // membership_card / discount_card / multipass behavior — gift cards have no
+  // time concept). Step 3 hides `memberLevel` for gift_card via
+  // `hideOnCardTypes: ['coupon_card', 'gift_card']` in card-fields.ts.
+  /**
+   * 禮品卡兌換比率：消費金額（顧客付多少元）. 整數 ≥ 1. 預設 1.
+   * Mirrors `shared/templateSettingsSchema.giftCardAmount`.
+   */
+  giftCardAmount?: number | null;
+  /**
+   * 禮品卡兌換比率：獲得點數（顧客獲得多少點）. 整數 ≥ 1. 預設 1.
+   * Mirrors `shared/templateSettingsSchema.giftCardPoints`.
+   */
+  giftCardPoints?: number | null;
   // ===== Step 6 — REWARD 卡 (Rule 019 § 4.1, layer 3 of 4) =====
   // Mirrors `shared/templateSettingsSchema.rewardTiers`.
   // Step 6 plan 2026-09-09: second card-type-specific logic editor (after

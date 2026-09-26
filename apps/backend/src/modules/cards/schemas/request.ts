@@ -197,6 +197,19 @@ export const templateSettingsSchema = z.object({
   stampsPerVisitStamps: z.number().int().min(1).nullable().optional(),
   stampsPerSpendAmount: z.number().positive().nullable().optional(),
   stampsPerSpendStamps: z.number().int().min(1).nullable().optional(),
+  // ===== Step 6 — Gift Card 卡 (2026-09-27, gift_card only) =====
+  // Mirrors `shared/templateSettingsSchema.giftCardAmount / giftCardPoints`.
+  // Prepaid model — single flat exchange rate (X 元 = Y 點).
+  //
+  // Single source of truth:
+  //   - packages/shared/schemas/card.ts (Rule 019 § 4.1 layer 1)
+  //   - packages/shared/constants/gift-card.ts (default values)
+  //
+  // All fields are `.optional()` because Step 6 is conditional on cardType
+  // (only gift_card). Drafts created before this commit will have these
+  // keys absent; loadSettings defaults them to 1.
+  giftCardAmount: z.number().int().positive().optional(),
+  giftCardPoints: z.number().int().positive().optional(),
   // ===== Step 6 — REWARD 卡 (2026-09-09, reward_card only) =====
   // Mirrors `shared/templateSettingsSchema.rewardTiers`.
   // Single source of truth:

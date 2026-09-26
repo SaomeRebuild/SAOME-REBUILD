@@ -862,6 +862,44 @@ export default {
         removeTier: '移除此級距',
       },
     },
+    // ===== Gift Card 卡 (2026-09-27, gift_card only) =====
+    // Prepaid model: customers pay X currency units to receive Y points;
+    // points are then redeemed for in-store products at a tenant-defined
+    // exchange rate. Single flat rule (X 元 = Y 點), no tier list.
+    //
+    // Differences from other Step 6 sub-modules:
+    //   - NO accrual mode (gift card is spend-driven by definition).
+    //   - NO reward type (the "reward" IS the points, no flat value/percent).
+    //   - NO tier list (single exchange rate per card).
+    //   - NO expiry (gift cards have no time concept — Step 2 hides
+    //     PassValidDaysField + ExpiryDateField for gift_card).
+    //
+    // 4-layer sync (Rule 019 § 4.1):
+    //   - packages/shared/constants/gift-card.ts (single source of truth, layer 0)
+    //   - packages/shared/schemas/card.ts (layer 1)
+    //   - apps/backend/src/modules/cards/schemas/request.ts (layer 2 mirror)
+    //   - apps/backend/src/modules/cards/db/templates.ts (layer 3 db interface)
+    //
+    // 2026-09-27: i18n keys for `gift` sub-module. The 2-line block preview
+    // (label "點數" + value "2363點") is wired in PassCardPreviewHeader —
+    // see giftPointsPreview.label in passCard.zh-TW.ts.
+    gift: {
+      intro: '設定消費者用多少元購買多少點數。',
+      introHint: '點數可用於兌換店內商品。',
+      title: '點數兌換設定',
+      amountLabel: '消費金額',
+      pointsLabel: '獲得點數',
+      amountUnitTWD: '元',
+      amountUnitZAR: 'R',
+      separator: '＝',
+      placeholderAmount: '例：100',
+      placeholderPoints: '例：100',
+      ratePreview: '{{amount}} {{unit}} = {{points}} 點',
+      validation: {
+        required: '請填寫兌換比率',
+        positive: '數值必須大於零',
+      },
+    },
   },
   // Step 7: 客製化桌牌
   step7: {

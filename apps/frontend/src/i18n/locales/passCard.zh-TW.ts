@@ -177,4 +177,14 @@ export default {
   couponExpiry: {
     label: '有效期限',
   },
+  // ===== Gift Card 點數預覽 (only shown in gift_card preview, 2026-09-27) =====
+  // The 2-line block (label "點數" / value "2363點") is hardcoded per
+  // user decision 2026-09-27 — value comes from
+  // `GIFT_POINTS_PREVIEW_VALUE` (shared/constants/gift-card.ts), not from
+  // the store. Differs from `couponRemainingCount` / `memberExpiry` /
+  // `discountExpiry` / `couponExpiry` which all carry dynamic store data.
+  // Label is the locale-driven part (i18n Rule 023).
+  giftPointsPreview: {
+    label: '點數',
+  },
 };

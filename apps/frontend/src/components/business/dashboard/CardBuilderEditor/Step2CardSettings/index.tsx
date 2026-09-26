@@ -33,6 +33,12 @@ export function Step2CardSettings({ showValidation }: Step2CardSettingsProps) {
   // 2026-09-20: multipass has no time concept (no expiry, no valid days).
   // Hide both fields for multipass cards.
   const isMultipass = cardType === 'multipass';
+  // 2026-09-27: gift_card has no time concept — gift cards are
+  // long-lived prepaid point balances. The Step 6 sub-module
+  // (GiftCardLogic) only handles the exchange rate (X 元 = Y 點),
+  // not card-level expiry. Hide both fields to match the membership /
+  // discount / multipass pattern.
+  const isGift = cardType === 'gift_card';
 
   return (
     <div className="space-y-6">
@@ -44,8 +50,11 @@ export function Step2CardSettings({ showValidation }: Step2CardSettingsProps) {
           membership_card (plan membership_card_conditional_ui_hide).
           Discount cards also handle expiry in Step 6
           (DiscountExpiryFields — mutual exclusion days vs date), so hide
-          Step 2's fields here too (2026-09-18). */}
-      {!isMembership && !isDiscount && !isMultipass && (
+          Step 2's fields here too (2026-09-18).
+          Multipass cards have no time concept (2026-09-20), and gift
+          cards are long-lived prepaid balances (2026-09-27). All four
+          card types share the same hide guard. */}
+      {!isMembership && !isDiscount && !isMultipass && !isGift && (
         <>
           <PassValidDaysField />
           <ExpiryDateField />

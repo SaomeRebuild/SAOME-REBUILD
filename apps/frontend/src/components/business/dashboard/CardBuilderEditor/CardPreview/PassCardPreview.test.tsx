@@ -45,17 +45,17 @@ describe('PassCardPreview', () => {
     expect(buildingIcon).toBeInTheDocument();
   });
 
-  it('renders card type label', () => {
+  it('renders gift points preview label and hardcoded value (2-line block)', () => {
+    // 2026-09-27: gift_card now renders the 2-line "點數 / 2363點"
+    // preview block (GIFT_POINTS_PREVIEW_VALUE constant + locale-driven
+    // label). The card type label is no longer rendered directly because
+    // the pill is gone — instead the preview block shows the points
+    // value. See PassCardPreviewHeader.test.tsx for detailed block tests.
     render(<PassCardPreview name="測試卡片" cardType="gift_card" />);
-    // cardType is rendered directly without i18n lookup.
-    // Use a NON-balance-preview, NON-membership, NON-discount, NON-coupon,
-    // NON-multipass card type here so the rounded-full pill is the
-    // rendered element. As of 2026-09-20, ONLY `gift_card` still renders
-    // the pill — all other cardTypes now render their respective preview
-    // blocks (balance / expiry / coupon-expiry).
-    // See PassCardPreviewHeader.test.tsx for the dedicated tests of those
-    // preview blocks.
-    expect(screen.getAllByText('gift_card').length).toBeGreaterThan(0);
+    // Label + value rendered (mocked t() returns the key as text).
+    expect(screen.getByText('giftPointsPreview.label')).toBeInTheDocument();
+    // Hardcoded value is rendered.
+    expect(screen.getByText('2363點')).toBeInTheDocument();
   });
 
   it('has correct aspect ratio', () => {
@@ -131,20 +131,29 @@ describe('PassCardPreview', () => {
     expect(nameSpan.style.color).toBe('rgb(255, 0, 0)');
   });
 
-  it('applies textColor to card type badge', () => {
+  it('applies textColor to gift card points preview (2-line block, 2026-09-27)', () => {
+    // 2026-09-27: gift_card no longer renders the rounded-full pill —
+    // it renders the 2-line "點數 / 2363點" block (mirrors the
+    // balance / member-expiry / discount-expiry / coupon-expiry
+    // patterns). textColor must apply to BOTH spans inside the block
+    // (label + value), matching the existing pill contract.
     const { container } = render(
       <PassCardPreview name="測試卡片" cardType="gift_card" textColor="#ff0000" />
     );
-    // The card type badge has class rounded-full (pill).
-    // 2026-09-03: removed bg-neutral-200 → background is now transparent.
-    // Identify the badge by its text content matching the cardType.
-    // As of 2026-09-20, ONLY `gift_card` renders the pill — all other
-    // cardTypes render their respective preview blocks.
-    const badge = Array.from(container.querySelectorAll('span.rounded-full')).find(
-      (el) => el.textContent === 'gift_card',
-    ) as HTMLElement;
-    expect(badge).toBeInTheDocument();
-    expect(badge.style.color).toBe('rgb(255, 0, 0)');
+    // No pill for gift_card (as of 2026-09-27).
+    const pill = container.querySelector('span.rounded-full');
+    expect(pill).toBeNull();
+
+    // The 2-line block has data-testid="gift-points-preview".
+    const preview = container.querySelector('[data-testid="gift-points-preview"]');
+    expect(preview).toBeInTheDocument();
+
+    // Both spans inside the block must inherit textColor.
+    const innerSpans = preview!.querySelectorAll('span');
+    expect(innerSpans.length).toBeGreaterThanOrEqual(2);
+    innerSpans.forEach((span) => {
+      expect((span as HTMLElement).style.color).toBe('rgb(255, 0, 0)');
+    });
   });
 
   // ─── Balance preview integration (2026-09-08) ───
