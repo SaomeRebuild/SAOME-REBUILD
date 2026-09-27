@@ -14,6 +14,27 @@
  * transiently overloaded.
  */
 
+/**
+ * Cross-realm-safe Blob check.
+ *
+ * `expect(blob).toBeInstanceOf(Blob)` fails on Linux Node 20 + jsdom 25 + vitest
+ * 3.2.7 because `Response.blob()` can return a Blob from a different realm than
+ * the test file's `Blob` reference (regression 2026-09-27 PR #263). Local
+ * Windows passes (single realm); CI Linux fails (cross-realm).
+ *
+ * `Object.prototype.toString.call(b) === '[object Blob]'` is the canonical
+ * cross-realm tag — every Blob implementation (jsdom / Node `buffer` / workerd)
+ * returns this. Use this helper whenever you need to assert "value is a Blob"
+ * without coupling to a specific realm's Blob class.
+ */
+function isBlob(value: unknown): boolean {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    Object.prototype.toString.call(value) === '[object Blob]'
+  );
+}
+
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { HttpClient, SaomeApiError } from './httpClient';
 import * as authStore from './authStore';
@@ -559,7 +580,17 @@ describe('HttpClient — getBlob binary download', () => {
     const client = buildClient();
     const blob = await client.getBlob('/api/cards/test/table-card/download');
 
-    expect(blob).toBeInstanceOf(Blob);
+    // Cross-realm-safe Blob check (regression — 2026-09-27 CI flake).
+    //
+    // On Linux Node 20 + jsdom 25 + vitest 3.2.7, `Response.blob()` can return
+    // a Blob from a different realm than the test file's `Blob` reference.
+    // `expect(blob).toBeInstanceOf(Blob)` fails even though the value IS a Blob.
+    // Local Windows passes (single realm); CI Linux fails (cross-realm).
+    //
+    // `Object.prototype.toString.call(b) === '[object Blob]'` is the canonical
+    // cross-realm check — every Blob implementation (jsdom / Node buffer /
+    // workerd) returns this tag. See PR #263 + commit `567c23d` follow-up.
+    expect(isBlob(blob)).toBe(true);
     expect(blob.type).toBe('image/png');
     expect(blob.size).toBeGreaterThan(0);
 
