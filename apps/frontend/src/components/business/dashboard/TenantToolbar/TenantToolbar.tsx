@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { BarChart3, ChevronRight, CreditCard, LayoutTemplate, Mail, Settings, Users, Menu } from 'lucide-react';
 import { TenantToolbarItem } from './TenantToolbarItem';
 import { createPortal } from 'react-dom';
+import { useCardBuilderStore } from '../CardBuilderEditor/CardBuilderEditor.store';
 import type { TenantToolbarProps } from './TenantToolbar.types';
 
 export const TOOLS = [
@@ -23,6 +24,17 @@ export function TenantToolbar({
   const { pathname } = useLocation();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  // Round 3 Fix 5 — read the current CardBuilder step from the store.
+  // When the user is on Step 7, the bottom toolbar
+  // (`Step7MobileToolbar`, ~60px tall at `inset-x-0 bottom-0`) covers
+  // the default hamburger position (`bottom-6 left-6` = 24px from
+  // bottom). We push the hamburger up to `bottom-20` (80px = 60px
+  // toolbar + 20px gap) ONLY when Step 7 is active; all other pages
+  // (Steps 1-6, Members, Billing, etc.) keep the original position so
+  // other tenants of this toolbar are unaffected.
+  const cardBuilderStep = useCardBuilderStore((s) => s.cardBuilderStep);
+  const isOnStep7 = cardBuilderStep === 7;
+  const hamburgerBottomClass = isOnStep7 ? 'bottom-20' : 'bottom-6';
 
   return (
     <>
@@ -88,12 +100,13 @@ export function TenantToolbar({
         type="button"
         onClick={() => setIsMobileOpen(true)}
         aria-label={t('tenantToolbar.openMenu')}
-        className="
-          fixed bottom-6 left-6 z-40 flex h-12 w-12 items-center justify-center rounded-full
+        data-card-builder-step={cardBuilderStep ?? 'none'}
+        className={`
+          fixed ${hamburgerBottomClass} left-6 z-40 flex h-12 w-12 items-center justify-center rounded-full
           bg-primary text-primary-foreground shadow-lg
           transition-all duration-150 hover:scale-105 hover:shadow-xl
           active:scale-95 lg:hidden
-        "
+        `}
       >
         <Menu size={20} aria-hidden="true" />
       </button>

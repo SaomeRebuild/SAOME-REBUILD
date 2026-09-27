@@ -35,6 +35,8 @@ import backgroundUploadZhTW from './locales/backgroundUpload.zh-TW';
 import backgroundUploadEn from './locales/backgroundUpload.en';
 import colorPickerZhTW from './locales/colorPicker.zh-TW';
 import colorPickerEn from './locales/colorPicker.en';
+import tableCardZhTW from './locales/tableCard.zh-TW';
+import tableCardEn from './locales/tableCard.en';
 
 const resources = {
   'zh-TW': {
@@ -55,6 +57,7 @@ const resources = {
     iconUpload: iconUploadZhTW,
     backgroundUpload: backgroundUploadZhTW,
     colorPicker: colorPickerZhTW,
+    tableCard: tableCardZhTW,
   },
   en: {
     auth: authEn,
@@ -74,6 +77,7 @@ const resources = {
     iconUpload: iconUploadEn,
     backgroundUpload: backgroundUploadEn,
     colorPicker: colorPickerEn,
+    tableCard: tableCardEn,
   },
 };
 

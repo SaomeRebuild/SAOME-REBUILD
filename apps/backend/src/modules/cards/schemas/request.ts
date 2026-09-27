@@ -18,6 +18,7 @@ import {
   languageSchema as sharedLanguageSchema,
   templateStatusSchema as sharedTemplateStatusSchema,
   cardFieldKeySchema as sharedCardFieldKeySchema,
+  tableCardSettingsSchema as sharedTableCardSettingsSchema,
 } from '@saome/shared/schemas/card';
 import {
   CUSTOM_EXPIRY_DAYS_MIN,
@@ -516,6 +517,12 @@ export const templateSettingsSchema = z.object({
     )
     .max(MAX_MULTIPASS_TIERS)
     .optional(),
+  // ===== Step 7 — 客製化桌牌 (Rule 019 § 4.1, layer 2 of 4, 2026-09-27) =====
+  // Mirrors `shared/templateSettingsSchema.tableCard` (Layer 1).
+  // Backend re-uses the shared schema directly via re-export — avoids
+  // hand-maintaining a mirror (Bug-4c risk). The shared schema is the
+  // single source of truth.
+  tableCard: sharedTableCardSettingsSchema.optional(),
 });
 
 export type TemplateSettings = z.infer<typeof templateSettingsSchema>;

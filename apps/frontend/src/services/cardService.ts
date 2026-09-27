@@ -156,4 +156,126 @@ export const cardService = {
     );
     return res;
   },
+
+  /**
+   * Step 7 — Upload the rasterized table-card PNG to R2 and persist the
+   * JSONB pointer (`settings.tableCard.exportKey` +
+   * `settings.tableCard.lastExportedAt`).
+   *
+   * Frontend flow:
+   * 1. `stage.toDataURL({ pixelRatio: 3 })` → Blob
+   * 2. `cardService.exportTableCard(templateId, blob)` → POST multipart
+   * 3. Update store via `setTableCardExport(exportKey, lastExportedAt)`
+   *
+   * Server-side: writes R2 at
+   * `{tenant_id}/{template_id}/table-card-export.png` (single key per
+   * template; overwritten on each export — latest snapshot only).
+   *
+   * @param templateId - Template UUID
+   * @param blob - PNG Blob from Konva `stage.toDataURL({ mimeType: 'image/png' })`
+   * @returns exportKey (R2 path), publicUrl, lastExportedAt ISO string
+   */
+  async exportTableCard(
+    templateId: string,
+    blob: Blob,
+  ): Promise<{ exportKey: string; publicUrl: string; lastExportedAt: string }> {
+    const formData = new FormData();
+    // 'image' field name matches `exportTableCard.ts` `formData.get('image')`.
+    // File name is required for FormData Blob entries in some environments;
+    // 'table-card-export.png' matches the R2 key's basename.
+    formData.append('image', blob, 'table-card-export.png');
+    const res = await httpClient.post<{
+      exportKey: string;
+      publicUrl: string;
+      lastExportedAt: string;
+    }>(`${api.paths.cardById(templateId)}/table-card/export`, formData);
+    return res;
+  },
+
+  /**
+   * Step 7 — Download the latest exported table-card PNG.
+   *
+   * Uses `httpClient.getBlob` so the Bearer token is attached to the
+   * request (Rule 036 — Authorization header is the source of truth,
+   * not a `?token=` query param that lands in browser history). The
+   * previous `window.open(url)` approach silently 401'd in production
+   * because browser navigation requests do not include the
+   * `Authorization` header.
+   *
+   * Caller is responsible for turning the returned Blob into a
+   * browser download trigger (e.g. `URL.createObjectURL` + `<a download>`).
+   *
+   * @param templateId - Template UUID
+   * @returns PNG Blob from the server (Content-Disposition is ignored;
+   *          the frontend always saves with `table-card.png`)
+   */
+  async downloadTableCardBlob(templateId: string): Promise<Blob> {
+    return httpClient.getBlob(
+      `${api.paths.cardById(templateId)}/table-card/download`,
+    );
+  },
+
+  /**
+   * Step 7 — Generate a pre-signed R2 upload URL for a table-card image
+   * element (logos, decorative images embedded in the canvas).
+   *
+   * Mirrors `generateUploadUrl` but for the table-card element case.
+   * Frontend generates a UUID element id locally so the imageKey can be
+   * set in `settings.tableCard.elements[i].imageKey` BEFORE the actual
+   * upload completes (no second round-trip).
+   *
+   * Round 3 Fix 6 — accept the actual file contentType so the signed
+   * PUT URL carries the matching `Content-Type` header. The previous
+   * implementation hard-coded `image/png`, so JPG uploads produced a
+   * signature mismatch → R2 403 → subsequent GETs returned 204 →
+   * CanvasImage saw `status === 'loading'` forever.
+   *
+   * @param templateId - Template UUID
+   * @param elementId - Client-generated UUID for the new element
+   * @param contentType - Actual file MIME type from the File object
+   * @returns Pre-signed upload URL + R2 key
+   */
+  async generateTableCardElementUploadUrl(
+    templateId: string,
+    elementId: string,
+    contentType: 'image/png' | 'image/jpeg' = 'image/png',
+  ): Promise<{ uploadUrl: string; key: string; publicUrl: string }> {
+    const res = await httpClient.post<{
+      uploadUrl: string;
+      key: string;
+      publicUrl: string;
+    }>(`${api.paths.cardById(templateId)}/table-card/element/upload-url`, {
+      elementId,
+      contentType,
+    });
+    return res;
+  },
+
+  /**
+   * Step 7 — Delete a table-card image element from both the DB row
+   * (removes the JSONB reference) and R2 (frees the storage slot).
+   *
+   * Round 3 Fix 4.3 — without this call, removing an image element
+   * from the editor leaves an orphan R2 object at
+   * `{tenantId}/{templateId}/table-card/{elementId}.png`. A template
+   * with 50 image-element edits would leave 50 orphan PNGs in R2.
+   *
+   * Best-effort: the store calls this fire-and-forget so a 5xx or
+   * network blip doesn't block the editor's optimistic UI. A future
+   * cron can sweep unreferenced R2 objects if any leak through.
+   *
+   * Backend route: `DELETE /api/cards/:id/table-card/element/:elementId`.
+   * Returns 204 No Content on success.
+   *
+   * @param templateId - Template UUID
+   * @param elementId - UUID of the image element to delete
+   */
+  async deleteTableCardElement(
+    templateId: string,
+    elementId: string,
+  ): Promise<void> {
+    await httpClient.delete<void>(
+      `${api.paths.cardById(templateId)}/table-card/element/${elementId}`,
+    );
+  },
 };

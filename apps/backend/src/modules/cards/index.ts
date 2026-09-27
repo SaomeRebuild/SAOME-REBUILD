@@ -27,6 +27,11 @@ import { deleteCardRoute } from './routes/delete';
 import { getLatestDraftRoute } from './routes/getLatestDraft';
 import { generateUploadUrlRoute } from './routes/generate-upload-url';
 import { getImageRoute } from './routes/getImage';
+import { exportTableCardRoute } from './routes/exportTableCard';
+import { downloadTableCardRoute } from './routes/downloadTableCard';
+import { tableCardElementUploadUrlRoute } from './routes/tableCardElementUploadUrl';
+import { getTableCardElementImageRoute } from './routes/getTableCardElementImage';
+import { deleteTableCardElementRoute } from './routes/deleteTableCardElement';
 
 /**
  * Mounted at /api/cards in src/index.ts.
@@ -36,21 +41,31 @@ import { getImageRoute } from './routes/getImage';
  * - /drafts must come before /:id
  * - /:id/generate-upload-url must come before /:id
  * - /:id/image/:type must come before /:id
+ * - /:id/table-card/export must come before /:id
+ * - /:id/table-card/element/upload-url must come before /:id
+ * - /:id/table-card/element/image/:elementId must come before /:id
+ * - /:id/table-card/element/:elementId (DELETE) must come before /:id
+ * - /:id/table-card/download must come before /:id
  * - /:id/publish must come before /:id
  * - /:id/touch must come before /:id
  */
 export const cardsModule = new Hono<HonoEnv>()
   // Routes (specific paths before parameterized paths)
-  .route('/', getLatestDraftRoute)  // GET /drafts — MUST be before /:id
-  .route('/', createCardRoute)       // POST /
-  .route('/', listCardsRoute)        // GET /
-  .route('/', generateUploadUrlRoute) // POST /:id/generate-upload-url — MUST be before /:id
-  .route('/', getImageRoute)         // GET /:id/image/:type — MUST be before /:id
-  .route('/', publishCardRoute)       // POST /:id/publish — MUST be before /:id
-  .route('/', touchCardRoute)        // PATCH /:id/touch — MUST be before /:id
-  .route('/', getCardRoute)          // GET /:id — AFTER all /:id/* routes
-  .route('/', updateCardRoute)       // PUT /:id
-  .route('/', deleteCardRoute);      // DELETE /:id
+  .route('/', getLatestDraftRoute)            // GET    /drafts
+  .route('/', createCardRoute)                // POST   /
+  .route('/', listCardsRoute)                 // GET    /
+  .route('/', generateUploadUrlRoute)         // POST   /:id/generate-upload-url
+  .route('/', getImageRoute)                  // GET    /:id/image/:type
+  .route('/', exportTableCardRoute)           // POST   /:id/table-card/export
+  .route('/', tableCardElementUploadUrlRoute) // POST   /:id/table-card/element/upload-url
+  .route('/', getTableCardElementImageRoute)  // GET    /:id/table-card/element/image/:elementId
+  .route('/', deleteTableCardElementRoute)    // DELETE /:id/table-card/element/:elementId
+  .route('/', downloadTableCardRoute)         // GET    /:id/table-card/download
+  .route('/', publishCardRoute)               // POST   /:id/publish
+  .route('/', touchCardRoute)                 // PATCH  /:id/touch
+  .route('/', getCardRoute)                   // GET    /:id
+  .route('/', updateCardRoute)                // PUT    /:id
+  .route('/', deleteCardRoute);               // DELETE /:id
 
 // Default export for `app.route('/api/cards', cardsModule)`
 export default cardsModule;

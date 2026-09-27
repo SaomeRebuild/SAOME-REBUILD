@@ -17,6 +17,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import type Konva from 'konva';
 import type { CardBuilderEditorProps, EditorStep } from './CardBuilderEditor.types';
 import { CardBuilderEditorHeader } from './CardBuilderEditorHeader';
 import { CardBuilderEditorWorkspace } from './CardBuilderEditorWorkspace';
@@ -25,6 +26,13 @@ import { MobilePreviewPanel } from './MobilePreviewPanel';
 import { useCardBuilderStore } from './CardBuilderEditor.store';
 import { useAuth } from '@/hooks/useAuth';
 import { cardService } from '@/services/cardService';
+import { tableCardSettingsSchema } from '@saome/shared/schemas/card';
+import { Step7TableCardSidebar } from './Step7TableCard/Step7TableCardSidebar';
+import { Step7MobileToolbar } from './Step7TableCard/Step7MobileToolbar';
+import { Step7MobileInspectorSheet } from './Step7TableCard/Step7MobileInspectorSheet';
+import { TableCardExportButton } from './Step7TableCard/TableCardExportButton';
+import { useTableCardExport } from './Step7TableCard/Step7TableCard.hooks';
+import type { ToolKey } from './Step7TableCard/Step7TableCard.types';
 
 export function CardBuilderEditor({
   onSave: _onSave,
@@ -52,6 +60,11 @@ export function CardBuilderEditor({
     setIssuerName,
     loadSettings,
     reset,
+    // Round 3 Fix 5 — push the step number into the store so the
+    // `TenantToolbar` (rendered at the page level, NOT inside
+    // CardBuilderEditor) can read whether the user is on Step 7 and
+    // reposition its mobile hamburger above the Step 7 bottom toolbar.
+    setCardBuilderStep,
   } = useCardBuilderStore();
 
   // Auth state — used to pre-fill issuerName from tenant.name
@@ -130,6 +143,23 @@ export function CardBuilderEditor({
       setIsLoading(false);
     }
   }, [templateId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ============================================================
+  // Round 3 Fix 5 — sync `cardBuilderStep` into the store.
+  //
+  // `TenantToolbar` lives at the AppDashboardPage level (NOT inside
+  // this CardBuilderEditor), so it has no prop-drilled way to know
+  // which step the user is currently on. The store flag is the
+  // shared channel: set on mount / step change, cleared on unmount.
+  //
+  // Cleanup returns the flag to null so navigating away from
+  // CardBuilder (e.g. to Members) immediately releases the "we're on
+  // Step 7" hint.
+  // ============================================================
+  useEffect(() => {
+    setCardBuilderStep(step);
+    return () => setCardBuilderStep(null);
+  }, [step, setCardBuilderStep]);
 
   // ============================================================
   // Auto-save: Logo Text changes → debounced PUT /cards/:id
@@ -295,6 +325,11 @@ export function CardBuilderEditor({
     step4BaselineArmedRef.current = false;
     step4LoadSettledRef.current = false;
     lastStep4SnapshotRef.current = '';
+    // Step 7 shares the same outer-fetch timeline (one loadSettings
+    // hydrates all steps), so its baseline-armed flag also resets on
+    // cardId change. Mirrors the existing step4 / step2 reset pattern.
+    step7BaselineArmedRef.current = false;
+    lastStep7SnapshotRef.current = '';
   }, [cardId]);
 
   useEffect(() => {
@@ -915,6 +950,99 @@ export function CardBuilderEditor({
   }, [cardId, giftCardAmount, giftCardPoints]);
 
   // ============================================================
+  // Auto-save: Step 7 — 客製化桌牌 (tableCard) → debounced PUT.
+  //
+  // 2026-09-27 (current task, Step 7): the tableCard slice holds an
+  // elements array (text/image/shape), a background (solid/gradient),
+  // and a bleedMm selector. Editing the canvas mutates one of those
+  // fields; every edit must persist to the JSONB blob via the same
+  // debounced PUT pattern as Step 4 / 5 / 6.
+  //
+  // Pattern (mirrors Step 4 / Step 5 / Step 6 verbatim):
+  //   1. baseline-armed ref: first effect run after cardId change just
+  //      seeds the snapshot baseline (no timer scheduled).
+  //   2. shared `step4LoadSettledRef`: refuse to schedule a timer until
+  //      loadSettings has resolved (otherwise PUT with empty defaults
+  //      would clobber DB per Rule 032 silent overwrite).
+  //   3. JSON.stringify snapshot diff: skip the PUT when the serialized
+  //      payload hasn't changed since the last attempt (Zustand selectors
+  //      return new array references on every render).
+  //   4. Debounce 1s after the user pauses dragging / typing.
+  //   5. Field-level validation gate: parse with shared
+  //      `tableCardSettingsSchema` (Rule 032 client-side validation) and
+  //      skip the PUT if the snapshot is invalid.
+  // ============================================================
+  const step7SaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastStep7SnapshotRef = useRef<string>('');
+
+  const tableCard = useCardBuilderStore((s) => s.tableCard);
+
+  // Dedicated Step 7 baselineArmed ref (mirrors Step 4 / Step 5 pattern).
+  // Distinct from `step4BaselineArmedRef` so the baseline-arming logic
+  // stays local to Step 7 — easier to reason about when adding more
+  // steps later.
+  const step7BaselineArmedRef = useRef(false);
+
+  useEffect(() => {
+    if (!cardId) {
+      step7BaselineArmedRef.current = false;
+      return;
+    }
+
+    const snapshot = JSON.stringify(tableCard);
+
+    // First run: seed baseline, no timer.
+    if (!step7BaselineArmedRef.current) {
+      step7BaselineArmedRef.current = true;
+      lastStep7SnapshotRef.current = snapshot;
+      return;
+    }
+
+    // Wait until loadSettings has hydrated before allowing saves.
+    if (!step4LoadSettledRef.current) {
+      lastStep7SnapshotRef.current = snapshot;
+      return;
+    }
+
+    if (snapshot === lastStep7SnapshotRef.current) return;
+    lastStep7SnapshotRef.current = snapshot;
+
+    if (step7SaveTimerRef.current) clearTimeout(step7SaveTimerRef.current);
+    step7SaveTimerRef.current = setTimeout(() => {
+      // Read latest values at fire time (avoid stale closure).
+      const s = useCardBuilderStore.getState();
+      const current = s.tableCard;
+
+      // Rule 032 client-side validation: parse with the shared schema.
+      // Invalid input is dropped here so the backend never sees a
+      // partial / over-the-limit payload (defense-in-depth).
+      const parsed = tableCardSettingsSchema.safeParse(current);
+      if (!parsed.success) {
+        console.warn(
+          '[CardBuilderEditor] Step 7 auto-save blocked — invalid state:',
+          parsed.error.issues,
+        );
+        return;
+      }
+
+      cardService
+        .update(cardId, {
+          settings: { tableCard: parsed.data },
+        })
+        .catch((err) => {
+          console.warn('[CardBuilderEditor] Step 7 auto-save failed:', err);
+        });
+    }, 1000);
+
+    return () => {
+      if (step7SaveTimerRef.current) {
+        clearTimeout(step7SaveTimerRef.current);
+        step7SaveTimerRef.current = null;
+      }
+    };
+  }, [cardId, tableCard]);
+
+  // ============================================================
   // Auto-save keep-alive: touch TTL every 5 minutes
   // ============================================================
   const touchTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -1005,6 +1133,50 @@ export function CardBuilderEditor({
     }
   }
 
+  // ============================================================
+  // Step 7 — 客製化桌牌 orchestration (Issues 7 & 8, 2026-09-27)
+  // ============================================================
+  // Step 7 has UI-only state (activeTool / selectedId / stageRef) that
+  // lives outside the Zustand store (it's not part of the persisted
+  // template). We hoist these to CardBuilderEditor so:
+  //
+  //   1. The Konva canvas in Step7TableCard can read selectedId + the
+  //      stage ref (for raster export).
+  //   2. The right-side Step7TableCardSidebar (rendered conditionally
+  //      in place of CardBuilderEditorPreview when step === 7) reads the
+  //      same selectedId + writes back via onSelect.
+  //   3. The Header inline export button (Issue 7) calls the SAME
+  //      useTableCardExport hook instance (no double-state-machine).
+  //   4. The mobile toolbar + sheet (mobile UX, 2026-09-27) read the
+  //      same activeTool / selectedId.
+  //
+  // When step !== 7, the hooks still run but their state is dormant.
+  // ===========================================================================
+  const step7StageRef = useRef<Konva.Stage | null>(null);
+  const [step7ActiveTool, setStep7ActiveTool] = useState<ToolKey>('text');
+  const [step7SelectedId, setStep7SelectedId] = useState<string | null>(null);
+  // Mobile sheet open/close state (mobile UX, 2026-09-27).
+  const [step7MobileSheetOpen, setStep7MobileSheetOpen] = useState(false);
+  // Open the sheet whenever the user changes tool on mobile.
+  // (On desktop, the toolbar change is reflected in the sidebar
+  // immediately — no sheet involved.)
+  const handleStep7ToolChange = (tool: ToolKey) => {
+    setStep7ActiveTool(tool);
+    setStep7MobileSheetOpen(true);
+  };
+
+  // useTableCardExport hook — single source of the 5-state machine +
+  // rasterize flow. Both the Header button and (potentially) the canvas
+  // FAB route through this.
+  const {
+    state: step7ExportState,
+    handleExport: step7HandleExport,
+    handleDownload: step7HandleDownload,
+  } = useTableCardExport({
+    templateId: cardId,
+    stageRef: step7StageRef,
+  });
+
   return (
     <div className="flex min-w-0 h-full w-full flex-col overflow-hidden">
       {/* min-w-0: see comment in the flex-row div below. Without it, the
@@ -1033,6 +1205,20 @@ export function CardBuilderEditor({
           onStepChange={handleStepChange}
           completedSteps={completedSteps}
           isStep1Blocked={!logoText.trim() || !cardType}
+          // Issue 7 (2026-09-27): inject the table-card export button
+          // into the Header only when on Step 7. Other steps see no
+          // header action. Single source of truth — the hook is the
+          // same instance the canvas rasterizes from.
+          headerActions={
+            step === 7 ? (
+              <TableCardExportButton
+                state={step7ExportState}
+                onClick={step7HandleExport}
+                onDownload={step7HandleDownload}
+                variant="inline"
+              />
+            ) : null
+          }
         />
 
         {/* 下容器：左右欄位
@@ -1054,22 +1240,72 @@ export function CardBuilderEditor({
               await cardService.update(id, { settings });
             }}
             onBack={_onBack}
+            // Step 7 plumbing (Issues 7 & 8, 2026-09-27): shared
+            // stage ref + selectedId + activeTool. The Workspace passes
+            // these down to Step7TableCard. The right-side
+            // Step7TableCardSidebar (rendered conditionally below)
+            // receives the same state via separate props.
+            step7StageRef={step7StageRef}
+            step7SelectedId={step7SelectedId}
+            step7OnSelect={setStep7SelectedId}
+            step7ActiveTool={step7ActiveTool}
+            step7SetActiveTool={setStep7ActiveTool}
             className="min-w-0 flex-2 lg:w-2/3"
           />
 
-          {/* 右欄位：即時預覽區 — 1/3 寬度，Desktop only */}
-          <CardBuilderEditorPreview
-            cardSide={cardSide}
-            onCardSideChange={setCardSide}
-            className="flex-1 lg:w-1/3"
-          />
+          {/* 右欄位：即時預覽區 — 1/3 寬度，Desktop only.
+              Issue 8 (2026-09-27): Step 7 不再顯示手機預覽;改為
+              Step7TableCardSidebar (toolbar + Inspector). Desktop-only
+              (the sidebar is `hidden lg:flex`); mobile users see the
+              bottom toolbar + inspector sheet instead. */}
+          {step === 7 ? (
+            <div className="hidden min-w-0 flex-1 flex-col lg:flex lg:w-1/3">
+              <Step7TableCardSidebar
+                activeToolOverride={step7ActiveTool}
+                onActiveToolChangeOverride={setStep7ActiveTool}
+                selectedIdOverride={step7SelectedId}
+              />
+            </div>
+          ) : (
+            <CardBuilderEditorPreview
+              cardSide={cardSide}
+              onCardSideChange={setCardSide}
+              className="flex-1 lg:w-1/3"
+            />
+          )}
         </div>
 
-        {/* Mobile 預覽面板（Bottom Sheet） */}
-        <MobilePreviewPanel
-          cardSide={cardSide}
-          onCardSideChange={setCardSide}
-        />
+        {/* Mobile 預覽面板（Bottom Sheet）— Steps 1-6 only.
+            Step 7 has its own mobile toolbar + inspector sheet (rendered
+            below at the page level, not inside the workspace). */}
+        {step !== 7 && (
+          <MobilePreviewPanel
+            cardSide={cardSide}
+            onCardSideChange={setCardSide}
+          />
+        )}
+
+        {/* Step 7 mobile UI (2026-09-27): bottom toolbar + inspector
+            bottom sheet. Both are mobile-only (<lg). On desktop, the
+            right-side Step7TableCardSidebar covers this surface. */}
+        {step === 7 && (
+          <>
+            <Step7MobileToolbar
+              activeTool={step7ActiveTool}
+              onToolChange={handleStep7ToolChange}
+            />
+            <Step7MobileInspectorSheet
+              open={step7MobileSheetOpen}
+              onClose={() => setStep7MobileSheetOpen(false)}
+              activeTool={step7ActiveTool}
+              selectedElement={
+                useCardBuilderStore.getState().tableCard.elements.find(
+                  (el) => el.id === step7SelectedId,
+                ) ?? null
+              }
+            />
+          </>
+        )}
         </>
       )}
     </div>

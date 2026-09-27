@@ -20,7 +20,7 @@ import { z } from 'zod';
 
 const paramsSchema = z.object({
   id: z.string().uuid(),
-  type: z.enum(['logo', 'background', 'icon']),
+  type: z.enum(['logo', 'background', 'icon', 'table-card-export']),
 });
 
 export const getImageRoute = new Hono<HonoEnv>()
@@ -102,6 +102,27 @@ export const getImageRoute = new Hono<HonoEnv>()
     console.log('[getImage] tenantId:', tenantId);
     console.log('[getImage] template.tenant_id:', template.tenant_id);
     console.log('[getImage] settings keys:', Object.keys(settings));
+    console.log('[getImage] imageType:', imageType);
+
+    // ===== Step 7 — table-card-export special case (2026-09-27) =====
+    // exportKey lives inside `settings.tableCard.exportKey`, not at the
+    // top level. Handle it before falling through to the fieldMap lookup
+    // so the diagnostic block below doesn't fire for this case.
+    if (imageType === 'table-card-export') {
+      const tableCard = settings['tableCard'] as { exportKey?: string } | undefined;
+      const exportKey = tableCard?.exportKey;
+      if (!exportKey) {
+        return c.body(null, 204);
+      }
+      const object = await c.env.ASSETS.get(exportKey);
+      if (!object) return c.body(null, 204);
+      const contentType = object.httpMetadata?.contentType ?? 'image/png';
+      c.header('Content-Type', contentType);
+      c.header('Content-Length', String(object.size ?? ''));
+      c.header('Cache-Control', 'public, max-age=31536000');
+      return c.body(object.body);
+    }
+
     console.log('[getImage] imageType:', imageType, '→ field:', field);
     const r2Key: string | undefined = settings[field] as string | undefined;
     console.log('[getImage] r2Key:', r2Key);

@@ -894,7 +894,7 @@ export default {
       separator: '＝',
       placeholderAmount: '例：100',
       placeholderPoints: '例：100',
-      ratePreview: '{{amount}} {{unit}} = {{points}} 點',
+      ratePreview: '{{amountWithUnit}} = {{points}} 點',
       validation: {
         required: '請填寫兌換比率',
         positive: '數值必須大於零',

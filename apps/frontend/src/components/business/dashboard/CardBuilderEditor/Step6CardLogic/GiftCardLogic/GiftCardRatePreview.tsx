@@ -1,15 +1,31 @@
 /**
  * GiftCardRatePreview — Live exchange rate display.
  *
- * 2026-09-27: New for gift_card editor. Shows the current exchange rate
- * as a single line: "[amount] [unit] = [points] 點" / "[amount] [unit] =
- * [points] pts". When either field is invalid (≤ 0 or not a finite
- * integer), the preview does NOT render — defensive guard so we never
- * show "0 元 = 0 點" mid-edit.
+ * 2026-09-27 (initial): New for gift_card editor. Shows the current
+ * exchange rate as a single line.
  *
- * Uses the i18n template `step6.gift.ratePreview` with placeholders
- * {amount}, {unit}, {points} — react-i18next's interpolation handles the
- * substitution automatically when called via `t(key, options)`.
+ * 2026-09-27 (Round 2 — currency placement fix): Refactor to
+ * pre-format the amount + unit string in the component so currencies
+ * with prefix convention (ZAR "R", TWD en "NT$") render correctly.
+ * Previously the i18n template `{{amount}} {{unit}}` hardcoded suffix
+ * style, producing "12 R = 1 點" for ZAR — wrong, since Rand symbol
+ * belongs BEFORE the amount. Now uses prefix/suffix logic that
+ * mirrors GiftCardAmountField exactly, keeping the input field and
+ * preview line consistent.
+ *
+ * 4 currency × locale cases (validated):
+ *   - TWD zh-TW: "100 元 = 100 點"      (suffix 元)
+ *   - TWD en:    "NT$ 100 = 100 pts"   (prefix NT$)
+ *   - ZAR zh-TW: "R 100 = 100 點"      (prefix R, no suffix)
+ *   - ZAR en:    "R 100 = 100 pts"     (prefix R, no suffix)
+ *
+ * When either field is invalid (≤ 0 or not a finite integer), the
+ * preview does NOT render — defensive guard so we never show
+ * "0 元 = 0 點" mid-edit.
+ *
+ * Uses i18n template `step6.gift.ratePreview` with placeholder
+ * {amountWithUnit} + {points}; react-i18next's interpolation handles
+ * the substitution automatically when called via `t(key, options)`.
  */
 
 import { useTranslation } from 'react-i18next';
@@ -38,20 +54,32 @@ export function GiftCardRatePreview() {
 
   if (!amountValid || !pointsValid) return null;
 
-  // Currency-aware unit (mirrors GiftCardAmountField pattern):
-  //   - TWD zh-TW: 後綴 "元" → "100 元 = 100 點"
-  //   - TWD en:    前綴 "NT$" → "Spend NT$100 = 100 pts"
-  //   - ZAR:       前綴 "R" → "Spend R100 = 100 pts"
+  // Currency-aware unit placement (mirrors GiftCardAmountField pattern
+  // exactly — keep the prefix/suffix logic in sync between input
+  // field and preview so they never disagree):
+  //   - TWD zh-TW: suffix 元       → "100 元"
+  //   - TWD en:    prefix NT$      → "NT$ 100"
+  //   - ZAR:       prefix R        → "R 100"  (both zh-TW and en)
   const isZAR = currency === 'ZAR';
   const isZhLocale = (i18n.language ?? '').startsWith('zh');
-  const unit =
-    isZAR
-      ? t('step6.gift.amountUnitZAR')
-      : !isZhLocale
-      ? t('step6.gift.amountUnitTWD') // NT$ prefix for en TWD
-      : isZhLocale
-      ? t('step6.gift.amountUnitTWD') // 元 suffix for zh-TW TWD
-      : '';
+  const unitPrefix = isZAR
+    ? t('step6.gift.amountUnitZAR')
+    : !isZhLocale
+    ? t('step6.gift.amountUnitTWD')   // en TWD: "NT$" prefix
+    : '';
+  const unitSuffix = isZAR
+    ? ''
+    : isZhLocale
+    ? t('step6.gift.amountUnitTWD')   // zh-TW TWD: "元" suffix
+    : '';
+
+  // Pre-format the amount with its unit. The template only sees a
+  // single {amountWithUnit} string so the position of the unit is
+  // fully controlled here — keeps the i18n template agnostic to
+  // currency placement conventions.
+  const amountWithUnit = unitPrefix
+    ? `${unitPrefix} ${giftCardAmount}`        // "R 100" / "NT$ 100"
+    : `${giftCardAmount} ${unitSuffix}`.trim(); // "100 元"
 
   return (
     <div
@@ -60,8 +88,7 @@ export function GiftCardRatePreview() {
     >
       <span className="font-medium text-foreground">
         {t('step6.gift.ratePreview', {
-          amount: giftCardAmount,
-          unit,
+          amountWithUnit,
           points: giftCardPoints,
         })}
       </span>

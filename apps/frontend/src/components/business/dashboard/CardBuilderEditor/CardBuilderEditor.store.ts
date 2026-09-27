@@ -85,6 +85,33 @@ import {
   type MembershipRewardShape,
   type MembershipExpiryMode,
 } from '@saome/shared/constants/membership-card';
+import {
+  MAX_ELEMENTS,
+  MAX_IMAGE_ELEMENTS,
+  BLEED_OPTIONS_MM,
+  DEFAULT_BLEED_MM,
+  type TableCardBleedMm,
+} from '@saome/shared/constants/table-card';
+import {
+  type TableCardSettings,
+  type TableCardElement,
+  type TableCardBackground,
+  tableCardSettingsSchema,
+} from '@saome/shared/schemas/card';
+
+/**
+ * Round 3 Fix 4.3 — fire-and-forget R2 cleanup on image-element delete.
+ *
+ * The store mutates local state synchronously, then fires
+ * `cardService.deleteTableCardElement(templateId, id)` outside the
+ * `set(...)` callback so a slow network or 5xx response never blocks
+ * the editor's optimistic UI. Importing cardService here keeps the
+ * cleanup contract centralized: every code path that removes an image
+ * element (Inspector delete button, Layers ✕ button, SelectionBar
+ * trash icon) goes through this single store action and gets R2
+ * cleanup for free.
+ */
+import { cardService } from '@/services/cardService';
 
 /**
  * A single { label, value } pair used by both Step 4 back fields and Step 4
@@ -107,6 +134,40 @@ function normalizeLoadedColor(raw: unknown, fallback: string): string {
   if (typeof raw !== 'string') return fallback;
   const normalized = normalizeHex(raw);
   return normalized ? `#${normalized}` : fallback;
+}
+
+/**
+ * Round 5 fix — Normalize all element zIndex values to be unique and
+ * contiguous [0, n-1], ASSUMING the input array is already in the
+ * desired panel order (top of panel = index 0, bottom = index n-1).
+ *
+ * Called after every mutation (add / remove / reorder / load) to
+ * guarantee the swap-with-neighbor invariant in
+ * `reorderTableCardElement`: after every operation, current and
+ * neighbor always have DIFFERENT zIndex values, so ↑ / ↓ always
+ * produces a one-position move.
+ *
+ * Why this contract: callers MUST pre-sort the input into the
+ * desired panel order before calling. This function just renumbers
+ * zIndex based on that order — it does NOT re-sort. Rationale: the
+ * previous `if (currentZ === neighborZ) return {}` guard (Round 4)
+ * masked zIndex-collision bugs by silently no-op'ing, which
+ * manifested as "this element can't rise past panel position N".
+ * Normalizing based on the caller's chosen order makes the bug
+ * impossible to express AND keeps the caller's explicit reordering
+ * intent intact (no surprising re-sort by stable-insertion-order).
+ */
+function normalizeZIndex(
+  elements: readonly TableCardElement[],
+): TableCardElement[] {
+  if (elements.length === 0) return [];
+  const lastIdx = elements.length - 1;
+  return elements.map((el, i) => ({
+    ...el,
+    // Panel top (index 0) = highest zIndex (lastIdx);
+    // Panel bottom (index n-1) = zIndex 0.
+    zIndex: lastIdx - i,
+  }));
 }
 
 interface CardBuilderState {
@@ -984,6 +1045,225 @@ interface CardBuilderState {
   /** 設定會員卡指定到期日 (ISO YYYY-MM-DD). null 允許. */
   setMembershipSpecificExpiryDate: (date: string | null) => void;
 
+  // ===== Step 7 — 客製化桌牌 (2026-09-27, tableCard feature) =====
+  // Mirrors `shared/templateSettingsSchema.tableCard` (Layer 1) and
+  // `apps/backend/src/modules/cards/db/templates.ts::TemplateSettings.tableCard`
+  // (Layer 3, Rule 019 § 4.1). Drives the Konva canvas editor (Phase 5).
+  //
+  // State machine: `exportState` (5 states per plan)
+  //   - 'idle'      → no export yet, "Generate Table Card" button visible
+  //   - 'generating' → POST in-flight, spinner visible
+  //   - 'ready'     → last export OK, "Download" button visible
+  //   - 'stale'     → canvas edited since last export, "Re-generate" visible
+  //   - 'error'     → last export failed, "Retry" visible
+  //
+  // Stale detection (Rule 030 pattern): compares `tableCardLastEditedAt`
+  // against `tableCardLastExportedAt`. Any element-add / position-change /
+  // bleed-change / background-change marks `tableCardLastEditedAt = now`.
+  /** Table card editor state (Konva canvas content). */
+  tableCard: TableCardSettings;
+  /**
+   * Last-edit timestamp (ISO 8601 UTC string). Bumped by every element
+   * mutation / bleed change / background change. Compared against
+   * `tableCardLastExportedAt` for stale detection.
+   */
+  tableCardLastEditedAt: string | null;
+  /**
+   * Last successful export timestamp (ISO 8601 UTC string). Set by
+   * `setTableCardExport` after the backend confirms the PUT to R2.
+   */
+  tableCardLastExportedAt: string | null;
+  /**
+   * 5-state machine per plan: drives the export button's copy / icon /
+   * disabled state. Not persisted in DB (UI-only concern).
+   */
+  tableCardExportState: 'idle' | 'generating' | 'ready' | 'stale' | 'error';
+  /**
+   * Last export error message (i18n key resolved at render time). Cleared
+   * on next successful export. Surfaces "重試" toast on failure.
+   */
+  tableCardExportError: string | null;
+  /**
+   * Round 10 (2026-09-27) — Polygon creation mode state.
+   *
+   * When the user clicks "新增多邊形" in the Inspector, the canvas
+   * enters an interactive drawing mode: each pointer-down adds a vertex,
+   * double-click / Enter finishes, Esc cancels. The canvas reads
+   * `polygonCreation.vertices` (in element-local coords — see
+   * schema `points` doc) and renders a preview line on top of the
+   * existing elements.
+   *
+   * `null` = not creating (the canvas should behave normally —
+   * selection / drag / Transformer). Non-null = the canvas must
+   * disable element dragging and not attach the Transformer to the
+   * currently-selected element (creation takes precedence).
+   *
+   * The Inspector mirrors this state to show "X 個頂點 — 雙擊完成"
+   * hint + a Cancel button.
+   */
+  polygonCreation: {
+    /**
+     * Vertices collected so far, in the element's LOCAL coordinate space
+     * (Konva flat array: [x1, y1, x2, y2, ...] relative to bbox top-left).
+     * Each vertex is the canvas pointer position minus the bbox top-left.
+     */
+    vertices: number[];
+    /**
+     * Bounding box top-left in CANVAS coords (mm). The canvas reads this
+     * when computing local coords for incoming pointer events and when
+     * computing width/height for the final element on finish.
+     */
+    bboxOrigin: { x: number; y: number };
+    /**
+     * Default bbox size in mm. The final element's width/height is
+     * derived from `Math.max(...vertices) - Math.min(...vertices)` so
+     * bbox size is just an initial guess the Inspector displays in
+     * the hint text.
+     */
+    bboxSize: { width: number; height: number };
+  } | null;
+
+  /**
+   * Replace the entire table card settings (used by `loadSettings` to
+   * hydrate from server-fetched template.settings.tableCard).
+   *
+   * Defensive: validates with shared zod schema and falls back to
+   * `defaultTableCardSettings()` on parse failure (defensive against
+   * corrupted JSONB — same pattern as existing `unwrapCardSettings`).
+   */
+  setTableCard: (settings: TableCardSettings) => void;
+  /**
+   * Append a new element to `tableCard.elements`. No-op at MAX_ELEMENTS=50.
+   * Caller is responsible for generating the element id (typically via
+   * `crypto.randomUUID()`) and the initial zIndex (= max zIndex + 1).
+   * Bumps `tableCardLastEditedAt` to mark the canvas stale.
+   */
+  addTableCardElement: (element: TableCardElement) => void;
+  /**
+   * Patch an existing element by id (Partial<TableCardElement>). Used
+   * by the inspector for position/size/rotation/text/stroke edits.
+   * No-op if id is not found.
+   * Bumps `tableCardLastEditedAt` only when the patch changes the element.
+   */
+  updateTableCardElement: (id: string, patch: Partial<TableCardElement>) => void;
+  /**
+   * Remove an element by id. No-op if id is not found. Does NOT renumber
+   * zIndex (Konva tolerates gaps; the next addTableCardElement uses
+   * max+1 anyway).
+   * Bumps `tableCardLastEditedAt`.
+   */
+  removeTableCardElement: (id: string) => void;
+  /**
+   * Round 4 — Swap zIndex with the element's neighbor in the sorted
+   * (zIndex DESC) order. Used by the layers panel "bring forward /
+   * send backward" buttons (Issues 1 & 2).
+   *
+   * Previous behavior (`(id, newZIndex: number)`) performed integer
+   * arithmetic on raw zIndex values, which produced two visible bugs:
+   *   1. Collision with neighbor — when two elements shared a zIndex
+   *      (common after delete/re-add cycles that don't renumber), the
+   *      moved element landed AFTER the existing element in stable
+   *      sort, so the user saw no movement (or a 2-position jump).
+   *   2. Gap filling — when a zIndex gap existed, successive clicks
+   *      landed in the gap with no visual change before colliding.
+   *
+   * New behavior: sort elements by zIndex DESC (matches the layers
+   * panel UI), find the element's sorted index, swap its zIndex with
+   * the neighbor at `idx ± 1`. Every successful click moves the element
+   * by exactly one visual position in the panel.
+   *
+   * Direction:
+   *   - 'up'   → swap with the element currently ABOVE in the panel
+   *              (i.e. the one with the next higher zIndex)
+   *   - 'down' → swap with the element currently BELOW
+   *   - both directions are no-ops at the corresponding boundary
+   *     (top / bottom of the sorted list).
+   *
+   * Bumps `tableCardLastEditedAt` and flips `'ready'` → `'stale'`.
+   */
+  reorderTableCardElement: (id: string, direction: 'up' | 'down') => void;
+  /**
+   * Change the bleed edge (3/5/10mm). Affects the safe-zone overlay
+   * dimension and the exported PNG dimensions.
+   * Bumps `tableCardLastEditedAt`.
+   */
+  setTableCardBleed: (bleedMm: TableCardBleedMm) => void;
+  /**
+   * Replace the background (solid color or gradient).
+   * Bumps `tableCardLastEditedAt`.
+   */
+  setTableCardBackground: (bg: TableCardBackground) => void;
+  /**
+   * Update the editor timestamp only (used when position-only changes
+   * happen via Konva drag handlers that don't go through the other
+   * setters). Optional convenience — most edits go through the
+   * dedicated setters above which already bump the timestamp.
+   */
+  touchTableCard: () => void;
+  /**
+   * Update export metadata after successful backend PUT. Sets
+   * `tableCardExportState = 'ready'` and clears any prior error.
+   */
+  setTableCardExport: (exportKey: string, lastExportedAt: string) => void;
+  /**
+   * Mark export state machine transitions ('idle' → 'generating' →
+   * 'ready' / 'stale' / 'error'). Called by useTableCardExport hook.
+   */
+  setTableCardExportState: (
+    state: 'idle' | 'generating' | 'ready' | 'stale' | 'error',
+    errorKey?: string,
+  ) => void;
+
+  /**
+   * Round 10 (2026-09-27) — Polygon creation mode actions.
+   *
+   * Lifecycle:
+   *   1. User clicks "新增多邊形" in the Inspector
+   *      → `startPolygonCreation({ x: 50, y: 50, width: 60, height: 40 })`
+   *   2. User clicks on canvas N times
+   *      → `appendPolygonVertex(localX, localY)` per click
+   *   3a. User double-clicks or presses Enter
+   *      → `finishPolygonCreation()` returns the final `points` array
+   *        (or `null` if <3 vertices) and clears the state.
+   *   3b. User presses Esc or clicks Cancel
+   *      → `cancelPolygonCreation()` clears the state, discarding vertices.
+   *
+   * The Inspector consumes `finishPolygonCreation` to add the element to
+   * `tableCard.elements` via `addTableCardElement` (the store itself
+   * doesn't auto-add — the caller owns the final element construction).
+   */
+  startPolygonCreation: (bbox: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }) => void;
+  appendPolygonVertex: (localX: number, localY: number) => void;
+  /** Returns the vertices array (in element-local coords) and clears state. */
+  finishPolygonCreation: () => number[] | null;
+  cancelPolygonCreation: () => void;
+  /**
+   * Update an existing vertex (local coords) in the in-progress polygon.
+   * No-op when not in creation mode or vertex index is out of bounds.
+   */
+  updatePolygonVertex: (
+    vertexIndex: number,
+    localX: number,
+    localY: number,
+  ) => void;
+
+  /**
+   * Round 3 Fix 5 — current CardBuilder step, or `null` when CardBuilder
+   * is not mounted.
+   *
+   * Consumed by `TenantToolbar` to decide whether to push the mobile
+   * hamburger button above the Step 7 bottom toolbar. Set by a mount
+   * `useEffect` in `CardBuilderEditor`; cleared on unmount. Not
+   * persisted to DB — purely a UI context flag.
+   */
+  cardBuilderStep: number | null;
+  setCardBuilderStep: (step: number | null) => void;
+
   /**
    * 從既有 template 的 settings 載入 store.
    *
@@ -1546,6 +1826,28 @@ const initialState = {
   // 預設兌換比率 1:1 (1 元 = 1 點). per user decision 2026-09-27.
   giftCardAmount: GIFT_CARD_DEFAULT_AMOUNT,
   giftCardPoints: GIFT_CARD_DEFAULT_POINTS,
+  // ===== Step 7 — 客製化桌牌初始狀態 (2026-09-27) =====
+  // Empty elements array — user adds via Toolbar. Default bleed 3mm.
+  // exportKey / lastExportedAt are undefined until first export.
+  // Explicit annotation preserves the discriminated union
+  // (`background.type === 'solid' | 'gradient'`); bare object literal
+  // would widen to `string` and break assignment to the State interface.
+  tableCard: {
+    elements: [] as Array<never>,
+    background: { type: 'solid' as const, color: '#ffffff' },
+    bleedMm: DEFAULT_BLEED_MM as 3,
+  },
+  tableCardLastEditedAt: null,
+  tableCardLastExportedAt: null,
+  // Initial export state = 'idle' (no export yet, "Generate" button).
+  // After first successful export → 'ready'; after edit → 'stale'.
+  tableCardExportState: 'idle' as 'idle' | 'generating' | 'ready' | 'stale' | 'error',
+  tableCardExportError: null,
+  // Round 10 (2026-09-27) — polygon creation mode (null = not creating).
+  polygonCreation: null,
+  // Round 3 Fix 5 — UI context flag for `TenantToolbar`. null when
+  // CardBuilder is unmounted; a 1-based step number (1-7) when mounted.
+  cardBuilderStep: null,
 };
 
 /**
@@ -1557,7 +1859,7 @@ const typedInitialState: Pick<
   keyof typeof initialState
 > = initialState;
 
-export const useCardBuilderStore = create<CardBuilderState>((set) => ({
+export const useCardBuilderStore = create<CardBuilderState>()((set, get) => ({
   ...typedInitialState,
 
   setCardId: (cardId) => set({ cardId }),
@@ -2343,6 +2645,357 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
     if (!Number.isInteger(points)) return;
     set({ giftCardPoints: points });
   },
+
+  // ===== Step 7 — 客製化桌牌 setters (2026-09-27) =====
+  // Bump `tableCardLastEditedAt` on every edit so the export button can
+  // flip 'ready' → 'stale' without polling the backend.
+  // Defensive validation: clamp element count to MAX_ELEMENTS=50; clamp
+  // zIndex to [0, elements.length - 1]; accept only BLEED_OPTIONS_MM.
+  // zod parse on `setTableCard` falls back to defaults on failure
+  // (defensive against corrupted JSONB per Bug #8.5).
+
+  setTableCard: (settings) => {
+    // Defensive: refuse to assign if zod parse fails. Falls back to a
+    // safe default to keep the editor from breaking on a corrupt payload.
+    const parsed = tableCardSettingsSchema.safeParse(settings);
+    if (!parsed.success) {
+      console.warn('[CardBuilderEditor.store] setTableCard — invalid input, keeping current state:', parsed.error.issues);
+      return;
+    }
+    const editedAt = new Date().toISOString();
+    set((state) => ({
+      tableCard: parsed.data,
+      tableCardLastEditedAt: editedAt,
+      // Editing after 'ready' makes the export stale.
+      tableCardExportState:
+        state.tableCardExportState === 'ready' ? 'stale' : state.tableCardExportState,
+    }));
+  },
+
+  addTableCardElement: (element) => {
+    if (!element || typeof element.id !== 'string') return;
+    // Round 3 Fix 4 — guard image-element hard cap before mutating
+    // state. Returning {} from `set(...)` is a no-op but consumes a
+    // re-render cycle; an early return is cheaper and clearer.
+    if (
+      element.type === 'image' &&
+      get().tableCard.elements.filter((el) => el.type === 'image').length >=
+        MAX_IMAGE_ELEMENTS
+    ) {
+      console.warn(
+        '[CardBuilderEditor.store] addTableCardElement blocked — image limit reached',
+        MAX_IMAGE_ELEMENTS,
+      );
+      return;
+    }
+    set((state) => {
+      if (state.tableCard.elements.length >= MAX_ELEMENTS) return {};
+      // Round 5 fix — normalize zIndex after appending the new element
+      // so all elements get unique contiguous [0, n-1] zIndex values.
+      // This prevents zIndex collisions from rapid double-add or from
+      // legacy data that broke the "currentZ !== neighborZ" invariant
+      // (Round 4) and made reorder silently no-op.
+      const nextElements = normalizeZIndex([
+        ...state.tableCard.elements,
+        element,
+      ]);
+      const editedAt = new Date().toISOString();
+      return {
+        tableCard: {
+          ...state.tableCard,
+          elements: nextElements,
+        },
+        tableCardLastEditedAt: editedAt,
+        tableCardExportState:
+          state.tableCardExportState === 'ready' ? 'stale' : state.tableCardExportState,
+      };
+    });
+  },
+
+  updateTableCardElement: (id, patch) => {
+    if (!id || !patch || typeof patch !== 'object') return;
+    set((state) => {
+      const idx = state.tableCard.elements.findIndex((el) => el.id === id);
+      if (idx === -1) return {};
+      // Merge preserves discriminated union: if patch changes `type`,
+      // we reject the patch (can't change element kind via update).
+      const current = state.tableCard.elements[idx]!;
+      if ('type' in patch && patch.type !== current.type) return {};
+      const merged = { ...current, ...patch } as TableCardElement;
+      const next = [...state.tableCard.elements];
+      next[idx] = merged;
+      const editedAt = new Date().toISOString();
+      return {
+        tableCard: { ...state.tableCard, elements: next },
+        tableCardLastEditedAt: editedAt,
+        tableCardExportState:
+          state.tableCardExportState === 'ready' ? 'stale' : state.tableCardExportState,
+      };
+    });
+  },
+
+  removeTableCardElement: (id) => {
+    if (!id) return;
+    // Capture the element BEFORE `set(...)` so we can decide whether to
+    // fire R2 cleanup. Looking up the element after `set(...)` would
+    // race with the state update and miss the just-removed entry.
+    const removedEl = get().tableCard.elements.find((el) => el.id === id);
+    set((state) => {
+      const next = state.tableCard.elements.filter((el) => el.id !== id);
+      if (next.length === state.tableCard.elements.length) return {};
+      // Round 5 fix — normalize zIndex after removing so remaining
+      // elements stay unique contiguous [0, n-1]. Without this, a
+      // deleted middle element leaves a "hole" that breaks the
+      // reorder swap invariant on the next operation.
+      const normalized = normalizeZIndex(next);
+      const editedAt = new Date().toISOString();
+      return {
+        tableCard: { ...state.tableCard, elements: normalized },
+        tableCardLastEditedAt: editedAt,
+        tableCardExportState:
+          state.tableCardExportState === 'ready' ? 'stale' : state.tableCardExportState,
+      };
+    });
+    // Round 3 Fix 4.3 — sync R2 cleanup for image elements. Only image
+    // elements own an R2 object at
+    //   {tenantId}/{templateId}/table-card/{elementId}.png
+    // text / shape elements have no R2 footprint, so deleting them
+    // doesn't need a backend round-trip. Fire-and-forget: a 5xx or
+    // network blip must never block the editor's optimistic UI.
+    if (removedEl?.type === 'image') {
+      const cardId = get().cardId;
+      if (cardId) {
+        void cardService.deleteTableCardElement(cardId, removedEl.id).catch((err) => {
+          // R2 cleanup is best-effort. The store has already removed
+          // the element locally; on next reload, the DB row won't have
+          // the reference, so the orphan R2 object is unreachable
+          // through the app. A future "garbage collect unreferenced
+          // R2 objects" cron can sweep stragglers.
+          console.warn(
+            '[CardBuilderEditor.store] R2 cleanup failed for element',
+            removedEl.id,
+            err,
+          );
+        });
+      }
+    }
+  },
+
+  reorderTableCardElement: (id, direction) => {
+    if (!id) return;
+    if (direction !== 'up' && direction !== 'down') return;
+    set((state) => {
+      const elements = state.tableCard.elements;
+      if (elements.length < 2) return {};
+      // Sort DESC by zIndex so the panel's display order matches the
+      // neighbor lookup. JS Array.prototype.sort is stable, so equal
+      // zIndex values preserve insertion order as a tie-break.
+      const sorted = [...elements].sort((a, b) => b.zIndex - a.zIndex);
+      const idx = sorted.findIndex((el) => el.id === id);
+      if (idx === -1) return {};
+      // Compute the neighbor index in the sorted (panel) order.
+      //   'up'   → panel-up   = idx - 1 (toward top of list, higher zIndex)
+      //   'down' → panel-down = idx + 1 (toward bottom of list, lower zIndex)
+      const neighborIdx =
+        direction === 'up' ? idx - 1 : idx + 1;
+      // Boundary check + same-index safety: no-op at the top / bottom
+      // of the panel and when the caller somehow passes an invalid idx.
+      if (neighborIdx < 0 || neighborIdx >= sorted.length) return {};
+      if (neighborIdx === idx) return {};
+
+      // Round 5 fix — swap the target element's POSITION in the
+      // sorted array (not its zIndex value). This guarantees a
+      // genuine one-position move regardless of duplicate zIndex
+      // values, then normalize renumbers to unique contiguous [0, n-1].
+      //
+      // Why swap by sorted position: the previous implementation
+      // swapped zIndex VALUES, which silently no-op'd when current
+      // and neighbor had identical zIndex (legacy data, rapid
+      // add/delete cycles, or Round 3 integer-arithmetic leftovers).
+      // That manifested as "this element can't rise past panel
+      // position N". Swapping by sorted position makes the move
+      // physical — duplicate zIndex can no longer block reorder.
+      const newSorted = [...sorted];
+      const tmp = newSorted[idx]!;
+      newSorted[idx] = newSorted[neighborIdx]!;
+      newSorted[neighborIdx] = tmp;
+
+      // Normalize to unique contiguous [0, n-1] based on newSorted
+      // order (top of panel = highest zIndex, bottom = 0).
+      const normalized = normalizeZIndex(newSorted);
+
+      // Skip if state unchanged (defensive — guards against any future
+      // logic that calls this with already-sorted panels).
+      const changed = normalized.some(
+        (el, i) => el.id !== elements[i]?.id || el.zIndex !== elements[i]?.zIndex,
+      );
+      if (!changed) return {};
+
+      const editedAt = new Date().toISOString();
+      return {
+        tableCard: { ...state.tableCard, elements: normalized },
+        tableCardLastEditedAt: editedAt,
+        tableCardExportState:
+          state.tableCardExportState === 'ready' ? 'stale' : state.tableCardExportState,
+      };
+    });
+  },
+
+  setTableCardBleed: (bleedMm) => {
+    // Defensive: only accept BLEED_OPTIONS_MM values (3/5/10).
+    if (!BLEED_OPTIONS_MM.includes(bleedMm)) return;
+    set((state) => ({
+      tableCard: { ...state.tableCard, bleedMm },
+      tableCardLastEditedAt: new Date().toISOString(),
+      tableCardExportState:
+        state.tableCardExportState === 'ready' ? 'stale' : state.tableCardExportState,
+    }));
+  },
+
+  setTableCardBackground: (bg) => {
+    if (!bg || (bg.type !== 'solid' && bg.type !== 'gradient')) return;
+    // Capture previous export state once; reusing `state` directly inside
+    // the object literal would shadow the param name and trigger TS6133.
+    set(() => {
+      const currentState = useCardBuilderStore.getState();
+      return {
+        tableCard: { ...currentState.tableCard, background: bg },
+        tableCardLastEditedAt: new Date().toISOString(),
+        tableCardExportState:
+          currentState.tableCardExportState === 'ready'
+            ? 'stale'
+            : currentState.tableCardExportState,
+      };
+    });
+  },
+
+  touchTableCard: () => {
+    set((state) => ({
+      tableCardLastEditedAt: new Date().toISOString(),
+      tableCardExportState:
+        state.tableCardExportState === 'ready' ? 'stale' : state.tableCardExportState,
+    }));
+  },
+
+  setTableCardExport: (exportKey, lastExportedAt) => {
+    if (typeof exportKey !== 'string' || !exportKey) return;
+    if (typeof lastExportedAt !== 'string' || !lastExportedAt) return;
+    set((state) => ({
+      tableCard: { ...state.tableCard, exportKey, lastExportedAt },
+      tableCardLastExportedAt: lastExportedAt,
+      tableCardExportState: 'ready',
+      tableCardExportError: null,
+    }));
+  },
+
+  setTableCardExportState: (exportState, errorKey) =>
+    set(() => ({
+      tableCardExportState: exportState,
+      tableCardExportError:
+        exportState === 'error' ? errorKey ?? 'tableCard.errors.serverError' : null,
+    })),
+
+  // Round 10 (2026-09-27) — Polygon creation mode actions.
+  // The state lives in the store (not local component state) so the
+  // canvas + Inspector can both subscribe without prop drilling.
+  // See `polygonCreation` field docstring for the lifecycle.
+  startPolygonCreation: (bbox) => {
+    if (!bbox || typeof bbox.x !== 'number' || typeof bbox.y !== 'number') return;
+    const width = Math.max(10, Number(bbox.width) || 60);
+    const height = Math.max(10, Number(bbox.height) || 40);
+    set(() => ({
+      polygonCreation: {
+        vertices: [],
+        bboxOrigin: { x: bbox.x, y: bbox.y },
+        bboxSize: { width, height },
+      },
+    }));
+  },
+
+  appendPolygonVertex: (localX, localY) => {
+    if (typeof localX !== 'number' || typeof localY !== 'number') return;
+    if (!Number.isFinite(localX) || !Number.isFinite(localY)) return;
+    set((state) => {
+      if (!state.polygonCreation) return {};
+      // Hard cap at 12 vertices (matches schema max). After cap, drop
+      // additional clicks silently — UI shows the count so the user
+      // sees they're at the cap.
+      if (state.polygonCreation.vertices.length >= 24) return {};
+      return {
+        polygonCreation: {
+          ...state.polygonCreation,
+          vertices: [...state.polygonCreation.vertices, localX, localY],
+        },
+      };
+    });
+  },
+
+  finishPolygonCreation: (): number[] | null => {
+    // Returns the vertices array AND clears state atomically.
+    // Returns null when fewer than 3 vertices — caller should treat
+    // that as "too few, discard" and not call addTableCardElement.
+    //
+    // Uses the `get` closure from the create callback (NOT the
+    // exported `useCardBuilderStore` reference) to break the
+    // self-referential type cycle — reading the store from inside
+    // its own initializer would widen `useCardBuilderStore` to `any`
+    // and cascade into every selector type (TS7022 / TS7023). See
+    // runs/improvements/feedback/20260927-step7-round10-shape-stroke-and-new-shapes.md
+    // § "Self-referential store crash".
+    const polygonCreation = get().polygonCreation;
+    if (!polygonCreation) return null;
+    const vertices = polygonCreation.vertices;
+    if (vertices.length < 6) {
+      // 3 vertices minimum → 6 numbers in flat format.
+      set({ polygonCreation: null });
+      return null;
+    }
+    set({ polygonCreation: null });
+    return vertices;
+  },
+
+  cancelPolygonCreation: () => {
+    set(() => ({ polygonCreation: null }));
+  },
+
+  /**
+   * Update an existing vertex (local coords) in the in-progress polygon.
+   * No-op when not in creation mode or vertex index is out of bounds.
+   *
+   * Used by the canvas's per-vertex drag handler so the user can
+   * fine-tune an already-placed vertex's position before finishing
+   * the polygon. The vertex index is 0-based (vertex 0 = first
+   * vertex). Caller must pass element-local coords (mm, relative to
+   * `polygonCreation.bboxOrigin`).
+   *
+   * (2026-09-27) — round 11: per-vertex drag while drawing.
+   */
+  updatePolygonVertex: (vertexIndex, localX, localY) => {
+    if (typeof vertexIndex !== 'number' || vertexIndex < 0) return;
+    if (typeof localX !== 'number' || typeof localY !== 'number') return;
+    if (!Number.isFinite(localX) || !Number.isFinite(localY)) return;
+    set((state) => {
+      if (!state.polygonCreation) return {};
+      const flatIdx = vertexIndex * 2;
+      if (flatIdx + 1 >= state.polygonCreation.vertices.length) return {};
+      const next = state.polygonCreation.vertices.slice();
+      next[flatIdx] = localX;
+      next[flatIdx + 1] = localY;
+      return {
+        polygonCreation: {
+          ...state.polygonCreation,
+          vertices: next,
+        },
+      };
+    });
+  },
+
+
+  // Round 3 Fix 5 — UI context flag for `TenantToolbar`. Called from
+  // CardBuilderEditor's mount `useEffect`. No-op when the value is
+  // already equal so we don't trigger extra renders on every step.
+  setCardBuilderStep: (step) =>
+    set((state) => (state.cardBuilderStep === step ? {} : { cardBuilderStep: step })),
 
   /**
    * 新增一組空白 multipass 級距. 在 MAX_MULTIPASS_TIERS=5 時為 no-op.
@@ -3501,9 +4154,55 @@ export const useCardBuilderStore = create<CardBuilderState>((set) => ({
           }
           return state.giftCardPoints;
         })(),
+        // ===== Step 7 — 客製化桌牌 loadSettings (2026-09-27) =====
+        // `resolved.tableCard` is the raw JSONB payload — validate via
+        // the shared zod schema (single source of truth, Rule 019 § 4.1).
+        // On success: replace store tableCard + seed export timestamps.
+        // On failure: log a warning and keep current store state (defensive
+        // against corrupted JSONB).
+        // Note: this does NOT bump `tableCardLastEditedAt` — loading from
+        // server is not a user edit.
+        tableCard: (() => {
+          const raw = (resolved as Record<string, unknown>)?.tableCard;
+          if (raw == null) return state.tableCard;
+          const parsed = tableCardSettingsSchema.safeParse(raw);
+          if (!parsed.success) {
+            console.warn(
+              '[CardBuilderEditor.store] loadSettings.tableCard — invalid payload, keeping current state:',
+              parsed.error.issues,
+            );
+            return state.tableCard;
+          }
+          // Round 5 fix — re-normalize zIndex after hydrate so any
+          // legacy duplicate / gap values from earlier save cycles
+          // get collapsed to unique contiguous [0, n-1]. Without
+          // this, reloading a saved template can leave the layer
+          // panel with collisions that block reorder.
+          //
+          // normalizeZIndex assigns based on input array order, so we
+          // sort DESC by zIndex first (stable tie-break by insertion
+          // order) to establish panel order, then renumber.
+          const sortedByZ = [...parsed.data.elements].sort(
+            (a, b) => b.zIndex - a.zIndex,
+          );
+          return {
+            ...parsed.data,
+            elements: normalizeZIndex(sortedByZ),
+          };
+        })(),
+        // Last-exported timestamp: hydrates from the existing exportKey
+        // record. Drives the export button's initial state (ready vs stale).
+        tableCardLastExportedAt: (() => {
+          const raw = (resolved as Record<string, unknown>)?.tableCard as
+            | { lastExportedAt?: string }
+            | undefined;
+          return typeof raw?.lastExportedAt === 'string'
+            ? raw.lastExportedAt
+            : state.tableCardLastExportedAt;
+        })(),
       };
     });
   },
 
-  reset: () => set({ ...typedInitialState, isPaid: typedInitialState.isPaid, issuerLogoVersion: 0, iconImageVersion: 0, backgroundImageVersion: 0 }),
+  reset: () => set({ ...typedInitialState, isPaid: typedInitialState.isPaid, issuerLogoVersion: 0, iconImageVersion: 0, backgroundImageVersion: 0, tableCardExportState: 'idle', tableCardExportError: null, tableCardLastEditedAt: null, tableCardLastExportedAt: null, polygonCreation: null }),
 }));

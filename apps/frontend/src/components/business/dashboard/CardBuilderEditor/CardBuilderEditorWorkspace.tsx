@@ -6,6 +6,8 @@
 import { type HTMLAttributes } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import type Konva from 'konva';
+import type { RefObject } from 'react';
 import type { CardType, EditorStep } from './CardBuilderEditor.types';
 import { CardTypeSelector } from './CardTypeSelector';
 import { Step2CardSettings } from './Step2CardSettings';
@@ -16,6 +18,8 @@ import { Step3StampGrid } from './Step3StampGrid';
 import { Step4CardInfo } from './Step4CardInfo';
 import { Step5CardLocation } from './Step5CardLocation';
 import { Step6CardLogic } from './Step6CardLogic';
+import { Step7TableCard } from './Step7TableCard';
+import type { ToolKey } from './Step7TableCard/Step7TableCard.types';
 import { useCardBuilderStore } from './CardBuilderEditor.store';
 import {
   DESCRIPTION_MAX_LENGTH,
@@ -30,6 +34,20 @@ interface CardBuilderEditorWorkspaceProps extends HTMLAttributes<HTMLDivElement>
   onCardTypeChange: (type: CardType) => void;
   onSave?: (cardId: string, settings: Record<string, unknown>) => Promise<void>;
   onBack?: () => void;
+  /**
+   * Step 7 canvas plumbing (Issues 7 & 8, 2026-09-27):
+   *   - `stageRef`: Konva stage ref owned by CardBuilderEditor (single
+   *     instance shared with the right-side sidebar).
+   *   - `selectedId` / `onSelect`: selection state shared between
+   *     canvas + sidebar.
+   *   - `activeTool` / `setActiveTool`: tool state shared between
+   *     canvas (drives inspector panel) + sidebar.
+   */
+  step7StageRef?: RefObject<Konva.Stage | null>;
+  step7SelectedId?: string | null;
+  step7OnSelect?: (id: string | null) => void;
+  step7ActiveTool?: ToolKey;
+  step7SetActiveTool?: (tool: ToolKey) => void;
 }
 
 export function CardBuilderEditorWorkspace({
@@ -41,6 +59,15 @@ export function CardBuilderEditorWorkspace({
   onSave,
   onBack,
   className,
+  // Step 7 plumbing — optional so older callers (tests) don't break.
+  step7StageRef,
+  step7SelectedId,
+  step7OnSelect,
+  step7ActiveTool,
+  // step7SetActiveTool is intentionally accepted for future use (e.g.
+  // keyboard shortcuts to switch tools). Marked _unused for now to
+  // silence eslint(no-unused-vars) without dropping it from the contract.
+  step7SetActiveTool: _step7SetActiveTool,
   ...rest
 }: CardBuilderEditorWorkspaceProps) {
   const { t } = useTranslation('cardEditor');
@@ -1492,17 +1519,24 @@ export function CardBuilderEditorWorkspace({
         </section>
       )}
 
-      {/* Step 7: 客製化桌牌（預留） */}
+      {/* Step 7: 客製化桌牌 (2026-09-27) — Konva canvas editor.
+          Issues 7 & 8 (2026-09-27): canvas now receives shared stageRef
+          + selectedId + activeTool from the parent (CardBuilderEditor).
+          The right-side toolbar + inspector lives in Step7TableCardSidebar
+          (rendered by CardBuilderEditor in its right column when step === 7). */}
       {step === 7 && (
-        <section className="flex flex-col items-center justify-center gap-4 py-12">
-          <p className="text-muted-foreground">
+        <section className="flex min-w-0 flex-col gap-6">
+          <h2 className="text-lg font-semibold text-foreground">
             {t('step7.title')}
-          </p>
-          <p className="text-sm text-muted-foreground/60">
-            {t('comingSoon')}
-          </p>
-          {/* 上一步 / 下一步按鈕 */}
-          <div className="flex items-center gap-4 pt-4">
+          </h2>
+          <Step7TableCard
+            stageRef={step7StageRef ?? undefined}
+            selectedId={step7SelectedId ?? null}
+            onSelect={step7OnSelect ?? (() => {})}
+            activeTool={step7ActiveTool ?? 'text'}
+          />
+          {/* 上一步 / 下一步按鈕 — Step 7 無必填欄位,直接可前進 */}
+          <div className="flex items-center justify-between pt-2">
             <button
               type="button"
               onClick={handlePrev}

@@ -856,7 +856,7 @@ export default {
       separator: '=',
       placeholderAmount: 'e.g. 100',
       placeholderPoints: 'e.g. 100',
-      ratePreview: '{{amount}} {{unit}} = {{points}} pts',
+      ratePreview: '{{amountWithUnit}} = {{points}} pts',
       validation: {
         required: 'Please fill in the exchange rate',
         positive: 'Value must be greater than zero',

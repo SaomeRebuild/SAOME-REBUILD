@@ -45,7 +45,7 @@ export const cardTypeSchema = z.enum([
 
 export type CardType = z.infer<typeof cardTypeSchema>;
 
-// ===== Card Display Fields (Step 3 — "顯示欄位" selector) =====
+// ===== Card Display Fields (Step 3 ??"?????" selector) =====
 
 /**
  * Card face fields that can be assigned to the left/right slots.
@@ -58,7 +58,7 @@ export type CardType = z.infer<typeof cardTypeSchema>;
  * Stamp-card-specific keys (`availableRewards`, `totalStamps`,
  * `stampsRemaining`) are valid values for every card type at the schema
  * level (the enum is global), but the editor UI hides them when the user
- * picks a non-stamp card type — see `CardFieldGroup` in card-fields.ts and
+ * picks a non-stamp card type ??see `CardFieldGroup` in card-fields.ts and
  * the filter logic in `Step3CardFields/index.tsx`. Stored values are not
  * cleared on card-type churn (the conditional filter only affects the
  * dropdown options, not the store roundtrip).
@@ -96,23 +96,180 @@ export type TemplateStatus = z.infer<typeof templateStatusSchema>;
 
 /**
  * Template settings stored in JSONB.
- * Flat structure — NOT nested.
+ * Flat structure ??NOT nested.
  *
  * Step 1 fields: cardType (also held in SQL column `templates.card_type`),
- *                logoText (the text shown on the pass header — visually
+ *                logoText (the text shown on the pass header ??visually
  *                rendered in PassCardPreviewHeader next to the issuer logo).
  *                Card Name itself lives in the SQL column `templates.name`,
  *                NOT in this JSONB blob.
  * Step 2 fields: barcodeType, logoText, issuerName, passValidDays, expiryDate, currency
  * Step 3-4 fields: TBD (backgroundColor, textColor, etc.)
  */
+// ===== Step 7 ??????????(2026-09-27) =====
+//
+// A4 portrait (210?297mm) canvas with user-configurable bleed (3/5/10mm).
+// Frontend Konva canvas renders elements; backend rasterizes the
+// exported PNG and stores it in R2 (key: `{tenantId}/{templateId}/table-card-export.png`).
+//
+// Element types: text, image (R2 key), shape (rect/circle/line).
+// All positions/dimensions are in millimeters (mm) at the canvas
+// coordinate system; the rasterizer converts to pixels at PRINT_DPI.
+//
+// Cross-references:
+//   - packages/shared/constants/table-card.ts (single source of truth for dimensions)
+//   - packages/shared/schemas/cardBuilder.ts (cardTypeExtensions table card)
+//   - apps/backend/src/modules/cards/schemas/request.ts (backend mirror)
+//   - apps/backend/src/modules/cards/db/templates.ts (TemplateSettings interface)
+//
+// IMPORTANT: schema is exported at the top level so consumers can
+// validate `settings.tableCard` independently (frontend autosave +
+// backend export endpoint), not just as part of the full settings
+// object.
+//
+// Note on ordering: defined BEFORE templateSettingsSchema because
+// templateSettingsSchema references tableCardSettingsSchema via
+// `tableCard: tableCardSettingsSchema.optional()`. JS `const` is not
+// hoisted (TDZ); reversed order would throw at module load.
+export const tableCardElementSchema = z.discriminatedUnion('type', [
+  // ????????
+  z.object({
+    id: z.string().uuid(),
+    type: z.literal('text'),
+    /** X position from canvas top-left in mm. */
+    x: z.number(),
+    y: z.number(),
+    width: z.number().positive(),
+    height: z.number().positive(),
+    /** Rotation in degrees, [0, 360). */
+    rotation: z.number().min(0).max(360).default(0),
+    zIndex: z.number().int().nonnegative(),
+    /** ??????? ??200 chars (matches DESCRIPTION_MAX_LENGTH). */
+    text: z.string().max(200),
+    /** ??? in mm (height); Konva ??????????? px. */
+    fontSize: z.number().positive(),
+    fontWeight: z.enum(['normal', 'bold']),
+    /** Hex color 6-digit format. */
+    color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  }),
+  // ????????
+  z.object({
+    id: z.string().uuid(),
+    type: z.literal('image'),
+    x: z.number(),
+    y: z.number(),
+    width: z.number().positive(),
+    height: z.number().positive(),
+    rotation: z.number().min(0).max(360).default(0),
+    zIndex: z.number().int().nonnegative(),
+    /** R2 key: `{tenantId}/{templateId}/table-card/{elementId}.png`. */
+    imageKey: z.string().min(1),
+    /**
+     * 圖片形狀遮罩 (2026-09-27) — bounding box 仍是矩形，但 render
+     * 像素裁切成 circle / triangle / rounded-rect。Konva 內建：
+     *   - clipShape: 'rect' → 直接傳 cornerRadius 給 Konva.Image
+     *   - clipShape: 'circle' / 'triangle' → clipFunc 繪製裁切路徑
+     *
+     * Backward-compatible：optional 欄位，舊資料不帶這兩個欄位時
+     * 預設為「無遮罩 / 無圓角」（與既有渲染一致）。Transformer 仍
+     * attach 在矩形 bounding box 上，hit-test / resize 行為不變。
+     */
+    clipShape: z.enum(['rect', 'circle', 'triangle']).optional(),
+    /** 圓角半徑 (mm)，僅 clipShape === 'rect' 時生效。 */
+    clipRadius: z.number().min(0).max(50).optional(),
+  }),
+  // 形狀元素 (矩形 / 圓形 / 線段 / 三角形 / 橢圓形 / 多邊形)
+  z.object({
+    id: z.string().uuid(),
+    type: z.literal('shape'),
+    /**
+     * Shape kind.
+     *   - rect / circle / triangle / ellipse: Konva primitive shapes
+     *     (rectangle, inscribed circle, equilateral triangle, ellipse).
+     *   - line: 2-point line from (0,0) to (width,height); stroke-only.
+     *   - polygon: arbitrary polygon — vertex list stored in `points`
+     *     (Konva flat format). The user clicks each vertex during
+     *     creation mode in the canvas; the Inspector shows a "Vertex
+     *     count" number input that mirrors the length of `points`.
+     */
+    shape: z.enum(['rect', 'circle', 'line', 'triangle', 'ellipse', 'polygon']),
+    x: z.number(),
+    y: z.number(),
+    width: z.number().positive(),
+    height: z.number().positive(),
+    rotation: z.number().min(0).max(360).default(0),
+    zIndex: z.number().int().nonnegative(),
+    fill: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+    cornerRadius: z.number().min(0).optional(),
+    stroke: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+    strokeWidth: z.number().min(0).optional(),
+    /**
+     * Polygon 頂點 (Konva flat points format: [x1, y1, x2, y2, ...])。
+     * 座標系 = element 的 local coordinate space (相對於 bbox top-left,
+     * 套用 rotation 之前)。使用者建立 polygon 時 click 點擊的 canvas
+     * 座標 → 減去 bbox top-left 存進 points。只有 shape === 'polygon'
+     * 時才會用到;其他 shape 沒有 points 欄位。
+     *
+     * 順序與 `vertexCount` 保持一致 (points.length === vertexCount * 2)。
+     * 變更時兩者必須同步更新 (store action 會保證)。
+     */
+    points: z.array(z.number()).optional(),
+    /**
+     * Polygon 頂點數 (僅供 debug / analytics / Inspector 顯示用,
+     * 真正渲染讀 `points`)。範圍 3-12 (對應 Konva `RegularPolygon`
+     * 合理上限);只在 shape === 'polygon' 時有意義。
+     */
+    vertexCount: z.number().int().min(3).max(12).optional(),
+  }),
+]);
+
+export const tableCardBackgroundSchema = z.object({
+  type: z.enum(['solid', 'gradient']),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  gradient: z
+    .object({
+      from: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+      to: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+      /**
+       * Gradient angle in degrees, [0, 360).
+       * Convention: 0° = left→right, 90° = top→bottom, clockwise
+       * (matches Photoshop / Figma). Mirrored in
+       * packages/shared/logic/tableCard.ts::gradientAngleToEndPoints —
+       * keep the two in sync.
+       */
+      angle: z.number().min(0).max(360),
+    })
+    .optional(),
+});
+
+export const tableCardSettingsSchema = z.object({
+  /**
+   * ???????????: ???? / ???? / ???. ????50 (?????.
+   * Each element has x/y/width/height/rotation/zIndex.
+   * zIndex 0 = bottom layer; sortByZIndex(elements) ???????
+   */
+  elements: z.array(tableCardElementSchema).max(50),
+  /** ???????: ??? / ??. */
+  background: tableCardBackgroundSchema,
+  /** ???????: ??? 3mm. */
+  bleedMm: z.union([z.literal(3), z.literal(5), z.literal(10)]).default(3),
+  /**
+   * ???????export ??R2 key.
+   * ??????export endpoint ??;??? useTableCardExport hook ??????stale.
+   * Optional: ???? export ??????.
+   */
+  exportKey: z.string().optional(),
+  /** ???????export ??ISO timestamp. ??? stale ???? (Rule 030 baseline pattern). */
+  lastExportedAt: z.string().optional(),
+});
+
 export const templateSettingsSchema = z.object({
   // Step 1
   cardType: cardTypeSchema.optional(),
   // Step 2
   barcodeType: barcodeTypeSchema.optional(),
   /**
-   * Logo Text — the text shown on the pass header (next to the issuer
+   * Logo Text ??the text shown on the pass header (next to the issuer
    * logo). Semantic swap 2026-09-13: previously stored in the SQL column
    * `templates.name` under the misleading key `name`; migration 018
    * swapped it into `settings.logoText`. The Card Name (pass record name,
@@ -125,7 +282,7 @@ export const templateSettingsSchema = z.object({
   currency: currencySchema.optional(),
   /**
    * Card display language. Controls which language the card fields are
-   * translated into when sent to Passcreator (deferred — not implemented
+   * translated into when sent to Passcreator (deferred ??not implemented
    * yet). Per-card property (not per-tenant) so different cards in the
    * same tenant can serve different language audiences.
    * 2026-09-18 Step 2: added for Passcreator future integration.
@@ -134,13 +291,13 @@ export const templateSettingsSchema = z.object({
   // Step 3-4 (TBD)
   issuerLogo: z.string().optional(),
   /**
-   * Push-notification icon (R2 key, per shared/constants/card-images.ts § 5.7 contract).
-   * Stored as a string like `{tenantId}/{templateId}/icon.png` — see CARD_IMAGE_KEYS.icon.
+   * Push-notification icon (R2 key, per shared/constants/card-images.ts ? 5.7 contract).
+   * Stored as a string like `{tenantId}/{templateId}/icon.png` ??see CARD_IMAGE_KEYS.icon.
    * Phase 5 of IconUploader plan (2026-08-31): added to support MediaAssetUploader variant="icon".
    */
   iconImage: z.string().optional(),
   /**
-   * Background image (R2 key) — reserved for next BackgroundUploader plan.
+   * Background image (R2 key) ??reserved for next BackgroundUploader plan.
    * Schema entry added now so future BackgroundUploader does not need a schema migration.
    */
   backgroundImage: z.string().optional(),
@@ -148,7 +305,7 @@ export const templateSettingsSchema = z.object({
   textColor: z.string().optional(),
   holderName: z.string().optional(),
   cardSide: z.enum(['front', 'back']).optional(),
-  // ===== Step 3 — 顯示欄位 (left/right slot fields) =====
+  // ===== Step 3 ??????? (left/right slot fields) =====
   // Step 3 plan 2026-09-04: two side-by-side native <select> dropdowns for
   // the card face. The user picks one field per slot (left/right). Card-type-
   // dependent additions/removals are deferred; current values are the six
@@ -158,16 +315,16 @@ export const templateSettingsSchema = z.object({
   rightField: cardFieldKeySchema.optional(),
   // Membership card extension
   isPaid: z.boolean().optional(),
-  // ===== Step 3 — Stamp grid (集點印章) =====
+  // ===== Step 3 ??Stamp grid (????????) =====
   // Stamp grid feature (2026-09-04): rendered on `stamp_card` and `multipass`
-  // card types only. The grid is rows × 5 columns; `stampGridRows` constrains
+  // card types only. The grid is rows ? 5 columns; `stampGridRows` constrains
   // rows to 1..4. `stampIconId` references the icon manifest's id field
   // (see apps/frontend/src/assets/icons/stamps/manifest.ts).
   stampGridRows: z
     .union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)])
     .optional(),
   stampIconId: z.string().optional(),
-  // ===== Step 4 — 卡片資訊 (2026-09-04) =====
+  // ===== Step 4 ????????? (2026-09-04) =====
   // Description shown in PassCardPreviewBack Section 1. Required by UI but
   // left optional here so zod doesn't reject empty drafts mid-edit; the UI
   // enforces DESCRIPTION_MAX_LENGTH + non-empty via isStep4Valid().
@@ -175,7 +332,7 @@ export const templateSettingsSchema = z.object({
   // Back fields shown in PassCardPreviewBack Section 4. Flat array of
   // { label, value } pairs; PassKit convention is one Label + Value per row.
   // Length min/max is enforced by UI store (BACK_FIELDS_MIN/MAX), not zod,
-  // to keep schema focused on per-field validity (Rule 019 § 4.1).
+  // to keep schema focused on per-field validity (Rule 019 ? 4.1).
   backFields: z
     .array(
       z.object({
@@ -188,7 +345,7 @@ export const templateSettingsSchema = z.object({
   // a separate dedicated render area distinct from `backFields`; they are
   // not interchangeable. URL validation is performed by shared/logic/links.ts
   // in the UI layer; zod only enforces max length per field (URLs can be
-  // long — 2048 is the PassKit limit per pass field).
+  // long ??2048 is the PassKit limit per pass field).
   links: z
     .array(
       z.object({
@@ -197,7 +354,7 @@ export const templateSettingsSchema = z.object({
       }),
     )
     .optional(),
-  // ===== Step 5 — 地理位置 + 推播訊息 (2026-09-05, refactored 2026-09-06) =====
+  // ===== Step 5 ???????? + ????? (2026-09-05, refactored 2026-09-06) =====
   // Passcreator API-aligned fields:
   //   - `locationsDisabled`: boolean toggle. Passcreator uses this to
   //     decide whether geolocation is enabled at all. When `true` the
@@ -233,16 +390,15 @@ export const templateSettingsSchema = z.object({
         longitude: z.number().min(-180).max(180),
         // relevantText is the lock-screen message shown when the user
         // arrives at this location (Apple Wallet pkpass `relevantText`).
-        // Optional, ≤ 100 chars, null when not set.
+        // Optional, ??100 chars, null when not set.
         relevantText: z.string().max(100).nullable().optional(),
       }),
     )
     .max(10)
     .optional(),
-  // ===== Step 5 — Locations max distance (2026-09-06 rename) =====
+  // ===== Step 5 ??Locations max distance (2026-09-06 rename) =====
   // DEPRECATED 2026-09-06: kept as `.optional()` for backward-compat reads
-  // (Migration 017 renames DB rows from `notificationRadius` →
-  // `locationsMaxDistance`). New writes should use `locationsMaxDistance`.
+  // (Migration 017 renames DB rows from `notificationRadius` ??  // `locationsMaxDistance`). New writes should use `locationsMaxDistance`.
   // The backend silently accepts incoming `notificationRadius` but does
   // not echo it back; frontend `loadSettings` falls back to
   // `notificationRadius` if `locationsMaxDistance` is missing (defensive).
@@ -253,9 +409,9 @@ export const templateSettingsSchema = z.object({
     .max(1000)
     .nullable()
     .optional(),
-  // ===== Step 6 — 卡片邏輯 (2026-09-07, stamp_card / multipass only) =====
+  // ===== Step 6 ????????? (2026-09-07, stamp_card / multipass only) =====
   // Mirrors mu-plugins `_stamp_accrual_type` + `_stamp_reward_tiers_json`
-  // (collapsed into a single tier — the active reward; mu-plugins stores
+  // (collapsed into a single tier ??the active reward; mu-plugins stores
   // an array, but SAOME-REBUILD stores a single tier to keep the editor
   // simple and match the single-reward user spec 2026-09-07).
   //
@@ -263,9 +419,9 @@ export const templateSettingsSchema = z.object({
   //   - ACCRUAL_MODES / REWARD_TYPES: the enum values
   //   - REWARD_NAME_MAX_LENGTH = 40: matches PassCreator `title` cap
   //   - REWARD_VALUE bounds differ by `rewardType`:
-  //       amount_off → > 0 (currency-agnostic number)
-  //       percent_off → [1, 100] integer percentage
-  //   - MAX_DISCOUNT_AMOUNT_MIN = 0; null means "無上限"
+  //       amount_off ??> 0 (currency-agnostic number)
+  //       percent_off ??[1, 100] integer percentage
+  //   - MAX_DISCOUNT_AMOUNT_MIN = 0; null means "??????
   //
   // Cross-references:
   //   - packages/shared/constants/stamp-card.ts (single source of truth)
@@ -273,65 +429,59 @@ export const templateSettingsSchema = z.object({
   //   - apps/backend/src/modules/cards/schemas/request.ts (mirror)
   //   - apps/backend/src/modules/cards/db/templates.ts (TemplateSettings interface)
   /**
-   * 蓋章模式: per_stamp (手動蓋章) / per_visit (來訪蓋章) / per_spend (消費蓋章).
+   * ???????: per_stamp (????????) / per_visit (??????) / per_spend (??????).
    * Mirrors mu-plugins `_stamp_accrual_type` (camelCased to align with TS convention).
-   * `.nullable().optional()` — null = not set (frontend store uses null for "unselected").
+   * `.nullable().optional()` ??null = not set (frontend store uses null for "unselected").
    */
   stampAccrualMode: z.enum(['per_stamp', 'per_visit', 'per_spend']).nullable().optional(),
   /**
-   * 獎勵名稱 (例: "10元折價活動" 或 "$10 off coupon"). Max REWARD_NAME_MAX_LENGTH=40.
+   * ?????? (?? "10????????? ??"$10 off coupon"). Max REWARD_NAME_MAX_LENGTH=40.
    * Mirrors mu-plugins `_stamp_reward_tiers_json[0].name`.
    */
   rewardName: z.string().max(40).optional(),
   /**
-   * 獎勵類型: 訂單折抵現金 (amount_off) / 訂單折抵百分比 (percent_off).
+   * ??????: ????????? (amount_off) / ???????????(percent_off).
    * Mirrors mu-plugins `_stamp_reward_tiers_json[0].reward_type`.
-   * `.nullable().optional()` — null = not set (frontend store uses null for "unselected").
+   * `.nullable().optional()` ??null = not set (frontend store uses null for "unselected").
    */
   rewardType: z.enum(['amount_off', 'percent_off']).nullable().optional(),
   /**
-   * 折抵金額 (amount_off) 或百分比整數 (percent_off).
-   * Bound check is performed by `setRewardValue` setter (拒絕 ≤ 0);
+   * ??????? (amount_off) ?????????? (percent_off).
+   * Bound check is performed by `setRewardValue` setter (???? ??0);
    * zod uses `.positive()` as a backend double-check.
    * Mirrors mu-plugins `_stamp_reward_tiers_json[0].reward_value`.
    */
   rewardValue: z.number().positive().nullable().optional(),
   /**
-   * 最高折抵金額 (僅 percent_off 模式有意義; null = 無上限).
+   * ???????????(??percent_off ????????? null = ??????.
    * zod `.nullable()` matches store's `number | null` shape (null = no ceiling).
-   * Always validated as ≥ MAX_DISCOUNT_AMOUNT_MIN=0 by `setMaxDiscountAmount`.
+   * Always validated as ??MAX_DISCOUNT_AMOUNT_MIN=0 by `setMaxDiscountAmount`.
    * Mirrors mu-plugins `_stamp_reward_tiers_json[0].max_discount_amount`.
    */
   maxDiscountAmount: z.number().min(0).nullable().optional(),
   /**
-   * 來訪門檻（僅 per_visit 模式有意義）— 每 N 次拜訪可獲得 M 個蓋章。
-   * stampsPerVisitCount = N（拜訪次數），stampsPerVisitStamps = M（獲得蓋章數）。
-   * 2026-09-07 新增。
-   */
+   * ?????????per_visit ??????????????N ????????? M ???????   * stampsPerVisitCount = N??????????stampsPerVisitStamps = M??????????   * 2026-09-07 ??????   */
   stampsPerVisitCount: z.number().int().min(1).nullable().optional(),
   stampsPerVisitStamps: z.number().int().min(1).nullable().optional(),
   /**
-   * 消費門檻（僅 per_spend 模式有意義）— 每消費 N 元可獲得 M 個蓋章。
-   * stampsPerSpendAmount = N（消費金額），stampsPerSpendStamps = M（獲得蓋章數）。
-   * 2026-09-07 新增。
-   */
+   * ?????????per_spend ?????????????????N ??????? M ???????   * stampsPerSpendAmount = N??????????stampsPerSpendStamps = M??????????   * 2026-09-07 ??????   */
   stampsPerSpendAmount: z.number().positive().nullable().optional(),
   stampsPerSpendStamps: z.number().int().min(1).nullable().optional(),
-  // ===== Step 6 — Gift Card 卡 (2026-09-27, gift_card only) =====
+  // ===== Step 6 ??Gift Card ??(2026-09-27, gift_card only) =====
   // Prepaid model: customers pay X currency units to receive Y points;
   // points are then redeemed for in-store products at a tenant-defined
-  // exchange rate. Simpler than stamp/reward cards — single flat rule,
+  // exchange rate. Simpler than stamp/reward cards ??single flat rule,
   // no tier list, no point accrual over time.
   //
   //   - giftCardAmount: positive integer (currency units the customer pays)
   //   - giftCardPoints: positive integer (points the customer receives)
   //
-  // Default 1:1 (1 元 = 1 點) per user decision 2026-09-27.
+  // Default 1:1 (1 ??= 1 ?? per user decision 2026-09-27.
   // Store setter enforces `> 0` and integer; backend zod is the
-  // authoritative gate on save (Rule 032 § 1).
+  // authoritative gate on save (Rule 032 ? 1).
   giftCardAmount: z.number().int().positive().optional(),
   giftCardPoints: z.number().int().positive().optional(),
-  // ===== Step 6 — REWARD 卡 (2026-09-09, reward_card only) =====
+  // ===== Step 6 ??REWARD ??(2026-09-09, reward_card only) =====
   // Mirrors mu-plugins `SAOME-Points-Engine/modules/cards/reward-card.php` earning mode
   // and `SAOME-Passcreator-Engine/modules/passcreator-reward-card.php` tier structure.
   //
@@ -341,18 +491,17 @@ export const templateSettingsSchema = z.object({
   // mode (visits vs spend) is a card-level policy; the earn rate (e.g.
   // 1 visit = 1 point vs 1 visit = 2 points) can differ per tier.
   //
-  // rewardTiers: 最多 5 組級距（每組含 name / threshold / rewardType / rewardValue /
-  // maxDiscountAmount / pointsPerVisit / pointsPerSpendAmount / pointsPerSpendPoints）
-  //
+  // rewardTiers: ????5 ???????????name / threshold / rewardType / rewardValue /
+  // maxDiscountAmount / pointsPerVisit / pointsPerSpendAmount / pointsPerSpendPoints??  //
   // Cross-references:
   //   - packages/shared/constants/reward-card.ts (single source of truth)
   //   - packages/shared/schemas/cardBuilder.ts (cardTypeExtensions.reward_card)
   //   - apps/backend/src/modules/cards/schemas/request.ts (mirror)
   //   - apps/backend/src/modules/cards/db/templates.ts (TemplateSettings interface)
   /**
-   * 整張卡片的點數累積方式 (2026-09-09, top-level).
-   * one mode per card: based_on_points (自訂條件) / based_on_visits (拜訪) /
-   * based_on_spending (消費). null = 未選.
+   * ??????????????????(2026-09-09, top-level).
+   * one mode per card: based_on_points (??????) / based_on_visits (???) /
+   * based_on_spending (??). null = ???.
    * Drives which of `pointsPerVisit` / `pointsPerSpend*` per-tier fields are
    * meaningful; switching modes via `setEarningMode` clears all per-tier
    * earn fields so no stale data leaks across modes.
@@ -362,54 +511,52 @@ export const templateSettingsSchema = z.object({
     .nullable()
     .optional(),
   /**
-   * 獎勵級距陣列（最多 5 組）.
-   * 每個 tier 包含 reward rule (name + threshold + rewardType + rewardValue +
-   * maxDiscountAmount) + 對應 earning mode 的 earn rate fields
+   * ??????????????5 ???.
+   * ???tier ??? reward rule (name + threshold + rewardType + rewardValue +
+   * maxDiscountAmount) + ??? earning mode ??earn rate fields
    * (pointsPerVisit / pointsPerSpendAmount / pointsPerSpendPoints).
    *
-   * 2026-09-09: `earningMode` 從 per-tier 移回 top-level。
-   * Per-tier fields now only carry the earn rate (not the mode itself).
+   * 2026-09-09: `earningMode` ??per-tier ??? top-level??   * Per-tier fields now only carry the earn rate (not the mode itself).
    */
   rewardTiers: z
     .array(
       z.object({
-        /** 獎勵名稱 (例: "1000點折抵10%" 或 "500點折抵50元"). */
+        /** ?????? (?? "1000?????0%" ??"500?????0??). */
         name: z.string().min(1).max(40),
-        /** 門檻點數: 需集滿 N 點才可兌換. */
+        /** ??????? ????? N ????????? */
         threshold: z.number().int().min(1),
-        /** 獎勵類型: amount_off (現金折扣) / percent_off (百分比折扣). */
+        /** ??????: amount_off (???????) / percent_off (?????????. */
         rewardType: z.enum(['amount_off', 'percent_off']),
-        /** 獎勵值: amount_off → 金額; percent_off → 百分比. */
+        /** ????? amount_off ??????; percent_off ???????? */
         rewardValue: z.number().positive(),
-        /** 最高折抵上限 (僅 percent_off 有意義; null = 無上限). */
+        /** ???????????(??percent_off ?????? null = ??????. */
         maxDiscountAmount: z.number().min(0).nullable().optional(),
         /**
-         * 基於拜訪門檻（僅 card-wide earningMode === 'based_on_visits' 時使用）:
-         * 此 tier 每 N 次拜訪獲得的點數. null = 未填.
-         * 2026-09-09: 保留 per-tier（不同 tier 可有不同 earn rate）。
-         */
+         * ?????????????card-wide earningMode === 'based_on_visits' ???????:
+         * ??tier ??N ??????????. null = ???.
+         * 2026-09-09: ??? per-tier?????tier ??????? earn rate???         */
         pointsPerVisit: z.number().int().min(1).nullable().optional(),
         /**
-         * 基於消費門檻（僅 card-wide earningMode === 'based_on_spending' 時使用）:
-         * 此 tier 每消費 N 元獲得 M 點. null = 未填.
-         * 2026-09-09: 保留 per-tier.
+         * ????????????card-wide earningMode === 'based_on_spending' ???????:
+         * ??tier ?????N ?????M ?? null = ???.
+         * 2026-09-09: ??? per-tier.
          */
         pointsPerSpendAmount: z.number().positive().nullable().optional(),
         /**
-         * 基於消費門檻（僅 card-wide earningMode === 'based_on_spending' 時使用）:
-         * 此 tier 每次獲得多少點. null = 未填.
-         * 2026-09-09: 保留 per-tier.
+         * ????????????card-wide earningMode === 'based_on_spending' ???????:
+         * ??tier ??????????? null = ???.
+         * 2026-09-09: ??? per-tier.
          */
         pointsPerSpendPoints: z.number().int().min(1).nullable().optional(),
       }),
     )
     .max(5)
     .optional(),
-  // ===== Step 6 — Membership 卡 (2026-09-13, membership_card only) =====
+  // ===== Step 6 ??Membership ??(2026-09-13, membership_card only) =====
   // Mirrors mu-plugins membership-tier structure (see SAOME-Email-Engine
   // membership-tier handling). The simplest Step 6 sub-module after cashback:
   // each tier is a paid/free membership level with optional duration +
-  // cost + per-tier 會員獎勵 sub-rows.
+  // cost + per-tier ?????? sub-rows.
   //
   // Card-wide `hasExpiry` toggle (added 2026-09-13): all tiers share the
   // same expiry setting. When false, durationType / monthlyCost / yearlyCost
@@ -417,14 +564,14 @@ export const templateSettingsSchema = z.object({
   // (they're optional). When true, each tier must have a non-null
   // durationType + a corresponding non-negative cost.
   //
-  // Per-tier 會員獎勵 sub-rows: up to MAX_REWARDS_PER_TIER=5 per tier. Each
+  // Per-tier ?????? sub-rows: up to MAX_REWARDS_PER_TIER=5 per tier. Each
   // row is a {label, value} pair (same shape as Step 4 back fields / links).
   //
   // Differs structurally from stamp_card / reward_card / cashback_card:
-  //   - NO earningMode switch (membership has no point accrual — the
+  //   - NO earningMode switch (membership has no point accrual ??the
   //     member either pays or doesn't).
   //   - NO rewardType / rewardValue (the "reward" of a membership tier
-  //     IS the per-tier 會員獎勵 sub-rows, not a flat value).
+  //     IS the per-tier ?????? sub-rows, not a flat value).
   //   - NO threshold field (membership tiers are independent levels,
   //     not cumulative thresholds).
   //
@@ -442,13 +589,13 @@ export const templateSettingsSchema = z.object({
    */
   hasExpiry: z.boolean().optional(),
   /**
-   * Membership tier array (最多 5 組 per MAX_MEMBERSHIP_TIERS).
+   * Membership tier array (????5 ??per MAX_MEMBERSHIP_TIERS).
    * Each tier carries name + durationType + monthlyCost + yearlyCost +
-   * lifetimeCost + rewards (per-tier 會員獎勵 sub-rows, up to MAX_REWARDS_PER_TIER=5).
+   * lifetimeCost + rewards (per-tier ?????? sub-rows, up to MAX_REWARDS_PER_TIER=5).
    *
    * Cost fields are mutually exclusive based on the card-wide `hasExpiry` toggle:
-   *   - hasExpiry=true  → monthlyCost / yearlyCost are meaningful (lifetimeCost ignored).
-   *   - hasExpiry=false → lifetimeCost is meaningful (monthlyCost / yearlyCost ignored).
+   *   - hasExpiry=true  ??monthlyCost / yearlyCost are meaningful (lifetimeCost ignored).
+   *   - hasExpiry=false ??lifetimeCost is meaningful (monthlyCost / yearlyCost ignored).
    * The store's `setHasExpiry(false)` clears durationType but PRESERVES costs;
    * `setHasExpiry(true)` keeps the existing lifetimeCost value but it will be hidden
    * by the editor (defensive: never silently drops user-entered data).
@@ -456,31 +603,31 @@ export const templateSettingsSchema = z.object({
   membershipTiers: z
     .array(
       z.object({
-        /** 等級名稱 (例: "VIP", "金卡會員"). Required, 1-40 chars. */
+        /** ?????? (?? "VIP", "??????"). Required, 1-40 chars. */
         name: z.string().min(1).max(TIER_NAME_MAX_LENGTH),
-        /** 月/年卡單選. null = 未設定(僅在 card-wide hasExpiry=true 時有效). */
+        /** ???????. null = ???????? card-wide hasExpiry=true ??????. */
         durationType: z
           .enum(['monthly', 'yearly'])
           .nullable()
           .optional(),
-        /** 月費. 0 = 免費會員. null = 未填. Ignored in lifetime mode (hasExpiry=false). */
+        /** ???. 0 = ??????. null = ???. Ignored in lifetime mode (hasExpiry=false). */
         monthlyCost: z.number().min(COST_MIN).nullable().optional(),
-        /** 年費. 0 = 免費會員. null = 未填. Ignored in lifetime mode (hasExpiry=false). */
+        /** ??. 0 = ??????. null = ???. Ignored in lifetime mode (hasExpiry=false). */
         yearlyCost: z.number().min(COST_MIN).nullable().optional(),
         /**
-         * 終身會員費用 (僅在 card-wide hasExpiry=false 時有效).
-         * 0 = 免費終身會員. null = 未填.
+         * ??????? (??? card-wide hasExpiry=false ??????.
+         * 0 = ????????. null = ???.
          * Tenants use this field to sell the right to a lifetime tier
          * (one-time purchase). Hidden by the editor when hasExpiry=true.
-         * 2026-09-13 新增: 與 monthlyCost / yearlyCost 互斥 — 由 card-wide
-         * `hasExpiry` 決定哪組欄位生效.
+         * 2026-09-13 ????: ??monthlyCost / yearlyCost ?? ????card-wide
+         * `hasExpiry` ??????????????.
          */
         lifetimeCost: z.number().min(COST_MIN).nullable().optional(),
-        /** 會員獎勵 sub-rows (最多 5 組 per MAX_REWARDS_PER_TIER). */
+        /** ?????? sub-rows (????5 ??per MAX_REWARDS_PER_TIER). */
         rewards: z
           .array(
             z.object({
-              /** Sub-row label (e.g. "專屬優惠"). 1-20 chars. */
+              /** Sub-row label (e.g. "??????"). 1-20 chars. */
               label: z.string().min(1).max(REWARD_LABEL_MAX_LENGTH),
               /** Sub-row value (e.g. URL or text). 1-80 chars. */
               value: z.string().min(1).max(REWARD_VALUE_MAX_LENGTH),
@@ -492,30 +639,23 @@ export const templateSettingsSchema = z.object({
     )
     .max(MAX_MEMBERSHIP_TIERS)
     .optional(),
-  // ===== Step 6 — Free Membership Card expiry (2026-09-14) =====
-  // 免費會員卡（isPaid=false）專用的卡片級期限欄位。付費會員卡使用
-  // `durationType` + `monthlyCost` / `yearlyCost` 處理期限，故不使用本節欄位。
-  //
-  // 設計區別:
-  // - 付費卡: durationType (monthly/yearly) + 對應 cost = 購買週期後續期/到期
-  // - 免費卡: 自訂 N 天後到期 OR 指定到期日，與購買週期無關
+  // ===== Step 6 ??Free Membership Card expiry (2026-09-14) =====
+  // ??????????isPaid=false??????????????????????????????
+  // `durationType` + `monthlyCost` / `yearlyCost` ??????????????????????  //
+  // ???????
+  // - ???? durationType (monthly/yearly) + ??? cost = ???????????????
+  // - ????? ???? N ??????? OR ???????????????????????
   //
   // Mirrors:
-  //   - packages/shared/constants/membership-card.ts (MEMBERSHIP_EXPIRY_MODES 等)
+  //   - packages/shared/constants/membership-card.ts (MEMBERSHIP_EXPIRY_MODES ??
   //   - apps/backend/src/modules/cards/schemas/request.ts (backend mirror)
   //   - apps/backend/src/modules/cards/db/templates.ts::TemplateSettings (interface)
   /**
-   * 免費會員卡專用期限模式（2026-09-14, 免費卡 isPaid=false）.
-   * - 'custom_days': 自訂 N 天後到期（見 membershipCustomExpiryDays）
-   * - 'specific_date': 指定到期日（見 membershipSpecificExpiryDate, ISO YYYY-MM-DD）
-   * null = 未設定（僅在 hasExpiry=true 時需要; hasExpiry=false 時此欄位不生效）。
-   */
+   * ????????????????????2026-09-14, ?????isPaid=false??
+   * - 'custom_days': ???? N ?????????? membershipCustomExpiryDays??   * - 'specific_date': ??????????????membershipSpecificExpiryDate, ISO YYYY-MM-DD??   * null = ????????? hasExpiry=true ?????? hasExpiry=false ???????????????   */
   membershipExpiryMode: z.enum(MEMBERSHIP_EXPIRY_MODES).nullable().optional(),
   /**
-   * 免費會員卡自訂天數（membershipExpiryMode === 'custom_days' 時使用）。
-   * 整數 [CUSTOM_EXPIRY_DAYS_MIN=1, CUSTOM_EXPIRY_DAYS_MAX=3650（10年）]。
-   * null = 未填。
-   */
+   * ???????????????membershipExpiryMode === 'custom_days' ?????????   * ??? [CUSTOM_EXPIRY_DAYS_MIN=1, CUSTOM_EXPIRY_DAYS_MAX=3650??0???]??   * null = ?????   */
   membershipCustomExpiryDays: z
     .number()
     .int()
@@ -524,14 +664,11 @@ export const templateSettingsSchema = z.object({
     .nullable()
     .optional(),
   /**
-   * 免費會員卡指定到期日（membershipExpiryMode === 'specific_date' 時使用）。
-   * ISO YYYY-MM-DD 字串。null = 未填。
-   * 範圍檢查（min=today）由前端 setter 強制；zod 只驗證格式。
-   */
+   * ????????????????membershipExpiryMode === 'specific_date' ?????????   * ISO YYYY-MM-DD ????null = ?????   * ??????min=today????? setter ???zod ?????????   */
   membershipSpecificExpiryDate: z.string().nullable().optional(),
-  // ===== Step 6 — Cashback 卡 (2026-09-11, cashback_card only) =====
+  // ===== Step 6 ??Cashback ??(2026-09-11, cashback_card only) =====
   // Mirrors mu-plugins cashback-tier structure. The simplest of the Step 6
-  // sub-modules: each tier is a flat rule of "cumulative spend → cashback %",
+  // sub-modules: each tier is a flat rule of "cumulative spend ??cashback %",
   // with NO earning-mode switch and NO point accrual (the result IS a
   // percentage discount).
   //
@@ -550,26 +687,25 @@ export const templateSettingsSchema = z.object({
   //   - apps/backend/src/modules/cards/schemas/request.ts (mirror)
   //   - apps/backend/src/modules/cards/db/templates.ts (TemplateSettings interface)
   /**
-   * 現金回饋級距陣列 (最多 5 組).
-   * 每個 tier 包含 name + thresholdSpend + cashbackPercent.
+   * ?????????????? (????5 ??.
+   * ???tier ??? name + thresholdSpend + cashbackPercent.
    *
-   * 排序由前端 store 負責（thresholdSpend ASC，threshold=0 在最前）;
-   * 後端只驗證結構與範圍，不強制排序。
-   */
+   * ??????????store ???thresholdSpend ASC?threshold=0 ????????;
+   * ??????????????????????????   */
   cashbackTiers: z
     .array(
       z.object({
-        /** 回饋等級名稱 (例: "VIP", "金卡會員"). Required. */
+        /** ?????????? (?? "VIP", "??????"). Required. */
         name: z.string().min(1).max(40),
-        /** 累積消費門檻 (in store currency units). 0 = 預設 tier, 人人享有. */
+        /** ?????????(in store currency units). 0 = ??? tier, ?????. */
         thresholdSpend: z.number().min(0),
-        /** 回饋%數, 整數 [1, 100]. */
+        /** ????%?? ??? [1, 100]. */
         cashbackPercent: z.number().int().min(1).max(100),
       }),
     )
     .max(5)
     .optional(),
-  // ===== Step 6 — Discount 卡 (2026-09-18, discount_card only) =====
+  // ===== Step 6 ??Discount ??(2026-09-18, discount_card only) =====
   // Mirrors mu-plugins cashback-tier structure but semantically
   // represents a DISCOUNT (reduces purchase price) rather than
   // CASHBACK (refund after purchase). Same shape as cashbackTiers;
@@ -580,26 +716,25 @@ export const templateSettingsSchema = z.object({
   //   - apps/backend/src/modules/cards/schemas/request.ts (mirror)
   //   - apps/backend/src/modules/cards/db/templates.ts (TemplateSettings interface)
   /**
-   * 折扣級距陣列 (最多 5 組).
-   * 每個 tier 包含 name + thresholdSpend + discountPercent.
+   * ????????? (????5 ??.
+   * ???tier ??? name + thresholdSpend + discountPercent.
    *
-   * 排序由前端 store 負責（thresholdSpend ASC，threshold=0 在最前）;
-   * 後端只驗證結構與範圍，不強制排序。
-   */
+   * ??????????store ???thresholdSpend ASC?threshold=0 ????????;
+   * ??????????????????????????   */
   discountTiers: z
     .array(
       z.object({
-        /** 折扣等級名稱 (例: "金級", "VIP"). Required. */
+        /** ????????? (?? "????", "VIP"). Required. */
         name: z.string().min(1).max(40),
-        /** 累積消費門檻 (in store currency units). 0 = 預設 tier, 人人享有. */
+        /** ?????????(in store currency units). 0 = ??? tier, ?????. */
         thresholdSpend: z.number().min(0),
-        /** 折扣%數, 整數 [1, 100]. */
+        /** ???%?? ??? [1, 100]. */
         discountPercent: z.number().int().min(1).max(100),
       }),
     )
     .max(5)
     .optional(),
-  // ===== Step 6 — Discount 卡 expiry (2026-09-18, discount_card only) =====
+  // ===== Step 6 ??Discount ??expiry (2026-09-18, discount_card only) =====
   // Optional card-level expiry. Mirrors membership expiry pattern:
   // two nullable fields, mutually exclusive at the field handler level,
   // no card-wide toggle (no `hasDiscountExpiry` field).
@@ -609,10 +744,10 @@ export const templateSettingsSchema = z.object({
   // Cross-references:
   //   - packages/shared/constants/discount-card.ts (bounds)
   /**
-   * 折扣卡自訂有效天數. 整數 [DISCOUNT_CUSTOM_EXPIRY_DAYS_MIN=1,
-   * DISCOUNT_CUSTOM_EXPIRY_DAYS_MAX=3650 (10 年)].
-   * 與 discountSpecificExpiryDate 互斥（field handler 層級強制）.
-   * null = 未填 = 無到期.
+   * ?????????????? ??? [DISCOUNT_CUSTOM_EXPIRY_DAYS_MIN=1,
+   * DISCOUNT_CUSTOM_EXPIRY_DAYS_MAX=3650 (10 ??].
+   * ??discountSpecificExpiryDate ???field handler ???????
+   * null = ??? = ?????
    */
   discountCustomExpiryDays: z
     .number()
@@ -622,42 +757,42 @@ export const templateSettingsSchema = z.object({
     .nullable()
     .optional(),
   /**
-   * 折扣卡指定到期日. ISO YYYY-MM-DD 字串.
-   * 與 discountCustomExpiryDays 互斥（field handler 層級強制）.
-   * null = 未填 = 無到期.
+   * ????????????. ISO YYYY-MM-DD ??.
+   * ??discountCustomExpiryDays ???field handler ???????
+   * null = ??? = ?????
    */
   discountSpecificExpiryDate: z.string().nullable().optional(),
-  // ===== Step 6 — Coupon 卡 (2026-09-19, coupon_card only) =====
+  // ===== Step 6 ??Coupon ??(2026-09-19, coupon_card only) =====
   // Single flat rule (one coupon = one discount value). Unlike discount_card
-  // which is tiered-cumulative-spend → percentage, coupon card has NO tier
-  // list — just one discount type + value + issue count.
+  // which is tiered-cumulative-spend ??percentage, coupon card has NO tier
+  // list ??just one discount type + value + issue count.
   //
   // The user picks BETWEEN amount_off and percent_off via a radio group
-  // (mutually exclusive — switching type clears the other value field).
+  // (mutually exclusive ??switching type clears the other value field).
   // `couponIssueCount` is card-level: how many coupons to issue per
-  // redemption transaction (≥ 1, no upper cap per user decision).
+  // redemption transaction (??1, no upper cap per user decision).
   //
   // Cross-references:
   //   - packages/shared/constants/coupon-card.ts (single source of truth)
   //   - apps/backend/src/modules/cards/schemas/request.ts (mirror)
   //   - apps/backend/src/modules/cards/db/templates.ts (TemplateSettings interface)
   /**
-   * 折價券折扣類型. amount_off = 現金折扣（couponDiscountAmount 生效）;
-   * percent_off = % 數折扣（couponDiscountPercent 生效）.
-   * 兩種 type 的 value 欄位互斥，切換時清空對方（store setter 層級強制）.
+   * ???????????? amount_off = ????????couponDiscountAmount ??????
+   * percent_off = % ???????couponDiscountPercent ??????
+   * ??? type ??value ?????????????????store setter ???????
    */
   couponDiscountType: z.enum(['amount_off', 'percent_off']).nullable().optional(),
   /**
-   * 折價券現金折扣金額. 僅在 couponDiscountType === 'amount_off' 時生效.
-   * 整數/小數皆可（與 rewardType=amount_off 的 rewardValue 對齊）,
-   * 但 ≥ COUPON_AMOUNT_MIN=1. 無上限（user decision 2026-09-19）.
-   * null = 未填.
+   * ??????????????? ??? couponDiscountType === 'amount_off' ??????
+   * ???/???????? rewardType=amount_off ??rewardValue ?????
+   * ????COUPON_AMOUNT_MIN=1. ????????user decision 2026-09-19??
+   * null = ???.
    */
   couponDiscountAmount: z.number().min(COUPON_AMOUNT_MIN).nullable().optional(),
   /**
-   * 折價券 % 數折扣. 僅在 couponDiscountType === 'percent_off' 時生效.
-   * 整數 ∈ [COUPON_PERCENT_MIN, COUPON_PERCENT_MAX].
-   * null = 未填.
+   * ?????% ?????? ??? couponDiscountType === 'percent_off' ??????
+   * ??? ??[COUPON_PERCENT_MIN, COUPON_PERCENT_MAX].
+   * null = ???.
    */
   couponDiscountPercent: z
     .number()
@@ -667,40 +802,38 @@ export const templateSettingsSchema = z.object({
     .nullable()
     .optional(),
   /**
-   * 一次發給同一消費者的折價券張數. 整數 ≥ COUPON_ISSUE_COUNT_MIN.
-   * 無上限（user decision 2026-09-19）.
+   * ????????????????????? ??? ??COUPON_ISSUE_COUNT_MIN.
+   * ????????user decision 2026-09-19??
    * Default = 1.
    */
   couponIssueCount: z.number().int().min(COUPON_ISSUE_COUNT_MIN).optional(),
-  // ===== Step 6 — Multipass 卡 (2026-09-19, Rule 019 § 4.1, multipass only) =====
+  // ===== Step 6 ??Multipass ??(2026-09-19, Rule 019 ? 4.1, multipass only) =====
   // Mirrors `shared/templateSettingsSchema.multipassTiers`.
   // Multipass card has UP TO 5 tiers; each tier carries name +
   // stampsNeeded + rewardType + rewardValue. Differs structurally from
-  // stamp_card's single reward: stampsNeeded = 0 represents "歡迎禮
-  // 辦卡立刻送" (immediate reward on download). stampsNeeded is
-  // COMPLETELY DECOUPLED from the Step 3 stamp grid (stampGridRows × 5)
-  // — multipass cards may stack stamps across multiple physical
+  // stamp_card's single reward: stampsNeeded = 0 represents "?????  // ?????? (immediate reward on download). stampsNeeded is
+  // COMPLETELY DECOUPLED from the Step 3 stamp grid (stampGridRows ? 5)
+  // ??multipass cards may stack stamps across multiple physical
   // cards. Backend zod caps stampsNeeded at 999 purely as a safety
   // valve against typos (e.g. user types 99999).
   //
   // Cross-references:
-  //   - packages/shared/constants/multipass-card.ts (single source of truth — bounds)
+  //   - packages/shared/constants/multipass-card.ts (single source of truth ??bounds)
   //   - packages/shared/schemas/cardBuilder.ts (cardTypeExtensions.multipass)
   //   - apps/backend/src/modules/cards/schemas/request.ts (mirror)
   //   - apps/backend/src/modules/cards/db/templates.ts (TemplateSettings interface)
   /**
-   * Multipass 多 tier 陣列 (最多 MAX_MULTIPASS_TIERS=5 組).
-   * 每個 tier 自帶 name + stampsNeeded + rewardType + rewardValue.
+   * Multipass ??tier ??? (????MAX_MULTIPASS_TIERS=5 ??.
+   * ???tier ??? name + stampsNeeded + rewardType + rewardValue.
    *
    * stampsNeeded:
-   *   - 0 = 歡迎禮「辦卡立刻送」(immediate reward on download)
-   *   - 1..999 = 設計自由選擇，後端 zod 純作安全閥
-   * 與 Step 3 stamp grid 解耦，multipass 卡片可跨多張實體卡堆疊蓋章.
+   *   - 0 = ???????????????immediate reward on download)
+   *   - 1..999 = ???????????????zod ???????   * ??Step 3 stamp grid ??????multipass ??????????????????????
    */
   multipassTiers: z
     .array(
       z.object({
-        /** Tier name shown on the pass (e.g. "新戶禮", "VIP 回饋"). 1-40 chars. */
+        /** Tier name shown on the pass (e.g. "?????, "VIP ????"). 1-40 chars. */
         name: z.string().min(1).max(40),
         /** Stamps required to unlock this tier reward. 0 = welcome gift; 1..999 = design choice. */
         stampsNeeded: z.number().int().min(0).max(999),
@@ -708,35 +841,33 @@ export const templateSettingsSchema = z.object({
         rewardType: z.enum(['amount_off', 'percent_off']).nullable().optional(),
         /** Discount amount (amount_off) or percentage integer 1-100 (percent_off). null when unselected. */
         rewardValue: z.number().positive().nullable().optional(),
-        // ★ PR-6 (2026-09-20) per-tier 最高折抵金額 — 對齊 stamp_card.maxDiscountAmount.
-        // 0 = 無上限; 1..MAX_DISCOUNT_AMOUNT_MAX = 折抵上限. null = 未填 (= 無上限).
-        // 只有 rewardType === 'percent_off' 才有語意,amount_off 用不到這個欄位.
+        // ??PR-6 (2026-09-20) per-tier ???????????????? stamp_card.maxDiscountAmount.
+        // 0 = ?????? 1..MAX_DISCOUNT_AMOUNT_MAX = ??????. null = ??? (= ??????.
+        // ???? rewardType === 'percent_off' ???????,amount_off ????????????
         maxDiscountAmount: z.number().min(0).nullable().optional(),
-        // ★ PR-5 新增 per-tier 門檻欄位 — 對齊 stamp_card 的 card-wide
-        // stampsPerVisitCount / stampsPerSpendAmount 等欄位的 per-tier 變體.
-        // 差異: stamp_card 的 4 個門檻欄位是 card-wide 共用,Multipass 把
-        // 它們放 per-tier (使用者確認: 「在大規則下每個 tier 有細微
-        // 可控制的邏輯」).
+        // ??PR-5 ???? per-tier ???????????? stamp_card ??card-wide
+        // stampsPerVisitCount / stampsPerSpendAmount ?????? per-tier ???.
+        // ??: stamp_card ??4 ????????? card-wide ???,Multipass ??        // ??? per-tier (??????? ?????????????tier ?????        // ????????????.
         /**
-         * 來訪門檻拜訪次數 (multipassAccrualMode === 'per_visit').
-         * integer ≥ 1. null = 未填.
+         * ???????????(multipassAccrualMode === 'per_visit').
+         * integer ??1. null = ???.
          */
         perVisitCount: z.number().int().min(1).nullable().optional(),
-        /** 來訪門檻獲得蓋章數. integer ≥ 1. null = 未填. */
+        /** ???????????. integer ??1. null = ???. */
         perVisitStamps: z.number().int().min(1).nullable().optional(),
-        /** 消費門檻消費金額. positive number ≥ 0.01. null = 未填. */
+        /** ???????????? positive number ??0.01. null = ???. */
         perSpendAmount: z.number().positive().nullable().optional(),
-        /** 消費門檻獲得蓋章數. integer ≥ 1. null = 未填. */
+        /** ???????????. integer ??1. null = ???. */
         perSpendStamps: z.number().int().min(1).nullable().optional(),
       }),
     )
     .max(5)
     .optional(),
   /**
-   * 卡片層級 multipass 蓋章方式 (2026-09-20 PR-5, multipass only).
-   * 對齊 stamp_card.stampAccrualMode (在 settings 內 card-wide).
-   * Mirrors `shared/templateSettingsSchema.stampAccrualMode` (Rule 019 § 4.1).
-   * null = 未選.
+   * ??????? multipass ???????? (2026-09-20 PR-5, multipass only).
+   * ??? stamp_card.stampAccrualMode (??settings ??card-wide).
+   * Mirrors `shared/templateSettingsSchema.stampAccrualMode` (Rule 019 ? 4.1).
+   * null = ???.
    *
    * Cross-references:
    *   - packages/shared/constants/multipass-card.ts (MULTIPASS_ACCRUAL_MODES)
@@ -745,31 +876,45 @@ export const templateSettingsSchema = z.object({
    *   - apps/backend/src/modules/cards/db/templates.ts (TemplateSettings interface)
    */
   multipassAccrualMode: z.enum(['per_stamp', 'per_visit', 'per_spend']).nullable().optional(),
+  // ===== Step 7 ??????????(2026-09-27) =====
+  // Reference the separately-exported schema above so consumers can also
+  // use it standalone for client-side validation (Rule 032 ? 2).
+  tableCard: tableCardSettingsSchema.optional(),
 });
 
-export type TemplateSettings = z.infer<typeof templateSettingsSchema>;
+// ===== Step 7 ??????????(2026-09-27) =====
+//
+// (See full schema docs below ??defined here so consumers can also
+// validate `settings.tableCard` independently for client-side validation.)
 
-// ===== Template DTO =====
-
-export const templateDtoSchema = z.object({
-  id: z.string().uuid(),
-  status: templateStatusSchema,
-  name: z.string(),
-  /** Card type. NULL = user has not selected a type yet. */
-  cardType: cardTypeSchema.optional(),
-  settings: templateSettingsSchema,
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-});
-
-export type TemplateDto = z.infer<typeof templateDtoSchema>;
-
-// ===== API Payloads =====
-
+// ===== Step 7 ??????????(2026-09-27) =====
+//
+// A4 portrait (210?297mm) canvas with user-configurable bleed (3/5/10mm).
+// Frontend Konva canvas renders elements; backend rasterizes the
+// exported PNG and stores it in R2 (key: `{tenantId}/{templateId}/table-card-export.png`).
+//
+// Element types: text, image (R2 key), shape (rect/circle/line).
+// All positions/dimensions are in millimeters (mm) at the canvas
+// coordinate system; the rasterizer converts to pixels at PRINT_DPI.
+//
+// Cross-references:
+//   - packages/shared/constants/table-card.ts (single source of truth for dimensions)
+//   - packages/shared/schemas/cardBuilder.ts (cardTypeExtensions table card)
+//   - apps/backend/src/modules/cards/schemas/request.ts (backend mirror)
+//   - apps/backend/src/modules/cards/db/templates.ts (TemplateSettings interface)
+//
+// IMPORTANT: schema is exported at the top level so consumers can
+// validate `settings.tableCard` independently (frontend autosave +
+// backend export endpoint), not just as part of the full settings
+// object. Reusing it via `templateSettingsSchema.shape.tableCard` would
+// couple callers to the parent schema shape.
+//
+// Note on ordering: defined BEFORE templateSettingsSchema because
+// templateSettingsSchema references tableCardSettingsSchema via
+// `tableCard: tableCardSettingsSchema.optional()`. JS `const` is not
+// hoisted (TDZ); reversed order would throw at module load.
 /**
- * POST /api/cards — Create a new template draft
- *
- * id is optional: if provided, it is used as the template UUID (client-generated
+ * Card ID (optional; client-generated UUID for optimistic creation,
  * so we can redirect to the editor immediately). If omitted, the DB generates one.
  */
 export const createTemplateSchema = z.object({
@@ -784,7 +929,7 @@ export const createTemplateSchema = z.object({
 export type CreateTemplatePayload = z.infer<typeof createTemplateSchema>;
 
 /**
- * PUT /api/cards/:id — Update a template
+ * PUT /api/cards/:id ??Update a template
  */
 export const updateTemplateSchema = z.object({
   name: z.string().optional(),
@@ -794,3 +939,48 @@ export const updateTemplateSchema = z.object({
 });
 
 export type UpdateTemplatePayload = z.infer<typeof updateTemplateSchema>;
+
+// ===== Step 7 ??Table Card inferred types (2026-09-27) =====
+//
+// Re-export zod-inferred types so consumers (frontend store, backend
+// service signatures) can reference them without re-importing zod.
+// Use `z.infer` to stay in sync with schema changes automatically.
+
+export type TableCardTextElement = z.infer<typeof tableCardElementSchema> & {
+  type: 'text';
+};
+export type TableCardImageElement = z.infer<typeof tableCardElementSchema> & {
+  type: 'image';
+};
+export type TableCardShapeElement = z.infer<typeof tableCardElementSchema> & {
+  type: 'shape';
+};
+export type TableCardElement = z.infer<typeof tableCardElementSchema>;
+export type TableCardBackground = z.infer<typeof tableCardBackgroundSchema>;
+export type TableCardSettings = z.infer<typeof tableCardSettingsSchema>;
+
+// ===== Template DTO (cross-package contract, 2026-09-27) =====
+//
+// `TemplateDto` is the shape returned by every card-template endpoint
+// (POST/GET/PUT/DELETE). Frontend `cardService.ts` + multiple components
+// import this type directly; backend `apps/backend/src/modules/cards/schemas/response.ts`
+// also defines a structurally-identical interface but for cross-package
+// consumption we re-export the canonical zod-inferred shape here.
+//
+// Per Rule 019 � 4.1 (single source of truth): the canonical fields
+// (id, name, status, cardType, settings, timestamps) live in shared scope.
+// Backend response.ts keeps a structural interface alias for its local
+// callers (avoid breaking changes there); frontend consumers should
+// import from `@saome/shared/schemas/card`.
+
+export const templateDtoSchema = z.object({
+  id: z.string().uuid(),
+  status: templateStatusSchema,
+  name: z.string(),
+  cardType: cardTypeSchema.optional(),
+  settings: z.record(z.string(), z.unknown()), // TemplateSettings ? typed loosely here
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export type TemplateDto = z.infer<typeof templateDtoSchema>;

@@ -497,3 +497,112 @@ describe('HttpClient — network-error retry behavior', () => {
     expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 });
+
+/**
+ * Phase Round 2 (2026-09-27) — Binary GET via `getBlob()`.
+ *
+ * Critical invariant under test:
+ *   - `getBlob(path)` returns the response body as a Blob, NOT parsed JSON.
+ *   - Auth header (Bearer token) is attached on the request — same as
+ *     `get()`. This is the whole reason for the change: `window.open(url)`
+ *     drops the Authorization header on browser navigation, so the
+ *     table-card download was 401'ing in production. `getBlob` keeps
+ *     auth inside httpClient.
+ *   - 401 retry-via-refresh still works (round 1 invariant preserved).
+ *
+ * Regression for Step 7 "下載桌牌" 401 incident (2026-09-27): the
+ * previous `window.open(downloadTableCardUrl(templateId))` approach
+ * silently 401'd in production because browser navigation requests
+ * don't include the Authorization header.
+ */
+describe('HttpClient — getBlob binary download', () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.useRealTimers(); // blob flow has no retry timers
+    fetchMock = vi.fn();
+    authStore.setAccessToken(null);
+    authStore.setRefreshToken(null);
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function buildClient() {
+    return new HttpClient({
+      baseUrl: 'http://test.local',
+      fetchImpl: fetchMock as unknown as typeof fetch,
+      timeoutMs: 1000,
+    });
+  }
+
+  /** Mock a binary PNG response (1×1 transparent pixel). */
+  function mockBlobResponse(status = 200) {
+    // Minimal valid PNG header bytes
+    const pngBytes = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+      0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+      0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+      0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
+      0x89,
+    ]);
+    return new Response(pngBytes, {
+      status,
+      headers: { 'Content-Type': 'image/png' },
+    });
+  }
+
+  it('returns the response body as a Blob (NOT parsed as JSON)', async () => {
+    fetchMock.mockResolvedValueOnce(mockBlobResponse());
+
+    const client = buildClient();
+    const blob = await client.getBlob('/api/cards/test/table-card/download');
+
+    expect(blob).toBeInstanceOf(Blob);
+    expect(blob.type).toBe('image/png');
+    expect(blob.size).toBeGreaterThan(0);
+
+    // Critical: only ONE fetch call (no retry, no refresh)
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('attaches Authorization header when access token is present', async () => {
+    authStore.setAccessToken('test-access-token');
+    fetchMock.mockResolvedValueOnce(mockBlobResponse());
+
+    const client = buildClient();
+    await client.getBlob('/api/cards/test/table-card/download');
+
+    const callHeaders = fetchMock.mock.calls[0][1].headers as Record<string, string>;
+    expect(callHeaders['Authorization']).toBe('Bearer test-access-token');
+  });
+
+  it('does NOT set Content-Type: application/json (binary downloads)', async () => {
+    fetchMock.mockResolvedValueOnce(mockBlobResponse());
+
+    const client = buildClient();
+    await client.getBlob('/api/cards/test/table-card/download');
+
+    const callHeaders = fetchMock.mock.calls[0][1].headers as Record<string, string>;
+    // JSON content-type would tell the browser "parse as JSON" and corrupt
+    // the bytes. getBlob must let the server's Content-Type (image/png) win.
+    expect(callHeaders['Content-Type']).toBeUndefined();
+  });
+
+  it('throws SaomeApiError on 404 (no JSON parsing of binary)', async () => {
+    // 404 with a non-JSON body would normally crash res.json(). We use a
+    // valid JSON body here but assert the error surfaces correctly.
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: { code: 'NOT_FOUND', message: 'no export yet' } }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const client = buildClient();
+    await expect(client.getBlob('/api/cards/test/table-card/download')).rejects.toBeInstanceOf(
+      SaomeApiError,
+    );
+  });
+});

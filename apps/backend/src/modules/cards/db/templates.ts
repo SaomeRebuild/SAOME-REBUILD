@@ -590,6 +590,75 @@ export interface TemplateSettings {
    * (Rule 019 § 4.1 layer 3).
    */
   multipassAccrualMode?: 'per_stamp' | 'per_visit' | 'per_spend' | null;
+  // ===== Step 7 — 客製化桌牌 (Rule 019 § 4.1, layer 3 of 4, 2026-09-27) =====
+  // Mirrors `shared/templateSettingsSchema.tableCard` (Layer 1).
+  //
+  // Storage strategy:
+  //   - Element list + background + bleed stored in JSONB (this field).
+  //   - Image elements store only the R2 KEY here (imageKey field of the
+  //     element); the binary PNG lives in R2 at
+  //     `{tenant_id}/{template_id}/table-card/{element_id}.png`.
+  //   - The exported PNG (rasterized by frontend Konva) lives in R2 at
+  //     `{tenant_id}/{template_id}/table-card-export.png`. The key +
+  //     timestamp are recorded here for stale detection (Rule 030).
+  //
+  // The shape is intentionally identical to the shared zod schema so
+  // service signatures can use `TableCardSettings` directly without a
+  // separate hand-maintained type (Bug-4c lesson).
+  tableCard?: {
+    elements: Array<
+      | {
+          id: string;
+          type: 'text';
+          x: number;
+          y: number;
+          width: number;
+          height: number;
+          rotation: number;
+          zIndex: number;
+          text: string;
+          fontSize: number;
+          fontWeight: 'normal' | 'bold';
+          color: string;
+        }
+      | {
+          id: string;
+          type: 'image';
+          x: number;
+          y: number;
+          width: number;
+          height: number;
+          rotation: number;
+          zIndex: number;
+          imageKey: string;
+        }
+      | {
+          id: string;
+          type: 'shape';
+          shape: 'rect' | 'circle' | 'line' | 'triangle' | 'ellipse' | 'polygon';
+          x: number;
+          y: number;
+          width: number;
+          height: number;
+          rotation: number;
+          zIndex: number;
+          fill: string;
+          cornerRadius?: number;
+          stroke?: string;
+          strokeWidth?: number;
+          points?: number[];
+          vertexCount?: number;
+        }
+    >;
+    background: {
+      type: 'solid' | 'gradient';
+      color?: string;
+      gradient?: { from: string; to: string; angle: number };
+    };
+    bleedMm: 3 | 5 | 10;
+    exportKey?: string;
+    lastExportedAt?: string;
+  };
   [key: string]: unknown;
 }
 

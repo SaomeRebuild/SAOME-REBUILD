@@ -293,3 +293,26 @@ export function validateBackgroundFile(file: FileLike): ValidationError | null {
     BACKGROUND_CROP_CONFIG.MAX_FILE_SIZE,
   );
 }
+
+/**
+ * Validate an uploaded file for the Step 7 table-card image element.
+ *
+ * Uses the same 5MB cap + PNG/JPG-only policy as logo / icon / background
+ * uploaders (shared validation rule across the editor surface).
+ *
+ * Backed by `validateMediaFile` factory (Rule 032 § Shared Validation
+ * pattern). The error message key is namespaced to `imageUpload.validation`
+ * (NOT `logoUpload.*`) because table-card image is a distinct feature —
+ * the i18n resolution happens at the consumer (`Step7TableCardInspector`)
+ * where `t('image.validation.tooLarge', { ns: 'tableCard' })` is called.
+ *
+ * @param file  Any FileLike (web File, RN asset, etc.)
+ * @returns     ValidationError | null
+ */
+export function validateTableCardImage(file: FileLike): ValidationError | null {
+  return validateMediaFile(
+    file,
+    LOGO_CROP_CONFIG.MIME_TYPES as readonly string[],
+    LOGO_CROP_CONFIG.MAX_FILE_SIZE,
+  );
+}

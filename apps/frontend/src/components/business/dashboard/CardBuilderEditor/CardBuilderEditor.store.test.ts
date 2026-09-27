@@ -1229,6 +1229,8 @@ describe('CardBuilderEditor.store — Discount Card Logic state (Step 6, 2026-09
 //   6. updateMembershipTier({ durationType: 'monthly' }) + existing → preserves
 //   7. updateMembershipTier({ durationType: null }) + empty → no auto-seed
 //   8. updateMembershipTier({ name: 'X' }) + empty → no auto-seed (unrelated patch)
+//   7. updateMembershipTier({ durationType: null }) + empty → no auto-seed
+//   8. updateMembershipTier({ name: 'X' }) + empty → no auto-seed (unrelated patch)
 // ─────────────────────────────────────────────────────────────────────────────
 describe('CardBuilderEditor.store — membership expiry auto-seed (2026-09-13)', () => {
   // Fixed reference time so the computed "today + N days" assertions are
@@ -1377,5 +1379,329 @@ describe('CardBuilderEditor.store — membership expiry auto-seed (2026-09-13)',
       // expiryDate preserved (user choice already made).
       expect(useCardBuilderStore.getState().expiryDate).toBe('2026-10-13');
     });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Round 3 Fix 4.3 — image-element delete triggers R2 cleanup (2026-09-27)
+//
+// Bug: removing an image element from the editor leaves an orphan R2 object at
+// `{tenantId}/{templateId}/table-card/{elementId}.png`. Without cleanup,
+// a template with 50 image-edits leaves 50 orphan PNGs (each 100KB–5MB).
+//
+// Fix: `removeTableCardElement` fires `cardService.deleteTableCardElement`
+// (fire-and-forget) for image elements only. text / shape elements have no
+// R2 footprint so they don't trigger a backend round-trip. A failure is
+// logged but does NOT block the local element removal — orphan R2 objects
+// are unreachable through the app once the DB row drops the reference.
+//
+// Critical invariants:
+//   1. Removing an IMAGE element → calls `cardService.deleteTableCardElement`
+//      with the cardId + elementId, fire-and-forget (no await in caller).
+//   2. Removing a TEXT element → does NOT call deleteTableCardElement.
+//   3. Removing a SHAPE element → does NOT call deleteTableCardElement.
+//   4. Removing an element with `cardId === null` → does NOT call
+//      deleteTableCardElement (no template = no R2 object to delete).
+//   5. A failing deleteTableCardElement does NOT prevent local removal
+//      (optimistic UI contract).
+//   6. Calling removeTableCardElement with an unknown id is a no-op
+//      (no state change, no R2 call).
+// ─────────────────────────────────────────────────────────────────────────────
+import { cardService } from '@/services/cardService';
+
+describe('CardBuilderEditor.store — image-element R2 cleanup (Round 3 Fix 4.3)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- spyOn return type
+  let deleteSpy: any;
+
+  beforeEach(() => {
+    useCardBuilderStore.getState().reset();
+    useCardBuilderStore.setState({ cardId: 'tpl-uuid' });
+    deleteSpy = vi.spyOn(cardService, 'deleteTableCardElement').mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('removing an image element triggers cardService.deleteTableCardElement', async () => {
+    const imageId = 'img-1';
+    useCardBuilderStore.getState().addTableCardElement({
+      id: imageId,
+      type: 'image',
+      x: 10,
+      y: 10,
+      width: 50,
+      height: 30,
+      rotation: 0,
+      zIndex: 0,
+      imageKey: 'tpl-uuid/table-card/img-1.png',
+    });
+
+    // Capture pre-state to verify local removal happened.
+    expect(
+      useCardBuilderStore.getState().tableCard.elements.some((el) => el.id === imageId),
+    ).toBe(true);
+
+    useCardBuilderStore.getState().removeTableCardElement(imageId);
+
+    // Local state: element removed.
+    expect(
+      useCardBuilderStore.getState().tableCard.elements.some((el) => el.id === imageId),
+    ).toBe(false);
+
+    // R2 cleanup fired (fire-and-forget — flush microtask queue).
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(deleteSpy).toHaveBeenCalledWith('tpl-uuid', imageId);
+    expect(deleteSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('removing a text element does NOT call cardService.deleteTableCardElement', async () => {
+    const textId = 'txt-1';
+    useCardBuilderStore.getState().addTableCardElement({
+      id: textId,
+      type: 'text',
+      x: 10,
+      y: 10,
+      width: 80,
+      height: 20,
+      rotation: 0,
+      zIndex: 0,
+      text: 'Hello',
+      fontSize: 12,
+      fontWeight: 'normal',
+      color: '#000000',
+    });
+
+    useCardBuilderStore.getState().removeTableCardElement(textId);
+
+    expect(
+      useCardBuilderStore.getState().tableCard.elements.some((el) => el.id === textId),
+    ).toBe(false);
+
+    await Promise.resolve();
+    expect(deleteSpy).not.toHaveBeenCalled();
+  });
+
+  it('removing a shape element does NOT call cardService.deleteTableCardElement', async () => {
+    const shapeId = 'shp-1';
+    useCardBuilderStore.getState().addTableCardElement({
+      id: shapeId,
+      type: 'shape',
+      shape: 'rect',
+      x: 10,
+      y: 10,
+      width: 60,
+      height: 40,
+      rotation: 0,
+      zIndex: 0,
+      fill: '#3b82f6',
+    });
+
+    useCardBuilderStore.getState().removeTableCardElement(shapeId);
+
+    expect(
+      useCardBuilderStore.getState().tableCard.elements.some((el) => el.id === shapeId),
+    ).toBe(false);
+
+    await Promise.resolve();
+    expect(deleteSpy).not.toHaveBeenCalled();
+  });
+
+  it('removing an image element with no cardId does NOT call deleteTableCardElement', async () => {
+    // No cardId → user is creating a new draft, no template exists yet,
+    // no R2 object to clean up.
+    useCardBuilderStore.setState({ cardId: null });
+
+    const imageId = 'img-orphan';
+    useCardBuilderStore.getState().addTableCardElement({
+      id: imageId,
+      type: 'image',
+      x: 10,
+      y: 10,
+      width: 50,
+      height: 30,
+      rotation: 0,
+      zIndex: 0,
+      imageKey: 'draft/table-card/img-orphan.png',
+    });
+
+    useCardBuilderStore.getState().removeTableCardElement(imageId);
+
+    await Promise.resolve();
+    expect(deleteSpy).not.toHaveBeenCalled();
+  });
+
+  it('failing deleteTableCardElement does NOT prevent local element removal', async () => {
+    deleteSpy.mockRejectedValueOnce(new Error('R2 down'));
+
+    const imageId = 'img-fail';
+    useCardBuilderStore.getState().addTableCardElement({
+      id: imageId,
+      type: 'image',
+      x: 10,
+      y: 10,
+      width: 50,
+      height: 30,
+      rotation: 0,
+      zIndex: 0,
+      imageKey: 'tpl-uuid/table-card/img-fail.png',
+    });
+
+    useCardBuilderStore.getState().removeTableCardElement(imageId);
+
+    // Optimistic UI contract: local removal happens synchronously
+    // regardless of backend outcome.
+    expect(
+      useCardBuilderStore.getState().tableCard.elements.some((el) => el.id === imageId),
+    ).toBe(false);
+
+    // Flush microtasks — the failed delete should NOT throw out of the
+    // store action (it's caught inside the .catch).
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(deleteSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('removing an unknown element id is a no-op (no R2 call, no state change)', async () => {
+    const before = useCardBuilderStore.getState().tableCard.elements;
+    useCardBuilderStore.getState().removeTableCardElement('does-not-exist');
+    const after = useCardBuilderStore.getState().tableCard.elements;
+    expect(after).toEqual(before);
+
+    await Promise.resolve();
+    expect(deleteSpy).not.toHaveBeenCalled();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Round 10 (2026-09-27) — Polygon creation mode store actions.
+//
+// The store exposes startPolygonCreation / appendPolygonVertex /
+// finishPolygonCreation / cancelPolygonCreation as the four lifecycle
+// actions. Both the canvas (pointer events) and the Inspector (UI
+// controls) subscribe to the same `polygonCreation` state field.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('CardBuilderEditor.store — polygon creation mode (Round 10)', () => {
+  beforeEach(() => {
+    useCardBuilderStore.getState().reset();
+  });
+
+  it('initial polygonCreation is null', () => {
+    expect(useCardBuilderStore.getState().polygonCreation).toBeNull();
+  });
+
+  it('startPolygonCreation seeds state with empty vertices + given bbox', () => {
+    useCardBuilderStore.getState().startPolygonCreation({
+      x: 50,
+      y: 60,
+      width: 70,
+      height: 80,
+    });
+    const pc = useCardBuilderStore.getState().polygonCreation;
+    expect(pc).not.toBeNull();
+    expect(pc?.vertices).toEqual([]);
+    expect(pc?.bboxOrigin).toEqual({ x: 50, y: 60 });
+    expect(pc?.bboxSize).toEqual({ width: 70, height: 80 });
+  });
+
+  it('startPolygonCreation falls back to a sane default when width/height missing', () => {
+    useCardBuilderStore.getState().startPolygonCreation({
+      x: 10,
+      y: 20,
+      width: 0,
+      height: 0,
+    });
+    const pc = useCardBuilderStore.getState().polygonCreation;
+    expect(pc?.bboxSize.width).toBeGreaterThan(0);
+    expect(pc?.bboxSize.height).toBeGreaterThan(0);
+  });
+
+  it('appendPolygonVertex pushes (localX, localY) into vertices', () => {
+    useCardBuilderStore.getState().startPolygonCreation({
+      x: 0,
+      y: 0,
+      width: 60,
+      height: 40,
+    });
+    useCardBuilderStore.getState().appendPolygonVertex(10, 20);
+    useCardBuilderStore.getState().appendPolygonVertex(30, 40);
+    const vertices = useCardBuilderStore.getState().polygonCreation?.vertices;
+    expect(vertices).toEqual([10, 20, 30, 40]);
+  });
+
+  it('appendPolygonVertex is a no-op when polygonCreation is null', () => {
+    // Already null from beforeEach reset. Should still be null.
+    useCardBuilderStore.getState().appendPolygonVertex(10, 20);
+    expect(useCardBuilderStore.getState().polygonCreation).toBeNull();
+  });
+
+  it('appendPolygonVertex caps at 24 numbers (12 vertices)', () => {
+    useCardBuilderStore.getState().startPolygonCreation({
+      x: 0,
+      y: 0,
+      width: 60,
+      height: 40,
+    });
+    // Push 25 numbers (12.5 vertices); only the first 24 should stick.
+    for (let i = 0; i < 25; i++) {
+      useCardBuilderStore.getState().appendPolygonVertex(i, i);
+    }
+    const vertices = useCardBuilderStore.getState().polygonCreation?.vertices;
+    expect(vertices?.length).toBe(24);
+  });
+
+  it('finishPolygonCreation returns null when <3 vertices and clears state', () => {
+    useCardBuilderStore.getState().startPolygonCreation({
+      x: 0,
+      y: 0,
+      width: 60,
+      height: 40,
+    });
+    useCardBuilderStore.getState().appendPolygonVertex(0, 0);
+    useCardBuilderStore.getState().appendPolygonVertex(10, 10);
+    const result = useCardBuilderStore.getState().finishPolygonCreation();
+    expect(result).toBeNull();
+    expect(useCardBuilderStore.getState().polygonCreation).toBeNull();
+  });
+
+  it('finishPolygonCreation returns the vertices when >=3 vertices', () => {
+    useCardBuilderStore.getState().startPolygonCreation({
+      x: 0,
+      y: 0,
+      width: 60,
+      height: 40,
+    });
+    useCardBuilderStore.getState().appendPolygonVertex(0, 0);
+    useCardBuilderStore.getState().appendPolygonVertex(10, 0);
+    useCardBuilderStore.getState().appendPolygonVertex(5, 10);
+    const result = useCardBuilderStore.getState().finishPolygonCreation();
+    expect(result).toEqual([0, 0, 10, 0, 5, 10]);
+    // State must be cleared so the canvas exits drawing mode.
+    expect(useCardBuilderStore.getState().polygonCreation).toBeNull();
+  });
+
+  it('cancelPolygonCreation clears state without returning vertices', () => {
+    useCardBuilderStore.getState().startPolygonCreation({
+      x: 0,
+      y: 0,
+      width: 60,
+      height: 40,
+    });
+    useCardBuilderStore.getState().appendPolygonVertex(0, 0);
+    useCardBuilderStore.getState().cancelPolygonCreation();
+    expect(useCardBuilderStore.getState().polygonCreation).toBeNull();
+  });
+
+  it('reset() also clears polygonCreation', () => {
+    useCardBuilderStore.getState().startPolygonCreation({
+      x: 0,
+      y: 0,
+      width: 60,
+      height: 40,
+    });
+    useCardBuilderStore.getState().reset();
+    expect(useCardBuilderStore.getState().polygonCreation).toBeNull();
   });
 });

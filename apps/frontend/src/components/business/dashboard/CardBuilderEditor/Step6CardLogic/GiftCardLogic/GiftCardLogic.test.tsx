@@ -9,13 +9,17 @@
  *   - Each sub-component handles its own validation, currency-aware
  *     rendering, and store integration.
  *
- * Tests run 6 scenarios (Rule 025 § 1 E.7 mandatory coverage):
+ * Tests run 7 scenarios (Rule 025 § 1 E.7 mandatory coverage):
  *   1. Default state (1:1) — RatePreview shows "1 元 = 1 點"
  *   2. Amount input change — RatePreview updates to "100 元 = 100 點"
- *   3. Currency switch to ZAR — RatePreview shows "100 R = 100 點"
+ *   3. Currency switch to ZAR — RatePreview shows "R 1 = 1 點" (R prefix, Rand
+ *      convention — regression test added 2026-09-27 after ZAR was rendering
+ *      "1 R = 1 點" with R as suffix, which violates South African convention)
  *   4. showValidation=true + amount=0 (corrupted DB) — red border
  *   5. Both fields null/0 (corrupted DB) — RatePreview doesn't render
  *   6. DOM order: AmountField → PointsField → RatePreview
+ *   7. TWD zh-TW keeps 元 as suffix after amount (no regression — added
+ *      2026-09-27 to pin suffix-style behavior after the prefix refactor)
  */
 
 import { render, screen, cleanup, act } from '@testing-library/react';
@@ -36,13 +40,13 @@ vi.mock('react-i18next', () => ({
         // so ratePreview interpolation looks like the actual rendered output.
         'step6.gift.amountUnitTWD': '元',
         'step6.gift.amountUnitZAR': 'R',
-        'step6.gift.ratePreview': '{{amount}} {{unit}} = {{points}} 點',
+        'step6.gift.ratePreview': '{{amountWithUnit}} = {{points}} 點',
         'step6.gift.amountLabel': '消費金額',
         'step6.gift.pointsLabel': '獲得點數',
       };
       let template = lookup[key] ?? key;
       if (key === 'step6.gift.ratePreview' && opts) {
-        return `${opts.amount} ${opts.unit} = ${opts.points} 點`;
+        return `${opts.amountWithUnit} = ${opts.points} 點`;
       }
       return template;
     }),
@@ -89,13 +93,23 @@ describe('GiftCardLogic — main component composition (Rule 000 § A.1)', () =>
     expect(screen.getByTestId('gift-rate-preview').textContent).toContain('100 元 = 1 點');
   });
 
-  it('currency ZAR replaces 元 suffix with R prefix in the rate preview', () => {
+  it('currency ZAR places R as prefix before amount in the rate preview (regression — 2026-09-27)', () => {
     // Start with TWD (default).
     useCardBuilderStore.setState({ currency: 'ZAR' });
     render(<GiftCardLogic showValidation={false} />);
 
-    // For ZAR zh-TW: rate preview shows "1 R = 1 點" (R prefix, no suffix).
-    expect(screen.getByTestId('gift-rate-preview').textContent).toContain('1 R = 1 點');
+    // For ZAR zh-TW: Rand symbol goes BEFORE the amount (prefix style,
+    // matching South African convention). Rate preview must show
+    // "R 1 = 1 點", not "1 R = 1 點".
+    expect(screen.getByTestId('gift-rate-preview').textContent).toContain('R 1 = 1 點');
+  });
+
+  it('TWD zh-TW keeps 元 as suffix after amount in the rate preview (no regression)', () => {
+    // Default state is TWD + zh-TW.
+    render(<GiftCardLogic showValidation={false} />);
+
+    // 元 is a suffix in zh-TW, so it stays AFTER the amount.
+    expect(screen.getByTestId('gift-rate-preview').textContent).toContain('1 元 = 1 點');
   });
 
   it('does NOT render rate preview when one field is invalid (defensive guard)', () => {

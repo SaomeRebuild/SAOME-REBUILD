@@ -98,7 +98,17 @@ export class HttpClient {
   async request<T>(
     method: string,
     path: string,
-    init?: { body?: unknown; headers?: Record<string, string>; retryOn401?: boolean },
+    init?: {
+      body?: unknown;
+      headers?: Record<string, string>;
+      retryOn401?: boolean;
+      /**
+       * Response body parsing mode:
+       *   - 'json' (default) — parses body as JSON
+       *   - 'blob'           — returns body as Blob (for binary downloads)
+       */
+      responseType?: 'json' | 'blob';
+    },
   ): Promise<T> {
     return this.requestWithRetry<T>(method, path, init, 0);
   }
@@ -124,7 +134,14 @@ export class HttpClient {
   private async requestWithRetry<T>(
     method: string,
     path: string,
-    init: { body?: unknown; headers?: Record<string, string>; retryOn401?: boolean } | undefined,
+    init:
+      | {
+          body?: unknown;
+          headers?: Record<string, string>;
+          retryOn401?: boolean;
+          responseType?: 'json' | 'blob';
+        }
+      | undefined,
     attempt: number,
   ): Promise<T> {
     const { body, headers, retryOn401 = true } = init ?? {};
@@ -135,9 +152,14 @@ export class HttpClient {
     if (import.meta.env.DEV) {
       console.debug('[httpClient] token from authStore:', token ? 'present (' + token.slice(0, 20) + '...)' : 'NULL — this is why 401!');
     }
+    // FormData detection: the browser MUST set its own Content-Type with
+    // the multipart boundary (e.g. `multipart/form-data; boundary=---xyz`).
+    // If we set `Content-Type: application/json`, the browser drops the
+    // multipart boundary and the server can't parse the parts.
+    const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
     const reqHeaders: Record<string, string> = {
       Accept: 'application/json',
-      ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+      ...(body !== undefined && !isFormData ? { 'Content-Type': 'application/json' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(headers ?? {}),
     };
@@ -152,7 +174,14 @@ export class HttpClient {
       res = await this.fetchImpl(url, {
         method,
         headers: reqHeaders,
-        body: body === undefined ? undefined : JSON.stringify(body),
+        // Pass FormData directly (browser sets Content-Type with boundary);
+        // JSON.stringify only for plain objects / arrays.
+        body:
+          body === undefined
+            ? undefined
+            : isFormData
+              ? body
+              : JSON.stringify(body),
         credentials: 'include',
         signal: AbortSignal.timeout(this.timeoutMs),
       });
@@ -194,7 +223,12 @@ export class HttpClient {
       }
       if (newToken) {
         setAccessToken(newToken);
-        return this.requestWithRetry<T>(method, path, { ...init, retryOn401: false }, attempt);
+        return this.requestWithRetry<T>(
+          method,
+          path,
+          { ...init, retryOn401: false },
+          attempt,
+        );
       }
       // Refresh failed (expired / revoked token, or network error).
       // Do NOT fall through to retry the original request with the same expired
@@ -242,6 +276,10 @@ export class HttpClient {
     }
 
     if (res.status === 204) return undefined as T;
+    // Binary downloads (Blob) skip JSON parsing — see cardService.downloadTableCardBlob.
+    if (init?.responseType === 'blob') {
+      return (await res.blob()) as T;
+    }
     return (await res.json()) as T;
   }
 
@@ -319,6 +357,20 @@ export class HttpClient {
 
   get<T>(path: string) {
     return this.request<T>('GET', path);
+  }
+
+  /**
+   * Binary GET — same auth/retry/refresh semantics as `get()`, but
+   * returns the response body as a `Blob` instead of parsing JSON.
+   *
+   * Used by file-download flows where `window.open(url)` cannot send
+   * the Authorization header (browser navigation drops it). The
+   * `downloadTableCardBlob` service method routes through this to keep
+   * Bearer auth working for the table-card PNG download (Round 2 fix —
+   * the previous `window.open` approach 401'd in production).
+   */
+  getBlob(path: string): Promise<Blob> {
+    return this.request<Blob>('GET', path, { responseType: 'blob' });
   }
   post<T>(path: string, body?: unknown) {
     return this.request<T>('POST', path, { body });

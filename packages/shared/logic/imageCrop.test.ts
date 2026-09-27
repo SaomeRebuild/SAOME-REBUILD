@@ -23,6 +23,7 @@ import {
   validateLogoFile,
   validateIconFile,
   validateBackgroundFile,
+  validateTableCardImage,
 } from './imageCrop';
 import {
   BACKGROUND_CROP_CONFIG,
@@ -871,5 +872,64 @@ describe('imageCrop — §9 validateBackgroundFile (background variant, Passcrea
     expect(uiRatio).toBeCloseTo(outputRatio, 1);
     // Both approx 2.52
     expect(uiRatio).toBeCloseTo(2.52, 1);
+  });
+});
+
+// § 10. validateTableCardImage — Step 7 table-card image element (2026-09-27)
+//
+// Shared validation per Rule 032 § Shared Validation pattern. Mirrors the
+// logo / icon / background validators via validateMediaFile factory so
+// all upload surfaces share the same 5MB cap + PNG/JPG MIME policy.
+describe('imageCrop — §10 validateTableCardImage (Step 7 table-card element)', () => {
+  it('returns null for valid PNG file under 5MB', () => {
+    expect(
+      validateTableCardImage({ type: 'image/png', size: 2 * 1024 * 1024 }),
+    ).toBeNull();
+  });
+
+  it('returns null for valid JPG file under 5MB', () => {
+    expect(
+      validateTableCardImage({ type: 'image/jpeg', size: 4 * 1024 * 1024 }),
+    ).toBeNull();
+  });
+
+  it('rejects wrong MIME type (text/plain)', () => {
+    const err = validateTableCardImage({ type: 'text/plain', size: 1024 });
+    expect(err).not.toBeNull();
+    expect(err?.type).toBe('wrongFormat');
+    expect(err?.message).toBe('validation.wrongFormat');
+  });
+
+  it('rejects wrong MIME type (application/pdf)', () => {
+    const err = validateTableCardImage({ type: 'application/pdf', size: 1024 });
+    expect(err?.type).toBe('wrongFormat');
+  });
+
+  it('rejects file over 5MB', () => {
+    const err = validateTableCardImage({ type: 'image/png', size: 6 * 1024 * 1024 });
+    expect(err).not.toBeNull();
+    expect(err?.type).toBe('tooLarge');
+    expect(err?.message).toBe('validation.tooLarge');
+  });
+
+  it('shares factory contract with validateLogoFile / validateBackgroundFile', () => {
+    // Identical inputs → identical ValidationError shape across all 4 validators.
+    const valid = { type: 'image/png', size: 1024 };
+    expect(validateLogoFile(valid)).toBeNull();
+    expect(validateBackgroundFile(valid)).toBeNull();
+    expect(validateTableCardImage(valid)).toBeNull();
+
+    const tooBig = { type: 'image/png', size: 999_999_999 };
+    expect(validateTableCardImage(tooBig)).toEqual(validateLogoFile(tooBig));
+
+    const wrongType = { type: 'image/svg+xml', size: 1024 };
+    expect(validateTableCardImage(wrongType)).toEqual(validateBackgroundFile(wrongType));
+  });
+
+  it('error messages are i18n keys (no raw text)', () => {
+    const tooLarge = validateTableCardImage({ type: 'image/png', size: 999_999_999 });
+    const wrongFormat = validateTableCardImage({ type: 'text/plain', size: 100 });
+    expect(tooLarge?.message).not.toMatch(/[\u4e00-\u9fff]/);
+    expect(wrongFormat?.message).not.toMatch(/[\u4e00-\u9fff]/);
   });
 });

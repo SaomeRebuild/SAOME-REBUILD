@@ -11,6 +11,7 @@
  */
 
 import { useTranslation } from 'react-i18next';
+import type { ReactNode } from 'react';
 import type { EditorStep } from './CardBuilderEditor.types';
 import { CardBuilderEditorSteps } from './CardBuilderEditorSteps';
 import { Building2 } from 'lucide-react';
@@ -37,6 +38,17 @@ interface CardBuilderEditorHeaderProps {
    * to be edited mid-flow).
    */
   isStep1Blocked?: boolean;
+  /**
+   * Optional header action slot. Renders to the right of the step
+   * indicator (between step indicator and the Logo Text input). Used by
+   * CardBuilderEditor to surface the Step 7 table-card export button
+   * (Issue 7) — passes a `<TableCardExportButton variant="inline" />`
+   * only when `step === 7`.
+   *
+   * Empty / null hides the slot entirely so other steps don't see the
+   * action button.
+   */
+  headerActions?: ReactNode;
 }
 
 export function CardBuilderEditorHeader({
@@ -47,6 +59,7 @@ export function CardBuilderEditorHeader({
   onStepChange,
   completedSteps,
   isStep1Blocked = false,
+  headerActions,
 }: CardBuilderEditorHeaderProps) {
   const { t } = useTranslation('cardEditor');
 
@@ -67,12 +80,18 @@ export function CardBuilderEditorHeader({
           {t('pageTitle')}
         </h1>
 
-        {/* 右側：步驟指示器 */}
-        <CardBuilderEditorSteps
-          currentStep={step}
-          onStepClick={onStepChange}
-          completedSteps={completedSteps}
-        />
+        {/* 右側：步驟指示器 + 選用 headerActions slot.
+            Issue 7 (2026-09-27): 在 step === 7 時, 父層 CardBuilderEditor 會
+            透過 headerActions 注入 <TableCardExportButton variant="inline" />,
+            取代原本在桌面右下角的 FAB, 讓手機使用者也能存取桌牌生成按鈕. */}
+        <div className="flex items-center gap-3">
+          <CardBuilderEditorSteps
+            currentStep={step}
+            onStepClick={onStepChange}
+            completedSteps={completedSteps}
+          />
+          {headerActions}
+        </div>
       </div>
 
       {/* Card Name 顯示（唯讀，方便使用者辨識當前模板）.

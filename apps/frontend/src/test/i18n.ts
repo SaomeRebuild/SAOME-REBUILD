@@ -34,6 +34,8 @@ import backgroundUploadZhTW from '../i18n/locales/backgroundUpload.zh-TW';
 import backgroundUploadEn from '../i18n/locales/backgroundUpload.en';
 import colorPickerZhTW from '../i18n/locales/colorPicker.zh-TW';
 import colorPickerEn from '../i18n/locales/colorPicker.en';
+import tableCardZhTW from '../i18n/locales/tableCard.zh-TW';
+import tableCardEn from '../i18n/locales/tableCard.en';
 
 if (!i18n.isInitialized) {
   i18n.use(initReactI18next).init({
@@ -56,6 +58,7 @@ if (!i18n.isInitialized) {
         iconUpload: iconUploadZhTW,
         backgroundUpload: backgroundUploadZhTW,
         colorPicker: colorPickerZhTW,
+        tableCard: tableCardZhTW,
       },
       en: {
         auth: authEn,
@@ -75,6 +78,7 @@ if (!i18n.isInitialized) {
         iconUpload: iconUploadEn,
         backgroundUpload: backgroundUploadEn,
         colorPicker: colorPickerEn,
+        tableCard: tableCardEn,
       },
     },
     lng: 'zh-TW',
