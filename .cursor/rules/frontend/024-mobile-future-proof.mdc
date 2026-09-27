@@ -61,18 +61,30 @@ const cropImageImpl: CropImageFn = cropImageOnWeb; // .web.ts 提供
 
 #### Vite + tsconfig 必要設定
 
-`.web.ts` / `.native.ts` 不會被 Vite 自動 resolve，**必須**在 `apps/frontend/tsconfig.app.json` 加：
+`.web.ts` / `.native.ts` 不會被 Vite / TS 自動 resolve，**必須**在 `apps/frontend/tsconfig.app.json` 加：
 
 ```jsonc
 // apps/frontend/tsconfig.app.json
 {
   "compilerOptions": {
-    "moduleSuffixes": [".web", ".native", ""]  // 從最 specific 到 generic
+    "moduleSuffixes": ["", ".web", ".native"]  // ↑ generic `""` MUST be FIRST
   }
 }
 ```
 
-順序鐵律：`.web` / `.native` 最先，generic `""` 最後（Vite / Rollup / Metro 都按 prefix-match）。
+**順序鐵律：generic `""` 必須最前，`.web` / `.native` 在後**。
+
+| 順序 | 後果 |
+|---|---|
+| `["", ".web", ".native"]` ✅ | `import { useImageCrop } from '@/hooks/useImageCrop'` → 解析到 `useImageCrop.ts`（main file）→ 拿到 hook |
+| `["", ".web", ".native"]` ✅ | `import { cropImageOnWeb } from './useImageCrop.web'` → 解析到 `useImageCrop.web.ts`（platform binding）→ 拿到 web impl |
+| `[".web", ".native", ""]` ❌ | `import { useImageCrop } from '@/hooks/useImageCrop'` → 解析到 `useImageCrop.web.ts`（platform binding）→ TS2305「no exported member 'useImageCrop'」（binding 沒 export hook） |
+
+**為什麼 generic `""` 必須最前**：
+
+Hook Split Pattern 的設計意圖是「main file 持有 public API，platform binding 是 private impl」。Consumer 用 bare import（`./useImageCrop`）應該拿到 hook，**不能**被 `.web.ts` / `.native.ts` 攔截。
+
+這個順序跟 React Native **whole-component** pattern（`LoginScreen.ios.tsx` 完整檔優先）剛好相反 — 後者要把 platform suffix 放最前，因為 import 的目標就是「整個 component」。Rule 024 早期文檔誤把 RN component 順序套到 Hook Split Pattern 上，造成 2026-09-27 Cloudflare Pages build fail：13 個 TS2305 + TS7006 全圍繞 `useImageCrop` / `hooks/index.ts` / `MediaAssetUploader.tsx` / `detectLanguage.web.ts`。
 
 沒設 `moduleSuffixes` → TS 編譯找不到 `useImageCrop.web.ts`（Vite dev 也會失敗）。
 
@@ -194,4 +206,4 @@ export const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+$/.test(email);
  — Hook Split Pattern 完整實作範例
 - `packages/shared/types/imageCrop.ts`（`FileLike` / `ValidationError` / `CropState`）
 - `packages/shared/logic/imageCrop.ts`（`validateLogoFile` / `applyScaleChange` / `computeSrcSquareSize`）
-- `apps/frontend/tsconfig.app.json`（`moduleSuffixes: [".web", ".native", ""]`）
+- `apps/frontend/tsconfig.app.json`（`moduleSuffixes: ["", ".web", ".native"]`）— Hook Split Pattern 必備的 moduleSuffixes 設定（順序見 § Hook Split Pattern）

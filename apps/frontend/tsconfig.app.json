@@ -16,7 +16,13 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    "moduleSuffixes": [".web", ".native", ""],
+    "moduleSuffixes": ["", ".web", ".native"],
+    // ↑ Hook Split Pattern order: generic `""` MUST be FIRST so bare imports
+    //   (`import { useImageCrop } from '@/hooks/useImageCrop'`) resolve to
+    //   the main `useImageCrop.ts` file, NOT the `.web.ts` / `.native.ts`
+    //   binding. Platform binding files are only picked up when the import
+    //   path EXPLICITLY contains the suffix (`./useImageCrop.web` /
+    //   `./useImageCrop.native`). See Rule 024 § Hook Split Pattern.
     "paths": {
       "@/*": ["./src/*"],
       "@saome/shared": ["../../packages/shared/index.ts"],
