@@ -12,9 +12,10 @@
  *   3. onError — convert SaomeError / unknown to JSON ErrorResponseDto
  *
  * Modules:
- *   - /api/auth  → authModule (register / login / refresh / me)
- *   - /api/pass  → passModule (subscription management)
- *   - /api/cards → cardsModule (card builder templates)
+ *   - /api/auth            → authModule (register / login / refresh / me)
+ *   - /api/pass            → passModule (subscription management)
+ *   - /api/cards           → cardsModule (card builder templates)
+ *   - /api/pass-templates  → passTemplatesModule (public, no-auth — Pass Holder flow)
  *
  * Health check:
  *   - GET /health → { ok: true } (no DB, no auth)
@@ -34,6 +35,7 @@ import { authModule } from '@/modules/auth';
 import { passModule } from '@/modules/pass';
 import { billingCycleCronRoute } from '@/modules/pass/routes/billingCycleCron';
 import { cardsModule } from '@/modules/cards';
+import { passTemplatesModule } from '@/modules/pass-templates';
 import { healthModule } from '@/modules/health';
 import { getDb } from '@/shared/db/client';
 
@@ -69,6 +71,10 @@ app.route('/api/pass', passModule);
 app.route('/api/cron/billing-cycle', billingCycleCronRoute);
 app.route('/api/cron', healthModule);
 app.route('/api/cards', cardsModule);
+// pass-templates (2026-09-29) — public, no-auth endpoints. See
+// runs/decisions/2026-09-29-pass-templates-public-endpoint.md for the
+// visibility-gate drop rationale.
+app.route('/api/pass-templates', passTemplatesModule);
 
 /**
  * Default export — Worker entry point.

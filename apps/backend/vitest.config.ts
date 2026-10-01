@@ -73,6 +73,7 @@ export default defineWorkersConfig({
       // Specific entries (with subpath) MUST come BEFORE the generic ones
       // (Rule 016: vite alias is prefix-matching, first match wins).
       '@saome/shared/constants/card-fields': path.resolve(__dirname, '../../packages/shared/constants/card-fields.ts'),
+      '@saome/shared/constants/card-images': path.resolve(__dirname, '../../packages/shared/constants/card-images.ts'),
       '@saome/shared/constants/coupon-card': path.resolve(__dirname, '../../packages/shared/constants/coupon-card.ts'),
       '@saome/shared/constants/membership-card': path.resolve(__dirname, '../../packages/shared/constants/membership-card.ts'),
       '@saome/shared/constants/multipass-card': path.resolve(__dirname, '../../packages/shared/constants/multipass-card.ts'),
