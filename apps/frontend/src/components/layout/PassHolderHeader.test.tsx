@@ -1,5 +1,5 @@
 /**
- * PassHolderHeader tests — logo src build helper + Store fallback.
+ * PassHolderHeader tests — logo src build helper + Store fallback + ThemeToggle.
  *
  * Covers the buildLogoSrc() helper (used by the render tree) and the
  * fallback icon path. Three tests pin:
@@ -7,6 +7,9 @@
  *   (b) R2 key (`{tenant}/{template}/issuer-logo.png`) is wrapped with
  *       the `/api/pass-templates/:id/logo` proxy path
  *   (c) template null renders the Lucide `<Store>` fallback icon
+ *
+ * Plus ThemeToggle integration tests (the public Get-Pass page exposes a
+ * light/dark toggle so unauthenticated visitors can switch modes).
  *
  * The full rendered `<img src>` behavior (which depends on `api.baseUrl`
  * from `env`) is covered end-to-end by `PassHolderShell.test.tsx` and the
@@ -19,6 +22,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { PassHolderHeader, buildLogoSrc } from './PassHolderHeader';
+import * as useThemeModule from '@/hooks/useTheme';
 import type { PublicPassTemplate } from '@saome/shared/types/passHolder';
 
 // Mock react-i18next so we don't need a full i18n init in unit test.
@@ -29,6 +33,17 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
+// Mock useTheme — PassHolderHeader now embeds <ThemeToggle />, which calls
+// useTheme() and reads localStorage. Spy at module level so the same
+// preference is returned for ThemeToggle's internal useTheme call and for
+// any direct consumers. Without this mock localStorage state would leak
+// between tests (especially `preference`).
+vi.spyOn(useThemeModule, 'useTheme').mockReturnValue({
+  preference: 'dark',
+  resolved: 'dark',
+  setPreference: vi.fn(),
+});
+
 const sampleTemplate: PublicPassTemplate = {
   id: 'demo-cafe',
   name: 'Café Rewards',
@@ -36,6 +51,7 @@ const sampleTemplate: PublicPassTemplate = {
   logoText: 'Café 咖啡',
   issuerName: 'Café Rewards Co.',
   issuerLogo: 'https://picsum.photos/seed/saome-cafe/96',
+  language: 'en',
 };
 
 const R2_KEY = '11111111-1111-4111-a111-111111111111/716c4244-6c63-496d-a967-6c87cdac605d/issuer-logo.png';
@@ -75,5 +91,27 @@ describe('PassHolderHeader — render', () => {
     renderWithRouter(<PassHolderHeader template={sampleTemplate} />);
     expect(screen.getByTestId('pass-holder-header-title')).toHaveTextContent('Café 咖啡');
     expect(screen.getByTestId('pass-holder-header-subtitle')).toHaveTextContent('Café Rewards Co.');
+  });
+});
+
+describe('PassHolderHeader — ThemeToggle integration', () => {
+  it('renders ThemeToggle in the header when template is loaded', () => {
+    renderWithRouter(<PassHolderHeader template={sampleTemplate} />);
+    const slot = screen.getByTestId('pass-holder-header-theme-toggle');
+    expect(slot).toBeInTheDocument();
+    // ThemeToggle renders a role="group" with aria-label containing "theme"
+    expect(
+      screen.getByRole('group', { name: /theme/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('renders ThemeToggle even when template is null (loading state)', () => {
+    // Unauthenticated visitors see the header before the template resolves;
+    // the toggle must still be available so they can switch modes while
+    // waiting.
+    renderWithRouter(<PassHolderHeader template={null} />);
+    expect(
+      screen.getByRole('group', { name: /theme/i }),
+    ).toBeInTheDocument();
   });
 });

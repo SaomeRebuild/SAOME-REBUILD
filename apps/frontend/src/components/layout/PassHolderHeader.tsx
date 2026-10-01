@@ -7,9 +7,12 @@
  *   - Title:     var(--color-foreground), text-xl font-bold
  *   - Subtitle:  var(--color-muted-foreground), text-xs
  *   - Logo:      48×48 rounded square (issuerLogo) OR Lucide Store fallback
+ *   - Right slot: <ThemeToggle /> so unauthenticated visitors can switch
+ *     light/dark mode. The page locale itself follows `template.language`
+ *     (see runs/decisions/2026-10-01-pass-holder-language.md § Q2), so we
+ *     do not add a manual LanguageSwitcher here.
  *
- * No auth controls / language switcher / theme toggle (public page,
- * unauthenticated visitor).
+ * No auth controls (public page, unauthenticated visitor).
  */
 
 import { Store } from 'lucide-react';
@@ -17,6 +20,7 @@ import { useTranslation } from 'react-i18next';
 import type { PublicPassTemplate } from '@saome/shared/types/passHolder';
 import { cardTypeSchema } from '@saome/shared/schemas/card';
 import { api } from '@/config/api';
+import { ThemeToggle } from '@/components/ui/theme';
 
 /**
  * Build the `<img src>` value for the issuer logo.
@@ -145,6 +149,9 @@ export function PassHolderHeader({ template, className }: PassHolderHeaderProps)
               {subtitle}
             </p>
           ) : null}
+        </div>
+        <div className="shrink-0" data-testid="pass-holder-header-theme-toggle">
+          <ThemeToggle />
         </div>
       </div>
     </header>
