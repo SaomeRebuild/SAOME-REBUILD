@@ -1,0 +1,1 @@
+export { PassHolderRegistrationPage } from './PassHolderRegistrationPage';

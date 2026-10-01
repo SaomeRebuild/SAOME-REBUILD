@@ -24,6 +24,7 @@ import MembersPage from '@/pages/app/dashboard/members';
 import EmailPage from '@/pages/app/dashboard/email';
 import BillingPage from '@/pages/app/dashboard/billing';
 import SettingsPage from '@/pages/app/dashboard/settings';
+import { PassHolderRegistrationPage } from '@/pages/pass';
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -66,6 +67,10 @@ function AppRoutes() {
       <Route path="/pricing/compare" element={
         <MarketingShell><DetailedPricingPage /></MarketingShell>
       } />
+
+      {/* ── Public "Get Pass" page (no AuthGuard, no nav, no login) ── */}
+      <Route path="/pass" element={<PassHolderRegistrationPage />} />
+      <Route path="/pass/:templateId" element={<PassHolderRegistrationPage />} />
 
       {/* ── Dashboard pages → DashboardShell ── */}
       <Route path={ROUTES.tenantDashboard} element={
