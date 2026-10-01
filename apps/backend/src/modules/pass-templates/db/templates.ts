@@ -20,7 +20,7 @@
  */
 
 import type { Sql } from '@/shared/db/client';
-import type { CardType } from '@saome/shared/schemas/card';
+import type { CardLanguage, CardType } from '@saome/shared/schemas/card';
 
 /**
  * Minimal DB row shape read by the public endpoint.
@@ -33,13 +33,15 @@ export interface PublicTemplateRow {
   id: string;
   name: string;
   card_type: CardType | null;
-  /** Logo text lives in `settings.logoText` (per migration 018, 2026-09-13). */
+  /** Logo text lives in `settings.logoText` (per migration 018, 2026-09-13).
+   *  `language` added 2026-10-01 for the public page i18n. */
   settings: {
     logoText?: string;
     issuerName?: string;
     issuerLogo?: string;
     backgroundColor?: string;
     textColor?: string;
+    language?: CardLanguage;
   };
 }
 
@@ -89,6 +91,7 @@ export interface PublicTemplateRowWithTenant {
     issuerLogo?: string;
     backgroundColor?: string;
     textColor?: string;
+    language?: CardLanguage;
   };
 }
 

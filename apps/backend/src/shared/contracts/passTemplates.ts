@@ -23,7 +23,7 @@
  *   § Decision 3 (tenant isolation: no tenant_id in public response).
  */
 
-import type { CardType } from '@saome/shared/schemas/card';
+import type { CardLanguage, CardType } from '@saome/shared/schemas/card';
 
 /**
  * Public-safe subset of a card template.
@@ -49,6 +49,15 @@ export interface PublicPassTemplateDto {
   logoText: string;
   /** Issuer name shown in the page subtitle. */
   issuerName: string;
+  /**
+   * Page language ('zh-TW' | 'en') — read from
+   * `templates.settings->>'language'` (JSONB) and projected to the
+   * frontend so it can `applyPageLanguage(language)` on template load.
+   * Source of truth mirrors `languageSchema` in
+   * `packages/shared/schemas/card.ts`. Added 2026-10-01 per plan
+   * `runs/decisions/2026-10-01-pass-holder-language.md` (decision pending).
+   */
+  language: CardLanguage;
   /** Optional absolute URL for the issuer logo. */
   issuerLogo?: string;
   /** Optional pass background color hex (e.g. `#0F0F23`). */

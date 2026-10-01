@@ -31,12 +31,14 @@ import type { PublicPassTemplate } from '@saome/shared/types/passHolder';
 describe('PublicPassTemplateDto schema conformance (Layer 1 vs Layer 2)', () => {
   // We compare shape via a sample object — TypeScript types are erased at
   // runtime, so we use the structural test pattern from Rule 019 § 3.
+  // 'language' added 2026-10-01 (Q2): template-driven page i18n.
   const EXPECTED_FIELDS = [
     'id',
     'name',
     'cardType',
     'logoText',
     'issuerName',
+    'language',
     'issuerLogo',
     'backgroundColor',
     'textColor',
@@ -52,6 +54,7 @@ describe('PublicPassTemplateDto schema conformance (Layer 1 vs Layer 2)', () => 
       cardType: 'reward_card',
       logoText: 'lt',
       issuerName: 'in',
+      language: 'en',
       issuerLogo: undefined,
       backgroundColor: undefined,
       textColor: undefined,
@@ -69,6 +72,7 @@ describe('PublicPassTemplateDto schema conformance (Layer 1 vs Layer 2)', () => 
       cardType: 'reward_card',
       logoText: 'lt',
       issuerName: 'in',
+      language: 'en',
       issuerLogo: undefined,
       backgroundColor: undefined,
       textColor: undefined,
@@ -87,6 +91,7 @@ describe('PublicPassTemplateDto schema conformance (Layer 1 vs Layer 2)', () => 
       cardType: 'reward_card',
       logoText: 'lt',
       issuerName: 'in',
+      language: 'en',
     };
     const sharedSample: PublicPassTemplate = {
       id: 'x',
@@ -94,6 +99,7 @@ describe('PublicPassTemplateDto schema conformance (Layer 1 vs Layer 2)', () => 
       cardType: 'reward_card',
       logoText: 'lt',
       issuerName: 'in',
+      language: 'en',
     };
     expect(Object.keys(dtoSample).sort()).toEqual(Object.keys(sharedSample).sort());
   });
@@ -105,6 +111,7 @@ describe('PublicPassTemplateDto schema conformance (Layer 1 vs Layer 2)', () => 
       cardType: 'reward_card',
       logoText: 'lt',
       issuerName: 'in',
+      language: 'en',
     };
     expect(sample).not.toHaveProperty('tenant_id');
     expect(sample).not.toHaveProperty('status');
@@ -138,6 +145,7 @@ const baseRow: PublicTemplateRow = {
     issuerLogo: 'https://picsum.photos/seed/saome-cafe/96',
     backgroundColor: '#0F0F23',
     textColor: '#F8FAFC',
+    language: 'en',
   },
 };
 
@@ -151,10 +159,46 @@ describe('getPublicTemplateService — field projection (v2)', () => {
       cardType: 'reward_card',
       logoText: 'Café 咖啡',
       issuerName: 'Café Rewards Co.',
+      language: 'en',
       issuerLogo: 'https://picsum.photos/seed/saome-cafe/96',
       backgroundColor: '#0F0F23',
       textColor: '#F8FAFC',
     });
+  });
+
+  // ================================================================
+  // Q2 (2026-10-01): settings.language → DTO.language projection
+  // ================================================================
+
+  it('Q2: projects settings.language to DTO.language', async () => {
+    stubFindPublicTemplateById({
+      ...baseRow,
+      settings: { ...baseRow.settings, language: 'zh-TW' },
+    });
+    const dto = await getPublicTemplateService(makeMockSql(), baseRow.id);
+    expect(dto?.language).toBe('zh-TW');
+  });
+
+  it('Q2: falls back to "en" when settings.language is missing (legacy rows)', async () => {
+    stubFindPublicTemplateById({
+      ...baseRow,
+      // Legacy row predates the Q2 migration — no language field.
+      settings: {
+        logoText: baseRow.settings.logoText,
+        issuerName: baseRow.settings.issuerName,
+      },
+    });
+    const dto = await getPublicTemplateService(makeMockSql(), baseRow.id);
+    expect(dto?.language).toBe('en');
+  });
+
+  it('Q2: falls back to "en" when settings itself is null (defensive)', async () => {
+    stubFindPublicTemplateById({
+      ...baseRow,
+      settings: null as unknown as PublicTemplateRow['settings'],
+    });
+    const dto = await getPublicTemplateService(makeMockSql(), baseRow.id);
+    expect(dto?.language).toBe('en');
   });
 
   it('returns null when the template does not exist (404 mapped by route layer)', async () => {

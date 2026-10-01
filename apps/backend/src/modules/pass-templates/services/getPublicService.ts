@@ -53,6 +53,10 @@ export async function getPublicTemplateService(
     // logoText: settings 內 logoText 缺失時 fallback 到 row.name.
     logoText: settings.logoText ?? row.name,
     issuerName: settings.issuerName ?? '',
+    // 2026-10-01 (Q2): project settings->>'language' so the public page
+    // can drive i18n. Fallback to 'en' for legacy rows that pre-date the
+    // migration adding `language` to settings.
+    language: settings.language ?? 'en',
     issuerLogo: settings.issuerLogo,
     backgroundColor: settings.backgroundColor,
     textColor: settings.textColor,
@@ -107,6 +111,11 @@ export async function getPublicTemplateWithTenantService(
     cardType: row.card_type ?? 'reward_card',
     logoText: settings.logoText ?? row.name,
     issuerName: settings.issuerName ?? '',
+    // 2026-10-01 (Q2): mirror getPublicTemplateService — same language
+    // projection + fallback so the two services return identical DTO
+    // shapes (per Decision 2026-10-01 § 5 option "a": two narrow
+    // services > one fat with optional flag).
+    language: settings.language ?? 'en',
     issuerLogo: settings.issuerLogo,
     backgroundColor: settings.backgroundColor,
     textColor: settings.textColor,
