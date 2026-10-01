@@ -37,6 +37,8 @@ import colorPickerZhTW from './locales/colorPicker.zh-TW';
 import colorPickerEn from './locales/colorPicker.en';
 import tableCardZhTW from './locales/tableCard.zh-TW';
 import tableCardEn from './locales/tableCard.en';
+import passHolderZhTW from './locales/passHolder.zh-TW';
+import passHolderEn from './locales/passHolder.en';
 
 const resources = {
   'zh-TW': {
@@ -58,6 +60,7 @@ const resources = {
     backgroundUpload: backgroundUploadZhTW,
     colorPicker: colorPickerZhTW,
     tableCard: tableCardZhTW,
+    passHolder: passHolderZhTW,
   },
   en: {
     auth: authEn,
@@ -78,6 +81,7 @@ const resources = {
     backgroundUpload: backgroundUploadEn,
     colorPicker: colorPickerEn,
     tableCard: tableCardEn,
+    passHolder: passHolderEn,
   },
 };
 
@@ -102,6 +106,31 @@ export function setLanguage(lang: 'en' | 'zh-TW') {
   } catch {
     // SSR or blocked localStorage — ignore
   }
+  void i18n.changeLanguage(lang);
+}
+
+/**
+ * Switch i18n language WITHOUT persisting to localStorage.
+ *
+ * Used by the public "Get Pass" page (`/pass/:templateId`) to apply the
+ * template-defined `language` for the duration of the page view without
+ * polluting the visitor's authenticated preferences. When the visitor
+ * later logs in to the dashboard, `getInitialLanguage()` will read their
+ * saved preference (or browser locale) as usual — the public page's
+ * override does NOT stick.
+ *
+ * Why a separate helper (vs reusing `setLanguage`):
+ *   - `setLanguage` writes to localStorage; calling it from a public,
+ *     unauthenticated page would lock a visitor into a template's
+ *     language for every subsequent session, even after they navigate
+ *     to the dashboard.
+ *   - `applyPageLanguage` only calls `i18n.changeLanguage()`, which is
+ *     in-memory + retained by react-i18next for the current i18n
+ *     instance. A page reload reverts to the persisted preference.
+ *
+ * 2026-10-01 — added with the Q2 (template.language → i18n) fix.
+ */
+export function applyPageLanguage(lang: 'en' | 'zh-TW') {
   void i18n.changeLanguage(lang);
 }
 

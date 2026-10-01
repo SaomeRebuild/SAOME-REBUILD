@@ -36,6 +36,8 @@ import colorPickerZhTW from '../i18n/locales/colorPicker.zh-TW';
 import colorPickerEn from '../i18n/locales/colorPicker.en';
 import tableCardZhTW from '../i18n/locales/tableCard.zh-TW';
 import tableCardEn from '../i18n/locales/tableCard.en';
+import passHolderZhTW from '../i18n/locales/passHolder.zh-TW';
+import passHolderEn from '../i18n/locales/passHolder.en';
 
 if (!i18n.isInitialized) {
   i18n.use(initReactI18next).init({
@@ -59,6 +61,7 @@ if (!i18n.isInitialized) {
         backgroundUpload: backgroundUploadZhTW,
         colorPicker: colorPickerZhTW,
         tableCard: tableCardZhTW,
+        passHolder: passHolderZhTW,
       },
       en: {
         auth: authEn,
@@ -79,6 +82,7 @@ if (!i18n.isInitialized) {
         backgroundUpload: backgroundUploadEn,
         colorPicker: colorPickerEn,
         tableCard: tableCardEn,
+        passHolder: passHolderEn,
       },
     },
     lng: 'zh-TW',
