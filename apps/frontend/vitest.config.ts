@@ -35,6 +35,7 @@ const aliasArray: { find: string | RegExp; replacement: string }[] = [
   { find: '@saome/shared/logic', replacement: resolve(sharedRoot, 'logic/index.ts') },
   { find: '@saome/shared/types/member', replacement: resolve(sharedRoot, 'types/member.ts') },
   { find: '@saome/shared/types/order', replacement: resolve(sharedRoot, 'types/order.ts') },
+  { find: '@saome/shared/types/passHolder', replacement: resolve(sharedRoot, 'types/passHolder.ts') },
   { find: '@saome/shared/types/pass', replacement: resolve(sharedRoot, 'types/pass.ts') },
   { find: '@saome/shared/types/imageCrop', replacement: resolve(sharedRoot, 'types/imageCrop.ts') },
   { find: '@saome/shared/types', replacement: resolve(sharedRoot, 'types/index.ts') },
