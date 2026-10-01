@@ -555,7 +555,7 @@ export default {
       rewardLabelTitle: 'Reward Title',
       rewardLabelPlaceholder: 'e.g. VIP Benefit',
       rewardValueTitle: 'Reward Content',
-      rewardValuePlaceholder: 'e.g. https://example.com/vip',
+      rewardValuePlaceholder: 'e.g. A free coffee on every visit',
       tier: {
         nameTitle: 'Tier Name',
         namePlaceholder: 'e.g. VIP, Gold Member',

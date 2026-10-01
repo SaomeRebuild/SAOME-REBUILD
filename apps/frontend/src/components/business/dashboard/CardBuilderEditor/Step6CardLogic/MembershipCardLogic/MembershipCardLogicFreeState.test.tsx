@@ -56,6 +56,28 @@ describe('MembershipCardLogicFreeState — full editor for free membership card 
     ).toBeInTheDocument();
   });
 
+  it('renders introHintFree (free-card copy), NOT introHint (paid-card copy) — regression 2026-10-02', () => {
+    // Regression 2026-10-02: FreeState previously rendered the paid-card
+    // introHint key inside the tier-name section, showing "最多 5 組會員等級"
+    // — wrong because free cards can only set 1 tier. Must use
+    // introHintFree (the dispatcher in Step6CardLogic.tsx already picks
+    // the right key set based on isPaid; FreeState duplicated the same
+    // hint text but with the wrong key). This test pins the FreeState
+    // sub-component to use introHintFree.
+    useCardBuilderStore.setState({
+      isPaid: false,
+      membershipTiers: [FREE_TIER],
+    });
+    render(<MembershipCardLogicFreeState showValidation={false} />);
+
+    expect(
+      screen.getByText('step6.membership.introHintFree'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('step6.membership.introHint'),
+    ).toBeNull();
+  });
+
   it('renders MembershipTierNameField bound to membershipTiers[0]', () => {
     useCardBuilderStore.setState({
       isPaid: false,
@@ -186,16 +208,20 @@ describe('MembershipCardLogicFreeState — full editor for free membership card 
     expect(screen.queryByText('step6.membership.removeTier')).toBeNull();
   });
 
-  it('membershipTiers.length=0: renders empty-fallback section (defensive — should be unreachable after 2026-09-18 fix)', () => {
-    // 2026-09-18 fix: initialState now seeds `default-membership-tier` so
-    // `MembershipCardLogicFreeState` always has a tier to bind to in normal
-    // flows. This test now verifies only the defensive contract — if a
-    // test or future code path bypasses the invariant (e.g. manually
-    // setState'd an empty array), FreeState must still render the hint
-    // gracefully instead of crashing. In production this branch is
-    // unreachable; a `console.warn` fires to surface the regression.
+  it('membershipTiers.length=0: render-time auto-seed triggers setIsPaid(false) and renders full editor (2026-10-01 belt-and-suspenders)', () => {
+    // 2026-09-18 fix: initialState seeds default-membership-tier so
+    // empty array is unusual. 2026-10-01 belt-and-suspenders fix:
+    // added a render-time auto-seed effect that triggers
+    // setIsPaid(false) if membershipTiers is somehow empty. This
+    // means the empty-fallback branch is now truly unreachable in
+    // production code — even if loadSettings + setIsPaid + initialState
+    // all fail to seed, the render-time effect catches it.
     //
-    // Silence the warn so the test output stays clean — we expect it.
+    // This test verifies the auto-seed contract:
+    //   - When membershipTiers starts empty, the effect fires and
+    //     seeds a default tier.
+    //   - The user sees the FULL editor (not the freeStateHint fallback).
+    //   - console.warn is logged to surface the unexpected state.
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     useCardBuilderStore.setState({
       isPaid: false,
@@ -203,15 +229,20 @@ describe('MembershipCardLogicFreeState — full editor for free membership card 
     });
     render(<MembershipCardLogicFreeState showValidation={false} />);
 
+    // After the auto-seed effect, store should have a tier.
+    const tiers = useCardBuilderStore.getState().membershipTiers;
+    expect(tiers.length).toBeGreaterThanOrEqual(1);
+
+    // The full editor renders — NOT the fallback hint.
     expect(
-      screen.getByText('step6.membership.freeStateHint'),
+      screen.getByText('step6.membership.freeTierNameTitle'),
     ).toBeInTheDocument();
-    // Editor sections NOT rendered.
     expect(
-      screen.queryByText('step6.membership.freeTierNameTitle'),
+      screen.queryByText('step6.membership.freeStateHint'),
     ).toBeNull();
-    expect(screen.queryByRole('switch')).toBeNull();
-    // The defensive fallback must surface a warning when it fires.
+    // HasExpiry toggle is rendered (in the full editor path).
+    expect(screen.queryByRole('switch')).toBeInTheDocument();
+    // The auto-seed must surface a warning when it fires.
     expect(warnSpy).toHaveBeenCalled();
     warnSpy.mockRestore();
   });
@@ -283,5 +314,93 @@ describe('MembershipCardLogicFreeState — full editor for free membership card 
     const tiers = useCardBuilderStore.getState().membershipTiers;
     expect(tiers.length).toBeGreaterThanOrEqual(1);
     expect(tiers[0].id).toBe('default-membership-tier');
+  });
+
+  // ====================================================================
+  // 2026-10-01 full-journey regression: fresh draft + free card
+  // --------------------------------------------------------------------
+  // Bug scenario: user opens a brand-new draft whose `cardService.getById`
+  // returns `settings = {}` (no `isPaid` key, no `membershipTiers` key).
+  // After loadSettings hydrates, the store has `isPaid === false` and
+  // `membershipTiers === []`. The defensive seed in loadSettings only
+  // matched `resolved?.isPaid === false`, so undefined isPaid (from
+  // settings = {}) left the array empty. FreeState then rendered the
+  // `freeStateHint` fallback. The user had to toggle paid → unpaid once
+  // to escape.
+  //
+  // Fix (2026-10-01 belt-and-suspenders plan):
+  //   - loadSettings seed condition broadened to `isPaid !== true`.
+  //   - setIsPaid(false) early-return no-op removed for free path.
+  //   - FreeState render-time auto-seed via setIsPaid(false).
+  // ====================================================================
+
+  it('full user journey: fresh draft (settings = {}) → FreeState renders full editor without fallback (regression 2026-10-01)', () => {
+    // Simulate the exact fresh-draft path: cardService.getById returns
+    // settings = {}, so loadSettings hydrates with isPaid undefined.
+    useCardBuilderStore.getState().reset();
+    useCardBuilderStore.setState({ membershipTiers: [] });
+    useCardBuilderStore.getState().loadSettings({});
+    // User chose membership_card in Step 1; isPaid is still default false
+    // because the loaded settings had no isPaid key.
+    useCardBuilderStore.setState({ cardType: 'membership_card' });
+
+    // Step 6 first-visit: FreeState must render the FULL editor,
+    // NOT the `freeStateHint` fallback.
+    render(<MembershipCardLogicFreeState showValidation={false} />);
+
+    // Full editor is present.
+    expect(
+      screen.getByText('step6.membership.freeTierNameTitle'),
+    ).toBeInTheDocument();
+    // Fallback hint is absent.
+    expect(
+      screen.queryByText('step6.membership.freeStateHint'),
+    ).toBeNull();
+    // HasExpiry toggle (rendered only in the full editor path).
+    expect(screen.getByRole('switch')).toBeInTheDocument();
+  });
+
+  it('full user journey: free → paid → free toggle keeps FreeState full editor (regression 2026-10-01)', () => {
+    // Phase A: fresh draft.
+    useCardBuilderStore.getState().reset();
+    useCardBuilderStore.setState({ membershipTiers: [] });
+    useCardBuilderStore.getState().loadSettings({});
+    useCardBuilderStore.setState({ cardType: 'membership_card' });
+
+    // Step 6 first-visit: full editor.
+    render(<MembershipCardLogicFreeState showValidation={false} />);
+    expect(
+      screen.getByText('step6.membership.freeTierNameTitle'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('step6.membership.freeStateHint'),
+    ).toBeNull();
+
+    // Phase B: user goes back to Step 2, toggles isPaid=true.
+    cleanup();
+    useCardBuilderStore.getState().setIsPaid(true);
+    // Note: setIsPaid(true) only clears the 3 free-card expiry fields;
+    // membershipTiers stays unchanged (paid-card editor doesn't bind
+    // to membershipTiers[0], so the existing tier is harmless). This
+    // matches the documented paid-card path behavior.
+    expect(useCardBuilderStore.getState().isPaid).toBe(true);
+
+    // Phase C: user toggles back to free (isPaid=false).
+    // 修正前:state.isPaid 已經 false → setIsPaid(false) 早 return → 沒 seed。
+    //         (這個場景其實不可能從 isPaid=true 直接到 isPaid=false 時 hit)
+    // 修正後:仍走 seed 分支,即使 tiers 已有也沒副作用(if state.membershipTiers.length === 0)。
+    useCardBuilderStore.getState().setIsPaid(false);
+    expect(useCardBuilderStore.getState().isPaid).toBe(false);
+    const tiers = useCardBuilderStore.getState().membershipTiers;
+    expect(tiers.length).toBeGreaterThanOrEqual(1);
+
+    // Phase D: render FreeState again — still full editor, no fallback.
+    render(<MembershipCardLogicFreeState showValidation={false} />);
+    expect(
+      screen.getByText('step6.membership.freeTierNameTitle'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('step6.membership.freeStateHint'),
+    ).toBeNull();
   });
 });

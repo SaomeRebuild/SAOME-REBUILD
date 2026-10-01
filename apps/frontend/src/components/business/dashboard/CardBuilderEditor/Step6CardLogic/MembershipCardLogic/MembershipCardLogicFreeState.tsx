@@ -34,6 +34,7 @@
  *   - The 3 expiry setters cross-clear the other field on mode change.
  */
 
+import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCardBuilderStore } from '../../CardBuilderEditor.store';
 import { MembershipTierNameField } from './MembershipTierNameField';
@@ -52,21 +53,54 @@ export function MembershipCardLogicFreeState({
   const hasExpiry = useCardBuilderStore((s) => s.hasExpiry);
   const membershipExpiryMode = useCardBuilderStore((s) => s.membershipExpiryMode);
 
+  // 2026-10-01 fix (regression): belt-and-suspenders render-time auto-seed.
+  // Belt 1 (loadSettings defensive seed, store layer) and Belt 2
+  // (setIsPaid early-return refinement, store layer) should both prevent
+  // `membershipTiers` from being empty when `isPaid === false`. But if a
+  // future code path bypasses both invariants (e.g. a test or new code
+  // path that calls `setState({membershipTiers: []})` directly), this
+  // effect is the last-line defense: detect empty state, auto-seed by
+  // triggering the existing seed branch of `setIsPaid(false)`, and let
+  // React re-render with the seeded tier.
+  //
+  // Why an effect and not inline auto-seed at render time:
+  //   - Calling `setIsPaid(false)` during render would trigger React's
+  //     "Cannot update component while rendering" warning. Effect-based
+  //     scheduling keeps state mutations out of the render path.
+  //   - Running once per mount (deps = [membershipTiers.length]) is
+  //     idempotent: if the array is non-empty, the effect does nothing.
+  useEffect(() => {
+    if (membershipTiers.length === 0) {
+      if (typeof console !== 'undefined') {
+        console.warn(
+          '[MembershipCardLogicFreeState] membershipTiers 為空,自動觸發 setIsPaid(false) 補 seed。' +
+          '若這條訊息頻繁出現,請檢查 loadSettings / setIsPaid / reset 路徑。',
+        );
+      }
+      // Trigger the free-path seed branch (which checks length === 0
+      // internally; safe to call even if state.isPaid is already false).
+      useCardBuilderStore.getState().setIsPaid(false);
+    }
+    // Depend on length only: any change to membershipTiers content
+    // (e.g. user typing a name) doesn't re-trigger this effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [membershipTiers.length]);
+
   const freeTier = membershipTiers[0];
 
   // 2026-09-18 fix (regression): defensive seed in initialState +
   // loadSettings guarantees `membershipTiers[0]` exists whenever
   // `isPaid === false`. This fallback should be unreachable in normal
-  // flows; if it ever fires it indicates a code path bypassed the
-  // invariant (e.g. a test manually setState'd an empty array, or
-  // someone refactored away the seed). Log a warning so the regression
-  // is loud rather than silent.
+  // flows after the 2026-10-01 belt-and-suspenders fix (loadSettings
+  // seed + setIsPaid seed + render-time auto-seed effect); if it ever
+  // fires it indicates a code path bypassed ALL three invariants.
+  // Log a warning so the regression is loud rather than silent.
   if (!freeTier) {
     if (typeof console !== 'undefined') {
-      console.warn(
-        '[MembershipCardLogicFreeState] membershipTiers is empty when isPaid=false. ' +
-        'This should not happen with proper initial-state seeding. ' +
-        'Investigate loadSettings or reset path.',
+      console.error(
+        '[MembershipCardLogicFreeState] membershipTiers is empty even after auto-seed. ' +
+        'This should be impossible after the 2026-10-01 belt-and-suspenders fix. ' +
+        'Investigate loadSettings / setIsPaid / reset path.',
       );
     }
     return (
@@ -90,7 +124,7 @@ export function MembershipCardLogicFreeState({
             {t('step6.membership.freeTierNameTitle')}
           </h3>
           <p className="text-xs text-muted-foreground">
-            {t('step6.membership.introHint')}
+            {t('step6.membership.introHintFree')}
           </p>
         </header>
         <MembershipTierNameField showValidation={showValidation} tierId={freeTier.id} />

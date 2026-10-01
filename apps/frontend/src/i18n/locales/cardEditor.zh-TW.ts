@@ -557,7 +557,7 @@ export default {
       rewardLabelTitle: '獎勵名稱',
       rewardLabelPlaceholder: '例如：專屬優惠',
       rewardValueTitle: '獎勵內容',
-      rewardValuePlaceholder: '例如：https://example.com/vip',
+      rewardValuePlaceholder: '例如：每次入店享有免費咖啡一杯',
       // ===== Tier 欄位 =====
       tier: {
         nameTitle: '等級名稱',

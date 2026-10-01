@@ -1903,7 +1903,21 @@ export const useCardBuilderStore = create<CardBuilderState>()((set, get) => ({
    */
   setIsPaid: (isPaid) =>
     set((state) => {
-      if (isPaid === state.isPaid) return {};
+      // 2026-10-01 fix (regression): refined the early-return guard so
+      // it doesn't short-circuit the free-path seed logic. Previously
+      // `if (isPaid === state.isPaid) return {}` would skip the seed
+      // branch when the user toggled free → free (no-op for isPaid but
+      // the seed branch was the only thing keeping membershipTiers
+      // populated if loadSettings hadn't already seeded them — e.g. a
+      // test calling `setState({membershipTiers: []})` and then
+      // `setIsPaid(false)` would have left the array empty).
+      //
+      // Refinement: paid → paid is the only case that's truly a no-op.
+      // Free → free must still run the seed branch (idempotent: if
+      // tiers already have rows, the `state.membershipTiers.length ===
+      // 0` check inside the seed branch skips the seed; if tiers are
+      // empty, it seeds).
+      if (isPaid === true && state.isPaid === true) return {};
       if (isPaid === false) {
         // 切換為免費：seed 一個空白 tier（若還沒有）
         const next: Partial<CardBuilderState> = { isPaid };
@@ -3882,6 +3896,19 @@ export const useCardBuilderStore = create<CardBuilderState>()((set, get) => ({
         // a corrupted settings payload), seed one default tier so the
         // free-card editor has something to bind to. Fresh cards never
         // hit this branch — initialState already seeds the tier.
+        //
+        // 2026-10-01 fix (regression): broadened the seed condition from
+        // `resolved?.isPaid === false` to `resolved?.isPaid !== true`.
+        // Reason: a brand-new draft whose `cardService.getById` returns
+        // `settings = {}` hydrates with `resolved.isPaid === undefined`,
+        // which the old strict-equality check missed — leaving
+        // `membershipTiers` as `[]` and forcing the Step 6 FreeState
+        // into the `freeStateHint` fallback (user had to toggle paid →
+        // unpaid once to escape). The broadened condition covers three
+        // cases at once: undefined (fresh draft), false (explicit free),
+        // and any non-boolean corrupt value. Paid cards (isPaid=true)
+        // still bypass the seed — the paid-card editor doesn't bind to
+        // `membershipTiers[0]` so seeding would just pollute the array.
         membershipTiers: (() => {
           const trimmed = sanitizeMembershipTiers(
             resolved?.membershipTiers,
@@ -3889,7 +3916,7 @@ export const useCardBuilderStore = create<CardBuilderState>()((set, get) => ({
           );
           if (
             trimmed.length === 0 &&
-            resolved?.isPaid === false
+            resolved?.isPaid !== true
           ) {
             return [
               {

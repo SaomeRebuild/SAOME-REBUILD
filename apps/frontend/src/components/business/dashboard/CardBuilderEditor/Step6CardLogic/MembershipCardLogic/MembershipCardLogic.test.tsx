@@ -212,20 +212,40 @@ describe('MembershipCardLogic — main component (Rule 000 § A.1)', () => {
   // empty-fallback section that shows ONLY `freeStateHint` (NOT
   // `freeStateTitle` — the title was removed because it implied "no
   // need to configure", which is no longer accurate post-refactor).
-  it('FreeState empty-fallback when isPaid=false + no tier seeded (defensive — 2026-09-14)', () => {
+  it('FreeState empty-fallback when isPaid=false + no tier seeded — render-time auto-seed triggers (2026-10-01 belt-and-suspenders)', () => {
+    // 2026-09-14 fix: FreeState had an empty-fallback section for the
+    // case when isPaid=false but membershipTiers=[].
+    //
+    // 2026-10-01 belt-and-suspenders fix: added a render-time auto-seed
+    // effect in MembershipCardLogicFreeState that triggers
+    // setIsPaid(false) when membershipTiers is empty. This means the
+    // empty-fallback branch is now truly unreachable in production —
+    // even if loadSettings + setIsPaid + initialState all fail to seed,
+    // the render-time effect catches it.
+    //
+    // This test verifies the auto-seed contract at the parent
+    // MembershipCardLogic level (which routes to FreeState).
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     useCardBuilderStore.setState({ isPaid: false, membershipTiers: [] });
     render(<MembershipCardLogic showValidation={false} />);
 
-    // Empty-fallback section shows the hint, NOT the legacy empty-state title.
+    // After the auto-seed effect, store has a tier.
+    const tiers = useCardBuilderStore.getState().membershipTiers;
+    expect(tiers.length).toBeGreaterThanOrEqual(1);
+
+    // Full editor renders — NOT the empty-fallback hint.
     expect(
-      screen.getByText('step6.membership.freeStateHint'),
+      screen.getByText('step6.membership.freeTierNameTitle'),
     ).toBeInTheDocument();
-    // The editor title (which appears in the full-editor path) is NOT shown.
+    // The empty-fallback hint should NOT render.
     expect(
-      screen.queryByText('step6.membership.freeTierNameTitle'),
+      screen.queryByText('step6.membership.freeStateHint'),
     ).toBeNull();
-    // HasExpiry toggle MUST NOT render in empty-fallback path (no tier to bind).
-    expect(screen.queryByRole('switch')).toBeNull();
+    // HasExpiry toggle renders (in the full editor path).
+    expect(screen.queryByRole('switch')).toBeInTheDocument();
+    // The auto-seed must surface a warning when it fires.
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
   });
 
   it('renders tier editor (hasExpiry toggle + tier list) when isPaid=true + no tiers', () => {

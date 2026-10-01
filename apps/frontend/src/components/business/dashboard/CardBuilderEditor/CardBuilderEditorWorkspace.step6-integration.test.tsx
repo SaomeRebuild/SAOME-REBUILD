@@ -1374,4 +1374,119 @@ describe('CardBuilderEditorWorkspace — Step 6 (2026-09-07 stamp card logic int
 
     expect(onStepChange).toHaveBeenCalledWith(7);
   });
+
+  // ====================================================================
+  // 2026-10-01 regression: free-card fresh-draft bug
+  // --------------------------------------------------------------------
+  // Bug: when the user opens a brand-new draft (settings = {} from
+  // `cardService.getById`), loadSettings hydrates with `resolved.isPaid
+  // === undefined`. The defensive seed in loadSettings only triggered on
+  // `resolved?.isPaid === false`, so an undefined isPaid left
+  // `membershipTiers` as `[]` and the Step 6 FreeState would render the
+  // `freeStateHint` fallback instead of the full editor. The user had to
+  // toggle paid → unpaid once to escape the fallback.
+  //
+  // Fix (2026-10-01 plan): broaden the seed condition to
+  // `resolved?.isPaid !== true` so undefined isPaid also seeds. Plus
+  // belt-and-suspenders at the FreeState render-time (auto-seed via
+  // setIsPaid(false)).
+  // ====================================================================
+
+  it('membership_card fresh draft: loadSettings({}) + isPaid=false + name="VIP" → Step 6 Next enabled (regression 2026-10-01)', () => {
+    // 場景:使用者開新草稿,cardService.getById 回傳 settings = {} (沒有任何欄位),
+    // 然後 CardBuilderEditor 在 mount effect 內呼叫 loadSettings({})。
+    // 修正 1 (loadSettings seed) 確保 store 仍有 default-membership-tier,
+    // 使用者只要在 Step 6 輸入 tier name 即可 advance Next(原本 fallback 阻擋)。
+    useCardBuilderStore.getState().reset();
+    // 模擬 loadSettings 拿到空設定的 hydrate
+    useCardBuilderStore.getState().loadSettings({});
+    // 模擬 user 從 Step 1 選了 membership_card,isPaid 預設 false,
+    // 並在 Step 6 輸入 tier name
+    useCardBuilderStore.setState({
+      cardType: 'membership_card',
+      isPaid: false,
+      membershipTiers: [
+        {
+          id: 'default-membership-tier',
+          name: 'VIP',
+          durationType: null,
+          monthlyCost: null,
+          yearlyCost: null,
+          lifetimeCost: null,
+          rewards: [],
+        },
+      ],
+    });
+
+    render(
+      <CardBuilderEditorWorkspace
+        step={6}
+        onStepChange={vi.fn()}
+        cardType="membership_card"
+        cardId="fresh-draft-id"
+        onCardTypeChange={vi.fn()}
+        onSave={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+
+    // 核心斷言:使用者輸入 tier name 後,Next 必須 enabled。
+    // (修正前 seed 沒補上 → FreeState 渲染 fallback → membershipTiers 是 []
+    //  → isMembershipStep6Valid 仍因 empty tier 失敗;修正後 store 有 tier,
+    //  validation 走 name check 路徑,使用者可 advance。)
+    const nextBtn = screen.getByText('step1.next');
+    expect(nextBtn).not.toBeDisabled();
+
+    // 雙重驗證:store state 也有 default tier
+    const tiers = useCardBuilderStore.getState().membershipTiers;
+    expect(tiers.length).toBeGreaterThanOrEqual(1);
+    expect(tiers[0].id).toBe('default-membership-tier');
+  });
+
+  it('loadSettings with empty object + empty membershipTiers + undefined isPaid auto-seeds default tier (regression 2026-10-01)', () => {
+    // Direct store test: 當 settings = {} (沒 isPaid 沒 membershipTiers),
+    // 防禦 seed 必須涵蓋 undefined 的 isPaid,補上 default tier。
+    useCardBuilderStore.getState().reset();
+    useCardBuilderStore.setState({ membershipTiers: [] }); // 模擬 mount 前被清空
+
+    // 載入空設定 — 這是草稿建立的典型路徑
+    useCardBuilderStore.getState().loadSettings({});
+
+    const tiers = useCardBuilderStore.getState().membershipTiers;
+    expect(tiers.length).toBeGreaterThanOrEqual(1);
+    expect(tiers[0].id).toBe('default-membership-tier');
+  });
+
+  it('loadSettings with isPaid=true + empty membershipTiers does NOT seed (paid card path stays empty — FreeState never renders)', () => {
+    // 反向 case:付費卡路徑下,loadSettings 收到 isPaid=true 不該 seed。
+    // (付費卡走 MembershipCardLogic 而非 FreeState,seed 反而會污染。2026-09-18
+    //  既有修法的 isPaid=false 條件是必要的;放寬到 !== true 仍滿足付費卡不 seed。)
+    useCardBuilderStore.getState().reset();
+    // 預先給一個 fake 付費 tier 模擬既有付費卡資料
+    useCardBuilderStore.setState({
+      isPaid: true,
+      membershipTiers: [
+        {
+          id: 'paid-tier-existing',
+          name: 'Gold',
+          durationType: 'monthly',
+          monthlyCost: 500,
+          yearlyCost: null,
+          lifetimeCost: null,
+          rewards: [],
+        },
+      ],
+    });
+
+    // loadSettings 進 isPaid=true + empty tiers 場景
+    useCardBuilderStore.getState().loadSettings({
+      isPaid: true,
+      membershipTiers: [],
+    });
+
+    // 付費卡路徑:tiers 應維持空(使用者尚未在 Step 6 加付費 tier)
+    // 修正 1 條件是 `isPaid !== true` 才 seed → isPaid=true 走 trimmed 回傳 []
+    const tiers = useCardBuilderStore.getState().membershipTiers;
+    expect(tiers).toHaveLength(0);
+  });
 });
