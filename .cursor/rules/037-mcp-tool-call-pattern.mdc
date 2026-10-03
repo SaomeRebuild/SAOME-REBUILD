@@ -1,0 +1,227 @@
+---
+description: MCP 工具呼叫方式 — pre-listed 工具直接呼叫獨立工具名，不包 CallMcpTool；runtime discover 的才用 CallMcpTool。避免「CallMcpTool 包 pre-listed 工具 → descriptor not found」regression
+alwaysApply: true
+---
+
+# MCP Tool Call Pattern（MANDATORY）
+
+> 觸發：寫任何 MCP 工具呼叫（`saome_supabase` / `cloudflare-bindings` / `saome_github` / `saome_cloudflare` 等）、debug「MCP descriptor not found」、apply migration / deploy / DDL。
+
+## 背景
+
+2026-09-30 + 2026-10-03 兩次事故（同 pattern）：
+
+| 階段 | 動作 | 結果 |
+|---|---|---|
+| 第一次（9/30）| 4 次 retry 用 `CallMcpTool(server="saome_supabase", toolName="apply_migration", ...)` | **全部** `MCP descriptor not found` |
+| 第一次（9/30 Retry #4）| 改寫成 `user-saome_supabase-apply_migration({...})` 直接呼叫獨立工具名 | ✅ `{"success": true}` |
+| 第二次（10/03）| **又**寫出 `CallMcpTool(server="user-saome_supabase", toolName="apply_migration", ...)` | `MCP descriptor not found`（**同樣的錯**）|
+| 第二次修正 | 改回 `user-saome_supabase-apply_migration({...})` 直接呼叫 | ✅ `{"success": true}` |
+
+第二次事故 trace：`runs/improvements/feedback/20261003-mcp-tool-call-pattern-regression.md`。
+
+---
+
+## 鐵律
+
+### 1. 決策樹：pre-listed vs runtime discover
+
+```
+MCP 工具呼叫前 → 確認該工具是否已 pre-listed
+   │
+   ├─ 是（列在當前 session <mcp_meta_tools>）
+   │   → 直接呼叫獨立工具名（不包 CallMcpTool）
+   │     ✅ user-saome_supabase-apply_migration({...})
+   │     ✅ user-cloudflare-bindings-workers_list({...})
+   │     ✅ user-saome_github-get_me({...})
+   │
+   └─ 否（runtime 動態 discover，未在 <mcp_meta_tools>）
+       → 用 CallMcpTool 包 descriptor
+         ✅ CallMcpTool(server="...", toolName="...", arguments={...})
+```
+
+### 2. 為什麼 `CallMcpTool` 包 pre-listed 工具會 fail
+
+Cursor runtime 的 descriptor 注入有兩條獨立路徑：
+
+| 路徑 | 機制 | 何時用 |
+|---|---|---|
+| `<mcp_meta_tools>` pre-baked list | Cursor 啟動時掃 `.cursor/mcp.json` 把所有工具 descriptor 預先注入 | 大部分已註冊 MCP 工具（saome_supabase / cloudflare-bindings / saome_github / saome_cloudflare 等）|
+| `CallMcpTool` runtime dispatch | 透過 server / tool name 動態查 descriptor | 罕用 — 只在 server 動態 discover 工具時 |
+
+**`CallMcpTool` 不知道 `<mcp_meta_tools>` 已有的 descriptor** — 它走 runtime dispatch 路徑查 descriptor，找不到就回 `MCP descriptor not found`。
+
+### 3. 怎麼判斷 pre-listed
+
+打開 Cursor session 的 system prompt 區段，找 `<mcp_meta_tools>` block。每個工具長這樣：
+
+```xml
+<tools>
+  <mcp-tool name="MCP tool name" namespace="user-saome_supabase">
+    <description>...</description>
+    <input_schema>...</input_schema>
+  </mcp-tool>
+  ...
+</tools>
+```
+
+如果 `namespace` 是 `user-<server>`（如 `user-saome_supabase`）— **就是 pre-listed**，直接呼叫獨立工具名。
+
+如果**完全沒在 `<mcp_meta_tools>` 出現** — 是 runtime discover，走 `CallMcpTool`。
+
+### 4. 直接呼叫獨立工具名的正確格式
+
+```ts
+// ✅ 正確：namespace-prefixed kebab-case
+user-saome_supabase-apply_migration({
+  name: "20261003000001_020_r2_pending_deletes",
+  query: "CREATE TABLE ..."
+});
+
+user-saome_supabase-list_tables({
+  schemas: ["public"],
+  verbose: true
+});
+
+user-cloudflare-bindings-workers_list({});
+
+user-saome_github-get_me({});
+```
+
+格式規則：
+- namespace 來自 `<mcp_meta_tools>` 的 `namespace` attribute（常見 `user-<server>`）
+- 工具名直接是 `<mcp_tool_name>`（原本是 kebab-case 不變）
+- 用 `{}` 呼叫，不是 `()` — 因為是 tool function 不是 plain function
+
+### 5. `CallMcpTool` 何時才用
+
+只有下列情境才用 `CallMcpTool`：
+
+| 情境 | 為什麼 |
+|---|---|
+| MCP server 動態加工具（runtime discover）| 工具不在 pre-baked list |
+| `<mcp_meta_tools>` 為空 + `GetMcpTools` 列出工具 | Cursor 沒把這個 server 注入 pre-baked list，runtime dispatch 是唯一路徑 |
+| 想故意測試 runtime descriptor injection | debug 用，不在 production path |
+
+如果**不確定**，先 `GetMcpTools` 看 tool list，然後看 list 出來的 tool 是不是也出現在 `<mcp_meta_tools>` — 兩條路徑都有就 pre-listed，否則 runtime discover。
+
+---
+
+## Conformance Test 範本（MANDATORY — 任何改 MCP 工具呼叫的 PR 必加）
+
+### Test 1：pre-listed 工具直接呼叫 → 成功
+
+```ts
+// apps/backend/src/mcp/prelisted-call.test.ts
+import { describe, it, expect } from 'vitest';
+
+describe('MCP pre-listed tool call pattern (Rule 037)', () => {
+  it('pre-listed saome_supabase tool: call directly with kebab-case namespace', async () => {
+    // ✅ 正確：直接呼叫獨立工具名
+    const result = await user_saome_supabase_list_tables({
+      schemas: ['public'],
+      verbose: true,
+    });
+
+    expect(Array.isArray(result)).toBe(true);
+  });
+
+  it('pre-listed cloudflare-bindings tool: call directly', async () => {
+    const workers = await user_cloudflare_bindings_workers_list({});
+    expect(workers).toBeDefined();
+  });
+
+  it('pre-listed saome_github tool: call directly', async () => {
+    const me = await user_saome_github_get_me({});
+    expect(me).toHaveProperty('login');
+  });
+});
+```
+
+### Test 2：`CallMcpTool` 包 pre-listed 工具 → fail（regression guard）
+
+```ts
+// apps/backend/src/mcp/callmcptool-prelisted-fail.test.ts
+import { describe, it, expect } from 'vitest';
+import { CallMcpTool } from '@cursor/mcp';
+
+describe('CallMcpTool on pre-listed tool MUST fail (Rule 037 regression)', () => {
+  it('CallMcpTool wrapping pre-listed saome_supabase tool throws "descriptor not found"', async () => {
+    // ❌ 這是 9/30 + 10/03 兩次事故的 root cause
+    // 這個 test 必須 fail 才能 ship（= 守住 regression）
+    await expect(
+      CallMcpTool({
+        server: 'user-saome_supabase',
+        toolName: 'list_tables',
+        arguments: { schemas: ['public'] },
+      })
+    ).rejects.toThrow(/descriptor not found/);
+  });
+});
+```
+
+> **注意**：Test 2 在 Cursor runtime 外（vitest standalone）可能不會真的 throw — 它的目的是**文件化**「這個 pattern 是禁止的」+ 強制 reviewer 看到 PR diff。如果 vitest 環境沒有 `CallMcpTool`，改寫成靜態 lint 規則（見 § 6）。
+
+---
+
+## 6. 靜態檢查（可選 — 推薦加進 CI）
+
+| 工具 | 規則 |
+|---|---|
+| ESLint custom rule | 禁止 `CallMcpTool({ server: 'user-...', toolName: '<prelisted>' })` |
+| grep-based pre-commit hook | `git grep -n "CallMcpTool(.*server.*saome_supabase"` → fail |
+
+範本（pre-commit hook）：
+
+```bash
+#!/bin/sh
+# .git/hooks/pre-commit — Rule 037 static guard
+# 禁止 CallMcpTool 包任何 pre-listed MCP server
+if git grep -nE "CallMcpTool\([^)]*server:\s*['\"]user-(saome_supabase|cloudflare-bindings|saome_github|saome_cloudflare)['\"]" -- '*.ts' '*.tsx' '*.js' '*.cjs' '*.mjs' 2>/dev/null; then
+  echo "❌ Rule 037: CallMcpTool 包 pre-listed MCP server 是禁止的"
+  echo "   改用獨立工具名直接呼叫（user-<server>-<tool>({...}))"
+  echo "   參考 .cursor/rules/037-mcp-tool-call-pattern.mdc"
+  exit 1
+fi
+```
+
+---
+
+## 跟 Rule 035 / Rule 011 的關係
+
+| Rule | 角色 |
+|---|---|
+| `035-migration-apply-pipeline.mdc` | 「**為什麼**要 apply migration」的 SOP（背景、registry、CI gate、撤回 protocol）|
+| **`037-mcp-tool-call-pattern.mdc`（本檔）**| 「**怎麼**呼叫 MCP 工具」的工具機制 SOP（pre-listed vs runtime discover）|
+| `011-dev.mdc` | commit 規範（`Migration:` footer、`Self-improvement:` 標記）|
+
+新增 migration 必走 Rule 035 § 1-4 + 本檔 § 1-4（確認工具呼叫方式）。**Rule 035 沒講的 MCP 細節，本檔補完**。
+
+---
+
+## 禁止
+
+| ❌ 禁止 | ✅ 改成 |
+|---|---|
+| `CallMcpTool({ server: 'user-saome_supabase', toolName: 'apply_migration', ... })` | `user-saome_supabase-apply_migration({...})` |
+| 假設 `CallMcpTool` 是 universal wrapper | 先確認 pre-listed 與否（看 `<mcp_meta_tools>`）|
+| 用 `CallMcpTool` 包 pre-listed 工具失敗 4 次仍繼續試 | 第一次 fail 立即切換成獨立工具名呼叫 |
+| 寫 DEV LOG 的 self-improvement action items 但不轉成 commit | 規範層 commit 必須 push（見 `saome-self-improvement` Step 3）|
+
+---
+
+## 觸發關鍵字
+
+「MCP」、「saome_supabase」、「cloudflare-bindings」、「saome_github」、「`CallMcpTool`」、「descriptor not found」、「apply_migration」、「`wrangler deploy`」、「`workers_list`」**必須**引用本 rule。
+
+「MCP 完全無法呼叫」、「`<mcp_meta_tools>`」、「pre-listed tool」、「runtime discover」→ 必引 § 1-3。
+
+---
+
+## 參照
+
+- `runs/improvements/feedback/20260930-pass-templates-mcp-descriptor-blocker.md` — 第一次事故完整 trace（4 次 retry + Retry #4 根因發現）
+- `runs/improvements/feedback/20261003-mcp-tool-call-pattern-regression.md` — 第二次事故 trace（regression + 規範缺失根因 + 6 步驟修法）
+- `DEV/10-2026/1001-pass-holder-public-page.md` § Self-improvement action items 第 1 條 — 10/01 標出 pending 但**未 commit**，是 10/03 重犯的根因
+- `.cursor/rules/035-migration-apply-pipeline.mdc` § 1-4 — apply migration SOP（必走前先讀本 rule § 1-4）
+- `.cursor/skills/saome-self-improvement/SKILL.md` § 規範層分工 — 為什麼「feedback 寫了」不等於「agent runtime 看到了」

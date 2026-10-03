@@ -142,6 +142,7 @@ apps/frontend/ **只能放 Web 特定內容**。所有可共用的程式碼必�
 - ✅ 每次跑 smoke test 用 `npm run test:smoke`（統一 playwright config 在 root）
 - ✅ 任何 migration 檔建立後，**必須**立即透過 `saome_supabase` MCP apply，commit footer 填 `Migration: <name> applied via saome_supabase MCP`
 - ✅ `templateSettingsSchema`（或任何 shared schema）新增 field 時，**必須**同步檢查四層：shared schema → backend request.ts → backend db interface → backend service（詳見 `.cursor/rules/019-schema-contract-drift.mdc` §4.1）
+- ✅ **任何 MCP 工具呼叫前必先確認 pre-listed 與否**：工具列在當前 session `<mcp_meta_tools>` → 直接呼叫獨立工具名（`user-<server>-<tool>({...})`）；runtime discover 才用 `CallMcpTool`。`CallMcpTool` 包 pre-listed 工具會回 `descriptor not found`（Rule 037 必引）
 
 ## Task Router 入口（MANDATORY）
 

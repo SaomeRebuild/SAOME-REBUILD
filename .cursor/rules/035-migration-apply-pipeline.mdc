@@ -89,6 +89,7 @@ CI 必跑：
 | `apply_migration` timeout | **不要** commit SQL 檔 — 等 MCP reconnected 再 apply |
 | `apply_migration` 回 "column already exists" | 表示已被別的 stream apply 過 — append registry entry，`notes` 標 `reapplied-already-exists` |
 | `apply_migration` DB 回 error | 修 SQL 再 retry；**不要**改 committed 但未 apply 的 SQL |
+| `CallMcpTool` 包 pre-listed 工具回 `descriptor not found` | **不是 timeout / network bug** — 是用錯工具 wrapper。改用獨立工具名直接呼叫（`user-saome_supabase-apply_migration({...})`）。詳見 `.cursor/rules/037-mcp-tool-call-pattern.mdc` § 1-4（regression 已發生 2 次：9/30 + 10/03）|
 
 ### 5. 撤回 migration 的 protocol
 
