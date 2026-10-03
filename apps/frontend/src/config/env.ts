@@ -15,7 +15,7 @@
  *     /api requests same-origin (no cross-site SameSite rejection).
  *   - appBaseUrl:
  *       dev: http://localhost:5173
- *       prod: https://saome-frontend.pages.dev
+ *       prod: https://saome-frontend.josh1989213.workers.dev
  *
  * Override at build time:
  *   VITE_API_BASE_URL=https://staging.example.test npm run build
@@ -44,7 +44,7 @@ const ConfigSchema = z.object({
     .url()
     .default(
       isProd
-        ? 'https://saome-frontend.pages.dev'
+        ? 'https://saome-frontend.josh1989213.workers.dev'
         : 'http://localhost:5173',
     ),
 });
