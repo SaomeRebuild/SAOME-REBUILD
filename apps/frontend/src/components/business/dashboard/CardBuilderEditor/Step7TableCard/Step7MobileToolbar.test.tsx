@@ -46,13 +46,16 @@ describe('Step7MobileToolbar — translucent backdrop (Fix 3)', () => {
     //  variant is defined later in the generated CSS and wins.)
   });
 
-  it('renders all 5 tool buttons with the correct active state', async () => {
+  it('renders all 6 tool buttons with the correct active state', async () => {
+    // 2026-10-04 — added 'qrcode' to the toolbar (5 → 6 tools). The
+    // QR tool sits between 'image' and 'background' to mirror the
+    // schema discriminated-union variant order.
     const user = userEvent.setup();
     const onToolChange = vi.fn();
     render(<Step7MobileToolbar activeTool="shape" onToolChange={onToolChange} />);
 
     const buttons = screen.getAllByRole('button');
-    expect(buttons).toHaveLength(5);
+    expect(buttons).toHaveLength(6);
 
     // The 'shape' button is the active one — its aria-pressed should be true
     const shapeButton = buttons.find((b) => b.getAttribute('data-tool') === 'shape');
@@ -62,6 +65,12 @@ describe('Step7MobileToolbar — translucent backdrop (Fix 3)', () => {
     // Others are inactive
     const textButton = buttons.find((b) => b.getAttribute('data-tool') === 'text');
     expect(textButton!.getAttribute('aria-pressed')).toBe('false');
+
+    // QR Code tool is in the list (regression: must be present after
+    // Step 7 Round 17 added the qrcode tool).
+    const qrcodeButton = buttons.find((b) => b.getAttribute('data-tool') === 'qrcode');
+    expect(qrcodeButton).toBeDefined();
+    expect(qrcodeButton!.getAttribute('aria-pressed')).toBe('false');
 
     // Click the text button → onToolChange fires
     await user.click(textButton!);

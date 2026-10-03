@@ -649,6 +649,31 @@ export interface TemplateSettings {
           points?: number[];
           vertexCount?: number;
         }
+      // 2026-10-04 — QR Code element (Step 7 桌牌設計, Rule 019 § 4.1
+      // layer 3 of 4). Mirrors `shared/tableCardElementSchema` qrcode
+      // variant. QR PNGs are NOT stored in R2 — JSONB carries the
+      // recipe (value, fgColor, bgColor, errorCorrectionLevel) and the
+      // frontend regenerates the rasterized image on demand. See
+      // `runs/decisions/2026-10-04-qrcode-library-selection.md` § 1.5
+      // for the storage decision.
+      | {
+          id: string;
+          type: 'qrcode';
+          x: number;
+          y: number;
+          width: number;
+          height: number;
+          rotation: number;
+          zIndex: number;
+          /** Encoded URL (e.g. `${appBaseUrl}/pass/${templateId}`). */
+          value: string;
+          /** Foreground hex color. */
+          fgColor: string;
+          /** Background hex color. */
+          bgColor: string;
+          /** Error correction level: L (7%) | M (15%) | Q (25%) | H (30%). */
+          errorCorrectionLevel: 'L' | 'M' | 'Q' | 'H';
+        }
     >;
     background: {
       type: 'solid' | 'gradient';

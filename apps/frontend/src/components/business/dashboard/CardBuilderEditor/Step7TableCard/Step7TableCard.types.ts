@@ -22,7 +22,7 @@ export type ExportState =
   | 'error';
 
 /** Active tool in the right-side toolbar. */
-export type ToolKey = 'text' | 'image' | 'background' | 'shape' | 'layers';
+export type ToolKey = 'text' | 'image' | 'qrcode' | 'background' | 'shape' | 'layers';
 
 /**
  * Step 7 main component props.

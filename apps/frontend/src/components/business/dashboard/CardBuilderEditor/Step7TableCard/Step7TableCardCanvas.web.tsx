@@ -11,7 +11,7 @@
  * `throw` stub in Step7TableCardCanvas.native.tsx (Rule 024 § Hook Split).
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Stage,
@@ -34,11 +34,13 @@ import {
   PREVIEW_HEIGHT_PX,
   TABLE_CARD_WIDTH_MM,
   TABLE_CARD_HEIGHT_MM,
+  PREVIEW_SCALE,
 } from '@saome/shared/constants/table-card';
 import type {
   TableCardElement,
   TableCardBackground,
   TableCardImageElement,
+  TableCardQrCodeElement,
 } from '@saome/shared/schemas/card';
 import { sortByZIndex, gradientAngleToEndPoints } from '@saome/shared/logic/tableCard';
 import { useIsMobile } from '@/hooks/useIsMobile';
@@ -47,6 +49,7 @@ import {
   buildPolygonElementFromVertices,
   nextPolygonZIndex,
 } from './Step7TableCard.polygonElement';
+import { CanvasQrCode } from './CanvasQrCode';
 import { useCardBuilderStore } from '../CardBuilderEditor.store';
 
 /**
@@ -54,7 +57,10 @@ import { useCardBuilderStore } from '../CardBuilderEditor.store';
  *   595 px / 210 mm ≈ 2.83 px/mm
  * Used to position / size Konva nodes in mm coordinates.
  */
-const PREVIEW_SCALE = PREVIEW_WIDTH_PX / TABLE_CARD_WIDTH_MM;
+// 2026-10-04 — moved to @saome/shared/constants/table-card (single source of truth).
+// Local definition removed; canvas now imports PREVIEW_SCALE from the
+// shared constants block above (see `import { ... PREVIEW_SCALE } from
+// '@saome/shared/constants/table-card';` near the top of this file).
 
 /** Convert mm → px in the preview coordinate system. */
 function mmToPx(mm: number): number {
@@ -948,6 +954,17 @@ export function Step7TableCardCanvas({
 
   const sortedElements = sortByZIndex(tableCard.elements);
 
+  // 2026-10-04 — QR Code 1:1 lock. The Transformer's `keepRatio` prop
+  // is a boolean; we compute it from the currently selected element's
+  // type. `useMemo` keeps the reference stable across unrelated
+  // re-renders so Konva does not tear down + re-attach the Transformer
+  // (which would briefly deselect on the next drag).
+  const keepSelectedRatio = useMemo<boolean>(() => {
+    if (!selectedId) return false;
+    const el = tableCard.elements.find((e) => e.id === selectedId);
+    return el?.type === 'qrcode';
+  }, [selectedId, tableCard.elements]);
+
   return (
     <div ref={containerRef} className="w-full">
       <Stage
@@ -1224,12 +1241,18 @@ export function Step7TableCardCanvas({
             Round 12 — this is now always the LAST child of Stage
             (Layer count is fixed at 4: bg / bleed / elements+preview /
             transformer). Previously sat after a conditional Layer which
-            made the Layer index unstable when toggling polygon creation. */}
+            made the Layer index unstable when toggling polygon creation.
+            2026-10-04 — keepRatio is now conditional on the selected
+            element's type. QR codes are locked 1:1 (set by
+            `addTableCardElement` AND by CanvasQrCode's onTransformEnd
+            math). Other element types remain freely resizable. The
+            `useMemo` keeps the boolean reference stable so Konva does
+            not re-create the Transformer node on every parent render. */}
         <Layer listening={isDrawingPolygon ? false : undefined}>
           <Transformer
             ref={transformerRef}
             rotateEnabled
-            keepRatio={false}
+            keepRatio={keepSelectedRatio}
             visible={!isDrawingPolygon}
             borderStroke="#3b82f6"
             anchorStroke="#3b82f6"
@@ -1376,6 +1399,28 @@ function renderElementInner(
         isSelected={isSelected}
         onSelect={onSelect}
         onChange={onChange}
+      />
+    );
+  }
+
+  // 2026-10-04 — QR Code element (Step 7 桌牌設計).
+  // The `onChange` callback is typed `(el: TableCardElement) => void`
+  // at the renderElementInner level; CanvasQrCode expects
+  // `(el: TableCardQrCodeElement) => void`. The cast is safe here
+  // because CanvasQrCode only receives QR elements (we just narrowed
+  // with `el.type === 'qrcode'`) and never updates a non-QR element.
+  if (el.type === 'qrcode') {
+    return (
+      <CanvasQrCode
+        key={el.id}
+        element={el}
+        x={x}
+        y={y}
+        width={width}
+        height={height}
+        isSelected={isSelected}
+        onSelect={onSelect}
+        onChange={onChange as (el: TableCardQrCodeElement) => void}
       />
     );
   }

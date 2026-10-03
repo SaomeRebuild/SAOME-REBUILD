@@ -221,6 +221,53 @@ export const tableCardElementSchema = z.discriminatedUnion('type', [
      */
     vertexCount: z.number().int().min(3).max(12).optional(),
   }),
+  // QR Code 元素 (2026-10-04, Step 7 桌牌設計)
+  //
+  // 即時生成的 QR Code (用 `qrcode` npm 套件, see
+  // runs/decisions/2026-10-04-qrcode-library-selection.md).
+  // **不**單獨存 R2 (見 plans/step_7_qr_code_*.plan.md § 1.5)—
+  // 配方 (value, fgColor, bgColor, errorCorrectionLevel) 存這裡,
+  // 每次 mount 由 useQrCode hook 即時生成 HTMLImageElement 給 Konva.Image。
+  // 整張桌牌匯出 PNG 自動含 rasterized QR。
+  //
+  // 鎖 1:1：width === height (store action 在 add 時強制同步;
+  // schema 沒用 refine 是因為 z.discriminatedUnion 不支援 union-level
+  // refine,而 per-variant refine 在 element-level 太繞。invariant
+  // 由 addTableCardElement 進入時把 element.height = element.width
+  // 保證)。
+  z.object({
+    id: z.string().uuid(),
+    type: z.literal('qrcode'),
+    /** X position from canvas top-left in mm. */
+    x: z.number(),
+    y: z.number(),
+    /** Side length in mm. width === height (lock 1:1). */
+    width: z.number().positive(),
+    height: z.number().positive(),
+    /** Rotation in degrees, [0, 360). */
+    rotation: z.number().min(0).max(360).default(0),
+    zIndex: z.number().int().nonnegative(),
+    /**
+     * Encoded URL. Auto-generated as
+     * `${env.appBaseUrl}/pass/${cardId}` when the element is added
+     * (see Step7TableCardInspector). NOT user-editable — the Inspector
+     * shows it as read-only preview only.
+     */
+    value: z.string().url(),
+    /** Foreground (QR "dark" modules) hex color. default '#000000'. */
+    fgColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).default('#000000'),
+    /** Background (QR "light" modules) hex color. default '#ffffff'. */
+    bgColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).default('#ffffff'),
+    /**
+     * Error correction level per QR Code spec:
+     *   L =  7% (smallest modules, highest density)
+     *   M = 15% (default; recommended for most uses)
+     *   Q = 25% (good for outdoor / partially damaged prints)
+     *   H = 30% (allows logo overlay in the QR center)
+     * Source: ISO/IEC 18004:2015 § 6.5.1.
+     */
+    errorCorrectionLevel: z.enum(['L', 'M', 'Q', 'H']).default('M'),
+  }),
 ]);
 
 export const tableCardBackgroundSchema = z.object({
@@ -954,6 +1001,22 @@ export type TableCardImageElement = z.infer<typeof tableCardElementSchema> & {
 };
 export type TableCardShapeElement = z.infer<typeof tableCardElementSchema> & {
   type: 'shape';
+};
+// ===== Step 7 QR Code element (2026-10-04) =====
+//
+// See `tableCardElementSchema` discriminated-union variant above for
+// field-by-field constraints. Inferred type is re-exported here for
+// consumer ergonomics (avoids re-importing zod in components / hooks).
+//
+//   - Canvas: `CanvasQrCode` (apps/frontend/.../Step7TableCard/) feeds
+//     `useQrCode(element.value, element.fgColor, element.bgColor,
+//     element.errorCorrectionLevel)` to Konva.Image
+//   - Inspector: 2× ColorSwatchPicker (fgColor / bgColor) + 1× select
+//     (errorCorrectionLevel) + read-only URL preview
+//   - Store: `addTableCardElement` enforces MAX_QRCODE_ELEMENTS=1 cap
+//     + 1:1 invariant (`height = width`)
+export type TableCardQrCodeElement = z.infer<typeof tableCardElementSchema> & {
+  type: 'qrcode';
 };
 export type TableCardElement = z.infer<typeof tableCardElementSchema>;
 export type TableCardBackground = z.infer<typeof tableCardBackgroundSchema>;

@@ -124,6 +124,79 @@ describe('CardBuilderEditor.store — tableCard slice', () => {
     });
   });
 
+  // ===== QR Code element (2026-10-04, Step 7 桌牌設計) =====
+  //
+  // Per plans/step_7_qr_code_*.plan.md § 4.1:
+  //   - MAX_QRCODE_ELEMENTS = 1 (1-per-template cap)
+  //   - 1:1 lock — store action forces height = width on add
+  describe('addTableCardElement — QR Code (2026-10-04)', () => {
+    /**
+     * Helper to build a valid QR element fixture. `width` and `height`
+     * default to 30mm (DEFAULT_QRCODE_SIZE_MM) but the test below
+     * verifies the store action forces them equal even when the
+     * caller supplies unequal values.
+     */
+    function makeQr(opts: { id: string; width: number; height: number }) {
+      return {
+        id: opts.id,
+        type: 'qrcode' as const,
+        x: 60,
+        y: 60,
+        width: opts.width,
+        height: opts.height,
+        rotation: 0,
+        zIndex: 0,
+        value: 'https://app.example.com/pass/abc',
+        fgColor: '#000000',
+        bgColor: '#ffffff',
+        errorCorrectionLevel: 'M' as const,
+      };
+    }
+
+    it('appends a QR element with width === height enforced', () => {
+      // Caller passes width=30, height=999 (deliberate mismatch) — store
+      // action must force height = width so the 1:1 invariant holds
+      // without per-render compensation in CanvasQrCode.
+      useCardBuilderStore
+        .getState()
+        .addTableCardElement(makeQr({ id: '11111111-1111-1111-1111-111111111111', width: 30, height: 999 }));
+      const added = useCardBuilderStore.getState().tableCard.elements[0];
+      expect(added?.type).toBe('qrcode');
+      if (added?.type !== 'qrcode') throw new Error('expected qrcode');
+      expect(added.width).toBe(30);
+      expect(added.height).toBe(30); // forced equal to width
+    });
+
+    it('refuses to add a second QR when one already exists (cap=1)', () => {
+      // Per MAX_QRCODE_ELEMENTS=1, a second add is silently rejected.
+      // The Inspector also disables the add button as a UI double-guard.
+      useCardBuilderStore
+        .getState()
+        .addTableCardElement(makeQr({ id: '11111111-1111-1111-1111-111111111111', width: 30, height: 30 }));
+      expect(useCardBuilderStore.getState().tableCard.elements).toHaveLength(1);
+
+      useCardBuilderStore
+        .getState()
+        .addTableCardElement(makeQr({ id: '22222222-2222-2222-2222-222222222222', width: 30, height: 30 }));
+      // Cap blocked the second add — elements count unchanged.
+      expect(useCardBuilderStore.getState().tableCard.elements).toHaveLength(1);
+    });
+
+    it('allows adding a new QR after the previous one is removed', () => {
+      // Regression: after `removeTableCardElement`, the cap must reset.
+      useCardBuilderStore
+        .getState()
+        .addTableCardElement(makeQr({ id: '11111111-1111-1111-1111-111111111111', width: 30, height: 30 }));
+      useCardBuilderStore.getState().removeTableCardElement('11111111-1111-1111-1111-111111111111');
+      expect(useCardBuilderStore.getState().tableCard.elements).toHaveLength(0);
+
+      useCardBuilderStore
+        .getState()
+        .addTableCardElement(makeQr({ id: '22222222-2222-2222-2222-222222222222', width: 30, height: 30 }));
+      expect(useCardBuilderStore.getState().tableCard.elements).toHaveLength(1);
+    });
+  });
+
   describe('removeTableCardElement', () => {
     it('removes by id', () => {
       useCardBuilderStore.getState().addTableCardElement(textEl);

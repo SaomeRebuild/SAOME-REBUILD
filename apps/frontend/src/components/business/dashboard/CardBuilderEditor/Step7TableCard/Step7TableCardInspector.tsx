@@ -24,15 +24,21 @@ import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCardBuilderStore } from '../CardBuilderEditor.store';
 import { cardService } from '@/services/cardService';
+import { env } from '@/config/env';
 import {
   BLEED_OPTIONS_MM,
   MAX_IMAGE_ELEMENTS,
+  MAX_QRCODE_ELEMENTS,
+  DEFAULT_QRCODE_SIZE_MM,
+  DEFAULT_QRCODE_X_MM,
+  DEFAULT_QRCODE_Y_MM,
   type TableCardBleedMm,
 } from '@saome/shared/constants/table-card';
 import { validateTableCardImage } from '@saome/shared/logic/imageCrop';
 import type {
   TableCardElement,
   TableCardImageElement,
+  TableCardQrCodeElement,
 } from '@saome/shared/schemas/card';
 import type { Step7InspectorProps } from './Step7TableCard.types';
 import {
@@ -330,6 +336,144 @@ export function Step7TableCardInspector({
             + {t('text.label')}
           </button>
         )}
+        </div>
+      </section>
+    );
+  }
+
+  // 2026-10-04 — QR Code tool (Step 7 桌牌設計).
+  //
+  // Inspector renders:
+  //   - "新增 QR 碼" button (only when no QR element exists, disabled at cap)
+  //   - When a QR element is selected: read-only URL preview +
+  //     2× color inputs (fgColor / bgColor) + 1× error-correction select
+  //   - When at cap: warning hint instead of the add button
+  //
+  // The encoded value is auto-generated as `${env.appBaseUrl}/pass/${cardId}`
+  // at add time and is NEVER user-editable (the schema enforces
+  // `z.string().url()` but the Inspector only displays the preview).
+  if (activeTool === 'qrcode') {
+    const qrEl =
+      selectedElement && selectedElement.type === 'qrcode' ? selectedElement : null;
+    // MAX_QRCODE_ELEMENTS = 1. Counting only qrcode elements (text /
+    // image / shape elements are uncapped).
+    const qrCount = tableCard.elements.filter((el) => el.type === 'qrcode').length;
+    const atLimit = qrCount >= MAX_QRCODE_ELEMENTS;
+    return (
+      <section
+        aria-label={t('qrcode.title')}
+        className="flex flex-col"
+        data-testid="step7-inspector-qrcode"
+      >
+        <Step7TableCardSelectionBar
+          selectedElement={selectedElement}
+          indexNumber={selectedIndexNumber}
+        />
+        <div className={INSPECTOR_PANEL_BASE}>
+          {!qrEl && !atLimit && cardId && (
+            <button
+              type="button"
+              onClick={() => {
+                const id = crypto.randomUUID();
+                const next: TableCardQrCodeElement = {
+                  id,
+                  type: 'qrcode',
+                  x: DEFAULT_QRCODE_X_MM,
+                  y: DEFAULT_QRCODE_Y_MM,
+                  width: DEFAULT_QRCODE_SIZE_MM,
+                  height: DEFAULT_QRCODE_SIZE_MM,
+                  rotation: 0,
+                  zIndex: nextZIndex(tableCard.elements),
+                  value: `${env.appBaseUrl}/pass/${cardId}`,
+                  fgColor: '#000000',
+                  bgColor: '#ffffff',
+                  errorCorrectionLevel: 'M',
+                };
+                addElement(next);
+              }}
+              className="rounded-md border border-primary bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              data-testid="qrcode-add-button"
+            >
+              + {t('qrcode.addLabel')}
+            </button>
+          )}
+          {!qrEl && !atLimit && !cardId && (
+            <p className="text-xs text-muted-foreground" data-testid="qrcode-no-card">
+              {/* Card ID not yet resolved (template not persisted). Hide the
+                  add button so the user does not see a QR encoding an empty
+                  pass slug. The add button reappears once cardId resolves. */}
+              {t('qrcode.addHint')}
+            </p>
+          )}
+          {atLimit && (
+            <p
+              role="alert"
+              className="text-xs text-warning"
+              data-testid="qrcode-reached-cap"
+            >
+              {t('qrcode.reachedCap')}
+            </p>
+          )}
+          {!qrEl && !atLimit && (
+            <p className="text-xs text-muted-foreground">{t('qrcode.addHint')}</p>
+          )}
+          {qrEl && (
+            <>
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="font-medium">{t('qrcode.valueLabel')}</span>
+                <p
+                  className="break-all rounded-md border border-border bg-muted/30 px-2 py-1.5 font-mono text-xs"
+                  data-testid="qrcode-value-preview"
+                  aria-readonly
+                >
+                  {qrEl.value}
+                </p>
+                <span className="text-xs text-muted-foreground">{t('qrcode.valueHint')}</span>
+              </label>
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="font-medium">{t('qrcode.fgColorLabel')}</span>
+                <input
+                  type="color"
+                  value={qrEl.fgColor}
+                  data-testid="qrcode-fg-color"
+                  onChange={(e) =>
+                    updateElement(qrEl.id, { fgColor: e.target.value })
+                  }
+                  className="h-9 w-full rounded-md border border-border bg-background"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="font-medium">{t('qrcode.bgColorLabel')}</span>
+                <input
+                  type="color"
+                  value={qrEl.bgColor}
+                  data-testid="qrcode-bg-color"
+                  onChange={(e) =>
+                    updateElement(qrEl.id, { bgColor: e.target.value })
+                  }
+                  className="h-9 w-full rounded-md border border-border bg-background"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="font-medium">{t('qrcode.ecLevelLabel')}</span>
+                <select
+                  value={qrEl.errorCorrectionLevel}
+                  data-testid="qrcode-ec-level"
+                  onChange={(e) =>
+                    updateElement(qrEl.id, {
+                      errorCorrectionLevel: e.target.value as 'L' | 'M' | 'Q' | 'H',
+                    })
+                  }
+                  className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm"
+                >
+                  <option value="L">{t('qrcode.ecLevelL')}</option>
+                  <option value="M">{t('qrcode.ecLevelM')}</option>
+                  <option value="Q">{t('qrcode.ecLevelQ')}</option>
+                  <option value="H">{t('qrcode.ecLevelH')}</option>
+                </select>
+              </label>
+            </>
+          )}
         </div>
       </section>
     );

@@ -34,10 +34,14 @@ export default {
     addElementHint: '從工具列新增元素',
   },
 
-  // ===== Toolbar — 5 main tools =====
+  // ===== Toolbar — 6 main tools (text / image / qrcode / background / shape / layers) =====
   tools: {
     text: '文字',
     image: '圖片',
+    // 2026-10-04 — QR Code 工具 (Step 7 桌牌設計).
+    // 編碼值為 `${appBaseUrl}/pass/${templateId}` (自動產生, 不可由使用者覆寫),
+    // 每模板上限 1 個, 鎖 1:1 比例, 可調前景 / 背景色。
+    qrcode: 'QR 碼',
     background: '背景',
     shape: '形狀',
     layers: '圖層',
@@ -67,6 +71,8 @@ export default {
     typeText: '文字',
     typeImage: '圖片',
     typeShape: '形狀',
+    // 2026-10-04 — QR 碼元素類型標籤 (Inspector / SelectionBar 共用)
+    typeQrcode: 'QR 碼',
     /**
      * Round 4 — Issue 1. The 1-based creation-order number suffix
      * appended to the type label so users can identify which element
@@ -195,6 +201,30 @@ export default {
     polygonCancel: '取消',
   },
 
+  // ===== QR Code panel (2026-10-04, Step 7 桌牌設計) =====
+  //
+  // Mirrors the schema variant in `packages/shared/schemas/card.ts`.
+  // Inspector renders:
+  //   - 「新增 QR 碼」按鈕 (無 QR 元素時顯示, 已達上限時 disabled)
+  //   - URL preview (唯讀, 顯示實際編碼內容供使用者掃碼驗證)
+  //   - 2× ColorSwatchPicker (fgColor / bgColor)
+  //   - 容錯等級 select (L / M / Q / H)
+  qrcode: {
+    title: 'QR 碼',
+    addLabel: '新增 QR 碼',
+    addHint: '點擊新增 QR 碼,掃描可註冊這張 Pass',
+    valueLabel: '編碼內容',
+    valueHint: '自動產生,無法修改',
+    fgColorLabel: '前景色',
+    bgColorLabel: '背景色',
+    ecLevelLabel: '容錯等級',
+    ecLevelL: '低（7%）',
+    ecLevelM: '中（15%,推薦）',
+    ecLevelQ: '高（25%）',
+    ecLevelH: '最高（30%）',
+    reachedCap: '每張桌牌只能放 1 個 QR 碼',
+  },
+
   // ===== Layers panel =====
   layers: {
     title: '圖層',
@@ -210,6 +240,8 @@ export default {
       text: '文字',
       image: '圖片',
       shape: '形狀',
+      // 2026-10-04 — QR Code 圖層列類型標籤 (與新增的 qrcode 變體對應)
+      qrcode: 'QR 碼',
     },
   },
 

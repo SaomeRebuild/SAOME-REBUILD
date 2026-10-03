@@ -56,6 +56,38 @@ export const MAX_ELEMENTS = 50;
  */
 export const MAX_IMAGE_ELEMENTS = 3;
 
+// ===== QR Code element (Step 7 桌牌設計, 2026-10-04) =====
+
+/**
+ * Hard cap on QR Code elements per canvas.
+ *
+ * All QR elements encode the same URL (the tenant's member registration
+ * page for this template), so placing more than one is semantically
+ * redundant and wastes print space. The single-QR limit also keeps the
+ * useQrCode hook's regeneration cost bounded at ~50ms per color change.
+ *
+ * Cap is enforced by `addTableCardElement` (rejects silently when full)
+ * + Inspector button disabled state (double-protection per Rule 011).
+ */
+export const MAX_QRCODE_ELEMENTS = 1;
+
+/**
+ * Default side length of a newly-added QR element (mm). Locked 1:1 by
+ * the Inspector and the Transformer `keepRatio` prop on selection.
+ *
+ * 30mm is a common table-tent QR size — large enough to be scannable
+ * at arm's length (~1m) on a printed A4 page.
+ */
+export const DEFAULT_QRCODE_SIZE_MM = 30;
+
+/**
+ * Default top-left position of a newly-added QR element (mm from the
+ * canvas top-left). 60mm inset matches the default position used by
+ * other shape tools (rect, circle, line, etc.) for visual consistency.
+ */
+export const DEFAULT_QRCODE_X_MM = 60;
+export const DEFAULT_QRCODE_Y_MM = 60;
+
 // ===== Safe zone =====
 
 /**
@@ -117,3 +149,22 @@ export const EXPORT_HEIGHT_PX = Math.round(
 
 /** Bleed at the max option — used by safe-zone clamp & rasterizer sizing. */
 export const MAX_BLEED_MM = BLEED_OPTIONS_MM[BLEED_OPTIONS_MM.length - 1];
+
+/**
+ * Scale factor for converting physical mm coordinates to CSS px for
+ * the in-browser Konva Stage preview. Lives in shared/ so that
+ * CanvasQrCode (and any future mm-based canvas sub-component) can
+ * reuse the same scale as the main Step7TableCardCanvas, guaranteeing
+ * drag/transform math is identical between elements.
+ *
+ *   PREVIEW_SCALE = PREVIEW_WIDTH_PX / TABLE_CARD_WIDTH_MM
+ *                 = 595 / 210
+ *                 ≈ 2.833 (CSS px per mm)
+ *
+ * Single source of truth: previously defined locally in
+ * `Step7TableCardCanvas.web.tsx` and hard-coded `1.5` / `2.0`
+ * multipliers in other files caused subtle drift between the
+ * preview-render math and the drag-to-mm math. Now consumed
+ * from shared by both canvas + sub-components.
+ */
+export const PREVIEW_SCALE = PREVIEW_WIDTH_PX / TABLE_CARD_WIDTH_MM;

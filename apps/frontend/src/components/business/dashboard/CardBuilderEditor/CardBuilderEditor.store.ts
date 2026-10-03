@@ -88,6 +88,7 @@ import {
 import {
   MAX_ELEMENTS,
   MAX_IMAGE_ELEMENTS,
+  MAX_QRCODE_ELEMENTS,
   BLEED_OPTIONS_MM,
   DEFAULT_BLEED_MM,
   type TableCardBleedMm,
@@ -2701,6 +2702,31 @@ export const useCardBuilderStore = create<CardBuilderState>()((set, get) => ({
         MAX_IMAGE_ELEMENTS,
       );
       return;
+    }
+    // 2026-10-04 — guard QR element hard cap (MAX_QRCODE_ELEMENTS = 1).
+    // All QR elements encode the same URL for the template, so placing
+    // more than one is semantically redundant and wastes print space.
+    // Silently rejected here; the Inspector also disables the add button
+    // (UI double-guard) so users see the cap visually.
+    if (
+      element.type === 'qrcode' &&
+      get().tableCard.elements.filter((el) => el.type === 'qrcode').length >=
+        MAX_QRCODE_ELEMENTS
+    ) {
+      console.warn(
+        '[CardBuilderEditor.store] addTableCardElement blocked — QR limit reached',
+        MAX_QRCODE_ELEMENTS,
+      );
+      return;
+    }
+    // 2026-10-04 — enforce 1:1 lock for QR elements. The schema allows
+    // any positive width / height pair (z.discriminatedUnion does not
+    // support union-level refine), so we coerce `height = width` on
+    // add. This invariant is required by the Konva Transformer
+    // `keepRatio` semantics + the Inspector UX (no width/height
+    // inputs — users drag the transformer to resize).
+    if (element.type === 'qrcode') {
+      element.height = element.width;
     }
     set((state) => {
       if (state.tableCard.elements.length >= MAX_ELEMENTS) return {};

@@ -24,10 +24,15 @@ export default {
     addElementHint: 'Add elements from the toolbar',
   },
 
-  // ===== Toolbar — 5 main tools =====
+  // ===== Toolbar — 6 main tools (text / image / qrcode / background / shape / layers) =====
   tools: {
     text: 'Text',
     image: 'Image',
+    // 2026-10-04 — QR Code tool (Step 7 桌牌設計).
+    // Encoded value is `${appBaseUrl}/pass/${templateId}` (auto-generated,
+    // not user-editable). 1-per-template cap, locked 1:1, adjustable
+    // foreground / background colors.
+    qrcode: 'QR Code',
     background: 'Background',
     shape: 'Shape',
     layers: 'Layers',
@@ -57,6 +62,8 @@ export default {
     typeText: 'Text',
     typeImage: 'Image',
     typeShape: 'Shape',
+    // 2026-10-04 — QR Code type label (shared by Inspector / SelectionBar)
+    typeQrcode: 'QR Code',
     /**
      * Round 4 — Issue 1. 1-based creation-order number suffix
      * appended to the type label so users can identify which element
@@ -185,6 +192,30 @@ export default {
     polygonCancel: 'Cancel',
   },
 
+  // ===== QR Code panel (2026-10-04, Step 7 桌牌設計) =====
+  //
+  // Mirrors the schema variant in `packages/shared/schemas/card.ts`.
+  // Inspector renders:
+  //   - "Add QR Code" button (shown when no QR element; disabled at cap)
+  //   - URL preview (read-only, lets users scan to verify)
+  //   - 2× ColorSwatchPicker (fgColor / bgColor)
+  //   - Error correction select (L / M / Q / H)
+  qrcode: {
+    title: 'QR Code',
+    addLabel: 'Add QR Code',
+    addHint: 'Click to add a QR code that lets customers register this Pass.',
+    valueLabel: 'Encoded value',
+    valueHint: 'Auto-generated. Cannot be edited.',
+    fgColorLabel: 'Foreground color',
+    bgColorLabel: 'Background color',
+    ecLevelLabel: 'Error correction',
+    ecLevelL: 'Low (7%)',
+    ecLevelM: 'Medium (15%, recommended)',
+    ecLevelQ: 'Quartile (25%)',
+    ecLevelH: 'High (30%)',
+    reachedCap: 'Only 1 QR code is allowed per table card.',
+  },
+
   // ===== Layers panel =====
   layers: {
     title: 'Layers',
@@ -200,6 +231,8 @@ export default {
       text: 'Text',
       image: 'Image',
       shape: 'Shape',
+      // 2026-10-04 — QR Code type label in the layers list
+      qrcode: 'QR Code',
     },
   },
 

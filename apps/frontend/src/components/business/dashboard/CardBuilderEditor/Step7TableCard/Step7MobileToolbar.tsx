@@ -13,7 +13,7 @@
  */
 
 import { useTranslation } from 'react-i18next';
-import { Type, Image as ImageIcon, Square, Layers, Palette } from 'lucide-react';
+import { Type, Image as ImageIcon, Square, Layers, Palette, QrCode } from 'lucide-react';
 import type { ReactElement } from 'react';
 import type { ToolKey } from './Step7TableCard.types';
 
@@ -25,6 +25,9 @@ interface Props {
 const TOOLS: Array<{ key: ToolKey; icon: ReactElement; i18nKey: string }> = [
   { key: 'text', icon: <Type className="h-4 w-4" aria-hidden="true" />, i18nKey: 'tools.text' },
   { key: 'image', icon: <ImageIcon className="h-4 w-4" aria-hidden="true" />, i18nKey: 'tools.image' },
+  // 2026-10-04 — QR Code tool (Step 7 桌牌設計).
+  // Mobile toolbar mirrors desktop toolbar order; see Step7TableCardToolbar.
+  { key: 'qrcode', icon: <QrCode className="h-4 w-4" aria-hidden="true" />, i18nKey: 'tools.qrcode' },
   { key: 'background', icon: <Palette className="h-4 w-4" aria-hidden="true" />, i18nKey: 'tools.background' },
   { key: 'shape', icon: <Square className="h-4 w-4" aria-hidden="true" />, i18nKey: 'tools.shape' },
   { key: 'layers', icon: <Layers className="h-4 w-4" aria-hidden="true" />, i18nKey: 'tools.layers' },
