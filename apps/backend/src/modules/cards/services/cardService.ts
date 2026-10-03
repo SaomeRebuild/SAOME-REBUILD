@@ -15,6 +15,12 @@ import {
   deleteTemplate,
   touchExpiresAt,
 } from '../db/templates';
+import { enqueueR2Delete } from '../db/r2PendingDeletes';
+import {
+  collectR2KeysForTemplate,
+  diffRemovedR2Keys,
+  enqueueTemplateR2Keys,
+} from './r2Keys';
 import { NotFoundError } from '@/shared/lib/saomeError';
 import type {
   TemplatesRow,
@@ -30,6 +36,18 @@ import type {
   UpdateTemplateResponse,
   DeleteTemplateResponse,
 } from '../schemas/response';
+
+// Re-export for backward compatibility — the test
+// `src/modules/cards/tests/r2OrphanCleanup.test.ts` (and any other
+// future caller) can now import directly from `./r2Keys`. Keeping the
+// re-export so existing call sites in cardService continue to work
+// without churn.
+export { collectR2KeysForTemplate, diffRemovedR2Keys, enqueueTemplateR2Keys };
+
+// The pure helpers `collectR2KeysForTemplate`, `diffRemovedR2Keys`, and
+// `enqueueTemplateR2Keys` live in `./r2Keys` (extracted from this file
+// to break the dependency on `@saome/shared/logic/cardSettings` for
+// unit testing). Re-exported above for backward compatibility.
 
 /**
  * Convert a DB row to a TemplateDto.
@@ -152,6 +170,12 @@ export async function listTemplatesService(
  * @param settings - Optional partial settings
  * @param status - Optional new status
  */
+/**
+ * Diff top-level imageKey-bearing fields between two settings objects
+ * is handled by `diffRemovedR2Keys` in `./r2Keys` (extracted so the
+ * unit test for it can run without pulling in `@saome/shared/logic`).
+ */
+
 export async function updateTemplateService(
   sql: Sql,
   templateId: string,
@@ -173,7 +197,41 @@ export async function updateTemplateService(
   if (settings !== undefined) input.settings = settings;
   if (status !== undefined) input.status = status;
 
+  // Capture pre-update imageKey state for the orphan-cleanup diff.
+  // `unwrapCardSettings` mirrors the read path so a corrupted row
+  // doesn't crash the diff.
+  const beforeSettings = unwrapCardSettings(existing.settings);
+
   const row = await updateTemplate(sql, templateId, input);
+
+  // Post-update imageKey diff — enqueue any R2 keys that disappeared.
+  // This catches:
+  //   1. User explicitly clears `settings.issuerLogo = ''`
+  //   2. User re-uploads a logo and the new key is different (rare;
+  //      generate-upload-url uses the same key, so this only happens
+  //      if the frontend explicitly chose a different key)
+  //   3. User removes a table-card image element
+  //
+  // Note: the actual R2 delete happens in the cron sweep. We only
+  // INSERT a tombstone row here.
+  const afterSettings = unwrapCardSettings(row.settings);
+  const removedKeys = diffRemovedR2Keys(beforeSettings, afterSettings);
+  for (const r2Key of removedKeys) {
+    try {
+      await enqueueR2Delete(sql, {
+        tenantId,
+        r2Key,
+        source: 'image-clear',
+      });
+    } catch (err) {
+      console.error(
+        '[updateTemplateService] image-clear tombstone enqueue failed (non-fatal):',
+        { tenantId, templateId, r2Key },
+        err,
+      );
+    }
+  }
+
   return { template: toDto(row) };
 }
 
@@ -211,6 +269,15 @@ export async function deleteTemplateService(
   if (existing.status === 'published') {
     throw new Error('Published templates cannot be deleted via this route');
   }
+
+  // Enqueue every R2 key owned by this template for async deletion
+  // (plan `stay_on_free_plan_—_convert_sync_r2_delete_to_tombstone_+_cron_sweep_f0bcfa50`,
+  // 2026-10-03). The cron sweep at `src/index.ts::worker.scheduled`
+  // picks them up on the next tick. The defensive unwrap mirrors the
+  // same Bug #8 / #8.5 chain as the read path so a corrupted settings
+  // column never crashes the delete.
+  const settings = unwrapCardSettings(existing.settings);
+  await enqueueTemplateR2Keys(sql, tenantId, templateId, settings);
 
   await deleteTemplate(sql, templateId);
   return { success: true };

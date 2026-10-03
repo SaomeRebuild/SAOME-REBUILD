@@ -38,6 +38,7 @@ import { cardsModule } from '@/modules/cards';
 import { passTemplatesModule } from '@/modules/pass-templates';
 import { healthModule } from '@/modules/health';
 import { getDb } from '@/shared/db/client';
+import { sweepR2PendingDeletes } from '@/modules/cards/db/r2Sweep';
 
 /**
  * Composed Hono app — handles all in-Worker requests via the standard
@@ -75,6 +76,11 @@ app.route('/api/cards', cardsModule);
 // runs/decisions/2026-09-29-pass-templates-public-endpoint.md for the
 // visibility-gate drop rationale.
 app.route('/api/pass-templates', passTemplatesModule);
+
+// sweepR2PendingDeletes lives in modules/cards/db/r2Sweep.ts (extracted
+// from this file so its unit test can import it without pulling in the
+// full Hono app graph — see plan
+// `stay_on_free_plan_—_convert_sync_r2_delete_to_tombstone_+_cron_sweep_f0bcfa50`).
 
 /**
  * Default export — Worker entry point.
@@ -139,7 +145,7 @@ const worker: ExportedHandler<HonoEnv['Bindings']> = {
    * cron always exercises the full middleware chain and surfaces any
    * regression in tail logs instead of producing a false-negative 404.
    *
-   * Two-purpose cron (keep-alive + scheduled business work):
+   * Four-purpose cron (keep-alive + scheduled business work + async cleanup):
    *   1. HTTP layer keep-alive: in-process `app.fetch('/health')` exercises
    *      the full Hono pipeline (corsMiddleware → requestId → handler →
    *      CORS wrap-after-next). An idle Worker stays warm AND any Layer 1
@@ -149,6 +155,14 @@ const worker: ExportedHandler<HonoEnv['Bindings']> = {
    *      user request.
    *   3. Billing cycle: every cron tick, advance billing cycles whose
    *      `billing_cycle_end <= now()`.
+   *   4. R2 pending-deletes sweep: process the `r2_pending_deletes`
+   *      tombstone table. Each row is a deferred `bucket.delete(key)`
+   *      that was enqueued by a user-facing route. The cron has 30s CPU
+   *      and 1000 subrequests per invocation (vs the 10ms / 50 of HTTP
+   *      requests), so it can chew through hundreds of R2 deletes
+   *      without bumping into the per-request limits. See
+   *      `apps/backend/src/modules/cards/db/r2PendingDeletes.ts` and
+   *      plan `stay_on_free_plan_—_convert_sync_r2_delete_to_tombstone_+_cron_sweep_f0bcfa50`.
    *
    * Errors are swallowed with `console.warn` so a transient blip doesn't
    * crash the cron. Production observability (`wrangler tail`) will still
@@ -214,6 +228,32 @@ const worker: ExportedHandler<HonoEnv['Bindings']> = {
     } catch (err) {
       console.warn(
         `[scheduled] cron=${cronName} billing-cycle FAILED:`,
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+
+    // Purpose 4: R2 pending-deletes sweep (plan `stay_on_free_plan_—_convert_sync_r2_delete_to_tombstone_+_cron_sweep_f0bcfa50`,
+    // 2026-10-03). Picks up rows in `r2_pending_deletes` and performs
+    // `bucket.delete()` for each. This is the cron half of the
+    // "tombstone + cron sweep" pattern that moves R2 deletes off the
+    // user-facing request path (10ms CPU / 50 subrequests) onto the
+    // cron path (30s CPU / 1000 subrequests).
+    //
+    // Deadline budget: 20 seconds. After purposes 1-3 (each ~1-2s),
+    // we have ~20-25s of the 30s cron CPU limit left. The sweep helper
+    // also has its own 5s internal safety buffer.
+    try {
+      const sweepStart = Date.now();
+      const result = await sweepR2PendingDeletes(env, {
+        limit: 200,
+        deadline: sweepStart + 20_000,
+      });
+      console.log(
+        `[scheduled] cron=${cronName} r2-sweep processed=${result.processed} succeeded=${result.succeeded} failed=${result.failed} skipped=${result.skipped} durationMs=${Date.now() - sweepStart}`,
+      );
+    } catch (err) {
+      console.warn(
+        `[scheduled] cron=${cronName} r2-sweep FAILED:`,
         err instanceof Error ? err.message : String(err),
       );
     }

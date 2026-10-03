@@ -10,15 +10,22 @@
  * frontend can no longer reach. After 100 such templates, the tenant's
  * R2 storage bloats with multi-GB garbage.
  *
- * This route does two things atomically:
+ * This route does the following:
  *   1. Remove the element from `settings.tableCard.elements` JSONB
  *      (so future loads don't show a dangling reference). The shape
  *      unwrap mirrors `exportTableCard.ts` — settings may be wrapped
  *      in `{...}` or an array, so the SQL normalizes first.
- *   2. R2 `bucket.delete(key)` for the element's PNG. Failures here
- *      are logged but the API still returns 204 — orphan R2 objects
- *      are best handled by a future sweep cron, not by failing the
- *      user-facing delete action.
+ *   2. Enqueue the element's PNG key into `r2_pending_deletes` (a
+ *      tombstone table). The actual `bucket.delete(key)` happens inside
+ *      the every-5-min cron handler — see `src/index.ts::worker.scheduled`
+ *      and `sweepR2PendingDeletes` in this same module. This is the
+ *      Free plan-safe pattern: HTTP requests get 10ms CPU / 50
+ *      subrequests, but cron triggers get 30s CPU / 1000 subrequests,
+ *      and the R2 roundtrip + DB write for the user-facing delete no
+ *      longer fight for the same 10ms budget.
+ *      Failures in the enqueue INSERT are logged but the API still
+ *      returns 204 — orphan R2 objects are best handled by the cron
+ *      sweep, not by failing the user-facing delete action.
  *
  * Auth: `requireAuth` + tenant ownership check (symmetric with the
  * upload route `tableCardElementUploadUrl.ts`).
@@ -28,6 +35,10 @@
  * after the user removed the element offline) triggers the delete, we
  * still best-effort the R2 cleanup. The 404 path is reserved for
  * invalid UUIDs / missing template.
+ *
+ * Migration: 020 (supabase/migrations/20261003000001_020_r2_pending_deletes.sql)
+ * introduces the tombstone table. The `enqueueR2Delete` function lives
+ * at `apps/backend/src/modules/cards/db/r2PendingDeletes.ts`.
  */
 
 import { Hono } from 'hono';
@@ -36,6 +47,7 @@ import type { HonoEnv } from '@/shared/types/bindings';
 import { getDbForRequest } from '@/shared/db/client';
 import { requireAuth, getAuthenticatedUser } from '@/shared/middleware/auth';
 import { findTemplateById } from '../db/templates';
+import { enqueueR2Delete } from '../db/r2PendingDeletes';
 import { NotFoundError } from '@/shared/lib/saomeError';
 
 const paramsSchema = z.object({
@@ -130,20 +142,32 @@ export const deleteTableCardElementRoute = new Hono<HonoEnv>()
       // on next reload, which the user already deleted).
     }
 
-    // 2) R2 delete. Best-effort: log but don't throw on failure.
+    // 2) Enqueue the R2 delete into the tombstone table. The actual
+    //    `bucket.delete(key)` is performed by the every-5-min cron sweep
+    //    in `src/index.ts::worker.scheduled`, which has 30s CPU /
+    //    1000 subrequests (vs the HTTP request's 10ms / 50). Without
+    //    this deferral, the user-facing DELETE was burning 1 subrequest
+    //    + ~50-200ms wall time + ~1-3ms CPU just to talk to R2, which
+    //    on Workers Free left very little budget for the DB UPDATE
+    //    above + auth + CORS + error envelope.
+    //
+    //    The enqueue is best-effort: log but don't throw on failure.
     //    Without this, every "delete image" leaks one PNG into tenant
     //    storage forever.
-    const bucket = c.env.ASSETS;
     try {
-      await bucket.delete(key);
+      await enqueueR2Delete(sql, {
+        tenantId,
+        r2Key: key,
+        source: 'table-card-element-delete',
+      });
     } catch (err) {
       console.error(
-        '[deleteTableCardElement] R2 delete error (non-fatal):',
+        '[deleteTableCardElement] R2 tombstone enqueue failed (non-fatal):',
         key,
         err,
       );
       // Don't throw — the user-facing delete succeeded from the DB
-      // side. A future cron can sweep orphan R2 objects.
+      // side. The cron sweep will catch up on the next tick.
     }
 
     return c.body(null, 204);
