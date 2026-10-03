@@ -70,7 +70,12 @@ export function CardBuilderEditorWorkspace({
   step7SetActiveTool: _step7SetActiveTool,
   ...rest
 }: CardBuilderEditorWorkspaceProps) {
-  const { t } = useTranslation('cardEditor');
+  // 2026-10-04 PR — Step 7 防呆提示需要跨 namespace 翻譯(取 tableCard 命名空間,
+  // 對齊 Step7TableCard 元件 binding 的 namespace 規範 — Rule 023 § 元件化原則)。
+  // 對齊 Footer.tsx / DashboardHeaderActions.tsx 的多 namespace pattern:
+  //   const { t } = useTranslation(['ns1', 'ns2']);
+  //   t('key', { ns: 'ns2' });
+  const { t } = useTranslation(['cardEditor', 'tableCard']);
 
   /** Step 2: Read values from Zustand store (source of truth) */
   function getStep2Values() {
@@ -733,6 +738,40 @@ export function CardBuilderEditorWorkspace({
     return true;
   }
 
+  /**
+   * STEP 7 客製化桌牌 — 防呆守門 (2026-10-04 PR).
+   *
+   * Step 7 為「客製化桌牌」設計,使用者必須至少按過一次「生成桌牌」按鈕,
+   * 把桌牌上傳到 R2 才能進入 Step 8 (儲存)。理由:
+   *   - 桌牌是獨立於 Pass 的列印資產,不會自動跟著 Pass 一起部署
+   *   - 使用者若忘記按「生成桌牌」,Step 8 儲存後的 Pass 沒有對應桌牌 PNG,
+   *     店家印出來的卡片背面只有預設空白
+   *   - 這是 2026-10-04 user feedback 觸發的硬性需求
+   *
+   * 5-state machine (tableCardExportState) 對應行為:
+   *   - 'idle'       → 使用者從未按過生成鈕 → 阻擋「下一步」
+   *   - 'generating' → POST 進行中,還沒成功過 → 阻擋 (避免在 race 中放行)
+   *   - 'ready'      → 至少成功生成過一次 → 放行
+   *   - 'stale'      → 成功過,後來畫布又改了 → 放行
+   *                    (使用者已證明會用桌牌功能,stale 不該擋下)
+   *                    「重新生成」按鈕已提示畫布已變更,使用者可自行決定
+   *   - 'error'      → 上次生成失敗 → 阻擋 (必須按「重試生成桌牌」成功才能前進)
+   *
+   * 設計理由:
+   *   - 「至少成功過一次」(ready / stale) 而非「必須保持 latest」(stale 阻擋):
+   *     stale 意味著畫布已變更 — 但這不影響「桌牌存在」這個事實。
+   *     使用者可能刻意保留舊桌牌 (例如 A4 大小給店家印,內部另有設計)。
+   *   - 守門放在 workspace handleNext 而非 store setter:
+   *     純邏輯判斷、無副作用、跟其他 step 共用 isStepNValid 風格
+   *   - 視覺提示由 disabled + hint text 承擔 (見下方 JSX)
+   */
+  function isStep7Valid(): boolean {
+    const { tableCardExportState } = useCardBuilderStore.getState();
+    return (
+      tableCardExportState === 'ready' || tableCardExportState === 'stale'
+    );
+  }
+
   async function handleNext() {
     console.log('[handleNext] step:', step, 'cardId:', cardId);
     if (step < 8) {
@@ -740,6 +779,9 @@ export function CardBuilderEditorWorkspace({
       if (step === 4 && !isStep4Valid()) return;
       if (step === 5 && !isStep5Valid()) return;
       if (step === 6 && !isStep6Valid()) return;
+      // 2026-10-04 PR — Step 7 防呆: 使用者必須至少成功生成過一次桌牌
+      // 才能進入 Step 8。isStep7Valid() 詳見上方註解。
+      if (step === 7 && !isStep7Valid()) return;
       if (step === 2 && cardId && onSave) {
         try {
           // 2026-09-13 semantic swap: cardName goes to SQL column
@@ -1523,7 +1565,12 @@ export function CardBuilderEditorWorkspace({
           Issues 7 & 8 (2026-09-27): canvas now receives shared stageRef
           + selectedId + activeTool from the parent (CardBuilderEditor).
           The right-side toolbar + inspector lives in Step7TableCardSidebar
-          (rendered by CardBuilderEditor in its right column when step === 7). */}
+          (rendered by CardBuilderEditor in its right column when step === 7).
+
+          2026-10-04 PR — Step 7 防呆: 使用者必須至少成功生成過一次桌牌
+          (tableCardExportState === 'ready' | 'stale') 才能前進到 Step 8。
+          詳見 isStep7Valid() 註解。「下一步」按鈕 disabled,下方顯示提示
+          文字引導使用者先按「生成桌牌」按鈕(在 Header 右側)。 */}
       {step === 7 && (
         <section className="flex min-w-0 flex-col gap-6">
           <h2 className="text-lg font-semibold text-foreground">
@@ -1535,7 +1582,7 @@ export function CardBuilderEditorWorkspace({
             onSelect={step7OnSelect ?? (() => {})}
             activeTool={step7ActiveTool ?? 'text'}
           />
-          {/* 上一步 / 下一步按鈕 — Step 7 無必填欄位,直接可前進 */}
+          {/* 上一步 / 下一步按鈕 — Step 7 防呆: 必須先生成過桌牌 */}
           <div className="flex items-center justify-between pt-2">
             <button
               type="button"
@@ -1554,18 +1601,32 @@ export function CardBuilderEditorWorkspace({
             <button
               type="button"
               onClick={handleNext}
+              disabled={!isStep7Valid()}
               className="
                 flex items-center gap-2 rounded-lg bg-primary px-6 py-2.5
                 text-sm font-semibold text-on-primary
                 transition-all duration-150
                 hover:scale-[1.02] hover:shadow-[var(--shadow-glow)]
                 active:scale-[0.98]
+                disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100
               "
             >
               {t('step1.next')}
               <ChevronRight size={16} aria-hidden="true" />
             </button>
           </div>
+          {/* Step 7 防呆提示 — 對齊 Header isStep1Blocked 的紅字警示風格。
+              條件: !isStep7Valid() 才顯示;ready / stale 時隱藏避免多餘雜訊。 */}
+          {!isStep7Valid() && (
+            <p
+              className="flex items-center gap-1.5 text-xs"
+              style={{ color: 'var(--color-destructive)' }}
+              role="alert"
+            >
+              <span aria-hidden="true">⚠</span>
+              {t('step7Guard.mustGenerateFirst', { ns: 'tableCard' })}
+            </p>
+          )}
         </section>
       )}
 

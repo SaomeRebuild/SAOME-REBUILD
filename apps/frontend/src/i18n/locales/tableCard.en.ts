@@ -281,4 +281,13 @@ export default {
     blobError: 'Canvas export failed. Please retry.',
     validationError: 'Canvas settings invalid: {{message}}',
   },
+
+  // ===== Step 7 guard (2026-10-04 PR) =====
+  // After designing the custom table card, the user must click the
+  // "Generate" button before advancing to Step 8. This guard prevents
+  // users from saving a card without ever designing a table card.
+  step7Guard: {
+    /** Red hint shown below the disabled "Next" button on Step 7. */
+    mustGenerateFirst: 'Please click the "Generate Table Card" button above first before proceeding.',
+  },
 };

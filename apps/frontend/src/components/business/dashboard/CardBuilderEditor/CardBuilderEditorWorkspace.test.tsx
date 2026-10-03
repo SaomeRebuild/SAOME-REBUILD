@@ -13,7 +13,7 @@
  * regressions of that gap.
  */
 
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CardBuilderEditorWorkspace } from './CardBuilderEditorWorkspace';
 import { useCardBuilderStore } from './CardBuilderEditor.store';
@@ -74,6 +74,14 @@ vi.mock('react-i18next', () => ({
 // we can still observe the parent's `disabled` state on the Next button.
 vi.mock('./Step4CardInfo/Step4CardInfo', () => ({
   Step4CardInfo: () => <div data-testid="step4-cardinfo-mock" />,
+}));
+
+// 2026-10-04 PR — Mock Step7TableCard to avoid pulling Konva into unit
+// tests. The mocked component just renders a marker; the workspace's
+// validation logic (isStep7Valid) only reads from the Zustand store, so
+// the canvas itself doesn't need to mount.
+vi.mock('./Step7TableCard', () => ({
+  Step7TableCard: () => <div data-testid="step7-tablecard-mock" />,
 }));
 
 const baseProps = {
@@ -268,5 +276,135 @@ describe('CardBuilderEditorWorkspace — isStep4Valid membership_card bypass (20
     );
     const nextButton = screen.getByRole('button', { name: /step1\.next/ });
     expect(nextButton).not.toBeDisabled();
+  });
+});
+
+/**
+ * Step 7 客製化桌牌 — 防呆守門 (2026-10-04 PR).
+ *
+ * isStep7Valid() 規則:
+ *   - tableCardExportState === 'ready'   → 通過 (已成功生成)
+ *   - tableCardExportState === 'stale'   → 通過 (已成功過, 後來畫布又改了)
+ *   - tableCardExportState === 'idle'    → 阻擋 (使用者沒按過)
+ *   - tableCardExportState === 'generating' → 阻擋 (race 避免放行)
+ *   - tableCardExportState === 'error'   → 阻擋 (上次失敗, 必須重試)
+ *
+ * 「下一步」按鈕:
+ *   - disabled 時紅字警示「請先按上方「生成桌牌」按鈕生成一次桌牌, 才能進入下一步」
+ *   - enabled 時不顯示警示 (避免多餘雜訊)
+ *
+ * 為什麼不是「stale 也擋下」? 理由見 isStep7Valid() 註解:
+ *   - stale 意味著「桌牌存在, 但畫布後續又改了」, 不影響「桌牌存在」這個事實
+ *   - 使用者可能刻意保留舊桌牌 (例如店家先印這批, 內部另有設計)
+ *   - 對齊 Phase 5.16 store 既有 invariant: stale = 可下載
+ */
+describe('CardBuilderEditorWorkspace — Step 7 防呆 (2026-10-04 PR)', () => {
+  beforeEach(() => {
+    useCardBuilderStore.getState().reset();
+  });
+
+  // 5 個 export 狀態 × 預期結果的對照
+  const step7ExportStateCases: Array<{
+    label: string;
+    tableCardExportState:
+      | 'idle'
+      | 'generating'
+      | 'ready'
+      | 'stale'
+      | 'error';
+    shouldBlock: boolean;
+  }> = [
+    { label: 'idle (從未按過)', tableCardExportState: 'idle', shouldBlock: true },
+    { label: 'generating (POST 進行中)', tableCardExportState: 'generating', shouldBlock: true },
+    { label: 'ready (已成功生成)', tableCardExportState: 'ready', shouldBlock: false },
+    { label: 'stale (已成功過, 畫布又改了)', tableCardExportState: 'stale', shouldBlock: false },
+    { label: 'error (上次失敗, 必須重試)', tableCardExportState: 'error', shouldBlock: true },
+  ];
+
+  it.each(step7ExportStateCases)(
+    '$label → 對應 disabled 狀態 (shouldBlock=$shouldBlock)',
+    ({ tableCardExportState, shouldBlock }) => {
+      useCardBuilderStore.setState({ tableCardExportState });
+      render(<CardBuilderEditorWorkspace {...{ ...baseProps, step: 7 as const }} />);
+      const nextButton = screen.getByRole('button', { name: /step1\.next/ });
+      if (shouldBlock) {
+        expect(nextButton).toBeDisabled();
+      } else {
+        expect(nextButton).not.toBeDisabled();
+      }
+    },
+  );
+
+  it('disabled 時顯示紅字提示 (step7Guard.mustGenerateFirst i18n key)', () => {
+    useCardBuilderStore.setState({ tableCardExportState: 'idle' });
+    render(<CardBuilderEditorWorkspace {...{ ...baseProps, step: 7 as const }} />);
+    // i18n mock returns the key path. The component uses
+    // t('step7Guard.mustGenerateFirst', { ns: 'tableCard' }) which becomes
+    // 'step7Guard.mustGenerateFirst' in the test environment.
+    expect(
+      screen.getByText('step7Guard.mustGenerateFirst'),
+    ).toBeInTheDocument();
+  });
+
+  it('enabled 時 (ready) 隱藏提示文字 (避免多餘雜訊)', () => {
+    useCardBuilderStore.setState({ tableCardExportState: 'ready' });
+    render(<CardBuilderEditorWorkspace {...{ ...baseProps, step: 7 as const }} />);
+    expect(
+      screen.queryByText('step7Guard.mustGenerateFirst'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('enabled 時 (stale) 隱藏提示文字 (對齊既有 invariant: stale 可下載)', () => {
+    useCardBuilderStore.setState({ tableCardExportState: 'stale' });
+    render(<CardBuilderEditorWorkspace {...{ ...baseProps, step: 7 as const }} />);
+    expect(
+      screen.queryByText('step7Guard.mustGenerateFirst'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('handleNext 不會前進 step (從 step 7 點「下一步」但 exportState=idle)', () => {
+    // 重要: 點 Next 不會 onStepChange, 即使按鈕理論上被 disabled
+    // 擋住 (UI 上按不到)。這是 defense-in-depth — 防止某些情境下
+    // button 仍可被點擊 (例如瀏覽器 dev tools 強制 enabled).
+    useCardBuilderStore.setState({ tableCardExportState: 'idle' });
+    const onStepChange = vi.fn();
+    render(
+      <CardBuilderEditorWorkspace
+        {...{ ...baseProps, step: 7 as const, onStepChange }}
+      />,
+    );
+    const nextButton = screen.getByRole('button', { name: /step1\.next/ });
+    // button 是 disabled, fireEvent.click 不會觸發 onClick handler
+    fireEvent.click(nextButton);
+    expect(onStepChange).not.toHaveBeenCalled();
+  });
+
+  it('handleNext 在 exportState=ready 時正常前進到 step 8', () => {
+    useCardBuilderStore.setState({ tableCardExportState: 'ready' });
+    const onStepChange = vi.fn();
+    render(
+      <CardBuilderEditorWorkspace
+        {...{ ...baseProps, step: 7 as const, onStepChange }}
+      />,
+    );
+    const nextButton = screen.getByRole('button', { name: /step1\.next/ });
+    fireEvent.click(nextButton);
+    expect(onStepChange).toHaveBeenCalledWith(8);
+  });
+
+  it('handleNext 在 exportState=stale 時正常前進到 step 8 (使用者已證明會用桌牌)', () => {
+    // 防止「stale 也阻擋」回歸 — 一旦使用者成功生成過, 就算後續畫布
+    // 改了, 也應該能前進。「重新生成」按鈕已提示 stale 狀態, 使用者
+    // 可自行決定是否要保留舊桌牌或重新生成。
+    useCardBuilderStore.setState({ tableCardExportState: 'stale' });
+    const onStepChange = vi.fn();
+    render(
+      <CardBuilderEditorWorkspace
+        {...{ ...baseProps, step: 7 as const, onStepChange }}
+      />,
+    );
+    const nextButton = screen.getByRole('button', { name: /step1\.next/ });
+    fireEvent.click(nextButton);
+    expect(onStepChange).toHaveBeenCalledWith(8);
   });
 });
