@@ -55,6 +55,42 @@ vi.mock('@/services/authService', () => ({
   },
 }));
 
+// ── Global @/i18n mock ───────────────────────────────────────────────────────
+// 2026-10-05 — When components import `i18n` from `@/i18n` (the production
+// instance), the production module's top-level `i18n.use(initReactI18next).init(...)`
+// runs at import time and pulls `initReactI18next` from the (mocked)
+// `react-i18next`. If the per-test `react-i18next` mock only stubs
+// `useTranslation`, the import fails with "No initReactI18next export"
+// and the whole test file fails to load.
+//
+// Mocking `@/i18n` here (in the global setup) replaces the production
+// i18n instance with a no-op stub across ALL tests:
+//   - `t(key)` returns the key as-is (same behavior as the per-test
+//     `useTranslation` stub).
+//   - `getFixedT(lng, ns)` returns a function that prefixes the key
+//     with the namespace (e.g. `passCard:fieldPreview.memberName.label`)
+//     so per-language translator calls remain distinguishable in
+//     assertions.
+//   - `applyPageLanguage` and `setLanguage` are exposed as no-op
+//     spies so tests that assert on language-switch side effects
+//     (e.g. PassHolderRegistrationPage) keep working.
+//
+// Tests that need real translations should NOT use this stub — they
+// can override per-test via `vi.mocked(...)` or by importing the real
+// i18n from `@/test/i18n` (the test i18n, which IS fully initialized).
+vi.mock('@/i18n', () => ({
+  default: {
+    t: (key: string) => key,
+    getFixedT: (_lng: string, ns: string) => (key: string) => `${ns}:${key}`,
+    changeLanguage: () => Promise.resolve(),
+  },
+  // Named exports — mirrors `apps/frontend/src/i18n/index.ts` so tests
+  // that spy on `applyPageLanguage` / `setLanguage` find the function.
+  setLanguage: () => {},
+  applyPageLanguage: () => {},
+  LANGUAGE_KEY: 'saome.lang',
+}));
+
 // ── URL.createObjectURL / revokeObjectURL polyfill (jsdom doesn't ship these) ──
 // Without this, LogoUploader's unmount cleanup throws "URL.revokeObjectURL is not a
 // function" and fails tests that have a `cropping` state at teardown.
