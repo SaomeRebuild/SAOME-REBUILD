@@ -757,8 +757,49 @@ export async function findTemplateById(
 }
 
 /**
- * Find all templates belonging to a tenant.
- * Ordered by updated_at DESC (most recent first).
+ * Find all **PUBLISHED** templates belonging to a tenant.
+ *
+ * Ordered by `created_at ASC, id ASC` (oldest first). CardBuilder Step 8
+ * "Save & Publish" relies on this ordering so the template library shows
+ * the user's templates in the order they were built. The array behaves
+ * like a "stack" — when a middle template is deleted, the remaining ones
+ * naturally close the gap without any `position` field or explicit
+ * re-indexing.
+ *
+ * Tie-breaker (`id ASC`) makes the order deterministic when two templates
+ * share the same `created_at` timestamp (rare but possible when many are
+ * inserted in the same millisecond during automated tests).
+ *
+ * 2026-10-04 Step 8 plan: switched from `ORDER BY updated_at DESC` (most
+ * recently edited first) to `ORDER BY created_at ASC, id ASC` (most
+ * recently created first when both rows were created at the same time).
+ * Why: the Template Library UX now treats creation order as the source
+ * of truth for "what's at position N", so deletion naturally promotes
+ * later templates forward. A `position` integer column was considered
+ * and rejected — array-position semantics are simpler and don't need
+ * schema changes.
+ *
+ * 2026-10-04 PR — `WHERE status = 'published'` filter:
+ *   The Template Library preview (apps/frontend/.../TemplateLibraryGrid)
+ *   renders the user's actual saved card previews. Drafts and
+ *   abandoned rows are noise in that surface — a draft is the user's
+ *   in-progress editor session (not a reusable template), and
+ *   abandoned rows are deleted-by-user intent (rows flagged for the
+ *   cleanup cron). Showing them in the library produced two regressions:
+ *     1. The 2nd card in the grid mapped to an `abandoned` row whose
+ *        settings were partial / null → preview rendered placeholder
+ *        values ("未命名卡片" / "左欄位" / "4938591027384") instead of
+ *        the user's actual saved data.
+ *     2. The "second card preview" surface semantics broke because
+ *        the grid position was no longer tied to a published template.
+ *   Filtering at the SQL layer (single source of truth) avoids drift:
+ *   the frontend `cardService.list()` doesn't need to know about the
+ *   status taxonomy at all.
+ *
+ *   If you need an unfiltered query (e.g. for the editor's draft
+ *   recovery flow), use a dedicated function (`findLatestDraftByTenant`
+ *   for drafts). The list endpoint only ever serves the library, so
+ *   the filter is correct at this entry point.
  */
 export async function findTemplatesByTenantId(
   sql: Sql,
@@ -768,7 +809,8 @@ export async function findTemplatesByTenantId(
     SELECT id, tenant_id, status, name, card_type, settings, created_at, updated_at, expires_at
       FROM templates
      WHERE tenant_id = ${tenantId}
-     ORDER BY updated_at DESC
+       AND status = 'published'
+     ORDER BY created_at ASC, id ASC
   `;
   return rows;
 }
