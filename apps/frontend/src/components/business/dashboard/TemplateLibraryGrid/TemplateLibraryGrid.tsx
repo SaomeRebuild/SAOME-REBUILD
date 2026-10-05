@@ -15,6 +15,7 @@ export function TemplateLibraryGrid({
   onEdit,
   onSend,
   onDelete,
+  deletingIds,
 }: TemplateLibraryGridProps) {
   const { t } = useTranslation('cardBuilder');
 
@@ -38,6 +39,8 @@ export function TemplateLibraryGrid({
               issuerName={template.issuerName}
               issuerLogo={template.issuerLogo}
               showPhoneFrame={template.showPhoneFrame}
+              settings={template.settings}
+              isDeleting={deletingIds?.has(template.id) ?? false}
               onEdit={onEdit}
               onSend={onSend}
               onDelete={onDelete}

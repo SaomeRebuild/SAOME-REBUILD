@@ -19,15 +19,22 @@ export default {
   templateLibrary: {
     title: '我的模板庫',
     empty: '尚無模板，從頭建置開始吧。',
+    // 2026-10-04 Step 8 — Real data wiring (TemplateCardPreview + 模板庫)
+    loading: '載入模板中...',
+    loadError: '無法載入模板，請稍後再試。',
+    retry: '重試',
   },
   templateCard: {
     edit: '重新編輯',
     send: '發送卡片',
     delete: '刪除卡片',
+    deleting: '刪除中...',
   },
   toast: {
     draftAbandoned: '草稿已放棄',
     draftRestored: '已復原草稿',
+    templateDeleted: '已刪除模板',
+    deleteError: '刪除失敗：{{detail}}',
     undo: '復原',
   },
 };

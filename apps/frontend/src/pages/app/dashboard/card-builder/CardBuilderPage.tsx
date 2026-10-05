@@ -7,9 +7,17 @@
  * Routing:
  *   - /app/dashboard/card-builder          → Library mode (no ?id=)
  *   - /app/dashboard/card-builder?id=...   → Editor mode (has ?id=)
+ *
+ * 2026-10-04 PR — Replaced the MOCK_TEMPLATES placeholder with a real
+ * `cardService.list()` query so the TemplateLibraryGrid renders the
+ * user's actually-saved templates (logoText, cardType, issuerName,
+ * leftField, rightField, barcodeType, language, currency, etc.). Each
+ * `TemplateDto.settings` is passed through to `TemplateCardPreview`,
+ * which uses per-cardType + per-card-language i18n to render the
+ * matching preview.
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { TemplateLibraryGrid } from '@/components/business/dashboard/TemplateLibraryGrid';
@@ -17,15 +25,10 @@ import { CardBuilderEditor } from '@/components/business/dashboard/CardBuilderEd
 import { ConfirmAbandonDraftDialog } from '@/components/ui/dialog/ConfirmAbandonDraftDialog';
 import { cardService } from '@/services/cardService';
 import { SaomeApiError } from '@/services/httpClient';
-import { PlusCircle, LayoutGrid, Loader2, AlertCircle } from 'lucide-react';
+import { PlusCircle, LayoutGrid, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { toast } from '@/components/ui/feedback/Toast';
 import type { TemplateDto } from '@saome/shared/schemas/card';
-
-// TODO: Replace with API call when backend is ready.
-const MOCK_TEMPLATES = Array.from({ length: 10 }, (_, i) => ({
-  id: `template-${i + 1}`,
-  name: `Template ${i + 1}`,
-}));
+import type { TemplateCardData } from '@/components/business/dashboard/TemplateLibraryGrid';
 
 export default function CardBuilderPage() {
   const { t } = useTranslation('cardBuilder');
@@ -38,8 +41,117 @@ export default function CardBuilderPage() {
   const [pendingDraft, setPendingDraft] = useState<TemplateDto | null>(null);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
 
+  // 2026-10-04 PR — Real data wiring.
+  // Templates fetched from cardService.list(); status of the fetch is
+  // tracked in `isLoadingTemplates` / `templatesError` so the UI can
+  // show a spinner / error banner before the grid renders.
+  const [templates, setTemplates] = useState<TemplateCardData[]>([]);
+  const [isLoadingTemplates, setIsLoadingTemplates] = useState(true);
+  const [templatesError, setTemplatesError] = useState<string | null>(null);
+  // While a single-card delete is in flight, we mark that id so the
+  // TemplateCard can show a deleting state. Stored as a Set so multiple
+  // deletes can run concurrently without conflict (unlikely in practice
+  // but the data structure is cheap).
+  const [deletingIds, setDeletingIds] = useState<ReadonlySet<string>>(new Set());
+
   // Editor mode: 有 ?id= 就顯示 editor，否則顯示 library
   const isEditorMode = Boolean(searchParams.get('id'));
+
+  /**
+   * Format an unknown error as a human-readable detail string.
+   * Pulled out as a helper because three different error paths (list,
+   * delete, build) all want the same shape: "(<status> <code>) <message>"
+   * for `SaomeApiError`, fallback to String(err) otherwise.
+   */
+  function formatErrorDetail(err: unknown): string {
+    let detail = String(err);
+    if (err instanceof SaomeApiError) {
+      detail = `(${err.status} ${err.code}) ${err.message}`;
+    }
+    return detail;
+  }
+
+  /**
+   * Fetch the tenant's templates from the API and map them into the
+   * `TemplateCardData[]` shape the grid expects. The mapping is
+   * minimal: id, name, cardType, settings (full passthrough) +
+   * showPhoneFrame flag. The `TemplateCardPreview` reads the rest
+   * (logoText, issuerName, leftField, rightField, barcodeType,
+   * language, currency, etc.) directly from settings.
+   *
+   * 2026-10-04 PR — Replaces the MOCK_TEMPLATES array. Without
+   * settings, the preview was falling back to placeholder values like
+   * "未命名卡片" / "Template 1" / "左欄位" — this is the root-cause
+   * fix for the regression observed in production screenshots.
+   */
+  const fetchTemplates = useCallback(async (): Promise<void> => {
+    setIsLoadingTemplates(true);
+    setTemplatesError(null);
+    try {
+      const dtos = await cardService.list();
+      // Map TemplateDto → TemplateCardData. settings is a structural
+      // match (both are TemplateSettings / zod-inferred equivalents)
+      // but the DTO uses a loose Record<string, unknown> signature in
+      // the shared zod schema, so we cast to TemplateSettings.
+      const mapped: TemplateCardData[] = dtos.map((dto) => ({
+        id: dto.id,
+        name: dto.name,
+        // Some legacy rows may have settings.cardType set but
+        // top-level cardType unset. Prefer top-level; fall back to
+        // settings to handle the migration window where the column
+        // was added later than the JSONB blob.
+        cardType: dto.cardType ?? (dto.settings?.cardType as TemplateCardData['cardType']),
+        // settings is a structural match — both are TemplateSettings
+        // shapes. The shared zod schema types settings as a loose
+        // Record<string, unknown>; we re-cast to the strict
+        // TemplateSettings inferred from the full templateSettingsSchema
+        // (the grid is a consumer and trusts this shape).
+        settings: (dto.settings ?? {}) as TemplateCardData['settings'],
+        showPhoneFrame: true,
+      }));
+      setTemplates(mapped);
+    } catch (err) {
+      console.error('[CardBuilderPage] failed to load templates:', err);
+      setTemplatesError(formatErrorDetail(err));
+    } finally {
+      setIsLoadingTemplates(false);
+    }
+  }, []);
+
+  // Fetch templates when entering library mode. Skipped in editor mode
+  // because the editor's own URL effect owns the data lifecycle.
+  useEffect(() => {
+    if (isEditorMode) {
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      if (cancelled) return;
+      setIsLoadingTemplates(true);
+      setTemplatesError(null);
+      try {
+        const dtos = await cardService.list();
+        if (cancelled) return;
+        const mapped: TemplateCardData[] = dtos.map((dto) => ({
+          id: dto.id,
+          name: dto.name,
+          cardType: dto.cardType ?? (dto.settings?.cardType as TemplateCardData['cardType']),
+          settings: (dto.settings ?? {}) as TemplateCardData['settings'],
+          showPhoneFrame: true,
+        }));
+        setTemplates(mapped);
+      } catch (err) {
+        if (cancelled) return;
+        console.error('[CardBuilderPage] failed to load templates:', err);
+        setTemplatesError(formatErrorDetail(err));
+      } finally {
+        if (!cancelled) setIsLoadingTemplates(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isEditorMode]);
 
   /**
    * Handle "從頭建置" — check for existing draft, then proceed.
@@ -80,19 +192,15 @@ export default function CardBuilderPage() {
     try {
       const template = await cardService.createDraft(uuid);
       console.log('[createNewDraft] draft created:', template);
+      // After creating a new draft, refresh the library list so the
+      // new template shows up the next time the user comes back.
+      // (Skip the await — navigation is the primary action.)
+      void fetchTemplates();
       window.location.href = `/app/dashboard/card-builder?id=${uuid}`;
     } catch (err) {
       console.error('[createNewDraft] FAILED to create draft:', err);
       setIsBuilding(false);
-      let detail = String(err);
-      if (err instanceof SaomeApiError) {
-        // Extract structured info so we can see the actual backend error
-        detail = `(${err.status} ${err.code}) ${err.message}`;
-        if (err.details) {
-          console.error('[createNewDraft] API error details:', JSON.stringify(err.details, null, 2));
-        }
-      }
-      setBuildError(t('toolbar.buildErrorDetail', { detail }));
+      setBuildError(t('toolbar.buildErrorDetail', { detail: formatErrorDetail(err) }));
     }
   }
 
@@ -121,20 +229,17 @@ export default function CardBuilderPage() {
     } catch (err) {
       console.error('Failed to abandon draft:', err);
       setIsBuilding(false);
-      let detail = String(err);
-      if (err instanceof SaomeApiError) {
-        detail = `(${err.status} ${err.code}) ${err.message}`;
-        if (err.details) {
-          console.error('[handleDiscardDraft] API error details:', JSON.stringify(err.details, null, 2));
-        }
-      }
-      setBuildError(t('toolbar.buildErrorDetail', { detail }));
+      setBuildError(t('toolbar.buildErrorDetail', { detail: formatErrorDetail(err) }));
     }
   }
 
   function handleBackToLibrary() {
     // Navigate to library mode (remove ?id= param)
     navigate('/app/dashboard/card-builder');
+    // Re-fetch on back so newly-edited cards reflect the latest
+    // settings (logoText, issuerName, etc.). The editor's PUT flow
+    // updates DB; the next library render should show the changes.
+    void fetchTemplates();
   }
 
   function handlePublicTemplates() {
@@ -153,8 +258,38 @@ export default function CardBuilderPage() {
     console.log('Send card:', id);
   }
 
-  function handleDelete(id: string) {
-    console.log('Delete template:', id);
+  /**
+   * Handle "Delete" — call cardService.delete(), show a toast, and
+   * refetch the list so the remaining templates close the gap
+   * (Step 8 plan: deletion of a middle template promotes later
+   * templates forward; backend `findTemplatesByTenantId` already
+   * orders by `created_at ASC` for natural array-position semantics).
+   *
+   * Per-card deleting state is tracked in `deletingIds` so the grid
+   * can show a spinner / disabled state on the row being removed.
+   */
+  async function handleDelete(id: string) {
+    setDeletingIds((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+    try {
+      await cardService.delete(id);
+      toast(t('toast.templateDeleted'));
+      // Refetch the list to reflect the deletion. Don't await — let
+      // the user see the spinner on the row that just got removed.
+      void fetchTemplates();
+    } catch (err) {
+      console.error('[CardBuilderPage] failed to delete template:', err);
+      toast.error(t('toast.deleteError', { detail: formatErrorDetail(err) }));
+    } finally {
+      setDeletingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
   }
 
   return (
@@ -223,13 +358,45 @@ export default function CardBuilderPage() {
               </div>
             )}
 
-            {/* Bottom: template library grid */}
-            <TemplateLibraryGrid
-              templates={MOCK_TEMPLATES}
-              onEdit={handleEdit}
-              onSend={handleSend}
-              onDelete={handleDelete}
-            />
+            {/* 2026-10-04 PR — Library state machine: loading → error / empty / populated. */}
+            {isLoadingTemplates ? (
+              <div
+                className="flex flex-1 flex-col items-center justify-center gap-3 py-12 text-muted-foreground"
+                data-testid="template-library-loading"
+              >
+                <Loader2 size={32} className="animate-spin" aria-hidden="true" />
+                <p className="text-sm">{t('templateLibrary.loading')}</p>
+              </div>
+            ) : templatesError ? (
+              <div
+                className="flex flex-1 flex-col items-center justify-center gap-3 py-12"
+                data-testid="template-library-error"
+              >
+                <div className="flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                  <AlertCircle size={16} aria-hidden="true" />
+                  {t('templateLibrary.loadError')} ({templatesError})
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void fetchTemplates()}
+                  className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground transition-transform duration-150 hover:scale-[1.02] hover:border-primary hover:text-primary active:scale-[0.98]"
+                >
+                  <RefreshCw size={12} aria-hidden="true" />
+                  {t('templateLibrary.retry')}
+                </button>
+              </div>
+            ) : (
+              /* Bottom: template library grid. passes deletingIds down so
+                 the card can render a "deleting" state for the row being
+                 removed (used by the conformance test for delete flow). */
+              <TemplateLibraryGrid
+                templates={templates}
+                onEdit={handleEdit}
+                onSend={handleSend}
+                onDelete={handleDelete}
+                deletingIds={deletingIds}
+              />
+            )}
           </>
         )}
       </div>

@@ -4,7 +4,7 @@
  * Optionally wraps preview in a phone frame SVG.
  */
 import type { TemplateCardProps } from './TemplateCard.types';
-import { PencilLine, Send, Trash2 } from 'lucide-react';
+import { PencilLine, Send, Trash2, Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { TemplateCardPreview } from './TemplateCardPreview';
 import { PhoneFrame } from '@/components/ui/phone/PhoneFrame';
@@ -18,6 +18,8 @@ export function TemplateCard({
   issuerName,
   issuerLogo,
   showPhoneFrame = true,
+  settings,
+  isDeleting = false,
   onEdit,
   onSend,
   onDelete,
@@ -38,6 +40,7 @@ export function TemplateCard({
               issuerLogo={issuerLogo}
               backgroundColor={backgroundColor}
               textColor={textColor}
+              settings={settings}
             />
           </PhoneFrame>
         ) : (
@@ -49,6 +52,7 @@ export function TemplateCard({
             issuerLogo={issuerLogo}
             backgroundColor={backgroundColor}
             textColor={textColor}
+            settings={settings}
           />
         )}
       </div>
@@ -58,7 +62,8 @@ export function TemplateCard({
         <button
           type="button"
           onClick={() => onEdit?.(id)}
-          className="flex items-center justify-center gap-1 rounded-md bg-primary px-2 py-1 text-xs font-semibold text-on-primary transition-transform duration-150 hover:scale-[1.02] active:scale-[0.98]"
+          disabled={isDeleting}
+          className="flex items-center justify-center gap-1 rounded-md bg-primary px-2 py-1 text-xs font-semibold text-on-primary transition-transform duration-150 hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
         >
           <PencilLine size={12} aria-hidden="true" />
           {t('templateCard.edit')}
@@ -66,7 +71,8 @@ export function TemplateCard({
         <button
           type="button"
           onClick={() => onSend?.(id)}
-          className="flex items-center justify-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs font-semibold text-card-foreground transition-transform duration-150 hover:scale-[1.02] active:scale-[0.98]"
+          disabled={isDeleting}
+          className="flex items-center justify-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs font-semibold text-card-foreground transition-transform duration-150 hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
         >
           <Send size={12} aria-hidden="true" />
           {t('templateCard.send')}
@@ -74,10 +80,16 @@ export function TemplateCard({
         <button
           type="button"
           onClick={() => onDelete?.(id)}
-          className="flex items-center justify-center gap-1 rounded-md border border-destructive/60 bg-destructive/20 px-2 py-1 text-xs font-semibold text-destructive transition-transform duration-150 hover:scale-[1.02] active:scale-[0.98]"
+          disabled={isDeleting}
+          data-testid={`template-card-delete-${id}`}
+          className="flex items-center justify-center gap-1 rounded-md border border-destructive/60 bg-destructive/20 px-2 py-1 text-xs font-semibold text-destructive transition-transform duration-150 hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
         >
-          <Trash2 size={12} aria-hidden="true" />
-          {t('templateCard.delete')}
+          {isDeleting ? (
+            <Loader2 size={12} className="animate-spin" aria-hidden="true" />
+          ) : (
+            <Trash2 size={12} aria-hidden="true" />
+          )}
+          {isDeleting ? t('templateCard.deleting') : t('templateCard.delete')}
         </button>
       </div>
     </div>
