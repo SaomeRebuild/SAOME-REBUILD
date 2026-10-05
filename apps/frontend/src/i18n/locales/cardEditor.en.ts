@@ -31,7 +31,18 @@ export default {
     geolocation: 'Geolocation',
     cardLogic: 'Card Logic',
     customizePlaceCard: 'Customize Table Card',
-    save: 'Save',
+    // 2026-10-04 PR — Step 8 "Save" step i18n keys.
+    // Displayed in the left workspace title + Save & Publish / Back to Library buttons.
+    save: {
+      title: 'Save & Publish',
+      summary: 'Please confirm the details below',
+      publish: 'Save & Publish',
+      back: 'Back to Template Library',
+      publishSuccess: 'Card published successfully',
+      publishError: 'Failed to publish. Please try again later.',
+      validationCardType: 'Please select a card type first',
+      validationName: 'Please fill in the card name first',
+    },
   },
 
   // Step 1: Card type selector

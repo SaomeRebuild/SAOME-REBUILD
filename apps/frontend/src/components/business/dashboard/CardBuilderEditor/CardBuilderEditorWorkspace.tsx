@@ -20,6 +20,7 @@ import { Step5CardLocation } from './Step5CardLocation';
 import { Step6CardLogic } from './Step6CardLogic';
 import { Step7TableCard } from './Step7TableCard';
 import type { ToolKey } from './Step7TableCard/Step7TableCard.types';
+import { Step8Save } from './Step8Save';
 import { useCardBuilderStore } from './CardBuilderEditor.store';
 import {
   DESCRIPTION_MAX_LENGTH,
@@ -1630,49 +1631,8 @@ export function CardBuilderEditorWorkspace({
         </section>
       )}
 
-      {/* Step 8: 保存（預留） */}
-      {step === 8 && (
-        <section className="flex flex-col items-center justify-center gap-4 py-12">
-          <p className="text-muted-foreground">
-            {t('step8.title')}
-          </p>
-          <p className="text-sm text-muted-foreground/60">
-            {t('comingSoon')}
-          </p>
-          {/* 上一步 / 保存按鈕 */}
-          <div className="flex items-center gap-4 pt-4">
-            <button
-              type="button"
-              onClick={handlePrev}
-              className="
-                flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5
-                text-sm font-medium text-foreground
-                transition-all duration-150
-                hover:scale-[1.02] hover:border-primary hover:text-primary
-                active:scale-[0.98]
-              "
-            >
-              <ChevronLeft size={16} aria-hidden="true" />
-              {t('actions.prev')}
-            </button>
-            <button
-              type="button"
-              onClick={handleNext}
-              disabled
-              className="
-                flex items-center gap-2 rounded-lg bg-primary px-6 py-2.5
-                text-sm font-semibold text-on-primary
-                transition-all duration-150
-                hover:scale-[1.02] hover:shadow-[var(--shadow-glow)]
-                active:scale-[0.98]
-                disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100
-              "
-            >
-              {t('actions.save')}
-            </button>
-          </div>
-        </section>
-      )}
+      {/* Step 8: 儲存並發布 (2026-10-04 PR) */}
+      {step === 8 && <Step8Save />}
     </aside>
   );
 }

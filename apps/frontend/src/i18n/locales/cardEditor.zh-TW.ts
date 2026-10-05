@@ -36,7 +36,18 @@ export default {
     geolocation: '地理位置',
     cardLogic: '卡片邏輯',
     customizePlaceCard: '客製化桌牌',
-    save: '保存',
+    // 2026-10-04 PR — Step 8 「保存」步驟 i18n keys.
+    // 顯示在左側 workspace 標題 + Save & Publish / Back to Library 按鈕.
+    save: {
+      title: '儲存並發布',
+      summary: '請確認以下資訊',
+      publish: '儲存並發布',
+      back: '返回模板庫',
+      publishSuccess: '卡片已發布',
+      publishError: '發布失敗,請稍後再試',
+      validationCardType: '請先選擇卡片類型',
+      validationName: '請先填寫卡片名稱',
+    },
   },
 
   // Step 1: 卡片類型選擇器
