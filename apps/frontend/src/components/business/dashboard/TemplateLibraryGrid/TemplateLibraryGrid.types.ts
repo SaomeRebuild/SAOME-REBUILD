@@ -36,9 +36,9 @@ export interface TemplateLibraryGridProps {
   templates?: TemplateCardData[];
   /** Called when the user clicks "重新編輯" on a card. */
   onEdit?: (id: string) => void;
-  /** Called when the user clicks "發送卡片" on a card. */
+  /** Called when the user clicks "下載桌牌" on a card. */
   onSend?: (id: string) => void;
-  /** Called when the user clicks "刪除卡片" on a card. */
+  /** Called when the user clicks "刪除模板" on a card. */
   onDelete?: (id: string) => void;
   /**
    * 2026-10-04 PR — Set of template IDs currently being deleted.
@@ -48,6 +48,12 @@ export interface TemplateLibraryGridProps {
    * each delete resolves.
    */
   deletingIds?: ReadonlySet<string>;
+  /**
+   * 2026-10-06 — Set of template IDs currently downloading their
+   * table card. Mirrors `deletingIds`; drives the spinner / disabled
+   * state of the 下載桌牌 button via `TemplateCard.isDownloading`.
+   */
+  downloadingIds?: ReadonlySet<string>;
 }
 
 // Re-export the schema for test fixtures.

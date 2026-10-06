@@ -249,8 +249,10 @@ export async function publishTemplateService(
 /**
  * Delete a template.
  *
- * - draft → can be deleted (used by abandon flow + library grid)
- * - published → cannot be deleted via this route (use dedicated publish un-publish flow if needed)
+ * R2 cleanup is async via the `r2_pending_deletes` tombstone + cron sweep
+ * (every 5 min). The merged table-card PNG (`settings.tableCard.exportKey`)
+ * is now enqueued alongside per-element imageKeys — see
+ * `collectR2KeysForTemplate` in `./r2Keys`.
  *
  * @param sql - Database client
  * @param templateId - Template UUID
@@ -266,18 +268,29 @@ export async function deleteTemplateService(
     throw new NotFoundError('common.error.notFound', 'Template not found');
   }
 
-  if (existing.status === 'published') {
-    throw new Error('Published templates cannot be deleted via this route');
-  }
-
   // Enqueue every R2 key owned by this template for async deletion
   // (plan `stay_on_free_plan_—_convert_sync_r2_delete_to_tombstone_+_cron_sweep_f0bcfa50`,
   // 2026-10-03). The cron sweep at `src/index.ts::worker.scheduled`
   // picks them up on the next tick. The defensive unwrap mirrors the
   // same Bug #8 / #8.5 chain as the read path so a corrupted settings
   // column never crashes the delete.
+  //
+  // The enqueue is best-effort: a tombstone failure (DB outage,
+  // unique-constraint explosion) must NOT fail the user-facing
+  // delete — the row is removed either way, and the cron sweep is
+  // the canonical cleanup path. Per-key failures inside
+  // `enqueueTemplateR2Keys` are already caught by the helper; this
+  // outer try/catch covers the helper itself throwing.
   const settings = unwrapCardSettings(existing.settings);
-  await enqueueTemplateR2Keys(sql, tenantId, templateId, settings);
+  try {
+    await enqueueTemplateR2Keys(sql, tenantId, templateId, settings);
+  } catch (err) {
+    console.error(
+      '[deleteTemplateService] R2 tombstone enqueue failed (non-fatal, DB row still being removed):',
+      { tenantId, templateId },
+      err,
+    );
+  }
 
   await deleteTemplate(sql, templateId);
   return { success: true };

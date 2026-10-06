@@ -62,11 +62,11 @@ describe('TemplateLibraryGrid', () => {
         onDelete={mockOnDelete}
       />
     );
-    // Real i18n translates 'templateCard.{edit,send,delete}' → '重新編輯' / '發送卡片' / '刪除卡片'.
+    // Real i18n translates 'templateCard.{edit,send,delete}' → '重新編輯' / '下載桌牌' / '刪除模板'.
     // Verify via the three action buttons per card (6 buttons total for 2 templates).
     const editBtns = screen.getAllByRole('button', { name: '重新編輯' });
-    const sendBtns = screen.getAllByRole('button', { name: '發送卡片' });
-    const deleteBtns = screen.getAllByRole('button', { name: '刪除卡片' });
+    const sendBtns = screen.getAllByRole('button', { name: '下載桌牌' });
+    const deleteBtns = screen.getAllByRole('button', { name: '刪除模板' });
     expect(editBtns).toHaveLength(2);
     expect(sendBtns).toHaveLength(2);
     expect(deleteBtns).toHaveLength(2);
@@ -82,8 +82,8 @@ describe('TemplateLibraryGrid', () => {
       />
     );
     const editBtns = screen.getAllByRole('button', { name: '重新編輯' });
-    const sendBtns = screen.getAllByRole('button', { name: '發送卡片' });
-    const deleteBtns = screen.getAllByRole('button', { name: '刪除卡片' });
+    const sendBtns = screen.getAllByRole('button', { name: '下載桌牌' });
+    const deleteBtns = screen.getAllByRole('button', { name: '刪除模板' });
     expect(editBtns).toHaveLength(2);
     expect(sendBtns).toHaveLength(2);
     expect(deleteBtns).toHaveLength(2);
@@ -130,9 +130,9 @@ describe('TemplateLibraryGrid', () => {
     const t1DeleteBtn = screen.getByTestId('template-card-delete-t1');
     expect(t1DeleteBtn).toBeDisabled();
     expect(t1DeleteBtn).toHaveTextContent('刪除中...');
-    // t2 is NOT deleting → its delete button label = 刪除卡片 (default)
+    // t2 is NOT deleting → its delete button label = 刪除模板 (default)
     const t2DeleteBtn = screen.getByTestId('template-card-delete-t2');
     expect(t2DeleteBtn).not.toBeDisabled();
-    expect(t2DeleteBtn).toHaveTextContent('刪除卡片');
+    expect(t2DeleteBtn).toHaveTextContent('刪除模板');
   });
 });

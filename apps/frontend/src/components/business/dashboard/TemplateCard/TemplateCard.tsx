@@ -20,6 +20,7 @@ export function TemplateCard({
   showPhoneFrame = true,
   settings,
   isDeleting = false,
+  isDownloading = false,
   onEdit,
   onSend,
   onDelete,
@@ -62,7 +63,7 @@ export function TemplateCard({
         <button
           type="button"
           onClick={() => onEdit?.(id)}
-          disabled={isDeleting}
+          disabled={isDeleting || isDownloading}
           className="flex items-center justify-center gap-1 rounded-md bg-primary px-2 py-1 text-xs font-semibold text-on-primary transition-transform duration-150 hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
         >
           <PencilLine size={12} aria-hidden="true" />
@@ -71,16 +72,20 @@ export function TemplateCard({
         <button
           type="button"
           onClick={() => onSend?.(id)}
-          disabled={isDeleting}
+          disabled={isDeleting || isDownloading}
           className="flex items-center justify-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs font-semibold text-card-foreground transition-transform duration-150 hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
         >
-          <Send size={12} aria-hidden="true" />
-          {t('templateCard.send')}
+          {isDownloading ? (
+            <Loader2 size={12} className="animate-spin" aria-hidden="true" />
+          ) : (
+            <Send size={12} aria-hidden="true" />
+          )}
+          {isDownloading ? t('templateCard.downloading') : t('templateCard.send')}
         </button>
         <button
           type="button"
           onClick={() => onDelete?.(id)}
-          disabled={isDeleting}
+          disabled={isDeleting || isDownloading}
           data-testid={`template-card-delete-${id}`}
           className="flex items-center justify-center gap-1 rounded-md border border-destructive/60 bg-destructive/20 px-2 py-1 text-xs font-semibold text-destructive transition-transform duration-150 hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
         >

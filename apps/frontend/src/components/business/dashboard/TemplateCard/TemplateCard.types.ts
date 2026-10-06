@@ -49,11 +49,18 @@ export interface TemplateCardProps {
    * delete resolves.
    */
   isDeleting?: boolean;
+  /**
+   * 2026-10-06 — While `true`, the card disables the 下載桌牌 button
+   * (mirrors `isDeleting` for the download flow). Driven from the
+   * page-level `downloadingIds` set so the page can show a spinner
+   * during the in-flight Blob → object-URL → click download.
+   */
+  isDownloading?: boolean;
   /** Called when the user clicks "重新編輯". */
   onEdit?: (id: string) => void;
-  /** Called when the user clicks "發送卡片". */
+  /** Called when the user clicks "下載桌牌". */
   onSend?: (id: string) => void;
-  /** Called when the user clicks "刪除卡片". */
+  /** Called when the user clicks "刪除模板". */
   onDelete?: (id: string) => void;
 }
 

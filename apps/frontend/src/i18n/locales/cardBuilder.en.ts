@@ -26,9 +26,16 @@ export default {
   },
   templateCard: {
     edit: 'Edit',
-    send: 'Send Card',
-    delete: 'Delete',
+    // 2026-10-06 — `Send Card` → `Download Table Card`. Mirrors the
+    // `ready` state in `tableCard.en.ts` (Step7 export column).
+    send: 'Download Table Card',
+    // 2026-10-06 — `Delete` → `Delete Template`. The action target is the
+    // template, not the card.
+    delete: 'Delete Template',
     deleting: 'Deleting...',
+    // 2026-10-06 — in-flight label for the table-card download button
+    // (mirrors `deleting`).
+    downloading: 'Downloading...',
   },
   toast: {
     draftAbandoned: 'Draft discarded',
@@ -36,5 +43,9 @@ export default {
     templateDeleted: 'Template deleted',
     deleteError: 'Delete failed: {{detail}}',
     undo: 'Undo',
+    // 2026-10-06 — table-card download feedback
+    tableCardDownloaded: 'Table card downloaded',
+    tableCardNotExported: 'Table card not generated yet. Please generate it in the editor first.',
+    downloadError: 'Download failed: {{detail}}',
   },
 };

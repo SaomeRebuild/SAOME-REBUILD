@@ -53,6 +53,10 @@ export default function CardBuilderPage() {
   // deletes can run concurrently without conflict (unlikely in practice
   // but the data structure is cheap).
   const [deletingIds, setDeletingIds] = useState<ReadonlySet<string>>(new Set());
+  // Per-card download state — mirrors `deletingIds`. Tracks which
+  // template's table card download is in flight so the row can show
+  // a disabled/spinner state.
+  const [downloadingIds, setDownloadingIds] = useState<ReadonlySet<string>>(new Set());
 
   // Editor mode: 有 ?id= 就顯示 editor，否則顯示 library
   const isEditorMode = Boolean(searchParams.get('id'));
@@ -254,8 +258,58 @@ export default function CardBuilderPage() {
     window.location.href = `/app/dashboard/card-builder?id=${id}`;
   }
 
-  function handleSend(id: string) {
-    console.log('Send card:', id);
+  /**
+   * Handle "下載桌牌" (Download Table Card) — fetch the merged PNG
+   * from R2 via `cardService.downloadTableCardBlob`, then trigger a
+   * browser download via an in-memory `<a download>` click.
+   *
+   * Mirrors the canonical pattern from
+   * `CardBuilderEditor/Step7TableCard/Step7TableCard.hooks.ts::handleDownload`
+   * (the editor's "ready" button). `httpClient.getBlob` is used (not
+   * `window.open`) so the Bearer token rides with the request —
+   * `window.open` silently 401's in production because browser
+   * navigation requests do not include the Authorization header.
+   *
+   * 404 from the backend means the user never pressed 「生成桌牌」 in
+   * Step 7 — surface a localized hint instead of a generic network
+   * error. Other errors get the standard `formatErrorDetail` formatting.
+   */
+  async function handleSend(id: string) {
+    setDownloadingIds((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+    try {
+      const blob = await cardService.downloadTableCardBlob(id);
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.download = 'table-card.png';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      // Defer revoke so the browser has a tick to start the download
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+      toast(t('toast.tableCardDownloaded'));
+    } catch (err) {
+      console.error('[CardBuilderPage] failed to download table card:', err);
+      const status =
+        err instanceof SaomeApiError ? err.status : undefined;
+      if (status === 404) {
+        toast.error(t('toast.tableCardNotExported'));
+      } else {
+        toast.error(
+          t('toast.downloadError', { detail: formatErrorDetail(err) }),
+        );
+      }
+    } finally {
+      setDownloadingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
   }
 
   /**
@@ -388,13 +442,17 @@ export default function CardBuilderPage() {
             ) : (
               /* Bottom: template library grid. passes deletingIds down so
                  the card can render a "deleting" state for the row being
-                 removed (used by the conformance test for delete flow). */
+                 removed (used by the conformance test for delete flow).
+                 `downloadingIds` mirrors that pattern for the table-card
+                 download — the card disables its 下載桌牌 button while
+                 the in-flight Blob → object-URL → click flow runs. */
               <TemplateLibraryGrid
                 templates={templates}
                 onEdit={handleEdit}
                 onSend={handleSend}
                 onDelete={handleDelete}
                 deletingIds={deletingIds}
+                downloadingIds={downloadingIds}
               />
             )}
           </>

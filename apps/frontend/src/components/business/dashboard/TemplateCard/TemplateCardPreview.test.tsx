@@ -101,4 +101,43 @@ describe('TemplateCardPreview � UI alignment with CardBuilder right pane (2026
     expect(wrapper).toBeInTheDocument();
     expect(wrapper!.className).toMatch(/\bbg-white\b/);
   });
+
+  /**
+   * 2026-10-06 — strip 內層對齊鎖定。
+   *
+   * User feedback：stamp / multipass / default 卡的 strip 內容被推到左邊，
+   * 跟編輯器右側 `PassCardPreviewStrip.tsx` 不一致。本測試確保：
+   *   - membership_card → wrapper `justify-start`（label/value 配對靠左）
+   *   - 其他 cardType   → wrapper `justify-center`（icon / stamp grid 置中）
+   *
+   * 編輯器 source-of-truth 對齊點：`PassCardPreviewStrip.tsx` 的
+   * `<div className="absolute inset-0 flex items-center justify-center">`
+   * 是所有非會員 branch 的基準 wrapper。
+   */
+  it('strip 內層對齊：membership_card 靠左、其餘 cardType 置中 (regression 2026-10-06)', () => {
+    // Stamp card → 置中
+    const { rerender } = renderPreview({ cardType: 'stamp_card', stampIconId: 'bell' });
+    const stampWrapper = screen
+      .getByTestId('template-card-preview')
+      .querySelector('.absolute.inset-0.flex') as HTMLElement | null;
+    expect(stampWrapper).toBeInTheDocument();
+    expect(stampWrapper!.className).toMatch(/\bitems-center\b/);
+    expect(stampWrapper!.className).toMatch(/\bjustify-center\b/);
+    expect(stampWrapper!.className).not.toMatch(/\bjustify-start\b/);
+
+    // Membership card → 靠左
+    rerender(
+      <TemplateCardPreview
+        templateId="tpl-1"
+        settings={{ ...settingsBase, cardType: 'membership_card' } as never}
+      />,
+    );
+    const membershipWrapper = screen
+      .getByTestId('template-card-preview')
+      .querySelector('.absolute.inset-0.flex') as HTMLElement | null;
+    expect(membershipWrapper).toBeInTheDocument();
+    expect(membershipWrapper!.className).toMatch(/\bitems-center\b/);
+    expect(membershipWrapper!.className).toMatch(/\bjustify-start\b/);
+    expect(membershipWrapper!.className).not.toMatch(/\bjustify-center\b/);
+  });
 });

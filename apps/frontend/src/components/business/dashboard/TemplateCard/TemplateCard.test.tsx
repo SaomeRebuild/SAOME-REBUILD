@@ -59,10 +59,10 @@ describe('TemplateCard', () => {
 
   it('always shows all three action buttons without hover', () => {
     render(<TemplateCard {...defaultProps} />);
-    // Real i18n translates templateCard.{edit,send,delete} → 重新編輯 / 發送卡片 / 刪除卡片.
+    // Real i18n translates templateCard.{edit,send,delete} → 重新編輯 / 下載桌牌 / 刪除模板.
     expect(screen.getAllByRole('button', { name: '重新編輯' })).toHaveLength(1);
-    expect(screen.getAllByRole('button', { name: '發送卡片' })).toHaveLength(1);
-    expect(screen.getAllByRole('button', { name: '刪除卡片' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: '下載桌牌' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: '刪除模板' })).toHaveLength(1);
   });
 
   it('calls onEdit with id when Edit button is clicked', async () => {
@@ -73,13 +73,13 @@ describe('TemplateCard', () => {
 
   it('calls onSend with id when Send button is clicked', async () => {
     render(<TemplateCard {...defaultProps} />);
-    await userEvent.click(screen.getByRole('button', { name: '發送卡片' }));
+    await userEvent.click(screen.getByRole('button', { name: '下載桌牌' }));
     expect(mockOnSend).toHaveBeenCalledWith('template-1');
   });
 
   it('calls onDelete with id when Delete button is clicked', async () => {
     render(<TemplateCard {...defaultProps} />);
-    await userEvent.click(screen.getByRole('button', { name: '刪除卡片' }));
+    await userEvent.click(screen.getByRole('button', { name: '刪除模板' }));
     expect(mockOnDelete).toHaveBeenCalledWith('template-1');
   });
 
@@ -97,13 +97,38 @@ describe('TemplateCard', () => {
     expect(deleteBtn).toHaveTextContent('刪除中...');
     // Edit + Send should also be disabled during the delete
     expect(screen.getByRole('button', { name: '重新編輯' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: '發送卡片' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '下載桌牌' })).toBeDisabled();
   });
 
   it('does not render deleting state when isDeleting=false (default)', () => {
     render(<TemplateCard {...defaultProps} />);
     const deleteBtn = screen.getByTestId('template-card-delete-template-1');
     expect(deleteBtn).not.toBeDisabled();
-    expect(deleteBtn).toHaveTextContent('刪除卡片');
+    expect(deleteBtn).toHaveTextContent('刪除模板');
+  });
+
+  /**
+   * 2026-10-06 — Downloading state.
+   * When isDownloading=true, the card's 下載桌牌 button is disabled
+   * and shows a "下載中..." label. Edit + Delete are also disabled
+   * so the user cannot navigate away mid-download. Mirrors the
+   * `isDeleting` pattern above.
+   */
+  it('renders downloading state when isDownloading=true', () => {
+    render(<TemplateCard {...defaultProps} isDownloading />);
+    const sendBtn = screen.getByRole('button', { name: '下載中...' });
+    expect(sendBtn).toBeDisabled();
+    expect(sendBtn).toHaveTextContent('下載中...');
+    // Edit + Delete should also be disabled during the download
+    expect(screen.getByRole('button', { name: '重新編輯' })).toBeDisabled();
+    const deleteBtn = screen.getByTestId('template-card-delete-template-1');
+    expect(deleteBtn).toBeDisabled();
+  });
+
+  it('does not render downloading state when isDownloading=false (default)', () => {
+    render(<TemplateCard {...defaultProps} />);
+    const sendBtn = screen.getByRole('button', { name: '下載桌牌' });
+    expect(sendBtn).not.toBeDisabled();
+    expect(sendBtn).toHaveTextContent('下載桌牌');
   });
 });

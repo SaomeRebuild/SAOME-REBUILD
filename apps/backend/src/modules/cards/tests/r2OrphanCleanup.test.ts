@@ -110,6 +110,53 @@ describe('collectR2KeysForTemplate', () => {
     const keys = collectR2KeysForTemplate(tenantId, templateId, settings);
     expect(keys).toEqual([sharedKey]);
   });
+
+  it('collects settings.tableCard.exportKey (merged PNG) with prefix guard', () => {
+    const settings = {
+      tableCard: {
+        exportKey: `${tenantId}/${templateId}/table-card-export.png`,
+      },
+    };
+    expect(collectR2KeysForTemplate(tenantId, templateId, settings)).toEqual([
+      `${tenantId}/${templateId}/table-card-export.png`,
+    ]);
+  });
+
+  it('rejects exportKey from a different tenant (prefix guard)', () => {
+    const settings = {
+      tableCard: { exportKey: 'tenant-B/tpl-99/table-card-export.png' },
+    };
+    expect(collectR2KeysForTemplate(tenantId, templateId, settings)).toEqual([]);
+  });
+
+  it('rejects exportKey without the expected prefix (defensive)', () => {
+    const settings = {
+      tableCard: { exportKey: 'random/path/without/prefix.png' },
+    };
+    expect(collectR2KeysForTemplate(tenantId, templateId, settings)).toEqual([]);
+  });
+
+  it('collects exportKey AND per-element imageKeys together (no dedup conflict)', () => {
+    const settings = {
+      tableCard: {
+        exportKey: `${tenantId}/${templateId}/table-card-export.png`,
+        elements: [
+          {
+            id: 'el-1',
+            type: 'image',
+            imageKey: `${tenantId}/${templateId}/table-card/el-1.png`,
+          },
+        ],
+      },
+    };
+    const keys = collectR2KeysForTemplate(tenantId, templateId, settings);
+    expect(keys.sort()).toEqual(
+      [
+        `${tenantId}/${templateId}/table-card-export.png`,
+        `${tenantId}/${templateId}/table-card/el-1.png`,
+      ].sort(),
+    );
+  });
 });
 
 describe('diffRemovedR2Keys', () => {

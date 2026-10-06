@@ -476,17 +476,33 @@ export function TemplateCardPreview({
               : {}),
           }}
         >
-          {/* 2026-10-05 PR (UI alignment) ??inner content layer uses
-              `absolute inset-0` to fill the container's padding-allocated
-              space. Matches `PassCardPreviewStrip.tsx` content pattern so
-              the two previews share identical proportional behavior across
-              thumb widths. */}
-          <div className="absolute inset-0 flex items-start justify-start" style={{ padding: 4 }}>
+          {/* 2026-10-06 fix — strip 內層對齊照編輯器 `PassCardPreviewStrip.tsx`
+              同模式：會員卡靠左（`items-center justify-start gap-2 px-3`），
+              其餘 cardType 置中（`items-center justify-center`，padding 4）。
+              之前的實作所有 cardType 都用 `items-start justify-start`，
+              導致 stamp / multipass / default 的 `<StampGridPreview>` 與
+              `<CreditCard>` icon 被推到左邊，與編輯器右側預覽不一致。
+
+              會員卡內層同步從 `flex flex-col items-start gap-2` 改成
+              `flex min-w-0 flex-col gap-0.5`（跟編輯器同欄位定義）。
+              其餘分支（`<StampGridPreview>` 與 `<><CreditCard /><span /></>`）
+              本身已是 `place-items-center` / 自然 inline，已在
+              `items-center justify-center` wrapper 下正確置中。 */}
+          <div
+            className={
+              effectiveCardType === 'membership_card'
+                ? 'absolute inset-0 flex items-center justify-start gap-2 px-3'
+                : 'absolute inset-0 flex items-center justify-center'
+            }
+            style={effectiveCardType === 'membership_card' ? undefined : { padding: 4 }}
+          >
             {effectiveCardType === 'membership_card' ? (
-              // 2026-10-05 fix: left-aligned vertical stack (items-start gap-2),
-              // matching `PassCardPreviewStrip.tsx` membership strip layout
-              // (label on top, value below, left-aligned).
-              <div className="flex flex-col items-start gap-2">
+              // 2026-10-06 fix: 內層欄位對齊照編輯器 `PassCardPreviewStrip.tsx`
+              // 同模式（`flex min-w-0 flex-col gap-0.5`，label on top, value
+              // below）。原本 `flex flex-col items-start gap-2` 在新的
+              // `items-center justify-start` wrapper 下不需要 items-start
+              // 覆寫（wrapper 已經 align 到左）。
+              <div className="flex min-w-0 flex-col gap-0.5">
                 <span className="text-[9px] font-medium leading-tight" style={{ color: effectiveTextColor }}>
                   {membershipStripLabel}
                 </span>

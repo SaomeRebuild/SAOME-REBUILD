@@ -51,21 +51,30 @@ export function collectR2KeysForTemplate(
   if (typeof settings.backgroundImage === 'string') keys.add(settings.backgroundImage);
   if (typeof settings.iconImage === 'string') keys.add(settings.iconImage);
 
-  // Table-card exported PNG (single-key-per-template, stored as tableCardExport key).
-  // Not currently written — exported PNGs go to `{tenantId}/{templateId}/table-card-export.png`
-  // and the front-end constructs the public URL. Skip if absent.
-  // (If a future plan adds `tableCardExport` to settings, enqueue here.)
-
-  // Table-card per-element PNGs
+  // Table-card related keys — collapsed into a single type-check so the
+  // prefix guard covers both the merged export PNG and per-element image
+  // uploads under the same `{tenantId}/{templateId}/table-card/...` subtree.
   const tableCard = settings.tableCard as
-    | { elements?: Array<{ type?: string; imageKey?: string }> }
+    | {
+        exportKey?: unknown;
+        elements?: Array<{ type?: string; imageKey?: string }>;
+      }
     | undefined;
-  if (tableCard?.elements) {
-    for (const el of tableCard.elements) {
+  if (tableCard) {
+    // Merged export PNG (single key per template) — written by
+    // `routes/exportTableCard.ts` to `{tenantId}/{templateId}/table-card-export.png`.
+    // Prefix guard prevents accidentally enqueuing another tenant's key
+    // if the JSONB column is corrupted.
+    if (
+      typeof tableCard.exportKey === 'string' &&
+      tableCard.exportKey.startsWith(`${tenantId}/${templateId}/`)
+    ) {
+      keys.add(tableCard.exportKey);
+    }
+
+    // Per-element PNGs uploaded into the Step 7 canvas.
+    for (const el of tableCard.elements ?? []) {
       if (el?.type === 'image' && typeof el.imageKey === 'string') {
-        // Belt-and-suspenders: verify the key starts with the expected
-        // prefix for this template. Defends against accidental cross-tenant
-        // enqueue from a corrupted settings row.
         const expectedPrefix = `${tenantId}/${templateId}/table-card/`;
         if (el.imageKey.startsWith(expectedPrefix)) {
           keys.add(el.imageKey);

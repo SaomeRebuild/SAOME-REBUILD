@@ -16,6 +16,7 @@ export function TemplateLibraryGrid({
   onSend,
   onDelete,
   deletingIds,
+  downloadingIds,
 }: TemplateLibraryGridProps) {
   const { t } = useTranslation('cardBuilder');
 
@@ -41,6 +42,7 @@ export function TemplateLibraryGrid({
               showPhoneFrame={template.showPhoneFrame}
               settings={template.settings}
               isDeleting={deletingIds?.has(template.id) ?? false}
+              isDownloading={downloadingIds?.has(template.id) ?? false}
               onEdit={onEdit}
               onSend={onSend}
               onDelete={onDelete}

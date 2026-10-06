@@ -34,6 +34,7 @@ const mockDelete = vi.fn();
 const mockGetLatestDraft = vi.fn();
 const mockAbandon = vi.fn();
 const mockCreateDraft = vi.fn();
+const mockDownloadTableCardBlob = vi.fn();
 
 vi.mock('@/services/cardService', () => ({
   cardService: {
@@ -42,6 +43,10 @@ vi.mock('@/services/cardService', () => ({
     getLatestDraft: () => mockGetLatestDraft(),
     abandon: (id: string) => mockAbandon(id),
     createDraft: (id: string) => mockCreateDraft(id),
+    // 2026-10-06 — handleSend now actually downloads the table card PNG.
+    // The mock returns a fake Blob; tests assert the click + URL.createObjectURL
+    // side effects (regression guard: handleSend was a `console.log` no-op).
+    downloadTableCardBlob: (id: string) => mockDownloadTableCardBlob(id),
     getById: vi.fn().mockResolvedValue({ id: 'tpl-x', settings: {} }),
     create: vi.fn(),
     update: vi.fn(),
@@ -92,6 +97,11 @@ beforeEach(() => {
   mockAbandon.mockResolvedValue(undefined);
   mockCreateDraft.mockResolvedValue({ id: 'new-uuid' });
   mockDelete.mockResolvedValue(undefined);
+  // 2026-10-06 — default: download resolves with a fake PNG Blob.
+  // Tests that exercise the 404 path override this with a rejected promise.
+  mockDownloadTableCardBlob.mockResolvedValue(
+    new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], { type: 'image/png' }),
+  );
 });
 
 afterEach(() => {
@@ -343,8 +353,8 @@ describe('CardBuilderPage — library mode real-data wiring (2026-10-04)', () =>
     await waitFor(() => {
       const btn = screen.getByTestId('template-card-delete-tpl-1');
       expect(btn).not.toBeDisabled();
-      // Real i18n: 'templateCard.delete' → '刪除卡片'
-      expect(btn).toHaveTextContent('刪除卡片');
+      // Real i18n: 'templateCard.delete' → '刪除模板'
+      expect(btn).toHaveTextContent('刪除模板');
     });
   });
 
@@ -374,5 +384,107 @@ describe('CardBuilderPage — library mode real-data wiring (2026-10-04)', () =>
     expect(
       container.querySelector('[data-card-type="stamp_card"]'),
     ).toBeInTheDocument();
+  });
+
+  /**
+   * 2026-10-06 — handleSend regression guard.
+   * The "下載桌牌" button used to be a no-op (`console.log` only). It
+   * now calls `cardService.downloadTableCardBlob(id)`, creates an
+   * `<a download>` element, clicks it, and shows a success toast.
+   * This test pins that flow.
+   */
+  it('下載桌牌 button → calls cardService.downloadTableCardBlob, triggers download, shows success toast', async () => {
+    // Spy on URL.createObjectURL to assert the Blob → object-URL conversion
+    // happened. jsdom's HTMLAnchorElement.click() is a no-op (no native
+    // download support), so we can't observe the side effect via a captured
+    // <a> element directly — the createObjectURL call is the more reliable
+    // signal that the full Blob → object-URL → <a download> → click chain ran.
+    const createObjectURLSpy = vi
+      .spyOn(URL, 'createObjectURL')
+      .mockReturnValue('blob:mock-object-url');
+    const revokeObjectURLSpy = vi
+      .spyOn(URL, 'revokeObjectURL')
+      .mockImplementation(() => {
+        /* no-op */
+      });
+
+    mockList.mockResolvedValue([makeDto({ id: 'tpl-dl' })]);
+
+    renderLibrary();
+
+    await waitFor(() =>
+      expect(screen.queryByTestId('template-library-loading')).not.toBeInTheDocument(),
+    );
+
+    // Click the 下載桌牌 button (real i18n).
+    fireEvent.click(screen.getByRole('button', { name: '下載桌牌' }));
+
+    // cardService.downloadTableCardBlob was called with the right id.
+    await waitFor(() => expect(mockDownloadTableCardBlob).toHaveBeenCalledWith('tpl-dl'));
+
+    // Success toast fires (real i18n: 'toast.tableCardDownloaded' → '桌牌下載完成').
+    await waitFor(() => expect(toast).toHaveBeenCalledWith('桌牌下載完成'));
+
+    // URL.createObjectURL was called once with a Blob (the table-card PNG
+    // downloaded from the backend). This proves the Blob → object-URL →
+    // <a download> → click chain ran end-to-end.
+    expect(createObjectURLSpy).toHaveBeenCalledTimes(1);
+    expect(createObjectURLSpy.mock.calls[0]?.[0]).toBeInstanceOf(Blob);
+
+    createObjectURLSpy.mockRestore();
+    revokeObjectURLSpy.mockRestore();
+  });
+
+  /**
+   * 2026-10-06 — 404 from backend (user never pressed 「生成桌牌」)
+   * surfaces a localized hint, not a generic network error.
+   */
+  it('下載桌牌 404 → toast.error with tableCardNotExported message (not generic download error)', async () => {
+    mockList.mockResolvedValue([makeDto({ id: 'tpl-dl-404' })]);
+    mockDownloadTableCardBlob.mockRejectedValue(
+      new SaomeApiError(404, { error: { code: 'NOT_FOUND', message: 'not found' } }),
+    );
+
+    renderLibrary();
+
+    await waitFor(() =>
+      expect(screen.queryByTestId('template-library-loading')).not.toBeInTheDocument(),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '下載桌牌' }));
+
+    // Real i18n: 'toast.tableCardNotExported' → '此模板尚未生成桌牌，請先至編輯器生成'
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith('此模板尚未生成桌牌，請先至編輯器生成'),
+    );
+
+    // Success toast did NOT fire
+    expect(toast).not.toHaveBeenCalledWith('桌牌下載完成');
+  });
+
+  /**
+   * 2026-10-06 — generic download failure (e.g. 500) shows downloadError
+   * with the formatted detail, mirroring the delete-error path.
+   */
+  it('下載桌牌 500 → toast.error with downloadError format', async () => {
+    mockList.mockResolvedValue([makeDto({ id: 'tpl-dl-500' })]);
+    mockDownloadTableCardBlob.mockRejectedValue(
+      new SaomeApiError(500, { error: { code: 'INTERNAL_ERROR', message: 'boom' } }),
+    );
+
+    renderLibrary();
+
+    await waitFor(() =>
+      expect(screen.queryByTestId('template-library-loading')).not.toBeInTheDocument(),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '下載桌牌' }));
+
+    // Real i18n: 'toast.downloadError' → '下載失敗：{{detail}}'
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        expect.stringContaining('下載失敗'),
+      ),
+    );
   });
 });

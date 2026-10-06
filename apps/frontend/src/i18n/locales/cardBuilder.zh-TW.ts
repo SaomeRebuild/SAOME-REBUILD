@@ -26,9 +26,14 @@ export default {
   },
   templateCard: {
     edit: '重新編輯',
-    send: '發送卡片',
-    delete: '刪除卡片',
+    // 2026-10-06 — `發送卡片` → `下載桌牌`。模板庫的下載動作對應
+    // Step7 的 `ready` 狀態（見 `tableCard.zh-TW.ts::ready`），文案一致。
+    send: '下載桌牌',
+    // 2026-10-06 — `刪除卡片` → `刪除模板`。操作對象是「模板」而非「卡片」。
+    delete: '刪除模板',
     deleting: '刪除中...',
+    // 2026-10-06 — 下載桌牌進行中的 in-flight label (mirror of `deleting`)
+    downloading: '下載中...',
   },
   toast: {
     draftAbandoned: '草稿已放棄',
@@ -36,5 +41,9 @@ export default {
     templateDeleted: '已刪除模板',
     deleteError: '刪除失敗：{{detail}}',
     undo: '復原',
+    // 2026-10-06 — table-card download feedback
+    tableCardDownloaded: '桌牌下載完成',
+    tableCardNotExported: '此模板尚未生成桌牌，請先至編輯器生成',
+    downloadError: '下載失敗：{{detail}}',
   },
 };
