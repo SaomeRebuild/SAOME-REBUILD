@@ -19,7 +19,11 @@ import { Hono } from 'hono';
 import type { HonoEnv } from '@/shared/types/bindings';
 import { getPublicRoute } from './routes/getPublic';
 import { registerRoute } from './routes/register';
-import { getLogoRoute } from './routes/getLogo';
+import {
+  getLogoRoute,
+  getIconRoute,
+  getBackgroundRoute,
+} from './routes/getTemplateImage';
 
 /**
  * Mounted at /api/pass-templates in src/index.ts.
@@ -27,13 +31,16 @@ import { getLogoRoute } from './routes/getLogo';
  * IMPORTANT: more specific routes (`:id/public`, `:id/register`) must be
  * declared BEFORE `:id` if/when a generic `:id` route is added later.
  *
- * getLogoRoute (`:id/logo`) is added 2026-10-01 per
- * runs/decisions/2026-10-01-pass-templates-public-logo-proxy.md.
+ * Image routes (`:id/logo`, `:id/icon`, `:id/background`) are public R2
+ * proxies added per runs/decisions/2026-10-01-pass-templates-public-logo-proxy.md
+ * (logo) and the 2026-10-12 extension to icon + background.
  */
 export const passTemplatesModule = new Hono<HonoEnv>()
   .route('/', getPublicRoute)        // GET  /:id/public
   .route('/', registerRoute)         // POST /:id/register
-  .route('/', getLogoRoute);         // GET  /:id/logo  (2026-10-01)
+  .route('/', getLogoRoute)          // GET  /:id/logo
+  .route('/', getIconRoute)          // GET  /:id/icon          (2026-10-12)
+  .route('/', getBackgroundRoute);   // GET  /:id/background    (2026-10-12)
 
 // Default export for `app.route('/api/pass-templates', passTemplatesModule)`
 export default passTemplatesModule;
