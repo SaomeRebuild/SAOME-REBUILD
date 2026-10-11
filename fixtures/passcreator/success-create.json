@@ -1,0 +1,47 @@
+{
+  "scenario": "success-create",
+  "description": "POST with a complete template body. V2 envelope returns the new template id at data.identifier (NOT top-level id). Captured 2026-10-12 against the real endpoint after two production pushes surfaced 'create response missing id'.",
+  "capturedAt": "2026-10-12T06:05:00.000Z",
+  "apiUrl": "https://app.passcreator.com",
+  "request": {
+    "method": "POST",
+    "path": "/api/v2/pass-template",
+    "body": {
+      "passTypeId": "pass.com.saome.storecard",
+      "type": "storeCard",
+      "name": "Café Rewards",
+      "description": "An example template",
+      "organizationName": "Café Co.",
+      "colors": {
+        "backgroundColor": "#0F0F23",
+        "foregroundColor": "#F8FAFC"
+      },
+      "barcode": {
+        "format": "PKBarcodeFormatQR",
+        "value": "",
+        "useAutoIdForValue": true
+      },
+      "images": {},
+      "fields": {
+        "headerFields": [],
+        "primaryFields": [],
+        "secondaryFields": [],
+        "backFields": []
+      }
+    }
+  },
+  "response": {
+    "status": 201,
+    "ok": true,
+    "contentType": "application/json",
+    "body": {
+      "success": true,
+      "description": "Template was created successfully!",
+      "errors": [],
+      "data": {
+        "identifier": "85b855a5-ec86-4fd6-a48e-892ed143ae0f"
+      },
+      "statusCode": 201
+    }
+  }
+}
