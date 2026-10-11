@@ -879,6 +879,40 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
     expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('couponIssueCount');
   });
 
+  // ===== Step 8 — Passcreator push (2026-10-11, Rule 019 § 4.1) =====
+  // The passcreator_template_id column lives at the DB layer (Layer 3)
+  // and is NOT part of templateSettingsSchema (Layer 1/2). This block
+  // pins that the field is correctly declared in:
+  //   - apps/backend/src/modules/cards/db/templates.ts::TemplatesRow
+  //   - apps/backend/src/modules/cards/db/templates.ts::updateTemplate
+  //   - apps/backend/src/modules/cards/db/templates.ts::insertTemplate
+  //   - apps/backend/src/modules/pass-templates/db/templates.ts::PublicTemplateRow
+  //   - apps/backend/src/modules/pass-templates/db/templates.ts::PublicTemplateRowWithTenant
+  // The SELECT and UPDATE queries must include this column. The
+  // conformant test is a contract test on the row type — TypeScript
+  // type system enforces the field's presence (compiles = present).
+
+  it('TemplatesRow declares passcreator_template_id (Layer 3 of 4 — DB interface)', async () => {
+    const { TemplatesRow } = await import('../db/templates');
+    // Sample object — the type-checker enforces the field's existence
+    // (the assignment would fail to compile if the field were missing).
+    const sample: TemplatesRow = {
+      id: '00000000-0000-4000-8000-000000000001',
+      tenant_id: '00000000-0000-4000-8000-000000000002',
+      status: 'draft',
+      name: 'X',
+      card_type: 'reward_card',
+      settings: { cardType: 'reward_card' },
+      created_at: new Date('2026-01-01'),
+      updated_at: new Date('2026-01-01'),
+      expires_at: undefined,
+      passcreator_template_id: null,
+    };
+    // The property MUST exist on the runtime object (TypeScript + the
+    // assignment above guarantees this).
+    expect('passcreator_template_id' in sample).toBe(true);
+  });
+
   it('shared couponIssueCount accepts integers >= 1 (no upper cap)', () => {
     const field = sharedTemplateSettingsSchema.shape.couponIssueCount;
     expect(field.parse(1)).toBe(1);

@@ -41,6 +41,7 @@ export const updateCardRoute = new Hono<HonoEnv>()
       sql,
       templateId,
       tenantId,
+      c.env,
       name,
       cardType,
       settings,

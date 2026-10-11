@@ -83,6 +83,9 @@ const ZHTW_ACRONYM_WHITELIST = new Set([
   'GDPR',
   'CRM',
   'Maps',
+  // 2026-10-11 — Step 8 v4 plan: Passcreator is the upstream service we
+  // push templates to. Brand name; same exemption as LINE / Apple.
+  'Passcreator',
   // B. 法遵 / 文件縮寫
   'DPA',
   'MSA',

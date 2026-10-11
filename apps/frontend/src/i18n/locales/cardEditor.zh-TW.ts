@@ -47,6 +47,19 @@ export default {
       publishError: '發布失敗,請稍後再試',
       validationCardType: '請先選擇卡片類型',
       validationName: '請先填寫卡片名稱',
+      // 2026-10-11 — Passcreator push failure banner (Step 8 v4 plan).
+      // Triggered when the backend `updateTemplateService` throws
+      // `BadGatewayError` (upstream 'passcreator' sync rejected the
+      // request). DB row was NOT written (test:
+      // `updateTemplate.passcreator.test.ts`), so the user can retry
+      // the publish action without first re-saving.
+      passcreatorSyncFailed: {
+        title: '同步至 Passcreator 失敗',
+        description: '卡片已在本機儲存,但未能同步至 Passcreator。請檢查網路連線或稍後重試。',
+        upstreamDetail: '詳細錯誤',
+        retry: '重試同步',
+        cancel: '稍後再說',
+      },
     },
   },
 

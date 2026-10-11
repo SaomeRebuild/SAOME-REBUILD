@@ -55,7 +55,10 @@
     "./i18n": "./i18n/index.ts",
     "./i18n/zh-TW": "./i18n/zh-TW.ts",
     "./i18n/en": "./i18n/en.ts",
-    "./i18n/detectLanguage": "./i18n/detectLanguage.ts"
+    "./i18n/detectLanguage": "./i18n/detectLanguage.ts",
+    "./i18n/fieldLabels": "./i18n/fieldLabels.ts",
+    "./i18n/fieldLabels.zh-TW": "./i18n/fieldLabels.zh-TW.ts",
+    "./i18n/fieldLabels.en": "./i18n/fieldLabels.en.ts"
   },
   "scripts": {
     "test": "vitest run",

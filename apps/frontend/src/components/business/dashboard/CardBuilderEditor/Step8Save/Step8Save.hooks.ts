@@ -8,6 +8,16 @@
  *   3. status='saved' → toast.success + navigate(Library, replace)
  *   4. on error: status='error' + toast.error (caller handles re-enable)
  *
+ * v4 (2026-10-11, Passcreator push integration):
+ *   - On `BadGatewayError` (upstream 'passcreator'), the hook now ALSO
+ *     sets `passcreatorError` to a discriminated `PasscreatorSyncError`
+ *     so the `Step8SaveErrorBanner` can render the full error detail.
+ *     The hook's `status` still goes to `'error'` so the action button
+ *     re-enables — same as for any other failure — but the banner
+ *     gives the user a much more specific retry / dismiss surface.
+ *   - For non-Passcreator errors (e.g. 500 INTERNAL_ERROR), the hook
+ *     falls back to the generic `toast.error` flow with no banner.
+ *
  * Why a separate hook (Rule 000 § A.3 — hook extraction strategy):
  *   - Publish action has a non-trivial lifecycle (optimistic UI + retry
  *     semantics + navigation) that doesn't belong in JSX.
@@ -29,6 +39,7 @@ import { ROLE_HOME_PATH, type Role } from '@saome/shared/constants/role';
 import { useAuth } from '@/hooks/useAuth';
 import i18n from '@/i18n';
 import type { Step8SaveStatus } from './Step8Save.types';
+import type { PasscreatorSyncError } from './Step8SaveErrorBanner';
 
 interface UseStep8SaveReturn {
   /** Current status of the publish action. */
@@ -48,6 +59,19 @@ interface UseStep8SaveReturn {
   publish: () => Promise<void>;
   /** Navigate back to Library without publishing. */
   goBack: () => void;
+  /**
+   * When the publish fails with a Passcreator-specific BadGatewayError
+   * (502, upstream='passcreator'), the hook sets this so the
+   * `Step8SaveErrorBanner` can render the full error detail. Null for
+   * non-Passcreator errors (those use the generic toast).
+   *
+   * The `retry` action on the banner calls `publish()` again — same
+   * state machine, just with `passcreatorError` cleared on the next
+   * attempt.
+   */
+  passcreatorError: PasscreatorSyncError | null;
+  /** Clear the banner without retrying (e.g. user clicks the X button). */
+  dismissPasscreatorError: () => void;
 }
 
 /**
@@ -63,6 +87,7 @@ export function useStep8Save(cardId: string | null): UseStep8SaveReturn {
   const navigate = useNavigate();
   const { state: authState } = useAuth();
   const [status, setStatus] = useState<Step8SaveStatus>('idle');
+  const [passcreatorError, setPasscreatorError] = useState<PasscreatorSyncError | null>(null);
 
   /**
    * Resolve Library route based on the user's role. Mirrors the
@@ -98,6 +123,10 @@ export function useStep8Save(cardId: string | null): UseStep8SaveReturn {
       toast.error(i18n.t('cardEditor:steps.save.publishError'));
       return;
     }
+    // Clear any prior Passcreator error so the banner disappears on
+    // the next attempt (v4 plan: the banner should NOT linger between
+    // retries — it re-appears only if the new attempt also fails).
+    setPasscreatorError(null);
     setStatus('saving');
     try {
       await cardService.update(cardId, { status: 'published' });
@@ -108,7 +137,29 @@ export function useStep8Save(cardId: string | null): UseStep8SaveReturn {
     } catch (err) {
       console.error('[useStep8Save] publish failed:', err);
       setStatus('error');
-      toast.error(i18n.t('cardEditor:steps.save.publishError'));
+      // 2026-10-11 — Passcreator failure surface. The backend throws
+      // BadGatewayError (HTTP 502, code='BAD_GATEWAY') when the
+      // upstream rejects. We discriminate by `err.code` (the
+      // contractual identifier) — NOT by message text — to avoid
+      // drift between locales / message changes.
+      const upstream = (err as { details?: { upstream?: string } } | null)?.details?.upstream;
+      const upstreamStatus = (err as { details?: { upstreamStatus?: number } } | null)?.details?.upstreamStatus;
+      const upstreamBody = (err as { details?: { upstreamBody?: string } } | null)?.details?.upstreamBody;
+      if (
+        (err as { code?: string } | null)?.code === 'BAD_GATEWAY' &&
+        upstream === 'passcreator'
+      ) {
+        setPasscreatorError({
+          code: 'BAD_GATEWAY',
+          upstream: 'passcreator',
+          upstreamStatus,
+          upstreamBody,
+        });
+        // No toast — the banner IS the surface. Showing a toast would
+        // be redundant noise.
+      } else {
+        toast.error(i18n.t('cardEditor:steps.save.publishError'));
+      }
       // No navigation — caller (Step8SaveActions) keeps the user on
       // Step 8 with the button re-enabled so they can retry.
     }
@@ -126,10 +177,16 @@ export function useStep8Save(cardId: string | null): UseStep8SaveReturn {
     navigate(resolveLibraryPath(), { replace: true });
   }, [navigate, resolveLibraryPath]);
 
+  const dismissPasscreatorError = useCallback(() => {
+    setPasscreatorError(null);
+  }, []);
+
   return {
     status,
     publish,
     goBack,
+    passcreatorError,
+    dismissPasscreatorError,
   };
 }
 

@@ -4,18 +4,45 @@
  *
  * 卡片預覽 UI 的語言設定，供 TemplateCardPreview 與 PassCardPreview 共用。
  *
+ * v4 refactor (2026-10-11, Passcreator integration):
+ *   - `defaultCardType / defaultIssuerName / defaultName / fieldLabelLeft / fieldLabelRight`
+ *     and `fieldPreview.{key}.label` are now sourced from
+ *     `@saome/shared/i18n/fieldLabels` (the same source the backend
+ *     `passTemplateMapping.ts` reads from to populate Passcreator
+ *     `headerFields[].label` / `primaryFields[].label` etc.).
+ *   - This guarantees the editor preview and the deployed pass render
+ *     IDENTICAL labels — drift becomes a compile error in the drift
+ *     test `fieldLabels.test.ts`.
+ *   - Demo `value` strings, currency formatters, and special compound
+ *     keys (e.g. `memberLevel.stampLabel / discountLabel`) STAY local
+ *     because they are editor-only preview decorations, not Passcreator
+ *     contract inputs.
+ *
+ *   Implementation note (verify-i18n-keys compatibility): the i18n verify
+ *   script does a STATIC analysis of the `export default { ... }` literal
+ *   to enforce key-set parity. It cannot resolve runtime function calls
+ *   (e.g. `getFieldLabels('zh-TW')`) so we inline the shared values
+ *   here. The shared module is the runtime source of truth and the
+ *   drift test in `fieldLabels.test.ts` enforces that the inline values
+ *   below match the shared module.
+ *
  * @module i18n/locales/passCard.zh-TW
  */
 
 export default {
+  // Top-level slot names + defaults (inlined from shared).
   defaultCardType: '卡片',
   defaultIssuerName: '未命名卡片',
   defaultName: '未命名卡片',
   fieldLabelLeft: '左欄位',
   fieldLabelRight: '右欄位',
+
   // Demo 預覽資料（PassCreator Label/Value 配對 — 對應 templateSettings.leftField / rightField）。
   // label 用於卡片正面左/右欄位的小字提示，value 用於同欄位的較大字主要內容。
   // 當 PassCreator 整合後，real value 將由 member row 提供，此處僅供 preview 使用。
+  // Labels below are sourced from `@saome/shared/i18n/fieldLabels` at
+  // runtime; the literal strings here MUST match the shared module —
+  // `fieldLabels.test.ts` enforces the parity.
   fieldPreview: {
     phone: { label: '電話', value: '+8869XXXXXXXX' },
     email: { label: 'E-mail', value: 'hi@saome.org' },

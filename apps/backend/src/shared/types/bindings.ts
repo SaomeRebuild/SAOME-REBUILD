@@ -73,6 +73,32 @@ export interface Env {
    * (`wrangler deploy` reads vars) provide it.
    */
   SAOME_BACKEND_URL: string;
+
+  // =============================================================
+  // Passcreator integration — Step 8 "Save & Publish" push (2026-10-11).
+  // =============================================================
+  // URL of the Passcreator V2 API. The base URL is `https://api.passcreator.com`
+  // per their V2 documentation; the client strips any trailing slash and
+  // appends `/api/v2/passes/templates` for create / update.
+  // Set via wrangler.jsonc vars.PASSCREATOR_API_URL.
+  PASSCREATOR_API_URL: string;
+
+  // Apple Wallet pass type id, the SAOME-specific identifier Passcreator
+  // issues Apple-signed passes under. Single-tenant-for-now design
+  // (user decision 2026-10-11): every SAOME card uses the same
+  // passTypeId. Per-tenant IDs are a future migration.
+  // Set via wrangler.jsonc vars.PASSCREATOR_PASS_TYPE_ID.
+  PASSCREATOR_PASS_TYPE_ID: string;
+
+  // API key (sensitive — set via `wrangler secret put PASSCREATOR_API_KEY`,
+  // NOT in wrangler.jsonc). The test key for local dev is in `.dev.vars`
+  // (git ignored). Production secret is provisioned out-of-band by the
+  // operator.
+  // (Typed but not in the wrangler.jsonc `vars` block — the secret is
+  //  delivered to the Worker at runtime via the Cloudflare secrets
+  //  infrastructure.)
+  /** @secret */
+  PASSCREATOR_API_KEY?: string;
 }
 
 /**

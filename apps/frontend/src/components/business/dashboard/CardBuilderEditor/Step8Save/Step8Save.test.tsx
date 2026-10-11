@@ -229,6 +229,107 @@ describe('Step8Save — error path', () => {
     // After error, button re-enables (assuming validation is still valid)
     expect(button).not.toBeDisabled();
   });
+
+  // ===== Step 8 v4 — Passcreator-failure banner (2026-10-11) =====
+  // When the backend `updateTemplateService` throws `BadGatewayError` with
+  // details.upstream === 'passcreator', the hook sets `passcreatorError`
+  // so the `Step8SaveErrorBanner` can render the full error detail
+  // (status code, truncated body, retry CTA, dismiss X).
+
+  it('Passcreator BadGatewayError renders the error banner (no toast)', async () => {
+    const passcreatorError = Object.assign(new Error('Passcreator rejected'), {
+      code: 'BAD_GATEWAY',
+      i18nKey: 'common.error.upstreamFailed',
+      details: {
+        upstream: 'passcreator',
+        upstreamStatus: 502,
+        upstreamBody: 'upstream unavailable: passcreator rejected the request',
+      },
+    });
+    updateSpy.mockRejectedValueOnce(passcreatorError);
+    const user = userEvent.setup();
+    renderWithRouter();
+
+    await user.click(screen.getByTestId('step8-publish-button'));
+    await act(async () => { await Promise.resolve(); });
+
+    // The banner is rendered.
+    expect(screen.getByTestId('step8-error-banner')).toBeInTheDocument();
+    // The retry + dismiss CTAs are present.
+    expect(screen.getByTestId('step8-error-retry')).toBeInTheDocument();
+    expect(screen.getByTestId('step8-error-dismiss')).toBeInTheDocument();
+    // No toast — the banner IS the surface, not a fallback.
+    expect(toast.error).not.toHaveBeenCalled();
+    // No navigation.
+    expect(navigateMock).not.toHaveBeenCalled();
+  });
+
+  it('non-Passcreator BadGatewayError renders the generic toast (no banner)', async () => {
+    const otherUpstreamError = Object.assign(new Error('Some other upstream'), {
+      code: 'BAD_GATEWAY',
+      i18nKey: 'common.error.upstreamFailed',
+      details: { upstream: 'some-other-service', upstreamStatus: 502 },
+    });
+    updateSpy.mockRejectedValueOnce(otherUpstreamError);
+    const user = userEvent.setup();
+    renderWithRouter();
+
+    await user.click(screen.getByTestId('step8-publish-button'));
+    await act(async () => { await Promise.resolve(); });
+
+    // Generic toast surface (no banner — only Passcreator gets the
+    // dedicated UX).
+    expect(toast.error).toHaveBeenCalledWith('cardEditor:steps.save.publishError');
+    expect(screen.queryByTestId('step8-error-banner')).not.toBeInTheDocument();
+  });
+
+  it('dismiss button clears the Passcreator banner', async () => {
+    const passcreatorError = Object.assign(new Error('Passcreator rejected'), {
+      code: 'BAD_GATEWAY',
+      i18nKey: 'common.error.upstreamFailed',
+      details: { upstream: 'passcreator', upstreamStatus: 502, upstreamBody: 'oops' },
+    });
+    updateSpy.mockRejectedValueOnce(passcreatorError);
+    const user = userEvent.setup();
+    renderWithRouter();
+
+    await user.click(screen.getByTestId('step8-publish-button'));
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByTestId('step8-error-banner')).toBeInTheDocument();
+
+    // Click dismiss — banner disappears.
+    await user.click(screen.getByTestId('step8-error-dismiss'));
+    expect(screen.queryByTestId('step8-error-banner')).not.toBeInTheDocument();
+  });
+
+  it('retry button re-triggers cardService.update with the same cardId', async () => {
+    const passcreatorError = Object.assign(new Error('Passcreator rejected'), {
+      code: 'BAD_GATEWAY',
+      i18nKey: 'common.error.upstreamFailed',
+      details: { upstream: 'passcreator', upstreamStatus: 502, upstreamBody: 'oops' },
+    });
+    // First call rejects (banner shows). Second call resolves (success).
+    updateSpy.mockRejectedValueOnce(passcreatorError);
+    updateSpy.mockResolvedValueOnce({} as never);
+    const user = userEvent.setup();
+    renderWithRouter();
+
+    // First attempt — fails with Passcreator 502.
+    await user.click(screen.getByTestId('step8-publish-button'));
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByTestId('step8-error-banner')).toBeInTheDocument();
+    expect(updateSpy).toHaveBeenCalledTimes(1);
+
+    // Click retry — second attempt succeeds.
+    await user.click(screen.getByTestId('step8-error-retry'));
+    await act(async () => { await Promise.resolve(); });
+
+    // Retry calls update again with the same cardId.
+    expect(updateSpy).toHaveBeenCalledTimes(2);
+    expect(updateSpy).toHaveBeenNthCalledWith(2, 'test-template-id', { status: 'published' });
+    // Successful retry navigates to Library (Auth flow 鐵律 #2).
+    expect(navigateMock).toHaveBeenCalledWith('/app/dashboard', { replace: true });
+  });
 });
 
 describe('Step8Save — saving state', () => {

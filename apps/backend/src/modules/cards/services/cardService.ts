@@ -3,6 +3,14 @@
  *
  * @module modules/cards/services/cardService
  * @description Orchestrates card template operations: create, get, list, update, publish, delete.
+ *
+ * v4 (2026-10-11, Step 8 Passcreator push):
+ *   `updateTemplateService` is the publish-action choke point. When
+ *   `status === 'published'`, the service now ALSO syncs the template
+ *   to Passcreator via `syncTemplateToPasscreator` BEFORE writing the
+ *   DB row. If Passcreator rejects the request, the service throws
+ *   `BadGatewayError` (502) and the DB row is left untouched — the
+ *   user sees the Passcreator error banner and can retry.
  */
 
 import type { Sql } from '@/shared/db/client';
@@ -36,6 +44,9 @@ import type {
   UpdateTemplateResponse,
   DeleteTemplateResponse,
 } from '../schemas/response';
+import { syncTemplateToPasscreator } from '@/modules/pass-templates/services/passTemplateSync';
+import type { PassLanguage } from '@saome/shared/i18n/fieldLabels';
+import type { HonoEnv } from '@/shared/types/bindings';
 
 // Re-export for backward compatibility — the test
 // `src/modules/cards/tests/r2OrphanCleanup.test.ts` (and any other
@@ -162,9 +173,19 @@ export async function listTemplatesService(
 /**
  * Update a template.
  *
+ * v4 (2026-10-11, Step 8 Passcreator push):
+ *   When `status === 'published'`, this service now ALSO syncs the
+ *   template to Passcreator. The Passcreator call happens BEFORE the
+ *   DB write so a rejection rolls back cleanly: the user's template
+ *   stays in the same draft state and the error surfaces to the UI
+ *   as a 502 banner.
+ *
  * @param sql - Database client
  * @param templateId - Template UUID
  * @param tenantId - Tenant ID from JWT (for ownership check)
+ * @param env - Hono env (required only for the publish path; pass
+ *              `c.env` from the route layer). Type-erased to `unknown`
+ *              to keep the service signature decoupled from HonoEnv.
  * @param name - Optional new name
  * @param cardType - Optional new card type
  * @param settings - Optional partial settings
@@ -180,6 +201,7 @@ export async function updateTemplateService(
   sql: Sql,
   templateId: string,
   tenantId: string,
+  env: HonoEnv['Bindings'] | unknown,
   name?: string,
   cardType?: string,
   settings?: Partial<TemplateSettings>,
@@ -202,7 +224,87 @@ export async function updateTemplateService(
   // doesn't crash the diff.
   const beforeSettings = unwrapCardSettings(existing.settings);
 
+  // ===== Passcreator push (v4) =====
+  // When the user publishes, push the template upstream BEFORE writing
+  // the DB row. If Passcreator rejects, we throw BadGatewayError and
+  // the DB write below never runs — the user sees the 502 banner and
+  // can retry. The local `passcreator_template_id` stays at the
+  // pre-publish value (null on first publish, or the existing id on
+  // subsequent updates).
+  //
+  // Why push BEFORE the DB write (not after):
+  //   - Atomic semantics: the user's "publish" intent is a single
+  //     logical action. If the upstream rejects, the local state
+  //     should not have flipped to "published" — that would lie to
+  //     the user and create an orphan in the Library.
+  //   - The next sync attempt reads `existing` (pre-update) and either
+  //     creates or updates accordingly. Re-running after a 502 will
+  //     work because `existing` is unchanged.
+  //
+  // Idempotency: if `existing.passcreator_template_id` is null, we
+  // CREATE; if it is set, we UPDATE. The Passcreator call is
+  // idempotent across retries because the body is the same.
+  let nextPasscreatorId: string | null = existing.passcreator_template_id ?? null;
+  if (status === 'published') {
+    const language = pickTemplateLanguage(existing.settings);
+    const r2PublicUrl = (env as { R2_PUBLIC_URL?: string } | undefined)?.R2_PUBLIC_URL
+      ?? 'https://saome-backend.josh1989213.workers.dev';
+    // Build the "would-be" updated settings so the push reflects the
+    // final state, not the pre-update state.
+    const projectedSettings: Partial<TemplateSettings> = {
+      ...(unwrapCardSettings(existing.settings) as TemplateSettings),
+      ...(input.settings ?? {}),
+    };
+    const projectedRow: TemplatesRow = {
+      ...existing,
+      name: input.name ?? existing.name,
+      card_type: (input.cardType as TemplatesRow['card_type']) ?? existing.card_type,
+      settings: projectedSettings as TemplateSettings,
+    };
+    const sync = await syncTemplateToPasscreator({
+      env,
+      template: projectedRow,
+      language,
+      r2PublicUrl,
+    });
+    nextPasscreatorId = sync.id;
+  }
+
+  // If the sync produced a new id, persist it alongside the status flip.
+  if (nextPasscreatorId !== existing.passcreator_template_id) {
+    input.settings = {
+      ...(input.settings ?? {}),
+      // We need to also pass passcreator_template_id via the SET clauses.
+      // But `updateTemplate` only accepts name/cardType/settings/status.
+      // → we have to extend the DB layer OR run a second UPDATE here.
+      // For v1, the DB layer is extended via the partial settings: we
+      // sneak the id into the JSONB settings column under a reserved
+      // key. A future cleanup will add a typed `passcreator_template_id`
+      // parameter to updateTemplate.
+    } as Partial<TemplateSettings>;
+    // Actually, we update the row with the new id by a side-channel:
+    // run the regular updateTemplate, then a follow-up UPDATE.
+    // (See post-update passcreator_template_id write below.)
+  }
+
   const row = await updateTemplate(sql, templateId, input);
+
+  // Post-update passcreator_template_id write — when the sync produced
+  // a new id on first publish, persist it. On subsequent updates the
+  // id is unchanged, so the UPDATE is a no-op row-count-wise but
+  // keeps the SQL layer's audit trail accurate.
+  if (nextPasscreatorId && nextPasscreatorId !== existing.passcreator_template_id) {
+    await sql`
+      UPDATE templates
+         SET passcreator_template_id = ${nextPasscreatorId}
+       WHERE id = ${templateId}
+    `;
+    // Re-read so the returned DTO has the new id.
+    const updated = await findTemplateById(sql, templateId);
+    if (updated) {
+      return { template: toDto(updated) };
+    }
+  }
 
   // Post-update imageKey diff — enqueue any R2 keys that disappeared.
   // This catches:
@@ -236,14 +338,33 @@ export async function updateTemplateService(
 }
 
 /**
+ * Pick the template language for the Passcreator push.
+ *
+ * Falls back to 'zh-TW' when:
+ *   - `settings.language` is undefined (legacy rows pre-2026-10-01)
+ *   - `settings.language` is some other value not in the supported set
+ *
+ * Why 'zh-TW' as default: SAOME's primary market is Taiwan; the
+ * fallback ensures the deployed pass renders Chinese labels by
+ * default rather than English, which would be a worse failure mode
+ * for the dominant user demographic.
+ */
+function pickTemplateLanguage(settings: TemplateSettings | undefined): PassLanguage {
+  const lang = settings?.language;
+  if (lang === 'en' || lang === 'zh-TW') return lang;
+  return 'zh-TW';
+}
+
+/**
  * Publish a template (change status from draft to published).
  */
 export async function publishTemplateService(
   sql: Sql,
   templateId: string,
   tenantId: string,
+  env: HonoEnv['Bindings'] | unknown,
 ): Promise<UpdateTemplateResponse> {
-  return updateTemplateService(sql, templateId, tenantId, undefined, undefined, undefined, 'published');
+  return updateTemplateService(sql, templateId, tenantId, env, undefined, undefined, undefined, 'published');
 }
 
 /**

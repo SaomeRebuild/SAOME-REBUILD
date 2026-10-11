@@ -43,6 +43,13 @@ export interface PublicTemplateRow {
     textColor?: string;
     language?: CardLanguage;
   };
+  /**
+   * Upstream Passcreator template UUID (migration 021, 2026-10-11).
+   * Surfaced in the public response so the public page can build a
+   * "View in Passcreator" deep link if the tenant wants it. NULL for
+   * cards that have never been pushed.
+   */
+  passcreator_template_id?: string | null;
 }
 
 /**
@@ -63,7 +70,7 @@ export async function findPublicTemplateById(
   // We only project columns needed for PublicPassTemplateDto — no
   // tenant_id, status, expires_at, etc.
   const rows = await sql<PublicTemplateRow[]>`
-    SELECT id, name, card_type, settings
+    SELECT id, name, card_type, settings, passcreator_template_id
       FROM public.templates
      WHERE id = ${id}
      LIMIT 1
@@ -93,6 +100,7 @@ export interface PublicTemplateRowWithTenant {
     textColor?: string;
     language?: CardLanguage;
   };
+  passcreator_template_id?: string | null;
 }
 
 /**
@@ -111,7 +119,7 @@ export async function findPublicTemplateWithTenantById(
   id: string,
 ): Promise<PublicTemplateRowWithTenant | null> {
   const rows = await sql<PublicTemplateRowWithTenant[]>`
-    SELECT id, tenant_id, name, card_type, settings
+    SELECT id, tenant_id, name, card_type, settings, passcreator_template_id
       FROM public.templates
      WHERE id = ${id}
      LIMIT 1

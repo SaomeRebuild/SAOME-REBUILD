@@ -153,3 +153,71 @@ export class ServerError extends SaomeError {
     this.name = 'ServerError';
   }
 }
+
+/**
+ * 502 Bad Gateway — upstream service returned a non-2xx response or
+ * was unreachable. Used by the Passcreator integration (Step 8
+ * "Save & Publish") to signal that the local template was NOT pushed
+ * to Passcreator, and therefore the DB write must be rolled back.
+ *
+ * Why a dedicated subclass (vs. reusing `ServerError`):
+ *   - The frontend `Step8SaveErrorBanner` discriminates by `error.code`
+ *     to render a "Passcreator sync failed — please retry" CTA. Reusing
+ *     `ServerError` would conflate this with genuine 500s (e.g. a DB
+ *     outage) where retrying the same request is pointless.
+ *   - The HTTP status is semantically different: 502 means "the upstream
+ *     failed" (Passcreator is down or rejected the request), not "we
+ *     failed" (DB bug, runtime crash). A 502 lets the client (and any
+ *     monitoring) see this clearly.
+ *   - The i18n key `passCreator.error.upstreamFailed` carries a different
+ *     user-visible message than `common.error.internal`.
+ *
+ * Conventions:
+ *   - `upstream` (string): a stable identifier for the upstream service
+ *     (e.g. `'passcreator'`). Surfaced in `details.upstream` for
+ *     observability dashboards.
+ *   - `upstreamStatus` (number, optional): the HTTP status returned by
+ *     the upstream, if any. Surfaced in `details.upstreamStatus` so the
+ *     user-facing banner can include a "reason" line.
+ *   - `upstreamBody` (string, optional): truncated response body (≤ 500
+ *     chars) for debugging. NEVER include secrets / API keys here — the
+ *     Passcreator service echoes 401 bodies that may contain the
+ *     request path; redact anything sensitive upstream before passing
+ *     to this constructor.
+ *
+ * @example
+ *   throw new BadGatewayError({
+ *     upstream: 'passcreator',
+ *     upstreamStatus: 502,
+ *     upstreamBody: 'Bad Gateway: upstream returned invalid JSON',
+ *   });
+ */
+export class BadGatewayError extends SaomeError {
+  constructor(args: {
+    upstream: string;
+    upstreamStatus?: number;
+    upstreamBody?: string;
+    i18nKey?: string;
+    message?: string;
+  }) {
+    const body = args.upstreamBody;
+    // Defense-in-depth: truncate to 500 chars to keep error envelopes
+    // small. Upstream bodies can be arbitrary size.
+    const safeBody =
+      body && body.length > 500
+        ? `${body.slice(0, 500)}... (truncated)`
+        : body;
+    super({
+      status: 502,
+      code: 'BAD_GATEWAY',
+      i18nKey: args.i18nKey ?? 'common.error.upstreamFailed',
+      message: args.message ?? `Upstream ${args.upstream} failed`,
+      details: {
+        upstream: args.upstream,
+        upstreamStatus: args.upstreamStatus,
+        upstreamBody: safeBody,
+      },
+    });
+    this.name = 'BadGatewayError';
+  }
+}

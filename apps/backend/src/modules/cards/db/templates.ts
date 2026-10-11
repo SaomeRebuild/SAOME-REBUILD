@@ -29,6 +29,20 @@ export interface TemplatesRow {
   updated_at: Date;
   /** Draft TTL: now() + 24h. NULL = published/never-expires. */
   expires_at?: Date;
+  /**
+   * Upstream Passcreator template UUID. Set on first publish (Step 8
+   * "Save & Publish"), updated on subsequent setting changes.
+   *
+   * NULL = card has not been pushed to Passcreator (draft or local-only).
+   * Rule 019 § 4.1 layer 3 of 4: this column is the DB-layer mirror of
+   * the shared schema's `passcreatorTemplateId` (layer 1) and the
+   * backend request schema (layer 2). Optional in the TS interface
+   * because the column itself is nullable; consumer code should treat
+   * `undefined` and `null` equivalently.
+   *
+   * Migration: 20261011000001_021_add_passcreator_template_id.sql.
+   */
+  passcreator_template_id?: string | null;
 }
 
 /** Card types supported by the card builder */
@@ -731,7 +745,7 @@ export async function insertTemplate(
       ${input.cardType ?? null},
       ${sql.json(settingsToInsert)}
     )
-    RETURNING id, tenant_id, status, name, card_type, settings, created_at, updated_at, expires_at
+    RETURNING id, tenant_id, status, name, card_type, settings, created_at, updated_at, expires_at, passcreator_template_id
   ` as any);
   if (!rows[0]) {
     throw new Error('insertTemplate returned no rows');
@@ -748,7 +762,7 @@ export async function findTemplateById(
   id: string,
 ): Promise<TemplatesRow | undefined> {
   const rows = await sql<TemplatesRow[]>`
-    SELECT id, tenant_id, status, name, card_type, settings, created_at, updated_at, expires_at
+    SELECT id, tenant_id, status, name, card_type, settings, created_at, updated_at, expires_at, passcreator_template_id
       FROM templates
      WHERE id = ${id}
      LIMIT 1
@@ -806,7 +820,7 @@ export async function findTemplatesByTenantId(
   tenantId: string,
 ): Promise<TemplatesRow[]> {
   const rows = await sql<TemplatesRow[]>`
-    SELECT id, tenant_id, status, name, card_type, settings, created_at, updated_at, expires_at
+    SELECT id, tenant_id, status, name, card_type, settings, created_at, updated_at, expires_at, passcreator_template_id
       FROM templates
      WHERE tenant_id = ${tenantId}
        AND status = 'published'
@@ -904,7 +918,7 @@ export async function updateTemplate(
        ${clauses.length > 2 ? sql`, ${clauses[2]}` : sql``}
        ${clauses.length > 3 ? sql`, ${clauses[3]}` : sql``}
      WHERE id = ${id}
-    RETURNING id, tenant_id, status, name, card_type, settings, created_at, updated_at, expires_at
+    RETURNING id, tenant_id, status, name, card_type, settings, created_at, updated_at, expires_at, passcreator_template_id
   `;
 
   if (!rows[0]) {
@@ -926,7 +940,7 @@ export async function touchExpiresAt(
        SET expires_at = now() + interval '24 hours'
      WHERE id = ${id}
        AND status = 'draft'
-    RETURNING id, tenant_id, status, name, card_type, settings, created_at, updated_at, expires_at
+    RETURNING id, tenant_id, status, name, card_type, settings, created_at, updated_at, expires_at, passcreator_template_id
   `;
   if (!rows[0]) {
     throw new Error('touchExpiresAt: template not found');
@@ -944,7 +958,7 @@ export async function findLatestDraftByTenant(
   tenantId: string,
 ): Promise<TemplatesRow | null> {
   const rows = await sql<TemplatesRow[]>`
-    SELECT id, tenant_id, status, name, card_type, settings, created_at, updated_at, expires_at
+    SELECT id, tenant_id, status, name, card_type, settings, created_at, updated_at, expires_at, passcreator_template_id
       FROM templates
      WHERE tenant_id = ${tenantId}
        AND status = 'draft'

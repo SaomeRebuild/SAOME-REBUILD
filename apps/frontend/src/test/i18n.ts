@@ -38,6 +38,8 @@ import tableCardZhTW from '../i18n/locales/tableCard.zh-TW';
 import tableCardEn from '../i18n/locales/tableCard.en';
 import passHolderZhTW from '../i18n/locales/passHolder.zh-TW';
 import passHolderEn from '../i18n/locales/passHolder.en';
+import commonZhTW from '../i18n/locales/common.zh-TW';
+import commonEn from '../i18n/locales/common.en';
 
 if (!i18n.isInitialized) {
   i18n.use(initReactI18next).init({
@@ -62,6 +64,7 @@ if (!i18n.isInitialized) {
         colorPicker: colorPickerZhTW,
         tableCard: tableCardZhTW,
         passHolder: passHolderZhTW,
+        common: commonZhTW,
       },
       en: {
         auth: authEn,
@@ -83,6 +86,7 @@ if (!i18n.isInitialized) {
         colorPicker: colorPickerEn,
         tableCard: tableCardEn,
         passHolder: passHolderEn,
+        common: commonEn,
       },
     },
     lng: 'zh-TW',

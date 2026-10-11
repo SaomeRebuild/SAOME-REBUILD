@@ -22,7 +22,7 @@ export const publishCardRoute = new Hono<HonoEnv>()
     }
     const tenantId = user.tenantId;
 
-    const result = await publishTemplateService(sql, templateId, tenantId);
+    const result = await publishTemplateService(sql, templateId, tenantId, c.env);
     return c.json(result);
   });
 

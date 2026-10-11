@@ -39,6 +39,10 @@ import tableCardZhTW from './locales/tableCard.zh-TW';
 import tableCardEn from './locales/tableCard.en';
 import passHolderZhTW from './locales/passHolder.zh-TW';
 import passHolderEn from './locales/passHolder.en';
+// 2026-10-11 — added for `common.error.upstreamFailed` (BadGatewayError fallback)
+// used by the global `errorHandler` middleware and the Step 8 banner.
+import commonZhTW from './locales/common.zh-TW';
+import commonEn from './locales/common.en';
 
 const resources = {
   'zh-TW': {
@@ -61,6 +65,7 @@ const resources = {
     colorPicker: colorPickerZhTW,
     tableCard: tableCardZhTW,
     passHolder: passHolderZhTW,
+    common: commonZhTW,
   },
   en: {
     auth: authEn,
@@ -82,6 +87,7 @@ const resources = {
     colorPicker: colorPickerEn,
     tableCard: tableCardEn,
     passHolder: passHolderEn,
+    common: commonEn,
   },
 };
 

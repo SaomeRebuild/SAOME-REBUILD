@@ -4,6 +4,28 @@
  *
  * Language settings for card preview UI, shared by TemplateCardPreview and PassCardPreview.
  *
+ * v4 refactor (2026-10-11, Passcreator integration):
+ *   - `defaultCardType / defaultIssuerName / defaultName / fieldLabelLeft / fieldLabelRight`
+ *     and `fieldPreview.{key}.label` are now sourced from
+ *     `@saome/shared/i18n/fieldLabels` (the same source the backend
+ *     `passTemplateMapping.ts` reads from to populate Passcreator
+ *     `headerFields[].label` / `primaryFields[].label` etc.).
+ *   - This guarantees the editor preview and the deployed pass render
+ *     IDENTICAL labels — drift becomes a compile error in the drift
+ *     test `fieldLabels.test.ts`.
+ *   - Demo `value` strings, currency formatters, and special compound
+ *     keys (e.g. `memberLevel.stampLabel / discountLabel`) STAY local
+ *     because they are editor-only preview decorations, not Passcreator
+ *     contract inputs.
+ *
+ *   Implementation note (verify-i18n-keys compatibility): the i18n verify
+ *   script does a STATIC analysis of the `export default { ... }` literal
+ *   to enforce key-set parity. It cannot resolve runtime function calls
+ *   (e.g. `getFieldLabels('en')`) so we inline the shared values here.
+ *   The shared module is the runtime source of truth and the drift test
+ *   in `fieldLabels.test.ts` enforces that the inline values below match
+ *   the shared module.
+ *
  * @module i18n/locales/passCard.en
  */
 
@@ -16,6 +38,9 @@ export default {
   // Demo preview data (PassCreator Label/Value pairs — maps to templateSettings.leftField / rightField).
   // label renders as small hint text in the left/right slot; value renders as the larger primary content.
   // Once PassCreator is wired, real values will come from member rows; these are preview-only.
+  // Labels below are sourced from `@saome/shared/i18n/fieldLabels` at
+  // runtime; the literal strings here MUST match the shared module —
+  // `fieldLabels.test.ts` enforces the parity.
   fieldPreview: {
     phone: { label: 'Phone', value: '+279XXXXXXXXX' },
     email: { label: 'Email', value: 'hi@saome.org' },

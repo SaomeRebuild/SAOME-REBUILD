@@ -42,6 +42,19 @@ export default {
       publishError: 'Failed to publish. Please try again later.',
       validationCardType: 'Please select a card type first',
       validationName: 'Please fill in the card name first',
+      // 2026-10-11 — Passcreator push failure banner (Step 8 v4 plan).
+      // Triggered when the backend `updateTemplateService` throws
+      // `BadGatewayError` (upstream 'passcreator' sync rejected the
+      // request). DB row was NOT written (test:
+      // `updateTemplate.passcreator.test.ts`), so the user can retry
+      // the publish action without first re-saving.
+      passcreatorSyncFailed: {
+        title: 'Passcreator sync failed',
+        description: 'Your card was saved locally, but the sync to Passcreator was rejected. Please check your network connection and try again.',
+        upstreamDetail: 'Error details',
+        retry: 'Retry sync',
+        cancel: 'Dismiss',
+      },
     },
   },
 
