@@ -87,6 +87,55 @@ alwaysApply: true
 
 詳見 `runs/improvements/feedback/20260822-migration-apply-pipeline.md` + `.cursor/rules/035-migration-apply-pipeline.mdc`（Rule 035，MANDATORY CI gate）。
 
+### 6. Config & tsconfig 紀律（Rule 016 觸發 — 改 9 個 surface 必查）
+
+> 觸發：改 `vite.config.ts` / `vitest.config.ts` / `tsconfig*.json` / `package.json` / `package-lock.json` / `.gitignore` / `.github/workflows/*.yml`。
+
+改任一 surface 前**必須**先跑下列檢查，再逐項對照同步：
+
+```bash
+# 確認既有 lockfile 是否被 git 追蹤（避免 .gitignore 誤排除）
+git ls-files | findstr /R "package-lock|yarn.lock|pnpm-lock"
+
+# 確認既有 *.config.ts 是否被 tsconfig include
+findstr /R "(vite|vitest|jest|playwright)\.config" apps/*/tsconfig*.json
+
+# 確認既有 alias 在哪些 config
+findstr /R "@saome/shared" apps/*/*.config.ts apps/*/tsconfig*.json
+
+# 確認 CI workflow 的 cache-dependency-path 是否綁定正確 lockfile 路徑
+findstr /R "cache-dependency-path" .github/workflows/*.yml
+```
+
+#### 9 個 surface 同步對照表
+
+| # | 檔案 | 影響 |
+|---|------|------|
+| 1 | `apps/*/package.json` 的 `dependencies` / `devDependencies` | `npm ci` 安裝的套件 |
+| 2 | 根目錄 `package-lock.json` | npm workspace 的 lockfile（CI 用） |
+| 3 | `apps/*/vite.config.ts` 的 `resolve.alias` | Vite dev/build 解析 |
+| 4 | `apps/*/vitest.config.ts` 的 `resolve.alias` | Vitest worker 解析（與 #3 獨立） |
+| 5 | `apps/*/tsconfig.app.json` 的 `paths` | TypeScript 解析 |
+| 6 | `apps/*/tsconfig.node.json` 的 `include` | IDE 看到哪些檔案 |
+| 7 | `.gitignore` 的 lockfile pattern | CI 是否能找到 lockfile |
+| 8 | `package-lock.json` 內 platform binding 條目完整性 | 跨平台 native binding metadata（npm 11.3.0+ 才穩定） |
+| 9 | `.github/workflows/*.yml` 的 `cache-dependency-path` | GitHub Actions cache key 必須綁定 `package-lock.json` |
+
+#### vitest alias 順序（Vite 8.x 鐵律）
+
+`resolve.alias` array form 按**宣告順序**匹配 prefix。最 specific 必須最先宣告：
+
+```ts
+// ✅ 正確：specific first
+const alias = [
+  { find: '@saome/shared/schemas/member', replacement: '...' },
+  { find: '@saome/shared/schemas', replacement: '...' },
+  { find: '@saome/shared', replacement: '...' }, // least specific LAST
+];
+```
+
+詳見 `.cursor/rules/016-config-and-tsconfig-discipline.mdc` § 「變更前的強制檢查」。9 個 surface 同步是 monorepo 行為一致性的基礎。
+
 ---
 
 ## 觸發關鍵字
@@ -94,11 +143,14 @@ alwaysApply: true
 「做卡片預覽」「新增元件」「拉一個 component」「實作元件」「建立 L2」
 「migration 檔」「apply_migration」「新增欄位」**必須**引用此 rule。
 
+「改 config」「改 tsconfig」「改 package.json」「改 CI workflow」「改 vite alias」「改 vitest alias」「lockfile」「`cache-dependency-path`」「9 個 surface」**必須**引用 § 6。
+
 ## 參照
 
 - `.cursor/rules/frontend/023-shared-package.mdc` — i18n namespace 規範（含元件化原則）
 - `.cursor/rules/019-schema-contract-drift.mdc` — DB ↔ schema drift 鐵律
 - `.cursor/rules/035-migration-apply-pipeline.mdc` — **Rule 035 migration apply pipeline**（CI gate）
+- `.cursor/rules/016-config-and-tsconfig-discipline.mdc` — **9 個 surface 同步紀律**（§ 6 對應）
 - `runs/improvements/feedback/20260816-vibe-coding-workflow-optimization.md` — 背景事故記錄
 - `runs/improvements/feedback/20260822-migration-apply-pipeline.md` — Migration 未 apply 導致 production 500 事故
 - `apps/backend/scripts/check-migrations-applied.cjs` — CI gate script

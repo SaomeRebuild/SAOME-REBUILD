@@ -72,6 +72,16 @@ Thumbs.db
 .git-rebase-todo
 *.tmp
 
+# Debug probe artifacts — ad-hoc one-off investigation scripts/outputs
+# (See runs/improvements/feedback/ for the trace that produced them)
+login.json
+login-resp.json
+publish.json
+test_output.txt
+apps/backend/scripts/probe-*.ts
+apps/backend/scripts/probe-*.mjs
+apps/backend/scripts/probe-*.cjs
+
 # Production data dumps — never commit (per .cursor/rules/019-schema-contract-drift.mdc
 # 提到的真實污染證據;含真實 email/phone,不該 push)
 tenants_rows.json
