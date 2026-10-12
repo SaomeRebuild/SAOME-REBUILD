@@ -50,10 +50,27 @@ export default {
       // the publish action without first re-saving.
       passcreatorSyncFailed: {
         title: 'Passcreator sync failed',
-        description: 'Your card was saved locally, but the sync to Passcreator was rejected. Please check your network connection and try again.',
+        // Fallback description (no `kind` set on the error). Normally
+        // one of the kind-specific descriptions below is used instead;
+        // this only renders when the backend is an older version that
+        // doesn't set `kind` (or for any unknown future kind).
+        description: 'Your card was saved locally, but the sync to Passcreator was rejected. Please try again.',
+        // 2026-10-11 — kind-specific descriptions (regression: 530/1016
+        // Cloudflare "Origin DNS error" was misleadingly labeled as
+        // "check your network connection" — it's the Passcreator origin
+        // that's unreachable, not the user's network). See
+        // apps/backend/src/shared/lib/passcreator.ts and
+        // Step8SaveErrorBanner.tsx for the kind discriminator.
+        networkDescription: 'Network connection failed. Please check your internet connection and try again.',
+        invalidResponseDescription: 'Passcreator service is temporarily unavailable. Your card was saved locally — please try again in a few minutes.',
+        upstreamRejectedDescription: 'Passcreator rejected the data. Please correct the issues below and try again.',
         upstreamDetail: 'Error details',
         retry: 'Retry sync',
         cancel: 'Dismiss',
+        // 2026-10-11 — Structured per-field error list title (matches
+        // backend upstreamErrors[] extracted from Passcreator V2
+        // envelope). Renders above the field-error rows in the banner.
+        fieldErrorsTitle: 'The following fields have issues',
       },
     },
   },

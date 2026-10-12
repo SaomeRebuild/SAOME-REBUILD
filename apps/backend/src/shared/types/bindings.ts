@@ -77,9 +77,11 @@ export interface Env {
   // =============================================================
   // Passcreator integration — Step 8 "Save & Publish" push (2026-10-11).
   // =============================================================
-  // URL of the Passcreator V2 API. The base URL is `https://api.passcreator.com`
-  // per their V2 documentation; the client strips any trailing slash and
-  // appends `/api/v2/passes/templates` for create / update.
+  // URL of the Passcreator V2 API. The base URL is `https://app.passcreator.com`
+  // (NOT `api.passcreator.com` — that subdomain does not resolve; the V1/V2/V3
+  // API docs at https://app.passcreator.com/en/api-documentation/v2 all use the
+  // `app.` host). The client strips any trailing slash and appends
+  // `/api/v2/pass-template` (singular, hyphenated) for create / update.
   // Set via wrangler.jsonc vars.PASSCREATOR_API_URL.
   PASSCREATOR_API_URL: string;
 

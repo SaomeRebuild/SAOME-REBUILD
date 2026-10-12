@@ -1,0 +1,28 @@
+{
+  "scenario": "empty-body",
+  "description": "POST {} — every required field missing. Triggers the multi-field V2 errors[] envelope.",
+  "capturedAt": "2026-10-11T21:18:14.707Z",
+  "apiUrl": "https://app.passcreator.com",
+  "request": {
+    "method": "POST",
+    "path": "/api/v2/pass-template",
+    "body": {}
+  },
+  "response": {
+    "status": 400,
+    "ok": false,
+    "contentType": "application/json",
+    "body": {
+      "success": false,
+      "description": "The provided JSON was invalid.",
+      "errors": [
+        {
+          "property": "",
+          "message": "Array value found, but an object is required"
+        }
+      ],
+      "data": [],
+      "statusCode": 400
+    }
+  }
+}

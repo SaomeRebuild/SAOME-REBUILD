@@ -22,6 +22,37 @@ export const en = {
     left: 'Left Field',
     right: 'Right Field',
   },
+  // ===== Passcreator `headerFields[0]` per-cardType mapping (2026-10-11) =====
+  // English mirror of `fieldLabels.zh-TW.ts::headerField`. See that file
+  // for the full architecture doc (why `headerField` is FIXED per
+  // cardType, why it lives here vs `previewPill`, drift guard details).
+  //
+  // Per-cardType rules (must mirror `passCardPreviewSlot.ts::resolveHeaderRightSlot`):
+  //   - membership_card                  → {key: 'memberExpiry',    label: 'Member Expiry'}
+  //   - discount_card                    → {key: 'discountExpiry',  label: 'Expiry Date'}
+  //   - coupon_card                      → {key: 'couponExpiry',    label: 'Expiry Date'}
+  //   - stamp_card / reward_card /
+  //     cashback_card / multipass        → {key: 'balance',         label: 'Balance'}
+  //   - gift_card                        → {key: 'giftPoints',      label: 'Points'}
+  //
+  // Drift guard: the `label` values here MUST equal the editor's
+  // `passCard.en.ts::{memberExpiry,discountExpiry,couponExpiry,
+  // balancePreview,giftPointsPreview}.label`. The conformance test
+  // `fieldLabels.test.ts::locale-vs-passCard headerField` enforces
+  // this. (Rule 023 § 翻譯書寫紀律 — en labels are pure ASCII.)
+  //
+  // Typing: same as zh-TW — `Partial<Record<CardType, …>>` keeps
+  // the two locales shape-compatible.
+  headerField: {
+    membership_card: { key: 'memberExpiry',   label: 'Member Expiry' },
+    discount_card:   { key: 'discountExpiry', label: 'Expiry Date' },
+    coupon_card:     { key: 'couponExpiry',   label: 'Expiry Date' },
+    stamp_card:      { key: 'balance',        label: 'Balance' },
+    reward_card:     { key: 'balance',        label: 'Balance' },
+    cashback_card:   { key: 'balance',        label: 'Balance' },
+    multipass:       { key: 'balance',        label: 'Balance' },
+    gift_card:       { key: 'giftPoints',     label: 'Points' },
+  } as Partial<Record<CardType, { key: string; label: string }>>,
   fieldLabels: {
     phone: 'Phone',
     email: 'Email',
@@ -79,11 +110,20 @@ export const en = {
     issuerName: 'Untitled Card',
     cardName: 'Untitled Card',
   },
+  // 2026-10-11 — drift fix.
+  //   Previously `discountExpiry` was `'Valid Until'` and `couponExpiry`
+  //   was `'Valid Until'`, which drifted from `passCard.en.ts` (the
+  //   editor's source of truth: `'Expiry Date'`). The drift was
+  //   invisible because `getPreviewPillLabels` had no callers in the
+  //   frontend code (the editor reads `passCard.en.ts` directly via
+  //   `t('discountExpiry.label')`). Now corrected: the strings here
+  //   must equal the corresponding `passCard.en.ts` blocks so the
+  //   `previewPill-vs-headerField` drift guard stays green.
   previewPill: {
     balance: 'Balance',
     memberExpiry: 'Member Expiry',
-    discountExpiry: 'Valid Until',
-    couponExpiry: 'Valid Until',
+    discountExpiry: 'Expiry Date',
+    couponExpiry: 'Expiry Date',
     giftPoints: 'Points',
   },
 };

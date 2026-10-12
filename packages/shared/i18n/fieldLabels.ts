@@ -10,11 +10,12 @@
  * backend passes the DB-stored `templates.settings.language` (zh-TW | en)
  * so the deployed pass uses the same wording as the editor preview.
  *
- * Architecture (v4 plan):
+ * Architecture (v4 plan, with v5 Passcreator `headerField` per-cardType):
  *   ┌──────────────────────────────────────────────────────────┐
  *   │ packages/shared/i18n/fieldLabels.ts  (this file)         │
  *   │  ↳ getFieldLabel(key, language) → string                 │
  *   │  ↳ getFieldLabelMap(language)   → Record<CardFieldKey,…> │
+ *   │  ↳ getHeaderField(cardType, language) → {key,label}|null │
  *   │  ↳ getSlotNames / getBackSideLabels / getDefaults /      │
  *   │    getPreviewPillLabels(language) → sub-object           │
  *   └──────────────────────────────────────────────────────────┘
@@ -38,7 +39,7 @@
  * @see apps/frontend/src/i18n/locales/passCard.{zh-TW,en}.ts (frontend spread)
  */
 
-import { CARD_FIELD_KEYS, type CardFieldKey } from '../constants/card-fields';
+import { CARD_FIELD_KEYS, type CardFieldKey, type FieldSemanticType } from '../constants/card-fields';
 import type { CardType } from '../schemas/card';
 import { zhTW } from './fieldLabels.zh-TW';
 import { en } from './fieldLabels.en';
@@ -229,6 +230,13 @@ export function getDefaults(language: PassLanguage): {
  * Preview pill labels — the small headers above the dynamic store-driven
  * preview values (餘額 / Balance, 會員到期日 / Member Expiry, etc.).
  * Editor-only, NOT in Passcreator output.
+ *
+ * 2026-10-11 — note: the Apple Wallet `headerField` label (the small
+ * label at the top of the deployed pass) is sourced from a SEPARATE
+ * `headerField` block (see `getHeaderField` below). Both blocks MUST
+ * share the same label strings; the conformance test
+ * `fieldLabels.test.ts::previewPill-vs-headerField` enforces parity
+ * to prevent the editor preview and the deployed pass from diverging.
  */
 export function getPreviewPillLabels(language: PassLanguage): {
   balance: string;
@@ -240,6 +248,89 @@ export function getPreviewPillLabels(language: PassLanguage): {
   const dict = selectLabels(language);
   return { ...dict.previewPill };
 }
+
+/**
+ * Passcreator `headerFields[0]` per-cardType mapping (2026-10-11).
+ *
+ * Returns the `{key, label}` pair for the Apple Wallet `headerField`
+ * slot, fixed per cardType. The tenant sees this label in the Step 1
+ * preview (via `PassCardPreviewHeader::resolveHeaderRightSlot`) the
+ * moment they pick a card type, and the deployed pass carries the
+ * SAME label.
+ *
+ *   ┌─────────────────────────────────────────────────────────┐
+ *   │ cardType           →  key              label            │
+ *   ├─────────────────────────────────────────────────────────┤
+ *   │ membership_card    →  'memberExpiry'   '會員到期日' / 'MT'│
+ *   │ discount_card      →  'discountExpiry' '有效期限' / 'ED'  │
+ *   │ coupon_card        →  'couponExpiry'   '有效期限' / 'ED'  │
+ *   │ stamp_card         →  'balance'        '餘額' / 'Balance' │
+ *   │ reward_card        →  'balance'        '餘額' / 'Balance' │
+ *   │ cashback_card      →  'balance'        '餘額' / 'Balance' │
+ *   │ multipass          →  'balance'        '餘額' / 'Balance' │
+ *   │ gift_card          →  'giftPoints'     '點數' / 'Points'  │
+ *   └─────────────────────────────────────────────────────────┘
+ *
+ * Returns `null` when `cardType` is `null` / `undefined` (the
+ * editor hasn't picked a card type yet) — the caller is expected
+ * to treat that as "no headerField" (Passcreator accepts an empty
+ * array).
+ *
+ * The `key` is the stable Passcreator field identifier (used when
+ * pushing template updates / reading back per-pass values); the
+ * `label` is the user-visible string at the top of the pass.
+ *
+ * Branch order MUST mirror
+ * `apps/frontend/src/components/business/dashboard/CardBuilderEditor/CardPreview/passCardPreviewSlot.ts::resolveHeaderRightSlot`
+ * — if you add a new cardType, add a row to BOTH places (or refactor
+ * `resolveHeaderRightSlot` to read from `getHeaderField` so there is
+ * only one source of truth).
+ *
+ * @example
+ *   getHeaderField('membership_card', 'zh-TW');   // {key: 'memberExpiry', label: '會員到期日'}
+ *   getHeaderField('stamp_card',      'en');      // {key: 'balance',      label: 'Balance'}
+ *   getHeaderField(null,              'zh-TW');   // null
+ */
+export function getHeaderField(
+  cardType: CardType | null | undefined,
+  language: PassLanguage,
+): { key: string; label: string } | null {
+  if (!cardType) return null;
+  const dict = selectLabels(language);
+  const entry = dict.headerField[cardType];
+  return entry ?? null;
+}
+
+/**
+ * v12 (2026-10-12): Header field keys → Passcreator `fields[].type` mapping.
+ *
+ * Header fields are NOT in `CARD_FIELDS` (they don't appear in the Step 3
+ * left/right dropdown — they're fixed per cardType via `getHeaderField()`).
+ * They need their own metadata map so `mapFieldType()` can resolve the
+ * Passcreator type for `headerFields[0].type`.
+ *
+ * Keys here MUST stay in lockstep with the table inside `getHeaderField()`:
+ *   - membership_card    → memberExpiry  (date)
+ *   - discount_card      → discountExpiry (date)
+ *   - coupon_card        → couponExpiry  (date)
+ *   - stamp/reward/cashback/multipass → balance (number)
+ *   - gift_card          → giftPoints    (number)
+ *
+ * `passValidDays` is also 'number' for completeness — it's the only
+ * header key that is NOT yet produced by `getHeaderField()` (no current
+ * cardType maps to it) but the type stays aligned so future cardTypes
+ * can opt in without re-plumbing `mapFieldType()`.
+ *
+ * @see runs/improvements/feedback/20261012-step8-passcreator-v11-cross-reference-fields.md § 教訓 4
+ */
+export const HEADER_FIELD_TYPES: Readonly<Record<string, FieldSemanticType>> = {
+  memberExpiry: 'date',
+  discountExpiry: 'date',
+  couponExpiry: 'date',
+  balance: 'number',
+  giftPoints: 'number',
+  passValidDays: 'number',
+};
 
 /**
  * Field preview label for a CardFieldKey (the per-field label that

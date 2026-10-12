@@ -149,11 +149,41 @@ export function useStep8Save(cardId: string | null): UseStep8SaveReturn {
         (err as { code?: string } | null)?.code === 'BAD_GATEWAY' &&
         upstream === 'passcreator'
       ) {
+        // 2026-10-11 — extract structured `upstreamErrors[]` from the
+        // BadGatewayError envelope. The backend's passcreator.ts now
+        // pulls these from Passcreator's V2 `{success:false, errors:[...]}`
+        // envelope (see apps/backend/src/shared/lib/passcreator.ts and
+        // passcreator.test.ts "V2 errors[] extraction"). The banner
+        // renders one row per `{property, message}` instead of dumping
+        // the full upstreamBody JSON. Defensive: only attach when the
+        // array is non-empty (matches the backend's "non-empty attach"
+        // convention).
+        const rawUpstreamErrors = (err as { details?: { upstreamErrors?: Array<{ property: string; message: string }> } } | null)?.details?.upstreamErrors;
+        const upstreamErrors = Array.isArray(rawUpstreamErrors) && rawUpstreamErrors.length > 0
+          ? rawUpstreamErrors
+          : undefined;
+        // 2026-10-11 — extract `kind` discriminator. The backend sets
+        // this in BadGatewayError.details to one of 'network' |
+        // 'invalid_response' | 'upstream_rejected' based on the
+        // failure path. The banner uses it to pick user-actionable
+        // copy (e.g. "service temporarily unavailable" for 530/1016
+        // vs "check your internet" for DNS failure vs "correct the
+        // fields" for V2 envelope rejection). Falls back to
+        // undefined for backward compat with older backend.
+        const rawKind = (err as { details?: { kind?: string } } | null)?.details?.kind;
+        const kind: PasscreatorSyncError['kind'] =
+          rawKind === 'network' ||
+          rawKind === 'invalid_response' ||
+          rawKind === 'upstream_rejected'
+            ? rawKind
+            : undefined;
         setPasscreatorError({
           code: 'BAD_GATEWAY',
           upstream: 'passcreator',
           upstreamStatus,
           upstreamBody,
+          upstreamErrors,
+          kind,
         });
         // No toast — the banner IS the surface. Showing a toast would
         // be redundant noise.

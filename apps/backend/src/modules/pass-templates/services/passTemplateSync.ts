@@ -83,7 +83,8 @@ export async function syncTemplateToPasscreator(args: {
 
   const existingId = args.template.passcreator_template_id;
   if (existingId) {
-    // Idempotent update — Passcreator PUT semantics.
+    // Idempotent update — Passcreator V2 uses `POST /api/v2/pass-template/:id`
+    // (NOT PUT; V1 was PUT, V2 standardized on POST for all mutations).
     const { id } = await updatePassTemplate(args.env, existingId, body);
     return { id, created: false };
   }

@@ -87,6 +87,49 @@ export type PasscreatorPassType =
 export type PasscreatorFieldType = 'text' | 'date' | 'number' | 'currency' | 'barcode';
 
 /**
+ * Passcreator `additionalProperties` entry — the per-template variable
+ * store that the tenant can cross-reference from any field via
+ * `{Name}` placeholders.
+ *
+ * Per Passcreator V2 docs (https://developer.passcreator.com/en/api/v2/pass-template
+ * describe response + `update-a-template.md`):
+ *   - `name`        — user-facing, free-form per Passcreator docs ("you can
+ *                     name your additional properties however you like").
+ *                     SAOME's mapping sources `name` from
+ *                     `settings.backFields[].label` (and `settings.links[].label`).
+ *   - `placeholder` — auto-derived `{Name}` token used to cross-reference
+ *                     this property in any other field. SAOME always emits
+ *                     `{name}` — Passcreator's documented placeholder syntax.
+ *   - `type`        — Passcreator's input type for the property. SAOME
+ *                     uses:
+ *                       - `'text'` for back fields (free-form user input)
+ *                       - `'url'`  for links (the value is a URL)
+ *   - `required`    — must the property be supplied at pass-issuance time?
+ *                     SAOME defaults to `false` (back fields / links are
+ *                     advisory, not blocking inputs).
+ *   - `hidden`      — `true` = property exists for placeholder use but
+ *                     doesn't render on the pass. SAOME defaults to `false`
+ *                     (the value IS shown on the back of the pass).
+ *   - `options`     — only meaningful for `select` / `checkbox` /
+ *                     `radiobutton` types. SAOME doesn't currently
+ *                     author these — omitted from the push.
+ *
+ * 2026-10-12 v7: introduced after the user clarified that
+ * "Additional properties 的命名是自由的，也就是我們可以為了這些標籤
+ * 命名自己的Additional properties". SAOME's source data is the
+ * user-authored `settings.backFields[]` + `settings.links[]` arrays —
+ * each row becomes one additional property.
+ */
+export interface PasscreatorAdditionalProperty {
+  name: string;
+  placeholder: string;
+  type: 'text' | 'textarea' | 'url' | 'number' | 'select' | 'checkbox' | 'radiobutton';
+  required: boolean;
+  hidden: boolean;
+  options?: string[];
+}
+
+/**
  * Passcreator template body — the shape we send on `POST /api/v2/pass-template`.
  *
  * Only the fields used by the SAOME Step 8 push are typed. Passcreator
@@ -183,13 +226,65 @@ export interface PasscreatorTemplateBody {
    * the `icon` key entirely (rather than sending `''`) so Passcreator
    * falls back to the pass-type default icon.
    *
-   * `logo` and `strip` are optional — omitted when missing.
+   * `logo` is optional — omitted when missing.
+   *
+   * `background` is the Apple Wallet "strip" image (a tall image that
+   * renders between the header and the primary fields). 2026-10-12
+   * v7 fix: the pushed key is `background`, NOT `strip`. Passcreator
+   * V2's describe endpoint response (and the SAOME mu-plugins
+   * Passcreator Engine's payload builder at
+   * `SAOME-Passcreator-Engine/modules/passcreator-template.php`) both
+   * use `images.background` for the strip slot. The previous
+   * `images.strip` key was silently dropped by Passcreator — no
+   * warning, no error — which is why the strip image "didn't get
+   * uploaded" on the Step 8 push.
    */
   images: {
     icon?: string;
     logo?: string;
-    strip?: string;
+    background?: string;
   };
+  /**
+   * Logo text — text shown on the pass header (Apple Wallet's
+   * `pkpass` `logoText` field; distinct from `name`).
+   *
+   * V2 endpoint expects this as a top-level field (separate from `name`).
+   * Per the V2 docs example payload:
+   *   "name": "My template",
+   *   "logoText": "",
+   * Both are required at template-create time (one of them must be
+   * non-empty — Passcreator rejects an empty `name`).
+   *
+   * SAOME mapping rules:
+   *   - Always emit `logoText` at top-level (even when empty — V2 docs
+   *     example shows `""`).
+   *   - Source: `settings.logoText` (Step 2 Logo Text field).
+   *   - The Card Name (display title in Passcreator's UI) lives in the
+   *     `name` field, sourced from `templates.name` (SQL column) with
+   *     `settings.logoText` as fallback. See `mapTemplateToPasscreator`
+   *     for the resolution rule.
+   *
+   * 2026-10-12 v9: SAOME's previous mapping FOLDED `settings.logoText`
+   * into the `name` field's fallback chain and DID NOT push `logoText`
+   * separately. Passcreator's deployed pass therefore showed an empty
+   * header strip where the Logo Text should appear. Fix: emit
+   * `logoText` as a separate top-level field sourced from
+   * `settings.logoText` verbatim.
+   */
+  logoText?: string;
+  /**
+   * Per-template additional properties (the cross-reference variable
+   * store). Each entry can be referenced from any other field via a
+   * `{Name}` placeholder. SAOME's mapping builds this array from
+   * `settings.backFields[]` (type: 'text') and `settings.links[]`
+   * (type: 'url') — see `passTemplateMapping.ts::buildAdditionalProperties`.
+   *
+   * Optional in the interface (older test fixtures may not have it).
+   * When `settings.backFields` and `settings.links` are both empty
+   * arrays, the mapping sends an empty array — Passcreator accepts
+   * that as "no additional properties".
+   */
+  additionalProperties?: PasscreatorAdditionalProperty[];
   /**
    * Localized fields. Each entry renders as a labeled row on the pass.
    *
@@ -204,13 +299,80 @@ export interface PasscreatorTemplateBody {
    * mapping module (`passTemplateMapping.ts`) populates `type` from the
    * field's CardFieldKey; default is `'text'` when the key doesn't map
    * to a specific type.
+   *
+   * `auxiliaryFields` is an empty array by default — V2 expects it
+   * (Passcreator's `fields.auxiliaryFields` schema includes the key
+   * even when empty). SAOME's editor does not currently author an
+   * auxiliary slot (the per-cardType Step 3 only configures leftField
+   * / rightField). The mapping emits `[]` to maintain V2 schema
+   * alignment.
    */
   fields: {
     headerFields: Array<{ key: string; type: PasscreatorFieldType; label: string; value: string }>;
     primaryFields: Array<{ key: string; type: PasscreatorFieldType; label: string; value: string }>;
     secondaryFields: Array<{ key: string; type: PasscreatorFieldType; label: string; value: string }>;
+    auxiliaryFields: Array<{ key: string; type: PasscreatorFieldType; label: string; value: string }>;
     backFields: Array<{ key: string; type: PasscreatorFieldType; label: string; value: string }>;
   };
+  /**
+   * Dedicated link fields (Passcreator's 4-link cap slot).
+   *
+   * V2 endpoint contract: `links` is a top-level array (NOT nested
+   * inside `fields`). Each entry has `{label, value}` where `value` is
+   * a URL (tel:, mailto:, https://, etc.). Passcreator renders these
+   * in a distinct UI area separate from `backFields`.
+   *
+   * SAOME mapping rule: source from `settings.links[]` (Step 4 author
+   * content), cap at MAX_PASS_LINKS=4 (Passcreator's documented cap).
+   * Empty array is accepted.
+   *
+   * 2026-10-12 v9 fix: the previous mapping rendered links as HTML
+   * anchors inside `fields.backFields[].value` (per the Passcreator
+   * docs' "you can also use HTML links anywhere in your back fields"
+   * workaround). The V2 example payload the user pasted
+   * (`runs/improvements/feedback/20261012-step8-passcreator-v9-structure-alignment.md`)
+   * puts `links` at TOP-LEVEL, NOT inside `fields`. Sending `links` at
+   * top-level matches the canonical V2 contract. The HTML anchor
+   * rendering is REMOVED.
+   *
+   * The `additionalProperties[]` cross-reference entries (type: 'url')
+   * are STILL generated from `settings.links[]` — the cross-reference
+   * variable is independent of the rendering slot.
+   */
+  links?: Array<{ label: string; value: string }>;
+  /**
+   * Geolocation toggle for the pass (Passcreator `locationsDisabled`
+   * top-level field). When `true`, the pass does NOT trigger
+   * geolocation-based notifications.
+   *
+   * SAOME source: `settings.locationsDisabled` (Step 5 toggle).
+   * Passcreator accepts `false` (= enabled) and `true` (= disabled).
+   *
+   * 2026-10-12 v9: the mapping NOW always sends `locationsDisabled`
+   * so the upstream state is explicit. The companion `locations[]`
+   * field is conditional — only sent when geolocation is enabled.
+   */
+  locationsDisabled?: boolean;
+  /**
+   * Geolocation triggers for the pass (Passcreator `locations`
+   * top-level array). Each entry corresponds to one Apple Wallet
+   * `pkpass` `relevantLocations` row, with Passcreator-aligned shape:
+   *   - `latitude` / `longitude` (REQUIRED)
+   *   - `relevantText` (optional lock-screen message)
+   *
+   * SAOME source: `settings.locations[]` (Step 5 entries).
+   *
+   * 2026-10-12 v9: only pushed when `settings.locationsDisabled === false`
+   * (i.e., the tenant enabled the feature in the Step 5 editor). When
+   * `locationsDisabled === true`, the key is OMITTED from the payload
+   * so Passcreator never sees stale data — the per-rule spec is "if
+   * disabled, don't push it".
+   */
+  locations?: Array<{
+    latitude: number;
+    longitude: number;
+    relevantText?: string;
+  }>;
 }
 
 /**
@@ -266,7 +428,7 @@ export interface PasscreatorTemplateResponse {
  * Returns `null` when neither path yields a non-empty string. The
  * caller (`createPassTemplate`, `updatePassTemplate`) decides
  * whether to surface this as `BadGatewayError` (create: must throw;
- * update: falls back to the requested id as a "PUT accepted" signal).
+ * update: falls back to the requested id as an "update accepted" signal).
  *
  * We do NOT look for `id` anywhere else — Passcreator V2 docs put
  * the template id exclusively at `data.identifier`, and listening
@@ -641,9 +803,26 @@ export async function createPassTemplate(
 /**
  * Update an existing Passcreator template by id.
  *
- * PUT semantics on Passcreator V2 (PATCH is also accepted; we use PUT
- * to match the "full template body" convention). Idempotent: a no-op
- * update (same body) returns 200 with the existing record.
+ * V2 endpoint: `POST /api/v2/pass-template/{identifier}` — **not PUT**.
+ *
+ * Per the canonical V2 docs (update-a-template.md, 2026-10-11):
+ *   > POST /api/v2/pass-template/{identifier}
+ *   > Update an existing pass template.
+ *
+ * Passcreator V2 standardized ALL mutating endpoints on POST (different
+ * paths distinguish create vs update). Earlier V1 used
+ * `PUT /api/pass-template/[id]` — mixing V1's PUT convention with V2's
+ * path produces a 404 + nginx HTML page (the route doesn't exist for
+ * PUT), which we surfaced on 2026-10-12 production push as
+ * "Passcreator sync failed" with kind:'invalid_response'.
+ *
+ * The conformance test below (`uses POST method (V2 endpoint
+ * convention)`) pins this behavior so future refactors don't drift
+ * back to the V1 PUT convention.
+ *
+ * Idempotent: a no-op update (same body) returns 200 with the existing
+ * record. POST here is per Passcreator's design — not from REST
+ * semantics — and re-submitting the same body is documented as safe.
  *
  * @throws {BadGatewayError} on any non-2xx response, timeout, or network failure.
  */
@@ -656,15 +835,16 @@ export async function updatePassTemplate(
   const result = await passcreatorFetch(
     e,
     `/api/v2/pass-template/${encodeURIComponent(passcreatorTemplateId)}`,
-    { method: 'PUT', body },
+    { method: 'POST', body },
   );
   // Same V2 envelope as create: id lives at `data.identifier`. If the
-  // extractor doesn't find a usable id, treat the PUT as accepted —
+  // extractor doesn't find a usable id, treat the update as accepted —
   // we already issued the request with the explicit id, so it is
   // the source of truth. This covers two legitimate cases:
   //   - 204 No Content (empty body → `result === null`)
   //   - 2xx body that omits `data.identifier` (observed in the wild;
-  //     some Passcreator envelope shapes on PUT lack the id slot)
+  //     some Passcreator envelope shapes on the update verb lack the
+  //     id slot)
   // Falling back to the requested id keeps the sync idempotent and
   // matches the prior behavior. We only `throw` when the request
   // fails upstream (handled by `passcreatorFetch` itself), not when

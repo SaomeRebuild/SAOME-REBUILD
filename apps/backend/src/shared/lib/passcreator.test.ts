@@ -294,7 +294,13 @@ describe('Passcreator client — updatePassTemplate', () => {
     const url = fetchSpy.mock.calls[0]?.[0] as string;
     expect(url).toMatch(/\/api\/v2\/pass-template\/pc-with(%20|\+)spaces$/);
   });
-  it('uses PUT method (full template body convention)', async () => {
+  it('uses POST method (V2 endpoint convention — regression 2026-10-12)', async () => {
+    // Passcreator V2 update is `POST /api/v2/pass-template/{identifier}`,
+    // NOT PUT. The V1 API used `PUT /api/pass-template/[id]` which we
+    // mistakenly carried over into the V2 path — Passcreator's edge /
+    // nginx returned a 404 + lang="de" HTML page (route does not exist
+    // for PUT), surfaced to the SAOME user as "Passcreator sync failed
+    // (service temporarily unavailable)". This test pins POST.
     fetchSpy.mockResolvedValueOnce(
       makeResponse({
         status: 200,
@@ -302,7 +308,11 @@ describe('Passcreator client — updatePassTemplate', () => {
       }),
     );
     await updatePassTemplate(VALID_ENV, 'pc-1', makeBody());
-    expect((fetchSpy.mock.calls[0]?.[1] as RequestInit).method).toBe('PUT');
+    expect((fetchSpy.mock.calls[0]?.[1] as RequestInit).method).toBe('POST');
+    const url = fetchSpy.mock.calls[0]?.[0] as string;
+    // Pin path + method together so a future refactor that flips PUT
+    // back doesn't silently regress.
+    expect(url).toBe('https://app.passcreator.com/api/v2/pass-template/pc-1');
   });
   it('falls back to existing id when response body is empty (e.g. 204 No Content)', async () => {
     fetchSpy.mockResolvedValueOnce(makeResponse({ status: 204, body: null }));
@@ -310,7 +320,7 @@ describe('Passcreator client — updatePassTemplate', () => {
     expect(result.id).toBe('pc-existing');
   });
   it('falls back to existing id when success envelope has data: [] (no id anywhere)', async () => {
-    // Edge case: PUT succeeds but Passcreator returns the success
+    // Edge case: update succeeds but Passcreator returns the success
     // envelope without `data.identifier` (e.g. an upstream glitch).
     // We treat this as "update accepted" and return the existing id.
     fetchSpy.mockResolvedValueOnce(
@@ -536,8 +546,9 @@ describe('Passcreator client — V2 errors[] extraction (regression — 2026-10-
     }
   });
 
-  it('extracts errors[] from PUT 400 (updatePassTemplate)', async () => {
-    // Same envelope as POST — verify the extraction works for both verbs.
+  it('extracts errors[] from update 400 (POST updatePassTemplate — regression 2026-10-12)', async () => {
+    // V2 update uses POST. Same envelope shape as create — verify the
+    // extraction works for the update verb.
     fetchSpy.mockResolvedValueOnce(
       makeResponse({
         status: 400,

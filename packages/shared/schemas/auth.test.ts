@@ -69,9 +69,14 @@ describe('taxIdSchema', () => {
 });
 
 describe('tenantInfoSchema', () => {
+  // Mobile is REQUIRED (per feat(auth) ff6a4b6 2026-08-09, runs/feedback/20260809-mobile-phonecity-swap).
+  // All fixtures here include a valid E.164 mobile; the dedicated
+  // "accepts E.164 mobile" / "rejects malformed mobile" tests cover
+  // the field-level contract.
   const valid = {
     name: '王小明工作室',
     contactName: '王小明',
+    mobile: '+886912345678',
     phoneCity: '02-1234-5678',
     address: '台北市信義區信義路 1 號',
     taxId: '12345678',
@@ -94,8 +99,10 @@ describe('tenantInfoSchema', () => {
     expect(() => tenantInfoSchema.parse({ ...valid, taxId: 'BAD' })).toThrow();
   });
 
-  // mobile (optional E.164) — added 2026-07-31 per decision
-  // runs/decisions/2026-07-31-add-mobile-field.md
+  // mobile (REQUIRED E.164) — added 2026-07-31 (runs/decisions/2026-07-31-add-mobile-field.md),
+  // promoted to required 2026-08-09 (feat(auth) ff6a4b6 — runs/feedback/20260809-mobile-phonecity-swap).
+  // Backend DB column is NOT NULL; frontend RegisterForm marks it required;
+  // backend request schema requires it. Tests reflect the production contract.
   it('accepts E.164 mobile with leading +', () => {
     expect(() => tenantInfoSchema.parse({ ...valid, mobile: '+886912345678' })).not.toThrow();
   });
@@ -120,12 +127,13 @@ describe('tenantInfoSchema', () => {
     expect(() => tenantInfoSchema.parse({ ...valid, mobile: '+886-912-345-678' })).toThrow();
   });
 
-  it('accepts empty mobile string (treated as null / not provided)', () => {
+  // Mobile is REQUIRED (see comment above). Empty string fails the
+  // E.164 regex after preprocess → null. The pre-ff6a4b6 contract
+  // (empty → null → accepted) was the old behavior; the current
+  // contract rejects empty input.
+  it('rejects empty mobile string (mobile is required)', () => {
     const result = tenantInfoSchema.safeParse({ ...valid, mobile: '' });
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.mobile).toBeNull();
-    }
+    expect(result.success).toBe(false);
   });
 });
 
@@ -220,10 +228,11 @@ describe('lockoutStateSchema', () => {
 });
 
 describe('registrationPayloadSchema', () => {
-  it('merges tenant info + account info (omits confirmPassword) and requires invoiceAddress', () => {
+  it('merges tenant info + account info (omits confirmPassword) and requires invoiceAddress + mobile', () => {
     const fullPayload = {
       name: '王小明工作室',
       contactName: '王小明',
+      mobile: '+886912345678',
       phoneCity: '02-1234-5678',
       address: '台北市信義區信義路 1 號',
       taxId: '12345678',

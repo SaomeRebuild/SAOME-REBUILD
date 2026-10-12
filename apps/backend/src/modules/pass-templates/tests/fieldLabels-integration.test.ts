@@ -1,34 +1,18 @@
 /**
- * fieldLabels-integration test — proves passTemplateMapping reads labels
- * from the shared `fieldLabels` module, not from hard-coded strings.
+ * fieldLabels-integration test (2026-10-12 v12-followup).
  *
- * @module modules/pass-templates/tests/fieldLabels-integration
+ * Drift guard: if a future refactor hardcodes labels, the editor preview
+ * drifts from the deployed pass — invisible until production.
  *
- * Drift guard for the v4 plan: the mapping module must call
- * `getFieldLabelMap(language)` from `@saome/shared/i18n/fieldLabels`.
- * If a future refactor bakes the labels directly into the mapping
- * (e.g. by typing them as literal strings), the editor preview will
- * drift from the deployed pass — and that drift is invisible until
- * production.
- *
- * This test catches that drift at unit-test time by:
- *   1. Asking the mapping module for a `headerField.label` value.
- *   2. Asking the shared `fieldLabels` module for the same value.
- *   3. Asserting the two are equal — the strongest possible proof
- *      that the mapping is NOT hard-coding the value (because the
- *      shared module's value would not match a hard-coded constant
- *      that happened to be different from it).
- *
- * Rule references:
- *   - Rule 019 § D.3 — third-party API is a contract. Drift between
- *     the contract and the consumer is a P0 bug.
- *   - Rule 023 § Shared Validation — single source of truth for
- *     labels; this test enforces the chain.
+ * Wire-format contract (post-v12-followup):
+ *   - headerFields[0] is FIXED per cardType via `getHeaderField`.
+ *   - primaryFields[] is RESERVED for membership_card.memberName.
+ *   - secondaryFields[] = settings.leftField -> [0]; rightField -> [1].
  */
 
 import { describe, it, expect } from 'vitest';
 import { mapTemplateToPasscreator } from '../services/passTemplateMapping';
-import { getFieldLabel, getFieldLabelMap } from '@saome/shared/i18n/fieldLabels';
+import { getFieldLabel, getHeaderField } from '@saome/shared/i18n/fieldLabels';
 import type { TemplatesRow } from '@/modules/cards/db/templates';
 
 const R2_URL = 'https://r2.example.com';
@@ -56,142 +40,159 @@ function makeRow(overrides: Partial<TemplatesRow['settings']> = {}): TemplatesRo
 }
 
 describe('passTemplateMapping integration with @saome/shared/i18n/fieldLabels', () => {
-  it('headerField label = getFieldLabel(leftField, language, cardType) for zh-TW', () => {
+  it('headerField label = getHeaderField(cardType, language).label for zh-TW (regression drift guard)', () => {
+    const body = mapTemplateToPasscreator({
+      template: makeRow(),
+      language: 'zh-TW',
+      r2PublicUrl: R2_URL,
+    });
+    const header = getHeaderField('reward_card', 'zh-TW');
+    expect(header).not.toBeNull();
+    expect(body.fields.headerFields[0]?.label).toBe(header?.label);
+    // 2026-10-12 v12-followup: primaryFields is [] for reward_card.
+    expect(body.fields.primaryFields).toEqual([]);
+  });
+
+  it('headerField label = getHeaderField(cardType, language).label for en', () => {
+    const body = mapTemplateToPasscreator({
+      template: makeRow(),
+      language: 'en',
+      r2PublicUrl: R2_URL,
+    });
+    const header = getHeaderField('reward_card', 'en');
+    expect(header).not.toBeNull();
+    expect(body.fields.headerFields[0]?.label).toBe(header?.label);
+  });
+
+  it('secondaryFields[0] label = getFieldLabel(leftField) for zh-TW', () => {
+    // 2026-10-12 v12-followup: leftField -> secondaryFields[0].
     const body = mapTemplateToPasscreator({
       template: makeRow({ leftField: 'phone' }),
       language: 'zh-TW',
       r2PublicUrl: R2_URL,
     });
-    expect(body.fields.headerFields[0]?.label).toBe(
+    expect(body.fields.secondaryFields[0]?.label).toBe(
       getFieldLabel('phone', 'zh-TW', 'reward_card'),
     );
+    expect(body.fields.primaryFields).toEqual([]);
   });
-  it('headerField label = getFieldLabel(leftField, language, cardType) for en', () => {
+
+  it('secondaryFields[0] label = getFieldLabel(leftField) for en', () => {
     const body = mapTemplateToPasscreator({
       template: makeRow({ leftField: 'phone' }),
       language: 'en',
       r2PublicUrl: R2_URL,
     });
-    expect(body.fields.headerFields[0]?.label).toBe(
+    expect(body.fields.secondaryFields[0]?.label).toBe(
       getFieldLabel('phone', 'en', 'reward_card'),
     );
   });
-  it('primaryField label = getFieldLabel(rightField, language, cardType) for zh-TW', () => {
+
+  it('secondaryFields[1] label = getFieldLabel(rightField) for zh-TW', () => {
     const body = mapTemplateToPasscreator({
       template: makeRow({ rightField: 'email' }),
       language: 'zh-TW',
       r2PublicUrl: R2_URL,
     });
-    expect(body.fields.primaryFields[0]?.label).toBe(
+    expect(body.fields.secondaryFields[1]?.label).toBe(
       getFieldLabel('email', 'zh-TW', 'reward_card'),
     );
   });
-  it('primaryField label = getFieldLabel(rightField, language, cardType) for en', () => {
+
+  it('secondaryFields[1] label = getFieldLabel(rightField) for en', () => {
     const body = mapTemplateToPasscreator({
       template: makeRow({ rightField: 'email' }),
       language: 'en',
       r2PublicUrl: R2_URL,
     });
-    expect(body.fields.primaryFields[0]?.label).toBe(
+    expect(body.fields.secondaryFields[1]?.label).toBe(
       getFieldLabel('email', 'en', 'reward_card'),
     );
   });
-  it('every CardFieldKey produces the same label via mapping and shared module', () => {
-    // This is the strongest drift guard. If any CardFieldKey produces
-    // a mismatch, the mapping has hardcoded something. We pass the
-    // same `cardType` to both the mapping AND the shared helper so
-    // the cardType-aware memberLevel override is applied uniformly —
-    // otherwise the shared helper would return the default 「會員等級」
-    // while mapping would push 「獎勵」 for `reward_card` (correct
-    // behavior) and the assertion would fail.
-    const labelMap = getFieldLabelMap('zh-TW', 'reward_card');
-    for (const key of Object.keys(labelMap) as Array<keyof typeof labelMap>) {
-      const body = mapTemplateToPasscreator({
-        template: makeRow({ leftField: key, rightField: key }),
-        language: 'zh-TW',
-        r2PublicUrl: R2_URL,
-      });
-      expect(body.fields.headerFields[0]?.label, `zh-TW header ${key}`).toBe(labelMap[key]);
-      expect(body.fields.primaryFields[0]?.label, `zh-TW primary ${key}`).toBe(labelMap[key]);
-    }
-  });
-  it('regression — switching the shared zh-TW label of "phone" propagates to mapping output', () => {
-    // This is a "what if" test: if the shared labels changed, would
-    // the mapping reflect that? Yes — because mapping calls
-    // getFieldLabel on every invocation. We can't actually mutate
-    // the shared module from here, but we can verify the call chain
-    // is wired by reading the SAME shared source both places.
+
+  it('regression: shared zh-TW label of phone propagates to mapping output (secondaryFields[0])', () => {
     const body = mapTemplateToPasscreator({
       template: makeRow({ leftField: 'phone' }),
       language: 'zh-TW',
       r2PublicUrl: R2_URL,
     });
-    // The label the mapping produces is the same string the shared
-    // module returns for the same key+language+cardType. If they
-    // ever diverge (e.g. someone hardcodes the label in mapping),
-    // this assertion fails.
     const shared = getFieldLabel('phone', 'zh-TW', 'reward_card');
-    expect(typeof body.fields.headerFields[0]?.label).toBe('string');
-    expect(body.fields.headerFields[0]?.label).toBe(shared);
+    expect(typeof body.fields.secondaryFields[0]?.label).toBe('string');
+    expect(body.fields.secondaryFields[0]?.label).toBe(shared);
+  });
+
+  it('regression: shared headerField for a cardType propagates to mapping output (headerField)', () => {
+    const body = mapTemplateToPasscreator({
+      template: makeRow(),
+      language: 'zh-TW',
+      r2PublicUrl: R2_URL,
+    });
+    const shared = getHeaderField('reward_card', 'zh-TW');
+    expect(shared).not.toBeNull();
+    expect(body.fields.headerFields[0]?.label).toBe(shared?.label);
+  });
+
+  it('membership_card pushes memberName into primaryFields (reserved slot)', () => {
+    const body = mapTemplateToPasscreator({
+      template: { ...makeRow(), card_type: 'membership_card' },
+      language: 'zh-TW',
+      r2PublicUrl: R2_URL,
+    });
+    expect(body.fields.primaryFields[0]?.label).toBe(
+      getFieldLabel('memberName', 'zh-TW', 'membership_card'),
+    );
   });
 });
 
-/**
- * 2026-10-11 — cardType-aware drift guard.
- *
- * Pins the new contract: for every cardType in
- * MEMBER_LEVEL_OVERRIDE_CARD_TYPES, the mapping pushes the override
- * label (`memberLevel` → 「獎勵」 for stamp/reward/cashback,
- * 「折扣等級」 for discount). The shared `getFieldLabel` returns the
- * SAME override when called with the same `cardType` — proving the
- * mapping is wired to the shared module (not hard-coded).
- */
-describe('passTemplateMapping integration — cardType-aware memberLevel override', () => {
-  function rowWith(cardType: TemplatesRow['card_type'], field: 'leftField' | 'rightField'): TemplatesRow {
-    return makeRow({
-      ...makeRow().settings,
-      [field]: 'memberLevel',
-      cardType,
-    } as Partial<TemplatesRow['settings']>).card_type === cardType
-      ? ({
-          ...makeRow(),
-          card_type: cardType,
-          settings: {
-            ...makeRow().settings,
-            leftField: field === 'leftField' ? 'memberLevel' : 'phone',
-            rightField: field === 'rightField' ? 'memberLevel' : 'email',
-          },
-        } as TemplatesRow)
-      : makeRow();
-  }
-
-  it('zh-TW stamp_card: mapping pushes 「獎勵」 which equals getFieldLabel(..., stamp_card)', () => {
+describe('passTemplateMapping integration cardType-aware memberLevel override on secondaryFields', () => {
+  it('zh-TW stamp_card: secondaryFields[0] pushes reward override', () => {
     const body = mapTemplateToPasscreator({
       template: { ...makeRow(), card_type: 'stamp_card', settings: { ...makeRow().settings, leftField: 'memberLevel' } },
       language: 'zh-TW',
       r2PublicUrl: R2_URL,
     });
-    expect(body.fields.headerFields[0]?.label).toBe(getFieldLabel('memberLevel', 'zh-TW', 'stamp_card'));
-    expect(body.fields.headerFields[0]?.label).toBe('獎勵');
+    expect(body.fields.secondaryFields[0]?.label).toBe(getFieldLabel('memberLevel', 'zh-TW', 'stamp_card'));
+    expect(body.fields.primaryFields).toEqual([]);
+    expect(body.fields.headerFields[0]?.label).toBe(getHeaderField('stamp_card', 'zh-TW')?.label);
   });
 
-  it('zh-TW discount_card: mapping pushes 「折扣等級」 which equals getFieldLabel(..., discount_card)', () => {
+  it('zh-TW discount_card: secondaryFields[0] pushes discount tier override', () => {
     const body = mapTemplateToPasscreator({
       template: { ...makeRow(), card_type: 'discount_card', settings: { ...makeRow().settings, leftField: 'memberLevel' } },
       language: 'zh-TW',
       r2PublicUrl: R2_URL,
     });
-    expect(body.fields.headerFields[0]?.label).toBe(getFieldLabel('memberLevel', 'zh-TW', 'discount_card'));
-    expect(body.fields.headerFields[0]?.label).toBe('折扣等級');
+    expect(body.fields.secondaryFields[0]?.label).toBe(getFieldLabel('memberLevel', 'zh-TW', 'discount_card'));
+    expect(body.fields.primaryFields).toEqual([]);
+    expect(body.fields.headerFields[0]?.label).toBe(getHeaderField('discount_card', 'zh-TW')?.label);
   });
 
-  it('en stamp_card: mapping pushes "Reward" which equals getFieldLabel(..., stamp_card)', () => {
+  it('en stamp_card: secondaryFields[0] pushes Reward', () => {
     const body = mapTemplateToPasscreator({
       template: { ...makeRow(), card_type: 'stamp_card', settings: { ...makeRow().settings, leftField: 'memberLevel' } },
       language: 'en',
       r2PublicUrl: R2_URL,
     });
-    expect(body.fields.headerFields[0]?.label).toBe(getFieldLabel('memberLevel', 'en', 'stamp_card'));
-    expect(body.fields.headerFields[0]?.label).toBe('Reward');
+    expect(body.fields.secondaryFields[0]?.label).toBe(getFieldLabel('memberLevel', 'en', 'stamp_card'));
+    expect(body.fields.primaryFields).toEqual([]);
+    expect(body.fields.headerFields[0]?.label).toBe(getHeaderField('stamp_card', 'en')?.label);
+  });
+
+  it('zh-TW multipass: secondaryFields[1] pushes default member level', () => {
+    const body = mapTemplateToPasscreator({
+      template: { ...makeRow(), card_type: 'multipass', settings: { ...makeRow().settings, rightField: 'memberLevel' } },
+      language: 'zh-TW',
+      r2PublicUrl: R2_URL,
+    });
+    expect(body.fields.secondaryFields[1]?.label).toBe(getFieldLabel('memberLevel', 'zh-TW', 'multipass'));
+  });
+
+  it('zh-TW gift_card: secondaryFields[0] pushes default member level', () => {
+    const body = mapTemplateToPasscreator({
+      template: { ...makeRow(), card_type: 'gift_card', settings: { ...makeRow().settings, leftField: 'memberLevel' } },
+      language: 'zh-TW',
+      r2PublicUrl: R2_URL,
+    });
+    expect(body.fields.secondaryFields[0]?.label).toBe(getFieldLabel('memberLevel', 'zh-TW', 'gift_card'));
   });
 });

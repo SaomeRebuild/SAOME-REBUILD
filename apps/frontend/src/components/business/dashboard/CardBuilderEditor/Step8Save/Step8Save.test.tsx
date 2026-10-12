@@ -302,6 +302,202 @@ describe('Step8Save — error path', () => {
     expect(screen.queryByTestId('step8-error-banner')).not.toBeInTheDocument();
   });
 
+  it('Passcreator BadGatewayError with upstreamErrors renders the field error list (regression — 2026-10-11)', async () => {
+    // When the backend extracts structured `errors[]` from Passcreator's
+    // V2 envelope (success: false, errors: [{property, message}]), the
+    // hook forwards them as `upstreamErrors` on PasscreatorSyncError.
+    // The banner must render one row per `{property, message}` pair,
+    // so the user sees WHICH fields are wrong without parsing raw JSON.
+    const passcreatorError = Object.assign(new Error('Passcreator rejected'), {
+      code: 'BAD_GATEWAY',
+      i18nKey: 'common.error.upstreamFailed',
+      details: {
+        upstream: 'passcreator',
+        upstreamStatus: 400,
+        upstreamBody: '{"success":false,"description":"The provided JSON was invalid.","errors":[...]}',
+        upstreamErrors: [
+          { property: 'description', message: 'The property description is required' },
+          { property: 'type', message: 'The property type is required' },
+        ],
+      },
+    });
+    updateSpy.mockRejectedValueOnce(passcreatorError);
+    const user = userEvent.setup();
+    renderWithRouter();
+
+    await user.click(screen.getByTestId('step8-publish-button'));
+    await act(async () => { await Promise.resolve(); });
+
+    // Banner present.
+    expect(screen.getByTestId('step8-error-banner')).toBeInTheDocument();
+    // Structured field error list present.
+    const fieldList = screen.getByTestId('step8-error-field-list');
+    expect(fieldList).toBeInTheDocument();
+    // Both rows render.
+    const rows = screen.getAllByTestId('step8-error-field-row');
+    expect(rows).toHaveLength(2);
+    // First row contains the property and message.
+    expect(rows[0]!.textContent).toContain('description');
+    expect(rows[0]!.textContent).toContain('The property description is required');
+    expect(rows[1]!.textContent).toContain('type');
+    expect(rows[1]!.textContent).toContain('The property type is required');
+  });
+
+  it('Passcreator BadGatewayError WITHOUT upstreamErrors does NOT render the field error list (fallback to details block)', async () => {
+    // When the upstream doesn't return a V2 error envelope (e.g. 5xx
+    // with a generic body, 401 with empty body, 404 HTML page), the
+    // backend sets no `upstreamErrors`. The banner must NOT render
+    // the (empty) field list — only the raw upstreamBody details block.
+    const passcreatorError = Object.assign(new Error('Passcreator unavailable'), {
+      code: 'BAD_GATEWAY',
+      i18nKey: 'common.error.upstreamFailed',
+      details: {
+        upstream: 'passcreator',
+        upstreamStatus: 502,
+        upstreamBody: 'upstream unavailable',
+        // no upstreamErrors field
+      },
+    });
+    updateSpy.mockRejectedValueOnce(passcreatorError);
+    const user = userEvent.setup();
+    renderWithRouter();
+
+    await user.click(screen.getByTestId('step8-publish-button'));
+    await act(async () => { await Promise.resolve(); });
+
+    // Banner present.
+    expect(screen.getByTestId('step8-error-banner')).toBeInTheDocument();
+    // Field list NOT present (no upstreamErrors).
+    expect(screen.queryByTestId('step8-error-field-list')).not.toBeInTheDocument();
+  });
+
+  // ===== Step 8 v5 — Passcreator `kind` discriminator (regression — 2026-10-11) =====
+  // The 502 the backend throws can have 3 distinct underlying causes
+  // (network / invalid_response / upstream_rejected), each requiring
+  // different user-facing copy. The backend's `BadGatewayError.details.kind`
+  // surfaces this discriminator; the banner must render the right copy.
+  //
+  // The 2026-10-11 incident: Cloudflare edge returned HTTP 530 with
+  // body "error code: 1016" (Origin DNS error — can't reach Passcreator
+  // origin). The banner was misleadingly saying "check your network
+  // connection" — but it was Passcreator's origin that was unreachable,
+  // not the user's network.
+
+  it('kind="network" renders the network description (DNS / connection refused)', async () => {
+    const passcreatorError = Object.assign(new Error('fetch failed: ECONNREFUSED'), {
+      code: 'BAD_GATEWAY',
+      i18nKey: 'common.error.upstreamFailed',
+      details: {
+        upstream: 'passcreator',
+        kind: 'network',
+        // No upstreamStatus — the request never reached the wire.
+        upstreamBody: 'network error: fetch failed: ECONNREFUSED',
+      },
+    });
+    updateSpy.mockRejectedValueOnce(passcreatorError);
+    const user = userEvent.setup();
+    renderWithRouter();
+
+    await user.click(screen.getByTestId('step8-publish-button'));
+    await act(async () => { await Promise.resolve(); });
+
+    // Banner present.
+    expect(screen.getByTestId('step8-error-banner')).toBeInTheDocument();
+    // Description has data-kind="network" and the right i18n key.
+    const desc = screen.getByTestId('step8-error-description');
+    expect(desc.getAttribute('data-kind')).toBe('network');
+    expect(desc.textContent).toBe('steps.save.passcreatorSyncFailed.networkDescription');
+  });
+
+  it('kind="invalid_response" renders the service-unavailable description (Cloudflare 530/1016 regression — 2026-10-11)', async () => {
+    // The exact 530 + "error code: 1016" path that triggered this work.
+    const passcreatorError = Object.assign(new Error('Passcreator unreachable'), {
+      code: 'BAD_GATEWAY',
+      i18nKey: 'common.error.upstreamFailed',
+      details: {
+        upstream: 'passcreator',
+        kind: 'invalid_response',
+        upstreamStatus: 530,
+        upstreamBody: 'non-JSON response: error code: 1016',
+      },
+    });
+    updateSpy.mockRejectedValueOnce(passcreatorError);
+    const user = userEvent.setup();
+    renderWithRouter();
+
+    await user.click(screen.getByTestId('step8-publish-button'));
+    await act(async () => { await Promise.resolve(); });
+
+    // Banner present.
+    expect(screen.getByTestId('step8-error-banner')).toBeInTheDocument();
+    // Description has data-kind="invalid_response" and the right i18n key.
+    // This is the "service temporarily unavailable" copy — NOT the
+    // misleading "check your network connection" copy.
+    const desc = screen.getByTestId('step8-error-description');
+    expect(desc.getAttribute('data-kind')).toBe('invalid_response');
+    expect(desc.textContent).toBe('steps.save.passcreatorSyncFailed.invalidResponseDescription');
+  });
+
+  it('kind="upstream_rejected" renders the rejected description + field error list (V2 envelope)', async () => {
+    const passcreatorError = Object.assign(new Error('Passcreator rejected'), {
+      code: 'BAD_GATEWAY',
+      i18nKey: 'common.error.upstreamFailed',
+      details: {
+        upstream: 'passcreator',
+        kind: 'upstream_rejected',
+        upstreamStatus: 400,
+        upstreamBody: '{"success":false,"description":"...","errors":[...]}',
+        upstreamErrors: [
+          { property: 'description', message: 'is required' },
+        ],
+      },
+    });
+    updateSpy.mockRejectedValueOnce(passcreatorError);
+    const user = userEvent.setup();
+    renderWithRouter();
+
+    await user.click(screen.getByTestId('step8-publish-button'));
+    await act(async () => { await Promise.resolve(); });
+
+    // Banner present.
+    expect(screen.getByTestId('step8-error-banner')).toBeInTheDocument();
+    // Description has data-kind="upstream_rejected" and the right i18n key.
+    const desc = screen.getByTestId('step8-error-description');
+    expect(desc.getAttribute('data-kind')).toBe('upstream_rejected');
+    expect(desc.textContent).toBe('steps.save.passcreatorSyncFailed.upstreamRejectedDescription');
+    // Field error list still rendered (the actionable signal).
+    expect(screen.getByTestId('step8-error-field-list')).toBeInTheDocument();
+  });
+
+  it('falls back to generic description when kind is missing (backward compat with older backend)', async () => {
+    // Pre-2026-10-11 backend never set `kind`. The banner must still
+    // render — using the generic description — so older deployments
+    // don't show a blank banner.
+    const passcreatorError = Object.assign(new Error('Passcreator rejected'), {
+      code: 'BAD_GATEWAY',
+      i18nKey: 'common.error.upstreamFailed',
+      details: {
+        upstream: 'passcreator',
+        upstreamStatus: 502,
+        upstreamBody: 'oops',
+        // no `kind` field
+      },
+    });
+    updateSpy.mockRejectedValueOnce(passcreatorError);
+    const user = userEvent.setup();
+    renderWithRouter();
+
+    await user.click(screen.getByTestId('step8-publish-button'));
+    await act(async () => { await Promise.resolve(); });
+
+    // Banner present.
+    expect(screen.getByTestId('step8-error-banner')).toBeInTheDocument();
+    // Description falls back to the generic key.
+    const desc = screen.getByTestId('step8-error-description');
+    expect(desc.getAttribute('data-kind')).toBe('unknown');
+    expect(desc.textContent).toBe('steps.save.passcreatorSyncFailed.description');
+  });
+
   it('retry button re-triggers cardService.update with the same cardId', async () => {
     const passcreatorError = Object.assign(new Error('Passcreator rejected'), {
       code: 'BAD_GATEWAY',

@@ -184,12 +184,30 @@ export class ServerError extends SaomeError {
  *     Passcreator service echoes 401 bodies that may contain the
  *     request path; redact anything sensitive upstream before passing
  *     to this constructor.
+ *   - `kind` ('network' | 'invalid_response' | 'upstream_rejected', optional):
+ *     discriminator for the underlying failure cause, surfaced in
+ *     `details.kind` so the frontend banner can pick copy that's
+ *     actionable for the user. Without this, the banner has a single
+ *     "check your network connection" message that misleads users into
+ *     thinking their own network is broken when actually it's
+ *     Passcreator's origin that's unreachable.
+ *     - `'network'` — fetch threw (DNS, connection refused, TLS, timeout).
+ *       The request never reached the upstream.
+ *     - `'invalid_response'` — got a response but the body wasn't a
+ *       Passcreator V2 envelope. Typically a CDN edge error (Cloudflare
+ *       5xx HTML page, e.g. 530 "Origin DNS error" / code 1016) — the
+ *       upstream is unreachable from the edge.
+ *     - `'upstream_rejected'` — got a structured V2 error envelope
+ *       (`success: false, errors: [...]`). The upstream explicitly
+ *       rejected the request (e.g. validation error). May or may not
+ *       have `upstreamErrors` populated.
  *
  * @example
  *   throw new BadGatewayError({
  *     upstream: 'passcreator',
  *     upstreamStatus: 502,
  *     upstreamBody: 'Bad Gateway: upstream returned invalid JSON',
+ *     kind: 'invalid_response',
  *   });
  */
 export class BadGatewayError extends SaomeError {
@@ -197,6 +215,21 @@ export class BadGatewayError extends SaomeError {
     upstream: string;
     upstreamStatus?: number;
     upstreamBody?: string;
+    /**
+     * Structured per-field error entries extracted from upstream
+     * error envelopes (e.g. Passcreator V2 `errors: [{property, message}]`).
+     * Optional — only set when the upstream response conforms to a
+     * known structured error format. The frontend banner can render
+     * these as "field N: reason M" rows instead of dumping the raw
+     * `upstreamBody` JSON.
+     */
+    upstreamErrors?: Array<{ property: string; message: string }>;
+    /**
+     * Discriminator for the underlying failure cause. See the class
+     * docstring for the 3 possible values. Frontend banner uses this
+     * to pick copy that points the user at the right next action.
+     */
+    kind?: 'network' | 'invalid_response' | 'upstream_rejected';
     i18nKey?: string;
     message?: string;
   }) {
@@ -207,6 +240,11 @@ export class BadGatewayError extends SaomeError {
       body && body.length > 500
         ? `${body.slice(0, 500)}... (truncated)`
         : body;
+    // Only surface upstreamErrors when at least one valid entry exists.
+    // An empty array is the same as "no extraction" — keeps the
+    // details envelope minimal.
+    const hasUpstreamErrors =
+      Array.isArray(args.upstreamErrors) && args.upstreamErrors.length > 0;
     super({
       status: 502,
       code: 'BAD_GATEWAY',
@@ -216,6 +254,11 @@ export class BadGatewayError extends SaomeError {
         upstream: args.upstream,
         upstreamStatus: args.upstreamStatus,
         upstreamBody: safeBody,
+        // Only attach `kind` when explicitly set — keeps the envelope
+        // minimal and lets the frontend distinguish "explicit kind" from
+        // "unknown / older backend that didn't set this".
+        ...(args.kind ? { kind: args.kind } : {}),
+        ...(hasUpstreamErrors ? { upstreamErrors: args.upstreamErrors } : {}),
       },
     });
     this.name = 'BadGatewayError';

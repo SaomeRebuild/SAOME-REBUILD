@@ -70,7 +70,7 @@ function makeRow(overrides: Partial<{ status: 'draft' | 'published'; passcreator
 }
 
 const VALID_ENV = {
-  PASSCREATOR_API_URL: 'https://api.passcreator.com',
+  PASSCREATOR_API_URL: 'https://app.passcreator.com',
   PASSCREATOR_API_KEY: 'test-key',
   PASSCREATOR_PASS_TYPE_ID: 'pass.saome.org.passcreator',
   R2_PUBLIC_URL: 'https://r2.example.com',

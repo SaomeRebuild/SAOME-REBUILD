@@ -55,10 +55,26 @@ export default {
       // the publish action without first re-saving.
       passcreatorSyncFailed: {
         title: '同步至 Passcreator 失敗',
-        description: '卡片已在本機儲存,但未能同步至 Passcreator。請檢查網路連線或稍後重試。',
+        // Fallback description (no `kind` set on the error). Normally
+        // one of the kind-specific descriptions below is used instead;
+        // this only renders when the backend is an older version that
+        // doesn't set `kind` (or for any unknown future kind).
+        description: '卡片已在本機儲存,但未能同步至 Passcreator。請稍後重試。',
+        // 2026-10-11 — kind-specific descriptions (regression: 530/1016
+        // Cloudflare "Origin DNS error" 被誤標為「請檢查網路」—
+        // 實際上是 Passcreator origin 連不上,不是使用者網路問題)。
+        // 對應 backend saomeError.ts + Step8SaveErrorBanner.tsx 的
+        // kind discriminator。
+        networkDescription: '網路連線失敗。請檢查網路連線後重試。',
+        invalidResponseDescription: 'Passcreator 服務暫時無法使用。卡片已在本機儲存 — 請稍候片刻後重試。',
+        upstreamRejectedDescription: 'Passcreator 拒絕了這份資料。請修正下列問題後重試。',
         upstreamDetail: '詳細錯誤',
         retry: '重試同步',
         cancel: '稍後再說',
+        // 2026-10-11 — 結構化欄位錯誤清單標題 (對應 backend
+        // upstreamErrors[] 從 Passcreator V2 envelope 抽出)。
+        // 顯示在 banner 的「欄位錯誤」section 上方。
+        fieldErrorsTitle: '以下欄位有問題',
       },
     },
   },

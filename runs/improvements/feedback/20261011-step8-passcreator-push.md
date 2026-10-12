@@ -155,3 +155,117 @@ etc.). If future zh-TW content uses other Passcreator-derived terms
   caught the same anti-pattern 3 times. **Action**: file a follow-up
   to add the hook in a separate PR. (Out of scope for this PR
   because the .git/hooks directory is local to each developer.)
+
+---
+
+# Step 8 v5 — `headerField` is fixed per cardType (2026-10-11, follow-up)
+
+**Trigger**: User feedback after v4 shipped:
+> "還有 header field 的標籤，其實一開始就定義好了，不是 step3 設定的，
+> 租戶會在 step1 選擇卡種時就會看到預覽了"
+
+**What v4 did wrong**: `passTemplateMapping.ts` put
+`settings.leftField` into `headerFields[0]`. A stamp_card with
+`leftField: 'phone'` would push `電話` at the top of the deployed
+pass instead of the cardType-fixed `餘額`. The header field's
+semantic meaning is "what type of value is shown here" (member
+expiry / discount expiry / coupon expiry / balance / gift points),
+which is determined by the **cardType**, not by the user's Step 3
+field selection.
+
+**What v5 changes**:
+
+| Slot | v4 (broken) | v5 (correct) |
+|------|-------------|--------------|
+| `headerFields[0]` | `settings.leftField` (Step 3 driven) | `getHeaderField(cardType, language)` (cardType fixed) |
+| `primaryFields[0]` | `settings.rightField` (Step 3) | `settings.leftField` (Step 3) |
+| `secondaryFields[0]` | empty (v1) | `settings.rightField` (Step 3) |
+
+**Architecture**:
+
+```
+┌────────────────────────────────────────────────────────────┐
+│ packages/shared/i18n/fieldLabels.ts                        │
+│   new `headerField` block: Partial<Record<CardType, {key,label}>> │
+│   new `getHeaderField(cardType, language) → {key,label}|null│
+│   drift guard: headerField.label === passCard.<X>.label     │
+│   (editor `passCard.{zh-TW,en}.ts::{memberExpiry, …}` is   │
+│    the user-visible source of truth; shared is the          │
+│    backend-readable mirror)                                 │
+└────────────────────────────────────────────────────────────┘
+                ↑                    ↑
+       ┌────────┴────────┐  ┌────────┴────────┐
+       │ passTemplateSync│  │ (no frontend    │
+       │  (backend push) │  │  caller yet —   │
+       │                 │  │  PasscardPreview│
+       │                 │  │  Header uses its│
+       │                 │  │  own branch)    │
+       └─────────────────┘  └─────────────────┘
+```
+
+**Per-cardType `headerField` table** (regression-pinned by tests):
+
+| cardType | key | zh-TW label | en label |
+|----------|-----|-------------|----------|
+| `membership_card` | `memberExpiry` | 會員到期日 | Member Expiry |
+| `discount_card` | `discountExpiry` | 有效期限 | Expiry Date |
+| `coupon_card` | `couponExpiry` | 有效期限 | Expiry Date |
+| `stamp_card / reward_card / cashback_card / multipass` | `balance` | 餘額 | Balance |
+| `gift_card` | `giftPoints` | 點數 | Points |
+| `null` / `undefined` | (none) | (empty `headerFields` array) | (empty `headerFields` array) |
+
+**Drift caught during implementation** (pre-existing, surfaced by
+`previewPill-vs-headerField` test):
+
+`fieldLabels.en.ts::previewPill` had `discountExpiry: 'Valid Until'`
+and `couponExpiry: 'Valid Until'`, drifting from
+`passCard.en.ts::discountExpiry.label = 'Expiry Date'` (and the
+same for coupon). The drift was invisible because
+`getPreviewPillLabels` had no callers in the frontend code (the
+editor reads `passCard.en.ts` directly via
+`t('discountExpiry.label')`). **Fixed**: updated
+`fieldLabels.en.ts::previewPill` to use `'Expiry Date'` for both.
+The drift guard test now passes.
+
+**Test totals (v5 delta)**:
+
+| File | v4 tests | v5 tests | Delta |
+|------|----------|----------|-------|
+| `packages/shared/i18n/fieldLabels.test.ts` | 22 | 62 | **+40** (getHeaderField + drift guards) |
+| `apps/backend/.../tests/passTemplateMapping.test.ts` | 31 | 41 | **+10** (headerField / primary / secondary / override) |
+| `apps/backend/.../tests/fieldLabels-integration.test.ts` | 8 | 14 | **+6** (headerField integration + override on primary/secondary) |
+
+**Critical regression tests added**:
+
+- `headerFields label is INDEPENDENT of settings.leftField` —
+  explicit v4 → v5 drift guard. Setting `leftField: 'memberLevel'`
+  on a `reward_card` MUST NOT change `headerFields[0].label` from
+  `餘額` to `獎勵` (the override applies to primary/secondary, not
+  headerField).
+- `headerField block covers every CardType` — if a future cardType
+  is added to the schema but not to the `headerField` map, the
+  test fails at the shared-module level before the bug ships.
+- `previewPill-vs-headerField` — 2 tests (one per locale) that
+  enforce `previewPill.<X> === headerField.<cardType>.label` for
+  every cardType. Prevents the editor preview and the deployed
+  pass from drifting.
+
+**Architectural note (not in this PR)**: the frontend
+`PassCardPreviewHeader` and `passCardPreviewSlot.resolveHeaderRightSlot`
+both implement the same 6-branch per-cardType logic, but they read
+their labels from `passCard.{zh-TW,en}.ts` (the editor's source of
+truth), not from `@saome/shared/i18n/fieldLabels`. The 3 sites
+(shared `fieldLabels` → editor `passCard` → editor preview
+component) currently share the same label strings by convention +
+drift guard, NOT by code reuse. A future refactor should make
+`PassCardPreviewHeader.tsx` read from `getHeaderField` directly,
+eliminating the third copy of the per-cardType label table.
+
+**Rule references**:
+- Rule 000 Part C.2 — third-party mapping (pure function, no
+  transport)
+- Rule 019 § 4.1 — `TemplateSettings` is the source of truth
+- Rule 019 § D.3 — Passcreator API is a contract
+- Rule 023 § Shared Validation — error messages / labels are i18n
+  keys (not raw text)
+- Rule 011 — commit footer (4-layer sync for label changes)

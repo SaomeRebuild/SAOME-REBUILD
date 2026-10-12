@@ -157,6 +157,24 @@ import type { CardType } from '../schemas/card';
 
 export type CardFieldKey = (typeof CARD_FIELD_KEYS)[number];
 
+/**
+ * v12 (2026-10-12): Passcreator V2 `fields[].type` enum for face
+ * display fields. Subset of `PasscreatorFieldType` (defined in
+ * `apps/backend/src/shared/lib/passcreator.ts`) — the wider enum also
+ * includes 'currency' / 'barcode' but those are reserved for pass-wide
+ * metadata, not face slots, so they don't appear here.
+ *
+ * Single source of truth: each CARD_FIELDS entry declares its
+ * `semanticType` once; backend `mapFieldType()` reads from this map
+ * (no hard-coded switch). Adding a new key without a `semanticType`
+ * is a TypeScript error — that's the machine-checked drift guard.
+ *
+ * v12 history: replaces the 19-case hard-coded switch that previously
+ * lived in `apps/backend/src/modules/pass-templates/services/passTemplateMapping.ts::mapFieldType`.
+ * See `runs/improvements/feedback/20261012-step8-passcreator-v11-cross-reference-fields.md` § 教訓 4.
+ */
+export type FieldSemanticType = 'text' | 'number' | 'date';
+
 export interface CardFieldDefinition {
   key: CardFieldKey;
   /** i18n key path inside the 'cardEditor' namespace */
@@ -192,6 +210,18 @@ export interface CardFieldDefinition {
    * in the future requires editing only this file.
    */
   hideOnCardTypes?: readonly CardType[];
+  /**
+   * v12 (2026-10-12): Passcreator V2 `fields[].type` enum for the
+   * `primaryFields[].type` / `secondaryFields[].type` slot. Set ONCE
+   * here and read by `mapFieldType()` via CARD_FIELDS metadata.
+   *
+   * Required (no default). TypeScript catches missing values at build
+   * time. The 'date' value drives Passcreator's date-rendering widget
+   * (calendar picker on per-pass issuance); 'number' drives numeric
+   * formatting (commas / decimal places); 'text' is the safe fallback
+   * for free-form strings.
+   */
+  semanticType: FieldSemanticType;
 }
 
 /**
@@ -214,35 +244,36 @@ export interface CardFieldDefinition {
  */
 export const CARD_FIELDS: readonly CardFieldDefinition[] = [
   // ── common: every card type ────────────────────────────────────────────
-  { key: 'phone',       group: 'common', labelKey: 'step3.fieldsSection.fields.phone' },
-  { key: 'email',       group: 'common', labelKey: 'step3.fieldsSection.fields.email' },
-  { key: 'memberLevel', group: 'common', labelKey: 'step3.fieldsSection.fields.memberLevel', hideOnCardTypes: ['coupon_card', 'gift_card'] },
-  { key: 'birthday',    group: 'common', labelKey: 'step3.fieldsSection.fields.birthday' },
-  { key: 'visitCount',  group: 'common', labelKey: 'step3.fieldsSection.fields.visitCount' },
+  { key: 'phone',       group: 'common', labelKey: 'step3.fieldsSection.fields.phone',       semanticType: 'text' },
+  { key: 'email',       group: 'common', labelKey: 'step3.fieldsSection.fields.email',       semanticType: 'text' },
+  { key: 'memberLevel', group: 'common', labelKey: 'step3.fieldsSection.fields.memberLevel', semanticType: 'text', hideOnCardTypes: ['coupon_card', 'gift_card'] },
+  { key: 'birthday',    group: 'common', labelKey: 'step3.fieldsSection.fields.birthday',    semanticType: 'date' },
+  { key: 'visitCount',  group: 'common', labelKey: 'step3.fieldsSection.fields.visitCount',  semanticType: 'number' },
   {
     key: 'memberName',
     group: 'common',
     labelKey: 'step3.fieldsSection.fields.memberName',
     hideOnCardTypes: ['membership_card'],
+    semanticType: 'text',
   },
   // ── stamp: only stamp_card (decoupled from multipass 2026-09-20) ────────────
-  { key: 'availableRewards', group: 'stamp', labelKey: 'step3.fieldsSection.fields.availableRewards' },
-  { key: 'totalStamps',      group: 'stamp', labelKey: 'step3.fieldsSection.fields.totalStamps' },
-  { key: 'stampsRemaining',  group: 'stamp', labelKey: 'step3.fieldsSection.fields.stampsRemaining' },
+  { key: 'availableRewards', group: 'stamp', labelKey: 'step3.fieldsSection.fields.availableRewards', semanticType: 'number' },
+  { key: 'totalStamps',      group: 'stamp', labelKey: 'step3.fieldsSection.fields.totalStamps',      semanticType: 'number' },
+  { key: 'stampsRemaining',  group: 'stamp', labelKey: 'step3.fieldsSection.fields.stampsRemaining',  semanticType: 'number' },
   // ── reward: only reward_card (2026-09-10) ──────────────────────────────
   // Display-field extension for the Reward Card tier system. Preview values
   // are static demo strings (see passCard.{zh-TW,en}.ts fieldPreview);
   // real values will be sourced from the member row once PassCreator is
   // wired (same deferred path as phone / email / visitCount).
-  { key: 'pointsToNextTier', group: 'reward', labelKey: 'step3.fieldsSection.fields.pointsToNextTier' },
-  { key: 'currentPoints',    group: 'reward', labelKey: 'step3.fieldsSection.fields.currentPoints' },
+  { key: 'pointsToNextTier', group: 'reward', labelKey: 'step3.fieldsSection.fields.pointsToNextTier', semanticType: 'number' },
+  { key: 'currentPoints',    group: 'reward', labelKey: 'step3.fieldsSection.fields.currentPoints',    semanticType: 'number' },
   // ── cashback: only cashback_card (2026-09-12) ───────────────────────
   // Display-field extension for the Cashback Card tier system. Preview values
   // are static demo strings (see passCard.{zh-TW,en}.ts fieldPreview);
   // real values will be sourced from the member row once PassCreator is
   // wired (same deferred path as phone / email / visitCount).
-  { key: 'pointsToNextTierCashback',   group: 'cashback', labelKey: 'step3.fieldsSection.fields.pointsToNextTierCashback' },
-  { key: 'accumulatedSpendCashback',   group: 'cashback', labelKey: 'step3.fieldsSection.fields.accumulatedSpendCashback' },
+  { key: 'pointsToNextTierCashback',   group: 'cashback', labelKey: 'step3.fieldsSection.fields.pointsToNextTierCashback',   semanticType: 'number' },
+  { key: 'accumulatedSpendCashback',   group: 'cashback', labelKey: 'step3.fieldsSection.fields.accumulatedSpendCashback',   semanticType: 'number' },
   // ── discount: only discount_card (2026-09-18) ────────────────────────
   // Display-field extension for the Discount Card tier system. Preview values
   // for the two amount fields are static demo strings sourced from the
@@ -251,9 +282,9 @@ export const CARD_FIELDS: readonly CardFieldDefinition[] = [
   // `discountTiers[0].discountPercent` directly from the store.
   // Real values will be sourced from the member row once PassCreator is
   // wired (same deferred path as phone / email / visitCount).
-  { key: 'pointsToNextTierDiscount',   group: 'discount', labelKey: 'step3.fieldsSection.fields.pointsToNextTierDiscount' },
-  { key: 'discountTierBracket',        group: 'discount', labelKey: 'step3.fieldsSection.fields.discountTierBracket' },
-  { key: 'accumulatedSpendDiscount',   group: 'discount', labelKey: 'step3.fieldsSection.fields.accumulatedSpendDiscount' },
+  { key: 'pointsToNextTierDiscount',   group: 'discount', labelKey: 'step3.fieldsSection.fields.pointsToNextTierDiscount',   semanticType: 'number' },
+  { key: 'discountTierBracket',        group: 'discount', labelKey: 'step3.fieldsSection.fields.discountTierBracket',        semanticType: 'number' },
+  { key: 'accumulatedSpendDiscount',   group: 'discount', labelKey: 'step3.fieldsSection.fields.accumulatedSpendDiscount',   semanticType: 'number' },
   // ── coupon: only coupon_card (2026-09-19) ────────────────────────────────
   // Display-field extension for the Coupon Card editor.
   //   - couponRemainingCount: 剩餘張數 / Remaining Count — static demo
@@ -263,8 +294,8 @@ export const CARD_FIELDS: readonly CardFieldDefinition[] = [
   //   - couponDiscount: 折扣優惠 / Discount Offer — currency-driven value
   //     (`COUPON_PREVIEW_AMOUNTS[currency]`) for amount_off, and
   //     store-driven `${couponDiscountPercent}%折扣` for percent_off.
-  { key: 'couponRemainingCount',       group: 'coupon', labelKey: 'step3.fieldsSection.fields.couponRemainingCount' },
-  { key: 'couponDiscount',             group: 'coupon', labelKey: 'step3.fieldsSection.fields.couponDiscount' },
+  { key: 'couponRemainingCount',       group: 'coupon', labelKey: 'step3.fieldsSection.fields.couponRemainingCount',       semanticType: 'number' },
+  { key: 'couponDiscount',             group: 'coupon', labelKey: 'step3.fieldsSection.fields.couponDiscount',             semanticType: 'number' },
   // ── multipass: only multipass (2026-09-20) ──────────────────────────────
   // Display-field extension for the MultiPass Card editor.
   //   - multipassCompleted: 累積已滿 / Cumulative Completed — static demo
@@ -275,9 +306,9 @@ export const CARD_FIELDS: readonly CardFieldDefinition[] = [
   //     `multipassTiers[0].rewardType` + `rewardValue`, using the same
   //     amountFormatTWD / amountFormatZAR / percentFormat i18n pattern as
   //     couponDiscount.
-  { key: 'multipassCompleted',         group: 'multipass', labelKey: 'step3.fieldsSection.fields.multipassCompleted' },
-  { key: 'multipassPointsToNextTier',  group: 'multipass', labelKey: 'step3.fieldsSection.fields.multipassPointsToNextTier' },
-  { key: 'multipassRewardContent',     group: 'multipass', labelKey: 'step3.fieldsSection.fields.multipassRewardContent' },
+  { key: 'multipassCompleted',         group: 'multipass', labelKey: 'step3.fieldsSection.fields.multipassCompleted',         semanticType: 'number' },
+  { key: 'multipassPointsToNextTier',  group: 'multipass', labelKey: 'step3.fieldsSection.fields.multipassPointsToNextTier',  semanticType: 'number' },
+  { key: 'multipassRewardContent',     group: 'multipass', labelKey: 'step3.fieldsSection.fields.multipassRewardContent',     semanticType: 'text' },
   // The multipass "Member Level" slot is NOT a dedicated entry here — it
   // reuses the common `memberLevel` field, whose `hideOnCardTypes:
   // ['coupon_card']` does NOT exclude multipass. PassCardPreviewBody handles

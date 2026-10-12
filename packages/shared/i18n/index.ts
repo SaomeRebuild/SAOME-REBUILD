@@ -18,11 +18,13 @@ export {
 export {
   getFieldLabel,
   getFieldLabelMap,
+  getHeaderField,
   getSlotNames,
   getBackSideLabels,
   getDefaults,
   getPreviewPillLabels,
   getFieldPreviewLabel,
+  HEADER_FIELD_TYPES,
   type PassLanguage,
   type FieldLabels,
 } from './fieldLabels';

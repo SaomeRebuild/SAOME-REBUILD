@@ -1,0 +1,78 @@
+{
+  "scenario": "invalid-pass-type-id",
+  "description": "POST with a passTypeId not registered in Passcreator. Triggers a per-field \"unknown reference\" error.",
+  "capturedAt": "2026-10-11T21:18:15.546Z",
+  "apiUrl": "https://app.passcreator.com",
+  "request": {
+    "method": "POST",
+    "path": "/api/v2/pass-template",
+    "body": {
+      "passTypeId": "invalid-xxx-not-a-real-id-12345",
+      "type": "storeCard",
+      "name": "Capture Test",
+      "description": "A test pass for live error response capture",
+      "organizationName": "Capture Org",
+      "colors": {
+        "backgroundColor": "#0F0F23",
+        "foregroundColor": "#F8FAFC"
+      },
+      "barcode": {
+        "format": "PKBarcodeFormatQR",
+        "value": "",
+        "useAutoIdForValue": true
+      },
+      "images": {
+        "icon": "https://www.gstatic.com/webp/gallery/1.png"
+      },
+      "fields": {
+        "headerFields": [
+          {
+            "key": "balance",
+            "type": "number",
+            "label": "餘額",
+            "value": ""
+          }
+        ],
+        "primaryFields": [
+          {
+            "key": "phone",
+            "type": "text",
+            "label": "電話",
+            "value": ""
+          }
+        ],
+        "secondaryFields": [
+          {
+            "key": "email",
+            "type": "text",
+            "label": "E-mail",
+            "value": ""
+          }
+        ],
+        "backFields": [
+          {
+            "key": "",
+            "type": "text",
+            "label": "客服電話",
+            "value": "+886-2-1234-5678"
+          }
+        ]
+      }
+    }
+  },
+  "response": {
+    "status": 400,
+    "ok": false,
+    "contentType": "application/json",
+    "body": {
+      "success": false,
+      "description": "The given pass type ID invalid-xxx-not-a-real-id-12345 is not known.",
+      "errors": {
+        "property": "passTypeId",
+        "message": "This pass type ID is not known."
+      },
+      "data": [],
+      "statusCode": 400
+    }
+  }
+}

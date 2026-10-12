@@ -32,6 +32,59 @@ export const zhTW = {
     left: '左欄位',
     right: '右欄位',
   },
+  // ===== Passcreator `headerFields[0]` per-cardType mapping (2026-10-11) =====
+  // The Apple Wallet `headerField` is the small label shown at the top of
+  // the pass (above the primary field). It is **FIXED per cardType** —
+  // NOT driven by Step 3's `settings.leftField`. The tenant sees this
+  // label in the Step 1 card-type preview (via `PassCardPreviewHeader`)
+  // the moment they pick a card type, and the deployed pass carries the
+  // SAME label.
+  //
+  // Per-cardType rules (regression-pinned — must mirror
+  // `PassCardPreviewHeader.tsx::shouldShowXxxPreview` branch tree):
+  //   - membership_card                  → {key: 'memberExpiry',    label: '會員到期日'}
+  //   - discount_card                    → {key: 'discountExpiry',  label: '有效期限'}
+  //   - coupon_card                      → {key: 'couponExpiry',    label: '有效期限'}
+  //   - stamp_card / reward_card /
+  //     cashback_card / multipass        → {key: 'balance',         label: '餘額'}
+  //   - gift_card                        → {key: 'giftPoints',      label: '點數'}
+  //
+  // The `key` is the stable Passcreator field identifier (used when
+  // pushing template updates / reading back per-pass values); the
+  // `label` is the user-visible string at the top of the pass.
+  //
+  // Why this block lives here (not inside `previewPill`):
+  //   - `previewPill` is the flat key → label map that the editor
+  //     preview component reads via `getPreviewPillLabels()`; it
+  //     does NOT carry a `key` per cardType because the editor
+  //     resolves the key inline (`t('memberExpiry.label')` etc.).
+  //   - The Passcreator push needs BOTH a stable `key` AND a
+  //     localized `label` per cardType. Adding a second block keeps
+  //     the editor-facing API unchanged.
+  //
+  // Drift guard: the `label` values here MUST equal the editor's
+  // `passCard.zh-TW.ts::{memberExpiry,discountExpiry,couponExpiry,
+  // balancePreview,giftPointsPreview}.label`. The conformance test
+  // `fieldLabels.test.ts::locale-vs-passCard headerField` enforces
+  // this by reading the editor i18n file at test time and asserting
+  // equality.
+  //
+  // Typing: `Partial<Record<CardType, …>>` (not `as const`) so the
+  // zh-TW and en locales have the SAME shape — only the values
+  // differ. `as const` would lock each entry to a literal type and
+  // the two locales would no longer be assignable to the same
+  // `FieldLabels` interface, breaking the drift test's `LOCALES`
+  // array. Same convention as `memberLevelOverrides`.
+  headerField: {
+    membership_card: { key: 'memberExpiry',   label: '會員到期日' },
+    discount_card:   { key: 'discountExpiry', label: '有效期限' },
+    coupon_card:     { key: 'couponExpiry',   label: '有效期限' },
+    stamp_card:      { key: 'balance',        label: '餘額' },
+    reward_card:     { key: 'balance',        label: '餘額' },
+    cashback_card:   { key: 'balance',        label: '餘額' },
+    multipass:       { key: 'balance',        label: '餘額' },
+    gift_card:       { key: 'giftPoints',     label: '點數' },
+  } as Partial<Record<CardType, { key: string; label: string }>>,
   // Field labels (Step 3 dropdown options, AND Passcreator field labels)
   fieldLabels: {
     phone: '電話',
