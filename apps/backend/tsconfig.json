@@ -20,7 +20,8 @@
       "@saome/shared/schemas/*": ["../../packages/shared/schemas/*"],
       "@saome/shared/types/*": ["../../packages/shared/types/*"],
       "@saome/shared/logic/*": ["../../packages/shared/logic/*"],
-      "@saome/shared/constants/*": ["../../packages/shared/constants/*"]
+      "@saome/shared/constants/*": ["../../packages/shared/constants/*"],
+      "@saome/shared/i18n/*": ["../../packages/shared/i18n/*"]
     }
   },
   "include": ["src/**/*.ts"],
