@@ -75,7 +75,30 @@
  *      `settings.locationsDisabled === false`, push the array; when
  *      `true`, omit the array entirely (Passcreator never sees stale
  *      location data).
- *  10. Builds `images` from `settings.issuerLogo / iconImage` etc.
+ *      v13 (2026-10-12) — each `locations[]` row now also carries
+ *      `name` (per-row user-facing label, Passcreator V2 accepts it;
+ *      previously v9 stripped it based on an incomplete reading of
+ *      the describe response). Top-level `initialMessage` (welcome
+ *      push-notification body) and `locationsMaxDistance` (pass-level
+ *      notification radius in meters, [100, 1000]) are now also
+ *      pushed when set. See `runs/improvements/feedback/20261012-
+ *      step8-passcreator-v13-location-radius-initial-message-and-
+ *      membership-backfields.md`.
+ *  10. Builds `backFields` from one of two sources depending on
+ *      `cardType` (v13 — 2026-10-12):
+ *        - `membership_card` ⇒ flatten `settings.membershipTiers[].rewards[]`
+ *          (each reward row becomes one backField row; tier name is NOT
+ *          prefixed, per user 2026-10-12 directive). Membership cards
+ *          use the Step 6 tier editor to author benefits, so
+ *          `settings.backFields[]` is an empty placeholder for this
+ *          card type.
+ *        - all other cardTypes ⇒ use `settings.backFields[]` (v9
+ *          behavior preserved).
+ *      Edge case: membership_card with no tiers AND non-empty
+ *      `settings.backFields[]` falls back to the legacy source (so
+ *      a tenant who authored backFields before adding tiers doesn't
+ *      lose their content silently).
+ *  11. Builds `images` from `settings.issuerLogo / iconImage` etc.
  *      When the value is a JSONB R2 key, we convert it to the public R2 URL.
  *
  * Why `headerField` is FIXED per cardType (v5 user decision, 2026-10-11):
@@ -575,12 +598,60 @@ export function mapTemplateToPasscreator(args: MapTemplateToPasscreatorArgs): Pa
   // The `additionalProperties[]` cross-reference entries (type: 'url')
   // are STILL generated from `settings.links[]` — the cross-reference
   // variable is independent of the rendering slot.
-  const backFields = (s.backFields ?? []).map((row) => ({
-    key: '',
-    type: 'text' as const,
-    label: row.label,
-    value: row.value,
-  }));
+  //
+  // 2026-10-12 v13 fix — membership_card backFields source switch.
+  // For membership_card, the user-authored back content lives in
+  // `settings.membershipTiers[].rewards[]` (per-tier 會員獎勵 sub-rows),
+  // not in `settings.backFields[]` (which is an empty placeholder for
+  // this card type — the Step 4 free-form back field area is not used
+  // for membership cards; tenants build their benefits via the
+  // Step 6 membership tier editor).
+  //
+  // The mapping flattens every reward row across every tier into a
+  // single `backFields[]` array (no tier-name prefix — per user
+  // confirmation 2026-10-12: "rewards 裡面的 label、value 就是會員卡的
+  // backFields"). Rows with both label and value empty are skipped
+  // (Passcreator would reject them anyway).
+  //
+  // Edge case — if `membershipTiers` is empty AND the legacy
+  // `settings.backFields[]` happens to have content, fall back to the
+  // legacy backFields. This protects against the rare transition state
+  // where a tenant added backFields before adding any tier (or a tier
+  // was deleted but backFields retained). Without this fallback, a
+  // membership_card with zero tiers would ship an empty back to
+  // Passcreator and the tenant would lose their content silently.
+  //
+  // For ALL other cardTypes, the source remains `settings.backFields[]`
+  // (v9 behavior). Even if `settings.membershipTiers[]` happens to be
+  // present (e.g. a cardType was switched), we DO NOT read it for
+  // non-membership cardTypes — keeps the per-cardType contract explicit.
+  const backFields = template.card_type === 'membership_card'
+    ? (s.membershipTiers ?? []).flatMap((tier) =>
+        (tier.rewards ?? [])
+          .filter((r) => r.label.length > 0 || r.value.length > 0)
+          .map((r) => ({ key: '' as const, type: 'text' as const, label: r.label, value: r.value })),
+      )
+    : (s.backFields ?? []).map((row) => ({
+        key: '' as const,
+        type: 'text' as const,
+        label: row.label,
+        value: row.value,
+      }));
+
+  // v13 — membership_card empty-tiers fallback (see comment above).
+  // The final array used downstream is this `finalBackFields`, not
+  // the raw `backFields` computed above.
+  const finalBackFields =
+    template.card_type === 'membership_card' &&
+    backFields.length === 0 &&
+    (s.backFields ?? []).length > 0
+      ? (s.backFields ?? []).map((row) => ({
+          key: '' as const,
+          type: 'text' as const,
+          label: row.label,
+          value: row.value,
+        }))
+      : backFields;
 
   return {
     passTypeId: args.passTypeId ?? 'pass.saome.org.passcreator',
@@ -686,7 +757,7 @@ export function mapTemplateToPasscreator(args: MapTemplateToPasscreatorArgs): Pa
        * empty).
        */
       auxiliaryFields: [],
-      backFields,
+      backFields: finalBackFields,
     },
     /**
      * 2026-10-12 v10 — Top-level `links[]`. Per the V2 endpoint contract
@@ -739,27 +810,56 @@ export function mapTemplateToPasscreator(args: MapTemplateToPasscreatorArgs): Pa
      * is OMITTED entirely from the payload. The `locationsDisabled`
      * toggle is ALWAYS sent (so Passcreator's state is explicit).
      *
-     * Per Passcreator V2 contract (describes `locations` row shape):
-     * `{latitude, longitude, relevantText}`. The `name` field is
-     * SAOME-specific (Step 5 tenant-facing label) and is stripped
-     * before the push — Passcreator's V2 schema does not include
-     * `name` on the `locations` row.
+     * 2026-10-12 v13 — three new fields added to this geolocation
+     * block per user feedback on the v9 deploy:
+     *   - `locations[].name` — per-row human-readable label
+     *     (Passcreator V2 accepts it; previously v9 stripped it
+     *     based on an incomplete reading of the describe response).
+     *   - `initialMessage` (top-level) — push-notification body
+     *     shown after the user downloads the pass. Omitted when empty.
+     *   - `locationsMaxDistance` (top-level) — pass-level notification
+     *     radius in meters (PassKit / Apple Wallet bound [100, 1000]).
+     *     Omitted when null (= PassKit picks pass-type default).
      */
     locationsDisabled: s.locationsDisabled === true,
     ...(s.locationsDisabled === true
       ? {}
       : {
           locations: (s.locations ?? []).map((loc) => {
-            const out: { latitude: number; longitude: number; relevantText?: string } = {
+            const out: { latitude: number; longitude: number; relevantText?: string; name?: string } = {
               latitude: loc.latitude,
               longitude: loc.longitude,
             };
             if (loc.relevantText != null && loc.relevantText.length > 0) {
               out.relevantText = loc.relevantText;
             }
+            // v13 — per-row user-facing label (Passcreator V2 accepts
+            // `locations[].name` as an optional field). Omitted when
+            // empty so the upstream UI doesn't render an empty label.
+            if (loc.name && loc.name.length > 0) {
+              out.name = loc.name;
+            }
             return out;
           }),
         }),
+    /**
+     * 2026-10-12 v13 — `initialMessage` (top-level). Push-notification
+     * body after the user downloads the pass. Omitted when empty /
+     * undefined so Passcreator keeps its default behavior
+     * (no welcome notification).
+     */
+    ...(s.initialMessage && s.initialMessage.length > 0
+      ? { initialMessage: s.initialMessage }
+      : {}),
+    /**
+     * 2026-10-12 v13 — `locationsMaxDistance` (top-level). Pass-level
+     * notification radius in meters. `null` in DB → omitted (PassKit
+     * picks the pass-type default). Range [100, 1000] is enforced
+     * upstream by the shared zod schema.
+     */
+    ...(s.locationsMaxDistance != null
+      ? { locationsMaxDistance: s.locationsMaxDistance }
+      : {}),
     /**
      * 2026-10-12 v7 fix — additional properties (cross-reference
      * variable store). Each entry corresponds to ONE user-authored row

@@ -359,6 +359,7 @@ export interface PasscreatorTemplateBody {
    * `pkpass` `relevantLocations` row, with Passcreator-aligned shape:
    *   - `latitude` / `longitude` (REQUIRED)
    *   - `relevantText` (optional lock-screen message)
+   *   - `name` (optional human-readable label for the location)
    *
    * SAOME source: `settings.locations[]` (Step 5 entries).
    *
@@ -367,12 +368,42 @@ export interface PasscreatorTemplateBody {
    * `locationsDisabled === true`, the key is OMITTED from the payload
    * so Passcreator never sees stale data — the per-rule spec is "if
    * disabled, don't push it".
+   *
+   * 2026-10-12 v13: per-row `name` is now included (Passcreator V2
+   * accepts it as a user-facing label). Previously v9 stripped `name`
+   * based on an incomplete reading of the describe response schema;
+   * user feedback 2026-10-12 confirmed the field is part of the
+   * canonical V2 contract. `name` is only emitted when non-empty.
    */
   locations?: Array<{
     latitude: number;
     longitude: number;
     relevantText?: string;
+    /**
+     * 2026-10-12 v13 — per-row human-readable name. Passcreator V2
+     * `locations[].name` is optional; an empty string is treated by
+     * Passcreator as "no label". SAOME source: `settings.locations[].name`
+     * (Step 5 tenant-facing label).
+     */
+    name?: string;
   }>;
+  /**
+   * 2026-10-12 v13 — push-notification body after the user downloads
+   * the pass (Passcreator `initialMessage` top-level field). Optional;
+   * an empty string is treated by Passcreator as "no welcome
+   * notification". SAOME source: `settings.initialMessage` (Step 5
+   * "Initial message" textarea, ≤ INITIAL_MESSAGE_MAX_LENGTH=50 chars).
+   */
+  initialMessage?: string;
+  /**
+   * 2026-10-12 v13 — pass-level notification radius in meters
+   * (Passcreator `locationsMaxDistance` top-level field). Optional;
+   * valid range 100-1000 (PassKit / Apple Wallet bound per the
+   * shared schema). `null` in DB → OMIT (PassKit picks pass-type
+   * default). SAOME source: `settings.locationsMaxDistance`
+   * (Step 5 "Notification radius" slider, [100, 1000] m).
+   */
+  locationsMaxDistance?: number;
 }
 
 /**

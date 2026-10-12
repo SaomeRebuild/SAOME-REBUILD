@@ -517,3 +517,189 @@ describe('mapTemplateToPasscreator — cardType-aware memberLevel override (seco
     expect(body.fields.headerFields[0]?.label).toBe('餘額');
   });
 });
+
+/**
+ * 2026-10-12 v13 — locations[].name + initialMessage + locationsMaxDistance
+ * (PassKit / Passcreator V2 contract fields that v9 missed).
+ *
+ * Regression trace: v9 was written against the Passcreator V2 describe
+ * response's minimal `locations` row shape `{latitude, longitude,
+ * relevantText}` and dropped `name`. v13 corrects the gap. `initialMessage`
+ * and `locationsMaxDistance` are top-level pass-level fields that v9 never
+ * emitted at all.
+ */
+describe('mapTemplateToPasscreator — locations[].name (v13)', () => {
+  it('pushes per-row name when non-empty', () => {
+    const row = makeRow();
+    row.settings.locationsDisabled = false;
+    row.settings.locations = [
+      { name: 'asfasfasdfasfd', latitude: 25.147231388482524, longitude: 121.41076270166438, relevantText: 'dfasfdsafd' },
+    ];
+    const body = mapTemplateToPasscreator({ template: row, language: 'zh-TW', r2PublicUrl: R2_URL });
+    expect(body.locations?.[0]?.name).toBe('asfasfasdfasfd');
+  });
+  it('omits name when empty string (no empty label rendered upstream)', () => {
+    const row = makeRow();
+    row.settings.locationsDisabled = false;
+    row.settings.locations = [{ name: '', latitude: 25.14, longitude: 121.41 }];
+    const body = mapTemplateToPasscreator({ template: row, language: 'en', r2PublicUrl: R2_URL });
+    expect(body.locations?.[0]).not.toHaveProperty('name');
+  });
+  it('keeps name when row is well-formed (regression: explicit name survives map)', () => {
+    const row = makeRow();
+    row.settings.locationsDisabled = false;
+    row.settings.locations = [{ name: 'A', latitude: 25.14, longitude: 121.41 }];
+    const body = mapTemplateToPasscreator({ template: row, language: 'en', r2PublicUrl: R2_URL });
+    expect(body.locations?.[0]?.name).toBe('A');
+  });
+  it('keeps name out when locationsDisabled is true → locations array is omitted (v9 contract preserved)', () => {
+    // Defensive: when toggle is off, the whole array is gone (not just
+    // the rows). This protects the v9 contract — don't partially ship.
+    const row = makeRow();
+    row.settings.locationsDisabled = true;
+    row.settings.locations = [{ name: 'A', latitude: 25.14, longitude: 121.41 }];
+    const body = mapTemplateToPasscreator({ template: row, language: 'en', r2PublicUrl: R2_URL });
+    expect(body).not.toHaveProperty('locations');
+    expect(body.locationsDisabled).toBe(true);
+  });
+});
+
+describe('mapTemplateToPasscreator — initialMessage (v13)', () => {
+  it('pushes top-level initialMessage when set', () => {
+    const row = makeRow();
+    row.settings.initialMessage = 'asfasf';
+    const body = mapTemplateToPasscreator({ template: row, language: 'en', r2PublicUrl: R2_URL });
+    expect(body.initialMessage).toBe('asfasf');
+  });
+  it('omits initialMessage when empty string', () => {
+    const row = makeRow();
+    row.settings.initialMessage = '';
+    const body = mapTemplateToPasscreator({ template: row, language: 'en', r2PublicUrl: R2_URL });
+    expect(body).not.toHaveProperty('initialMessage');
+  });
+  it('omits initialMessage when undefined (default schema behavior)', () => {
+    const row = makeRow();
+    const body = mapTemplateToPasscreator({ template: row, language: 'en', r2PublicUrl: R2_URL });
+    expect(body).not.toHaveProperty('initialMessage');
+  });
+});
+
+describe('mapTemplateToPasscreator — locationsMaxDistance (v13)', () => {
+  it('pushes top-level locationsMaxDistance when non-null', () => {
+    const row = makeRow();
+    row.settings.locationsMaxDistance = 122;
+    const body = mapTemplateToPasscreator({ template: row, language: 'en', r2PublicUrl: R2_URL });
+    expect(body.locationsMaxDistance).toBe(122);
+  });
+  it('omits locationsMaxDistance when null (PassKit picks pass-type default)', () => {
+    const row = makeRow();
+    row.settings.locationsMaxDistance = null;
+    const body = mapTemplateToPasscreator({ template: row, language: 'en', r2PublicUrl: R2_URL });
+    expect(body).not.toHaveProperty('locationsMaxDistance');
+  });
+  it('omits locationsMaxDistance when undefined', () => {
+    const row = makeRow();
+    const body = mapTemplateToPasscreator({ template: row, language: 'en', r2PublicUrl: R2_URL });
+    expect(body).not.toHaveProperty('locationsMaxDistance');
+  });
+  it('preserves the PassKit-bound upper value (1000) — no clamping in the mapping layer', () => {
+    // Range [100, 1000] is enforced upstream by the shared zod schema;
+    // the mapping layer passes through whatever the editor wrote.
+    const row = makeRow();
+    row.settings.locationsMaxDistance = 1000;
+    const body = mapTemplateToPasscreator({ template: row, language: 'en', r2PublicUrl: R2_URL });
+    expect(body.locationsMaxDistance).toBe(1000);
+  });
+});
+
+/**
+ * 2026-10-12 v13 — membership_card backFields source switch.
+ *
+ * Regression trace: v9 / v12-followup read `settings.backFields[]` for
+ * every card type. For membership cards, `settings.backFields` is an
+ * empty placeholder (`[{label: '', value: ''}]` in real DB rows); the
+ * actual user-authored 會員福利 content lives in
+ * `settings.membershipTiers[].rewards[]`. v13 fixes the gap.
+ */
+describe('mapTemplateToPasscreator — membership_card backFields from tiers (v13)', () => {
+  function makeMembershipRow(): TemplatesRow {
+    return makeRow({ card_type: 'membership_card' });
+  }
+
+  it('membership_card: flattens membershipTiers[].rewards[] into backFields (regression — user data)', () => {
+    // Matches the user-provided DB row verbatim: backFields is empty,
+    // rewards carries the actual 會員福利 content.
+    const row = makeMembershipRow();
+    row.settings.membershipTiers = [
+      { name: '嗯嗯', rewards: [{ label: 'ao6', value: 'huohoij' }] },
+    ];
+    row.settings.backFields = [{ label: '', value: '' }];
+    const body = mapTemplateToPasscreator({ template: row, language: 'zh-TW', r2PublicUrl: R2_URL });
+    expect(body.fields.backFields).toEqual([
+      { key: '', type: 'text', label: 'ao6', value: 'huohoij' },
+    ]);
+  });
+
+  it('membership_card: flattens multiple tiers + multiple rewards per tier in order', () => {
+    const row = makeMembershipRow();
+    row.settings.membershipTiers = [
+      { name: 'Gold', rewards: [{ label: 'L1', value: 'V1' }, { label: 'L2', value: 'V2' }] },
+      { name: 'Silver', rewards: [{ label: 'L3', value: 'V3' }] },
+    ];
+    const body = mapTemplateToPasscreator({ template: row, language: 'en', r2PublicUrl: R2_URL });
+    expect(body.fields.backFields).toEqual([
+      { key: '', type: 'text', label: 'L1', value: 'V1' },
+      { key: '', type: 'text', label: 'L2', value: 'V2' },
+      { key: '', type: 'text', label: 'L3', value: 'V3' },
+    ]);
+  });
+
+  it('membership_card: skips reward rows with both label and value empty', () => {
+    const row = makeMembershipRow();
+    row.settings.membershipTiers = [
+      {
+        name: 'A',
+        rewards: [
+          { label: '', value: '' },
+          { label: 'kept', value: 'kept-v' },
+        ],
+      },
+    ];
+    const body = mapTemplateToPasscreator({ template: row, language: 'en', r2PublicUrl: R2_URL });
+    expect(body.fields.backFields).toEqual([
+      { key: '', type: 'text', label: 'kept', value: 'kept-v' },
+    ]);
+  });
+
+  it('membership_card: empty tiers + non-empty backFields → falls back to backFields (legacy transition state)', () => {
+    // 邊緣: 用戶可能先建 backFields 再建 tier，這時 backFields 還有內容
+    const row = makeMembershipRow();
+    row.settings.membershipTiers = [];
+    row.settings.backFields = [{ label: 'legacy', value: 'lv' }];
+    const body = mapTemplateToPasscreator({ template: row, language: 'en', r2PublicUrl: R2_URL });
+    expect(body.fields.backFields).toEqual([
+      { key: '', type: 'text', label: 'legacy', value: 'lv' },
+    ]);
+  });
+
+  it('membership_card: empty tiers + empty backFields → backFields = [] (graceful empty)', () => {
+    const row = makeMembershipRow();
+    row.settings.membershipTiers = [];
+    row.settings.backFields = [];
+    const body = mapTemplateToPasscreator({ template: row, language: 'en', r2PublicUrl: R2_URL });
+    expect(body.fields.backFields).toEqual([]);
+  });
+
+  it('non-membership cardTypes: still use settings.backFields[] (regression — v9 behavior preserved)', () => {
+    const row = makeRow({ card_type: 'discount_card' });
+    row.settings.backFields = [{ label: '聯絡電話', value: '+886-2-1234-5678' }];
+    // Even if a tenant happens to have membershipTiers (e.g. cardType
+    // was switched after authoring), non-membership cardTypes DO NOT
+    // read from it. This keeps the per-cardType contract explicit.
+    row.settings.membershipTiers = [{ name: 'ignored', rewards: [{ label: 'IGNORED', value: 'x' }] }];
+    const body = mapTemplateToPasscreator({ template: row, language: 'zh-TW', r2PublicUrl: R2_URL });
+    expect(body.fields.backFields).toEqual([
+      { key: '', type: 'text', label: '聯絡電話', value: '+886-2-1234-5678' },
+    ]);
+  });
+});
