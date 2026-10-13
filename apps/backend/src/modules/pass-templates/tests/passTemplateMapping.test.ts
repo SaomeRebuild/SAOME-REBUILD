@@ -177,6 +177,33 @@ describe('mapTemplateToPasscreator — images', () => {
     expect(body.images).not.toHaveProperty('strip');
     expect(body.images).toHaveProperty('background');
   });
+  /**
+   * 2026-10-13 v14 — images.backgroundDifferentForEachPass.
+   * Per Passcreator docs: `true` ⇒ per-pass upload at issuance time
+   * overrides template-level `images.background` (which remains as
+   * PassKit fallback). SAOME mapping hardcodes `true` for every push
+   * (user decision 2026-10-13); tenants do NOT control this via UI.
+   */
+  it('always emits images.backgroundDifferentForEachPass = true (v14 default-on)', () => {
+    const body = mapTemplateToPasscreator({
+      template: makeRow(),
+      language: 'zh-TW',
+      r2PublicUrl: R2_URL,
+    });
+    expect(body.images.backgroundDifferentForEachPass).toBe(true);
+  });
+  it('emits flag alongside images.background URL when tenant uploaded one (v14 default-on with URL)', () => {
+    const body = mapTemplateToPasscreator({
+      template: makeRow(),
+      language: 'zh-TW',
+      r2PublicUrl: R2_URL,
+    });
+    expect(body.images.backgroundDifferentForEachPass).toBe(true);
+    // 既有的 background URL 行為保留 (PassKit fallback)
+    expect(body.images.background).toBe(
+      `${R2_URL}/api/pass-templates/00000000-0000-4000-8000-000000000001/background`,
+    );
+  });
 });
 
 describe('mapTemplateToPasscreator — fields (header / primary / secondary / back)', () => {

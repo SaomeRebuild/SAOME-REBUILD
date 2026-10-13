@@ -243,6 +243,18 @@ export interface PasscreatorTemplateBody {
     icon?: string;
     logo?: string;
     background?: string;
+    /**
+     * 2026-10-13 v14 — per-pass background override. When `true`,
+     * Passcreator accepts a per-pass background image at issuance time
+     * that overrides the template-level `images.background` (which
+     * remains as fallback).
+     *
+     * SAOME mapping HARDCODES `true` (user decision 2026-10-13): future
+     * card templates get this flag set unconditionally so tenants can
+     * upload per-pass backgrounds later without re-pushing the template.
+     * No schema field, no DB column, no frontend toggle.
+     */
+    backgroundDifferentForEachPass?: boolean;
   };
   /**
    * Logo text — text shown on the pass header (Apple Wallet's

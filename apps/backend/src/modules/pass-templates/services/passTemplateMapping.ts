@@ -100,6 +100,15 @@
  *      lose their content silently).
  *  11. Builds `images` from `settings.issuerLogo / iconImage` etc.
  *      When the value is a JSONB R2 key, we convert it to the public R2 URL.
+ *      v14 (2026-10-13) — also emits
+ *      `images.backgroundDifferentForEachPass = true` unconditionally.
+ *      User decision: future card templates get per-pass background
+ *      override capability by default, no UI toggle, no schema field,
+ *      no DB column. SAOME does not persist the flag; the mapping
+ *      always emits it. The flag tells Passcreator to accept a per-pass
+ *      upload at issuance time that overrides the template-level
+ *      `images.background` URL (which remains as the PassKit fallback
+ *      default for passes without an override upload).
  *
  * Why `headerField` is FIXED per cardType (v5 user decision, 2026-10-11):
  *   The Apple Wallet `headerField` is the small label at the top of the
@@ -735,13 +744,26 @@ export function mapTemplateToPasscreator(args: MapTemplateToPasscreatorArgs): Pa
       // `images.strip` key was silently dropped by Passcreator (no
       // warning, no error) — the user saw "strip image not uploaded"
       // on the deployed pass despite the SAOME push returning 200.
-      const out: Record<string, string> = {};
+      //
+      // 2026-10-13 v14 — `out` widens from `Record<string, string>` to
+      // `Record<string, string | boolean>` so we can also emit the
+      // per-pass background override flag (see last line of IIFE).
+      const out: Record<string, string | boolean> = {};
       const iconUrl = r2KeyToPublicUrl(s.iconImage, r2PublicUrl, template.id, 'icon');
       const logoUrl = r2KeyToPublicUrl(s.issuerLogo, r2PublicUrl, template.id, 'logo');
       const stripUrl = r2KeyToPublicUrl(s.backgroundImage, r2PublicUrl, template.id, 'background');
       if (iconUrl) out.icon = iconUrl;
       if (logoUrl) out.logo = logoUrl;
       if (stripUrl) out.background = stripUrl;
+      // v14 — hardcoded default-on (user decision 2026-10-13).
+      // SAOME does NOT persist this flag anywhere; the mapping emits
+      // `true` unconditionally so every future Passcreator template
+      // the tenant pushes gets the per-pass background capability.
+      // The flag tells Passcreator to accept a per-pass upload at
+      // issuance time that overrides the template-level `images.background`
+      // URL (which remains as the PassKit fallback default for passes
+      // without an override upload).
+      out.backgroundDifferentForEachPass = true;
       return out;
     })(),
     fields: {
