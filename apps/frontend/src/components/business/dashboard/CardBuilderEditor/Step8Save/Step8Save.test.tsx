@@ -75,14 +75,22 @@ function renderWithRouter() {
 beforeEach(() => {
   vi.clearAllMocks();
   mockAuthState.user = { role: 'tenant' };
-  // Default state: a valid draft ready to publish
+  // Default state: a valid draft ready to publish.
+  // 2026-10-14 — Option B stamp_card pre-render now lives in its own
+  // file (`Step8Save.composeZero.test.tsx`) which owns the stamp_card
+  // cardType path. This file defaults to `membership_card` so the
+  // legacy happy path stays focused on the non-stamp flow (no
+  // compose / upload mock required, and no accessToken dependency).
+  // The 5 stamp_card-specific behaviors (happy, compose-fail,
+  // upload-fail, non-stamp skip, missing-token) are regression-pinned
+  // in `Step8Save.composeZero.test.tsx`.
   useCardBuilderStore.getState().reset();
   useCardBuilderStore.setState({
     cardId: 'test-template-id',
     cardName: 'My Test Card',
     logoText: 'My Logo',
     issuerName: 'Test Issuer',
-    cardType: 'stamp_card',
+    cardType: 'membership_card',
     barcodeType: 'qr_code',
     locations: [],
     isPaid: false,

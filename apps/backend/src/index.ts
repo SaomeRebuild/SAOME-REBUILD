@@ -36,6 +36,14 @@ import { passModule } from '@/modules/pass';
 import { billingCycleCronRoute } from '@/modules/pass/routes/billingCycleCron';
 import { cardsModule } from '@/modules/cards';
 import { passTemplatesModule } from '@/modules/pass-templates';
+// 2026-10-14 — Stamp Card Image Composer (Phase 3 of the frontend stamp
+// card image composition plan). Mounted at `/api/templates` to match the
+// frontend URL contract built into `uploadStampCardImage.ts`:
+// `${apiBaseUrl}/api/templates/${templateId}/stamp-images/${fillCount}`.
+// Path is `templates` (not `cards`) because stamp images live UNDER a
+// template, not as part of the cards CRUD. Migration 022 added the
+// `template_stamp_card_images` table; see runs/decisions/2026-10-13-stamp-card-image-composition-frontend.md.
+import { stampImagesModule } from '@/modules/stamp-images';
 import { healthModule } from '@/modules/health';
 import { getDb } from '@/shared/db/client';
 import { sweepR2PendingDeletes } from '@/modules/cards/db/r2Sweep';
@@ -76,6 +84,11 @@ app.route('/api/cards', cardsModule);
 // runs/decisions/2026-09-29-pass-templates-public-endpoint.md for the
 // visibility-gate drop rationale.
 app.route('/api/pass-templates', passTemplatesModule);
+// stamp-images (2026-10-14) — PUT /:templateId/stamp-images/:fillCount.
+// Mounted at /api/templates (not /api/cards) to align with the frontend
+// URL convention. See apps/backend/src/modules/stamp-images/routes/uploadStampImage.ts
+// for the path-param contract + tenant ownership check.
+app.route('/api/templates', stampImagesModule);
 
 // sweepR2PendingDeletes lives in modules/cards/db/r2Sweep.ts (extracted
 // from this file so its unit test can import it without pulling in the

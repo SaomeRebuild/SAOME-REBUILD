@@ -263,6 +263,7 @@ export async function updateTemplateService(
     };
     const sync = await syncTemplateToPasscreator({
       env,
+      sql,
       template: projectedRow,
       language,
       r2PublicUrl,

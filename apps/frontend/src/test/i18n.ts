@@ -38,6 +38,9 @@ import tableCardZhTW from '../i18n/locales/tableCard.zh-TW';
 import tableCardEn from '../i18n/locales/tableCard.en';
 import passHolderZhTW from '../i18n/locales/passHolder.zh-TW';
 import passHolderEn from '../i18n/locales/passHolder.en';
+// 2026-10-13 — see apps/frontend/src/i18n/index.ts rationale.
+import stampCardZhTW from '../i18n/locales/stampCard.zh-TW';
+import stampCardEn from '../i18n/locales/stampCard.en';
 import commonZhTW from '../i18n/locales/common.zh-TW';
 import commonEn from '../i18n/locales/common.en';
 
@@ -64,6 +67,7 @@ if (!i18n.isInitialized) {
         colorPicker: colorPickerZhTW,
         tableCard: tableCardZhTW,
         passHolder: passHolderZhTW,
+        stampCard: stampCardZhTW,
         common: commonZhTW,
       },
       en: {
@@ -86,6 +90,7 @@ if (!i18n.isInitialized) {
         colorPicker: colorPickerEn,
         tableCard: tableCardEn,
         passHolder: passHolderEn,
+        stampCard: stampCardEn,
         common: commonEn,
       },
     },

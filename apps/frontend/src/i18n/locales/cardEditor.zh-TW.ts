@@ -45,6 +45,13 @@ export default {
       back: '返回模板庫',
       publishSuccess: '卡片已發布',
       publishError: '發布失敗,請稍後再試',
+      // 2026-10-14 — Option B stamp_card pre-render labels (per
+      // `runs/decisions/2026-10-14-stamp-card-publish-composition.md`).
+      // The button text changes per sub-state so the user knows the
+      // publish is doing more than just the SQL update.
+      preparingStampPreview: '正在準備蓋章卡預覽…',
+      uploadingStampPreview: '正在上傳蓋章卡預覽…',
+      publishing: '正在發布卡片…',
       validationCardType: '請先選擇卡片類型',
       validationName: '請先填寫卡片名稱',
       // 2026-10-11 — Passcreator push failure banner (Step 8 v4 plan).

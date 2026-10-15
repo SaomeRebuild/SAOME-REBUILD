@@ -40,6 +40,13 @@ export default {
       back: 'Back to Template Library',
       publishSuccess: 'Card published successfully',
       publishError: 'Failed to publish. Please try again later.',
+      // 2026-10-14 — Option B stamp_card pre-render labels (per
+      // `runs/decisions/2026-10-14-stamp-card-publish-composition.md`).
+      // The button text changes per sub-state so the user knows the
+      // publish is doing more than just the SQL update.
+      preparingStampPreview: 'Preparing stamp card preview…',
+      uploadingStampPreview: 'Uploading stamp card preview…',
+      publishing: 'Publishing card…',
       validationCardType: 'Please select a card type first',
       validationName: 'Please fill in the card name first',
       // 2026-10-11 — Passcreator push failure banner (Step 8 v4 plan).

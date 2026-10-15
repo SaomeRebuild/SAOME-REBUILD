@@ -183,6 +183,66 @@ export interface MapTemplateToPasscreatorArgs {
    * `PASSCREATOR_PASS_TYPE_ID` so we ignore this. Reserved.
    */
   passTypeId?: string;
+  /**
+   * 2026-10-15 (v15) — R2 key of the composed stamp card PNG
+   * (`tenants/{tenantId}/templates/{templateId}/stamp-{fillCount}.png`)
+   * to be used as `images.background` instead of the tenant-uploaded
+   * `settings.backgroundImage`. Set ONLY for `card_type ===
+   * 'stamp_card'` and `card_type === 'multipass'`; null (or omitted)
+   * for all other card types.
+   *
+   * When set, the mapping emits the public proxy URL
+   * `${r2PublicUrl}/api/pass-templates/${templateId}/stamp-image/0`
+   * (see `routes/getTemplateStampImage.ts`). When null, the mapping
+   * falls back to `settings.backgroundImage` (existing v14 behavior).
+   *
+   * Read by `syncTemplateToPasscreator` via
+   * `findUploadedStampImage(sql, template.id, 0)` and passed through.
+   * null when no uploaded row exists yet (e.g. the very first publish
+   * before Step 8 pre-render succeeds) — the mapping then emits the
+   * tenant-uploaded background as a graceful fallback.
+   */
+  stampImageKey?: string | null;
+  /**
+   * 2026-10-15 (v18) — SHA-256 byteHash (lowercase hex, 64 chars) of
+   * the composed stamp card PNG. Threaded through to enable
+   * cache-bust of the URL sent to Passcreator (regression trace
+   * `runs/improvements/feedback/20261015-stamp-card-push-cache-bust-
+   * url-hash.md`).
+   *
+   * Why a cache-bust token:
+   *   Passcreator fetches our public R2 proxy once and caches the
+   *   image keyed by URL. Every push of the same template sends the
+   *   same `${templateId}/stamp-image/0` URL → Passcreator doesn't
+   *   re-fetch even when R2 bytes change. The byteHash is bound
+   *   1:1 to the PNG bytes (any change — background, grid, icon,
+   *   cell size — produces a new hash), so the truncated hash slice
+   *   provides a query-string token whose mutation signals byte
+   *   freshness to every cache layer (Passcreator / Cloudflare
+   *   edge / browser).
+   *
+   * Format:
+   *   `${url}?v=${byteHash.slice(0, 12)}`  (12 hex chars = 48 bits
+   *   of entropy; collision probability ≈ 1/2^48 ≈ 1 in 281
+   *   trillion).
+   *
+   * When `stampImageByteHash` is null/undefined/empty:
+   *   - Mapping falls back to `settings.backgroundImage` (graceful),
+   *     mirroring the `stampImageKey=null` branch.
+   *   - This is consistent with the principle that the cache-bust
+   *     token is for a stamp URL only; the legacy background path
+   *     is not handled here (it has its own auth'd + versioned URL
+   *     path on the frontend preview side, see
+   *     `CardBuilderEditorPreview.tsx::resolveBackgroundImageUrl`).
+   *
+   * Read from the same DB row as `stampImageKey`
+   * (`template_stamp_card_images.byte_hash`). See
+   * `syncTemplateToPasscreator` for the read pattern.
+   *
+   * `byteHash.slice(0, 12)` is the actual emitted token. The full
+   * hash is preserved on the row (we slice only at the URL boundary).
+   */
+  stampImageByteHash?: string | null;
 }
 
 /**
@@ -251,16 +311,30 @@ function normalizeHexColor(value: string | undefined | null): string {
  * Legacy absolute URLs (e.g. `https://cdn.example.com/icon.png`) are
  * still passed through unchanged — pre-R2 rows may have a hard-coded
  * CDN URL in `settings.<field>`.
+ *
+ * 2026-10-15 (v15) — adds `'stamp'` to the `imageType` union and an
+ * optional `fillCount` parameter. The stamp image path is
+ *   `${base}/api/pass-templates/${templateId}/stamp-image/${fillCount ?? 0}`
+ * which is the public R2 proxy added in
+ * `routes/getTemplateStampImage.ts`. The actual R2 key for stamp
+ * images lives under `tenants/{tenantId}/templates/{templateId}/
+ * stamp-{fillCount}.png` (different prefix from the
+ * `{tenantId}/{templateId}/...` pattern), but the public proxy
+ * abstracts that away — the mapping only needs the URL shape.
  */
 function r2KeyToPublicUrl(
   key: string | undefined | null,
   r2PublicUrl: string,
   templateId: string,
-  imageType: 'logo' | 'icon' | 'background',
+  imageType: 'logo' | 'icon' | 'background' | 'stamp',
+  fillCount?: number,
 ): string | null {
   if (!key) return null;
   if (/^https?:\/\//i.test(key)) return key; // legacy absolute URL — pass through
   const base = r2PublicUrl.replace(/\/$/, '');
+  if (imageType === 'stamp') {
+    return `${base}/api/pass-templates/${templateId}/stamp-image/${fillCount ?? 0}`;
+  }
   return `${base}/api/pass-templates/${templateId}/${imageType}`;
 }
 
@@ -748,13 +822,96 @@ export function mapTemplateToPasscreator(args: MapTemplateToPasscreatorArgs): Pa
       // 2026-10-13 v14 — `out` widens from `Record<string, string>` to
       // `Record<string, string | boolean>` so we can also emit the
       // per-pass background override flag (see last line of IIFE).
+      //
+      // 2026-10-15 v15 — Stamp / Multipass push wiring. For
+      // `card_type === 'stamp_card' || card_type === 'multipass'` AND
+      // `stampImageKey !== null`, use the composed stamp-0.png
+      // (URL = `${r2PublicUrl}/api/pass-templates/${templateId}/
+      // stamp-image/0`) as `images.background` instead of the
+      // tenant-uploaded `settings.backgroundImage`. The composed
+      // image carries the tenant's background + the stamp grid +
+      // the stamped icons (per `composeStampCardImage.web.ts`), so it
+      // IS the customer-facing strip the user expects. Other card
+      // types continue to use `settings.backgroundImage` (v14
+      // behavior — unchanged).
       const out: Record<string, string | boolean> = {};
       const iconUrl = r2KeyToPublicUrl(s.iconImage, r2PublicUrl, template.id, 'icon');
       const logoUrl = r2KeyToPublicUrl(s.issuerLogo, r2PublicUrl, template.id, 'logo');
-      const stripUrl = r2KeyToPublicUrl(s.backgroundImage, r2PublicUrl, template.id, 'background');
+      // v15 dispatch — only stamp_card / multipass use the composed
+      // stamp-0.png; others keep using settings.backgroundImage. The
+      // `stampImageKey` is read by `syncTemplateToPasscreator` and
+      // threaded here as a function arg.
+      //
+      // v18 (2026-10-15) — overlay a cache-bust query string on the
+      // stamp URL. The base stamp URL is emitted whenever a stamp key
+      // is present (back-compat with v15 callers that don't pass a
+      // hash). When `stampImageByteHash` is also present, append
+      // `?v=<hash[:12]>` so cache layers (Passcreator / Cloudflare
+      // edge / browser) keyed by URL see the new bytes on the next
+      // fetch.
+      //
+      //   ── Dispatch truth-table (v18) ─────────────────────────
+      //   key | hash           | emitted URL
+      //   ────|────────────────|──────────────────────────────────
+      //   no  | (any)          | fallback to settings.backgroundImage
+      //   yes | null / empty   | stamp URL without query (v15 compat)
+      //   yes | non-empty      | stamp URL + ?v=<hash[:12]>
+      //   ─────────────────────────────────────────────────────────
+      const isStampishCardType =
+        template.card_type === 'stamp_card' || template.card_type === 'multipass';
+      const hasStampKey =
+        isStampishCardType &&
+        typeof args.stampImageKey === 'string' &&
+        args.stampImageKey.length > 0;
+      const hasStampHash =
+        typeof args.stampImageByteHash === 'string' && args.stampImageByteHash.length > 0;
+      const baseStampUrl = hasStampKey
+        ? r2KeyToPublicUrl(args.stampImageKey!, r2PublicUrl, template.id, 'stamp', /*fillCount*/ 0)
+        : null;
+      // v18 — append cache-bust query to the R2 proxy URL only when the
+      // URL is the SAOME R2 proxy URL. We anchor on `startsWith`
+      // `r2PublicUrl` rather than a regex on `https?://`, because
+      // the r2Proxy URL itself is `https://...` — a naive protocol
+      // regex would accidentally treat our proxy as a "legacy CDN
+      // pass-through" and skip the cache-bust. Anchoring on
+      // startsWith also handles trailing slashes correctly (the
+      // `replace(/\/$/, '')` above normalizes both sides).
+      const normalizedProxyBase = r2PublicUrl.replace(/\/$/, '');
+      const isOurProxyUrl = (url: string) => url.startsWith(normalizedProxyBase);
+      const stampUrlWithCacheBust =
+        baseStampUrl && hasStampHash && isOurProxyUrl(baseStampUrl)
+          ? `${baseStampUrl}?v=${args.stampImageByteHash!.slice(0, 12)}`
+          : baseStampUrl;
+      const stripUrl =
+        stampUrlWithCacheBust ??
+        r2KeyToPublicUrl(s.backgroundImage, r2PublicUrl, template.id, 'background');
+      // v16 — `backgroundHidden` / `logoHidden` explicit un-hide.
+      //
+      // User-reported 2026-10-15: stamp_card 0.png 在 R2 正確上傳,
+      // Passcreator push 也送了 `images.background` URL,但 Passcreator
+      // 模板設定 UI 的「不用背景圖」checkbox 仍是打勾 (= 預設值)
+      // → deployed pass 看不到 strip 圖。
+      //
+      // 根因:Passcreator V2 describe response 把 `images.backgroundHidden`
+      // 預設為 `true`。我們的 mapping 只送 `images.background` URL,
+      // 不送 `backgroundHidden: false`,Passcreator 維持預設 → 隱藏。
+      //
+      // 修法:當 `images.background` 有 URL 時,emit `backgroundHidden: false`
+      // 顯式關閉;沒 URL 時不 emit(讓 Passcreator「沒圖 ⇒ 隱藏」預設套用)。
+      // logo 也走相同規則(預設 `logoHidden: true`)。
+      //
+      // Source: https://developer.passcreator.com/en/api/v2/pass-template
       if (iconUrl) out.icon = iconUrl;
-      if (logoUrl) out.logo = logoUrl;
-      if (stripUrl) out.background = stripUrl;
+      if (logoUrl) {
+        out.logo = logoUrl;
+        // v16 — un-hide logo when we have a URL.
+        out.logoHidden = false;
+      }
+      if (stripUrl) {
+        out.background = stripUrl;
+        // v16 — un-hide background when we have a URL.
+        out.backgroundHidden = false;
+      }
       // v14 — hardcoded default-on (user decision 2026-10-13).
       // SAOME does NOT persist this flag anywhere; the mapping emits
       // `true` unconditionally so every future Passcreator template

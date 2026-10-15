@@ -238,6 +238,26 @@ export interface PasscreatorTemplateBody {
    * `images.strip` key was silently dropped by Passcreator — no
    * warning, no error — which is why the strip image "didn't get
    * uploaded" on the Step 8 push.
+   *
+   * 2026-10-15 v16 — `backgroundHidden` / `logoHidden` explicit
+   * un-hide flags. Passcreator V2's describe response defaults BOTH
+   * flags to `true`, meaning a template whose payload only sets
+   * `images.background = '<url>'` (without `backgroundHidden: false`)
+   * ends up with the "Hide background image" checkbox STILL checked
+   * in Passcreator's settings UI — the deployed pass silently shows
+   * no strip image. Same issue applies to logos (Passcreator defaults
+   * `logoHidden: true`). User-reported 2026-10-15: "不用背景圖被打勾了"
+   * after the v15 push successfully shipped `images.background` URLs.
+   *
+   * SAOME mapping emits `backgroundHidden: false` ONLY when
+   * `images.background` has a URL; otherwise the flag is omitted
+   * (letting Passcreator's "no image ⇒ hide" default apply). Same
+   * rule for `logoHidden` ↔ `images.logo`.
+   *
+   * Source: https://developer.passcreator.com/en/api/v2/pass-template
+   * (describe response — `images.background` / `images.backgroundHidden`
+   * and `images.logo` / `images.logoHidden` are returned as separate
+   * fields; the latter two default to `true`).
    */
   images: {
     icon?: string;
@@ -255,6 +275,25 @@ export interface PasscreatorTemplateBody {
      * No schema field, no DB column, no frontend toggle.
      */
     backgroundDifferentForEachPass?: boolean;
+    /**
+     * 2026-10-15 v16 — "Hide background image" checkbox (zh-TW:
+     * 「不用背景圖」). Passcreator's describe response defaults this
+     * to `true`, meaning the SAOME mapping MUST explicitly opt the
+     * template OUT of hiding when `images.background` is set, or the
+     * deployed pass won't show the strip image.
+     *
+     * When `images.background` is OMITTED (no URL available), this
+     * flag is also OMITTED so Passcreator's default ("no image ⇒
+     * no rendering") applies naturally.
+     */
+    backgroundHidden?: boolean;
+    /**
+     * 2026-10-15 v16 — "Hide logo" checkbox. Same default-`true`
+     * behavior as `backgroundHidden`; emitted `false` when SAOME
+     * sends `images.logo` so the deployed pass header strip shows
+     * the tenant's logo.
+     */
+    logoHidden?: boolean;
   };
   /**
    * Logo text — text shown on the pass header (Apple Wallet's

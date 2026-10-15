@@ -39,6 +39,11 @@ import tableCardZhTW from './locales/tableCard.zh-TW';
 import tableCardEn from './locales/tableCard.en';
 import passHolderZhTW from './locales/passHolder.zh-TW';
 import passHolderEn from './locales/passHolder.en';
+// 2026-10-13 — added for the StampCardImageComposer (L2 business component).
+// Component-bound namespace shared by CardBuilder Step 3 pre-render and the
+// future Scanner-side incremental writes. Per Rule 023 § 元件化原則.
+import stampCardZhTW from './locales/stampCard.zh-TW';
+import stampCardEn from './locales/stampCard.en';
 // 2026-10-11 — added for `common.error.upstreamFailed` (BadGatewayError fallback)
 // used by the global `errorHandler` middleware and the Step 8 banner.
 import commonZhTW from './locales/common.zh-TW';
@@ -65,6 +70,7 @@ const resources = {
     colorPicker: colorPickerZhTW,
     tableCard: tableCardZhTW,
     passHolder: passHolderZhTW,
+    stampCard: stampCardZhTW,
     common: commonZhTW,
   },
   en: {
@@ -87,6 +93,7 @@ const resources = {
     colorPicker: colorPickerEn,
     tableCard: tableCardEn,
     passHolder: passHolderEn,
+    stampCard: stampCardEn,
     common: commonEn,
   },
 };

@@ -14,6 +14,8 @@ export * from './card-back-fields';
 export * from './stamp-card';
 export * from './reward-card';
 export * from './cashback-card';
+export * from './stampCard';
+export * from './stamp-card';
 export * from './membership-card';
 export * from './discount-card';
 export * from './coupon-card';

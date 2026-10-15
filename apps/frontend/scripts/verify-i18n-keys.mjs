@@ -111,6 +111,12 @@ const ZHTW_ACRONYM_WHITELIST = new Set([
   '5MB',
   'MB',
   'PNG',
+  // 2026-10-14 — stamp-card composer: lowercase `png` used inline as part
+  // of R2 file names (`0.png`, `1.png`, ..., `15.png`). The file name is
+  // the actual on-disk identifier — translating it (e.g. 「0.圖片」) would
+  // break the contract with the upload endpoint. Same exemption as the
+  // uppercase variant above.
+  'png',
   'JPG',
   'YYYY-MM-DD',
   'FFFFFF',

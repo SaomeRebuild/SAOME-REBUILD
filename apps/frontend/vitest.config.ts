@@ -22,6 +22,11 @@ const aliasArray: { find: string | RegExp; replacement: string }[] = [
   { find: '@saome/shared/schemas/pass', replacement: resolve(sharedRoot, 'schemas/pass.ts') },
   { find: '@saome/shared/schemas/cardBuilder', replacement: resolve(sharedRoot, 'schemas/cardBuilder.ts') },
   { find: '@saome/shared/schemas/card', replacement: resolve(sharedRoot, 'schemas/card.ts') },
+  // 2026-10-14 — Option B: stamp card image composition. Required by
+  // uploadStampCardImage.ts and the Step 8 publish hook (Decision
+  // 2026-10-14). Must come BEFORE generic `@saome/shared/schemas` per
+  // Rule 016 § vitest alias 順序.
+  { find: '@saome/shared/schemas/stampCard', replacement: resolve(sharedRoot, 'schemas/stampCard.ts') },
   { find: '@saome/shared/schemas', replacement: resolve(sharedRoot, 'schemas/index.ts') },
   { find: '@saome/shared/logic/member', replacement: resolve(sharedRoot, 'logic/member.ts') },
   { find: '@saome/shared/logic/order', replacement: resolve(sharedRoot, 'logic/order.ts') },
@@ -32,6 +37,9 @@ const aliasArray: { find: string | RegExp; replacement: string }[] = [
   { find: '@saome/shared/logic/links', replacement: resolve(sharedRoot, 'logic/links.ts') },
   { find: '@saome/shared/logic/cardSettings', replacement: resolve(sharedRoot, 'logic/cardSettings.ts') },
   { find: '@saome/shared/logic/locations', replacement: resolve(sharedRoot, 'logic/locations.ts') },
+  // 2026-10-13 — stamp card image composition (Phase 2). Must come BEFORE
+  // generic `@saome/shared/logic` per Rule 016 § vitest alias 順序.
+  { find: '@saome/shared/logic/stampCardImage', replacement: resolve(sharedRoot, 'logic/stampCardImage.ts') },
   { find: '@saome/shared/logic', replacement: resolve(sharedRoot, 'logic/index.ts') },
   { find: '@saome/shared/types/member', replacement: resolve(sharedRoot, 'types/member.ts') },
   { find: '@saome/shared/types/order', replacement: resolve(sharedRoot, 'types/order.ts') },
@@ -58,6 +66,9 @@ const aliasArray: { find: string | RegExp; replacement: string }[] = [
   { find: '@saome/shared/constants/discount-card', replacement: resolve(sharedRoot, 'constants/discount-card.ts') },
   { find: '@saome/shared/constants/membership-card', replacement: resolve(sharedRoot, 'constants/membership-card.ts') },
   { find: '@saome/shared/constants/coupon-card', replacement: resolve(sharedRoot, 'constants/coupon-card.ts') },
+  // 2026-10-13 — stamp card image composition (Phase 2). Must come BEFORE
+  // generic `@saome/shared/constants` per Rule 016 § vitest alias 順序.
+  { find: '@saome/shared/constants/stampCard', replacement: resolve(sharedRoot, 'constants/stampCard.ts') },
   { find: '@saome/shared/constants', replacement: resolve(sharedRoot, 'constants/index.ts') },
   { find: '@saome/shared/i18n/zh-TW', replacement: resolve(sharedRoot, 'i18n/zh-TW.ts') },
   { find: '@saome/shared/i18n/en', replacement: resolve(sharedRoot, 'i18n/en.ts') },

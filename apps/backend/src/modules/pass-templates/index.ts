@@ -24,6 +24,7 @@ import {
   getIconRoute,
   getBackgroundRoute,
 } from './routes/getTemplateImage';
+import { getStampImage0Route } from './routes/getTemplateStampImage';
 
 /**
  * Mounted at /api/pass-templates in src/index.ts.
@@ -34,13 +35,21 @@ import {
  * Image routes (`:id/logo`, `:id/icon`, `:id/background`) are public R2
  * proxies added per runs/decisions/2026-10-01-pass-templates-public-logo-proxy.md
  * (logo) and the 2026-10-12 extension to icon + background.
+ *
+ * Stamp-image routes (`:id/stamp-image/0`) expose the composed stamp
+ * card PNGs written by `stamp-images/services/uploadStampImage.ts` so
+ * Passcreator can fetch them as `images.background` for stamp_card /
+ * multipass pushes (2026-10-15, see runs/decisions/2026-10-15-
+ * stamp-card-push-wiring.md). The Scanner will additionally push
+ * fillCount 1..15 in Plan Phase 3 (deferred).
  */
 export const passTemplatesModule = new Hono<HonoEnv>()
-  .route('/', getPublicRoute)        // GET  /:id/public
-  .route('/', registerRoute)         // POST /:id/register
-  .route('/', getLogoRoute)          // GET  /:id/logo
-  .route('/', getIconRoute)          // GET  /:id/icon          (2026-10-12)
-  .route('/', getBackgroundRoute);   // GET  /:id/background    (2026-10-12)
+  .route('/', getPublicRoute)          // GET  /:id/public
+  .route('/', registerRoute)           // POST /:id/register
+  .route('/', getLogoRoute)            // GET  /:id/logo
+  .route('/', getIconRoute)            // GET  /:id/icon          (2026-10-12)
+  .route('/', getBackgroundRoute)      // GET  /:id/background    (2026-10-12)
+  .route('/', getStampImage0Route);    // GET  /:id/stamp-image/0 (2026-10-15)
 
 // Default export for `app.route('/api/pass-templates', passTemplatesModule)`
 export default passTemplatesModule;

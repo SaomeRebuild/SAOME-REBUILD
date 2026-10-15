@@ -64,6 +64,9 @@ export default defineWorkersConfig({
       // subpath lookups; the bare `@saome/shared/schemas` resolves to the
       // barrel `index.ts` for callers that import from the index only.
       '@saome/shared/schemas/card': path.resolve(__dirname, '../../packages/shared/schemas/card.ts'),
+      // 2026-10-14 — stamp card image composition (Phase 3). Specific
+      // entries MUST come before the generic ones per Rule 016.
+      '@saome/shared/schemas/stampCard': path.resolve(__dirname, '../../packages/shared/schemas/stampCard.ts'),
       '@saome/shared/schemas/': path.resolve(__dirname, '../../packages/shared/schemas/'),
       '@saome/shared/schemas': path.resolve(__dirname, '../../packages/shared/schemas/index.ts'),
       '@saome/shared/types/': path.resolve(__dirname, '../../packages/shared/types/'),
@@ -71,6 +74,7 @@ export default defineWorkersConfig({
       '@saome/shared/logic/': path.resolve(__dirname, '../../packages/shared/logic/'),
       '@saome/shared/logic/cardSettings': path.resolve(__dirname, '../../packages/shared/logic/cardSettings.ts'),
       '@saome/shared/logic/cardSettings/': path.resolve(__dirname, '../../packages/shared/logic/cardSettings/'),
+      '@saome/shared/logic/stampCardImage': path.resolve(__dirname, '../../packages/shared/logic/stampCardImage.ts'),
       '@saome/shared/logic': path.resolve(__dirname, '../../packages/shared/logic/index.ts'),
       // Specific entries (with subpath) MUST come BEFORE the generic ones
       // (Rule 016: vite alias is prefix-matching, first match wins).
@@ -79,6 +83,9 @@ export default defineWorkersConfig({
       '@saome/shared/constants/coupon-card': path.resolve(__dirname, '../../packages/shared/constants/coupon-card.ts'),
       '@saome/shared/constants/membership-card': path.resolve(__dirname, '../../packages/shared/constants/membership-card.ts'),
       '@saome/shared/constants/multipass-card': path.resolve(__dirname, '../../packages/shared/constants/multipass-card.ts'),
+      // 2026-10-14 — stamp card image composition (Phase 3). Specific
+      // entries MUST come before the generic ones per Rule 016.
+      '@saome/shared/constants/stampCard': path.resolve(__dirname, '../../packages/shared/constants/stampCard.ts'),
       '@saome/shared/constants/': path.resolve(__dirname, '../../packages/shared/constants/'),
       '@saome/shared/constants': path.resolve(__dirname, '../../packages/shared/constants/index.ts'),
       // Specific entries (with subpath) MUST come BEFORE the generic ones

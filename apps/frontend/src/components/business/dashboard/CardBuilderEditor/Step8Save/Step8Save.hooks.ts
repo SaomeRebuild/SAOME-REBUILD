@@ -2,21 +2,27 @@
  * Step8Save — Hook layer.
  *
  * @module CardBuilderEditor/Step8Save/Step8Save.hooks
- * @description useStep8Save — owns the publish action lifecycle:
- *   1. Optimistic UI (status='saving')
- *   2. cardService.update(cardId, { status: 'published' })
- *   3. status='saved' → toast.success + navigate(Library, replace)
- *   4. on error: status='error' + toast.error (caller handles re-enable)
+ * @description useStep8Save — owns the publish action lifecycle.
  *
- * v4 (2026-10-11, Passcreator push integration):
- *   - On `BadGatewayError` (upstream 'passcreator'), the hook now ALSO
- *     sets `passcreatorError` to a discriminated `PasscreatorSyncError`
- *     so the `Step8SaveErrorBanner` can render the full error detail.
- *     The hook's `status` still goes to `'error'` so the action button
- *     re-enables — same as for any other failure — but the banner
- *     gives the user a much more specific retry / dismiss surface.
- *   - For non-Passcreator errors (e.g. 500 INTERNAL_ERROR), the hook
- *     falls back to the generic `toast.error` flow with no banner.
+ *  v4 (2026-10-11, Passcreator push integration):
+ *    On `BadGatewayError` (upstream 'passcreator'), the hook sets
+ *    `passcreatorError` so the `Step8SaveErrorBanner` can render the
+ *    full error detail. The hook's `status` still goes to `'error'`
+ *    so the action button re-enables.
+ *
+ *  v5 (2026-10-14, Option B stamp_card pre-render):
+ *    For `cardType === 'stamp_card'`, the publish flow now performs
+ *    an extra compose + upload of the empty 0.png BEFORE the legacy
+ *    `cardService.update({ status: 'published' })` call. The pre-render
+ *    is owned by `StampCardImageComposer` (Phase 2, 2026-10-13); the
+ *    publish hook just orchestrates the call. See
+ *    `runs/decisions/2026-10-14-stamp-card-publish-composition.md` for
+ *    the design rationale (mobile slow-network cost is acknowledged).
+ *
+ *    Failure semantics: if compose OR upload fails, the entire publish
+ *    is blocked. A 0.png-less `published` template would have a missing
+ *    customer-facing preview, so we fail loud (Decision § 設計約束 #2)
+ *    and let the user retry from Step 8.
  *
  * Why a separate hook (Rule 000 § A.3 — hook extraction strategy):
  *   - Publish action has a non-trivial lifecycle (optimistic UI + retry
@@ -38,8 +44,156 @@ import { useCardBuilderStore } from '../CardBuilderEditor.store';
 import { ROLE_HOME_PATH, type Role } from '@saome/shared/constants/role';
 import { useAuth } from '@/hooks/useAuth';
 import i18n from '@/i18n';
+import { composeStampCardImage } from '@/components/business/stampCard/StampCardImageComposer/composeStampCardImage';
+import {
+  uploadStampCardImage,
+  UploadStampCardImageError,
+} from '@/components/business/stampCard/StampCardImageComposer/uploadStampCardImage';
+import type { StampCardImageInput } from '@saome/shared/schemas/stampCard';
 import type { Step8SaveStatus } from './Step8Save.types';
 import type { PasscreatorSyncError } from './Step8SaveErrorBanner';
+
+/**
+ * Default column count for the stamp grid. The design is locked to 5
+ * columns per row (see `shared/schemas/stampCard.ts` § `cols` and the
+ * `calculateCellSize` formula in `StampGridPreview.utils.ts` which
+ * hard-codes 5 columns). Only `rows` is user-customizable; `cols` is
+ * design-pinned. Exposed here (and in the schema's max=5) so a future
+ * design pivot to 4/6 columns is a one-line change.
+ */
+const STAMP_DESIGN_COLS = 5;
+
+function apiBaseUrl(): string {
+  return import.meta.env.VITE_API_BASE_URL ?? '';
+}
+
+/**
+ * Resolve `state.backgroundImage` (which is the R2 key, e.g.
+ * `tenants/.../templates/.../background.png`) to a public proxy URL
+ * the composer can `fetch()` successfully.
+ *
+ * 2026-10-15 (v15) — Issue 2 root cause + fix.
+ *
+ * The store holds the R2 key as `backgroundImage` (see
+ * `MediaAssetUploader.tsx::setStoreField(key)`), not a pre-signed URL.
+ * The composer at `composeStampCardImage.web.ts::loadImageBitmap`
+ * does `fetch(input.background.url)`. If `url` is the raw R2 key,
+ * the browser treats it as a relative path against the current origin
+ * and 404s — the canvas then falls back to a solid white background
+ * (no grid stamp visible against the tenant's image).
+ *
+ * The backend already exposes a public, no-auth R2 proxy at
+ * `${apiBaseUrl()}/api/pass-templates/${templateId}/background`
+ * (the same route Passcreator consumes). Using that URL:
+ *   1. `fetch()` works in both dev (Vite proxy same-origin) and prod
+ *      (cross-origin with CORS via the standard chain).
+ *   2. No expiry (the route is public + immutable cache).
+ *   3. Audit + tenant isolation happen on the server side, so we
+ *      don't need to thread a token into the composer.
+ *
+ * The function returns `null` when there's no uploaded background
+ * (`state.backgroundImage` falsy). The caller should fall through to
+ * the existing color-only path.
+ *
+ * @param r2Key              The R2 key stored on `state.backgroundImage`
+ *                           (`tenants/.../templates/.../background.png`).
+ *                           Falsy → return null (color-only fallback).
+ * @param templateId         Template UUID for the public proxy path.
+ * @param backgroundImageVersion  Monotonic ms timestamp bumped by
+ *                           `setBackgroundImage` on every upload
+ *                           (see `CardBuilderEditor.store.ts`). Used as
+ *                           a cache-bust query param so the browser
+ *                           refetches when the user re-uploads the
+ *                           background image (same R2 key gets
+ *                           overwritten; without a cache-bust the
+ *                           immutable public-proxy response from
+ *                           `Cache-Control: max-age=31536000, immutable`
+ *                           would serve stale bytes).
+ *
+ * 2026-10-15 (v17) — Cache-bust fix.
+ *
+ * User-reported: 換背景圖 → Step 8 publish 後,R2 o.png 背景仍是舊的;
+ * 換 grid 格數 → 只有 grids 變,背景仍是舊的。Passcreator 模板的 strip
+ * image 也持續顯示「好幾版之前的圖」。
+ *
+ * Root cause: `getTemplateImage.ts` 回的 `Cache-Control:
+ * public, max-age=31536000, immutable`,URL 是 `${cardId}/background`
+ * (跟 R2 key 對應但沒有 query string)。換背景時 R2 是同 key 覆寫,所以
+ * URL 不變 → 瀏覽器 cache hit → composer 拿舊 bytes 畫 0.png
+ * (grid 是新但背景是舊)。
+ *
+ * `CardBuilderEditorPreview.tsx` 那邊 preview 用 `?v=${backgroundImageVersion}`
+ * 已經能繞過 cache,但 composer 之前的 URL 沒帶版本 → 拿到 stale bytes。
+ *
+ * 修法:加 `?v=${backgroundImageVersion}` query string。`backgroundImageVersion`
+ * 在 `setBackgroundImage` 內 bump(`Date.now()`),所以每次上傳新背景
+ * URL 都會帶不同 token → browser cache invalid → composer 拿到
+ * R2 上的最新 bytes → 0.png 真的有新背景。
+ *
+ * 注意:`backgroundImageVersion` 是 number,`Date.now()` 回 ms timestamp。
+ * 直接接在 query 上 OK;fastify/Hono 不會管 query 是什麼。
+ */
+function resolveBackgroundImageUrl(
+  r2Key: string | undefined,
+  templateId: string,
+  backgroundImageVersion: number,
+): string | null {
+  if (!r2Key) return null;
+  // versioned query param invalidates the browser's "immutable, max-age=1y"
+  // cache from prior renders. Empty/falsy version → still append for
+  // uniformity so test snapshots match the same shape every time.
+  const v = typeof backgroundImageVersion === 'number' && backgroundImageVersion > 0
+    ? backgroundImageVersion
+    : 0;
+  return `${apiBaseUrl()}/api/pass-templates/${templateId}/background?v=${v}`;
+}
+
+/**
+ * Build the `StampCardImageInput` for the empty 0.png pre-render at
+ * publish time. Reads the current draft from the Zustand store.
+ *
+ * `fillCount` is hard-coded to 0 — this is the **empty** stamp card
+ * (the customer-facing preview shown before any stamp is earned).
+ * `1.png`–`15.png` are out of scope here; the Scanner fills those
+ * incrementally (Plan Phase 3, deferred).
+ *
+ * `iconId` falls back to a placeholder string when the user has not
+ * picked an icon yet. The `composeStampCardImage.web.ts` binding
+ * calls `getStampIcon(input.iconId)` which itself falls back to the
+ * first available icon (defensive — see `assets/icons/stamps/manifest.ts`),
+ * so an empty string still produces a valid render.
+ *
+ * `background` is `image` when `backgroundImage` is set (resolved via
+ * the public proxy URL — see `resolveBackgroundImageUrl`), otherwise
+ * `color` (matching the Step 3 selector behavior).
+ */
+function buildZeroFillStampInput(
+  state: ReturnType<typeof useCardBuilderStore.getState>,
+  templateId: string,
+): StampCardImageInput {
+  // v17 (2026-10-15) — pass `state.backgroundImageVersion` as cache-bust
+  // token to invalidate the browser's immutable-cache on the public
+  // background proxy. Without this, every Publish re-paints with stale
+  // background bytes (R2 key unchanged across re-uploads → URL unchanged
+  // → browser cache hit). See `resolveBackgroundImageUrl` for the
+  // full root-cause trace.
+  const backgroundUrl = resolveBackgroundImageUrl(
+    state.backgroundImage,
+    templateId,
+    state.backgroundImageVersion,
+  );
+  return {
+    rows: state.stampGridRows,
+    cols: STAMP_DESIGN_COLS,
+    gridColor: 'transparent',
+    iconId: state.stampIconId || 'bell',
+    iconColor: state.textColor,
+    background: backgroundUrl
+      ? { type: 'image', url: backgroundUrl }
+      : { type: 'color', value: state.backgroundColor },
+    fillCount: 0,
+  };
+}
 
 interface UseStep8SaveReturn {
   /** Current status of the publish action. */
@@ -127,6 +281,55 @@ export function useStep8Save(cardId: string | null): UseStep8SaveReturn {
     // the next attempt (v4 plan: the banner should NOT linger between
     // retries — it re-appears only if the new attempt also fails).
     setPasscreatorError(null);
+
+    // ─── Option B Phase: stamp_card / multipass 0.png pre-render ─────
+    // For `cardType === 'stamp_card' || cardType === 'multipass'`,
+    // compose + upload the empty 0.png BEFORE the legacy
+    // `cardService.update`. A failure here blocks the entire publish
+    // (Decision 2026-10-14 § 設計約束 #2, extended 2026-10-15 for
+    // multipass per user direction that "Stamp and Multipass are
+    // the only two card types that use the generated image as
+    // background"). Other card types (membership / cashback / etc.)
+    // skip this block and fall through to the legacy path.
+    //
+    // Why stamp + multipass: both cardTypes declare a composed
+    // grid-based background image in Passcreator's `images.background`
+    // slot. Other cardTypes use the tenant-uploaded
+    // `settings.backgroundImage` instead. The push dispatcher
+    // (backend `passTemplateMapping.ts::images` v15) consumes this
+    // uploaded 0.png accordingly.
+    const cardType = useCardBuilderStore.getState().cardType;
+    const isStampish = cardType === 'stamp_card' || cardType === 'multipass';
+    if (isStampish) {
+      const accessToken = authState.accessToken;
+      if (!accessToken) {
+        console.error(`[useStep8Save] publish: ${cardType} but accessToken is null`);
+        setStatus('error');
+        toast.error(i18n.t('cardEditor:steps.save.publishError'));
+        return;
+      }
+      try {
+        setStatus('composing-stamp-zero');
+        const input = buildZeroFillStampInput(useCardBuilderStore.getState(), cardId);
+        const blob = await composeStampCardImage(input);
+        setStatus('uploading-stamp-zero');
+        await uploadStampCardImage(cardId, 0, blob, accessToken);
+      } catch (err) {
+        console.error('[useStep8Save] 0.png pre-render failed:', err);
+        setStatus('error');
+        // Distinguish upload failures (network / 4xx / 5xx) from
+        // compose failures (OffscreenCanvas allocation, manifest
+        // lookup). The toast message is generic either way; the
+        // discriminator matters for future telemetry.
+        if (err instanceof UploadStampCardImageError) {
+          toast.error(i18n.t('cardEditor:steps.save.publishError'));
+        } else {
+          toast.error(i18n.t('cardEditor:steps.save.publishError'));
+        }
+        return; // CRITICAL: do NOT proceed to cardService.update.
+      }
+    }
+
     setStatus('saving');
     try {
       await cardService.update(cardId, { status: 'published' });
@@ -193,7 +396,7 @@ export function useStep8Save(cardId: string | null): UseStep8SaveReturn {
       // No navigation — caller (Step8SaveActions) keeps the user on
       // Step 8 with the button re-enabled so they can retry.
     }
-  }, [cardId, navigate, resolveLibraryPath]);
+  }, [cardId, navigate, resolveLibraryPath, authState.accessToken]);
 
   /**
    * Library-only navigation (no publish). User wants to leave Step 8

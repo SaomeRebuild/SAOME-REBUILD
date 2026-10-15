@@ -204,6 +204,77 @@ describe('mapTemplateToPasscreator — images', () => {
       `${R2_URL}/api/pass-templates/00000000-0000-4000-8000-000000000001/background`,
     );
   });
+  /**
+   * 2026-10-15 v16 — `images.backgroundHidden: false` alongside `images.background`.
+   *
+   * User-reported bug: stamp_card 0.png 在 R2 正確上傳,Passcreator push
+   * 也送了 `images.background` URL,但 Passcreator 模板設定的「不用背景圖」
+   * checkbox (即 `backgroundHidden` 欄位) 仍是 `true`,導致 deployed pass
+   * 看不到 strip 圖。
+   *
+   * 根因:Passcreator V2 describe response 顯示
+   *   `images.backgroundHidden: true` 是預設值。我們 push payload 只送
+   *   `images.background` URL 卻不送 `backgroundHidden: false`,
+   *   Passcreator 維持預設 → 隱藏背景。
+   *
+   * 修法:當 mapping 有 emit `images.background` (即租戶或 stamp-0.png
+   * 有可下載的 strip URL) 時,同步 emit `images.backgroundHidden: false`
+   * 顯式關閉隱藏。
+   *
+   * 同樣 issue 也會影響 `logoHidden`(describe 預設 `true`);當
+   * `images.logo` 有 URL 時,emit `images.logoHidden: false`。
+   *
+   * 來源:https://developer.passcreator.com/en/api/v2/pass-template
+   * (describe response 內 `images` block 同時帶 `background` /
+   * `backgroundHidden` 兩欄位)
+   */
+  it('emits images.backgroundHidden: false when images.background URL is set (v16)', () => {
+    const body = mapTemplateToPasscreator({
+      template: makeRow(),
+      language: 'zh-TW',
+      r2PublicUrl: R2_URL,
+    });
+    expect(body.images.background).toBeDefined();
+    expect(body.images.backgroundHidden).toBe(false);
+  });
+  it('emits images.logoHidden: false when images.logo URL is set (v16)', () => {
+    const body = mapTemplateToPasscreator({
+      template: makeRow(),
+      language: 'zh-TW',
+      r2PublicUrl: R2_URL,
+    });
+    expect(body.images.logo).toBeDefined();
+    expect(body.images.logoHidden).toBe(false);
+  });
+  it('omits backgroundHidden when no background URL is set (no override of Passcreator default)', () => {
+    // 沒 background URL → 不 emit backgroundHidden;讓 Passcreator 走預設
+    // (預設對 tenant = 「hide」,但這是我們也沒圖可顯示的 fallback)。
+    const row = makeRow();
+    row.settings.backgroundImage = undefined;
+    const body = mapTemplateToPasscreator({ template: row, language: 'en', r2PublicUrl: R2_URL });
+    expect(body.images).not.toHaveProperty('background');
+    expect(body.images).not.toHaveProperty('backgroundHidden');
+  });
+  it('omits logoHidden when no logo URL is set', () => {
+    const row = makeRow();
+    row.settings.issuerLogo = undefined;
+    const body = mapTemplateToPasscreator({ template: row, language: 'en', r2PublicUrl: R2_URL });
+    expect(body.images).not.toHaveProperty('logo');
+    expect(body.images).not.toHaveProperty('logoHidden');
+  });
+  it('backgroundDifferentForEachPass + backgroundHidden both present and consistent (v14 + v16 coexist)', () => {
+    // v14 (default-on per-pass override) 與 v16 (顯式 un-hide background)
+    // 並存於同一張模板上,租戶仍享有 per-pass override 能力,同時
+    // deployed pass 預設就會顯示背景。
+    const body = mapTemplateToPasscreator({
+      template: makeRow(),
+      language: 'zh-TW',
+      r2PublicUrl: R2_URL,
+    });
+    expect(body.images.background).toBeDefined();
+    expect(body.images.backgroundHidden).toBe(false);
+    expect(body.images.backgroundDifferentForEachPass).toBe(true);
+  });
 });
 
 describe('mapTemplateToPasscreator — fields (header / primary / secondary / back)', () => {

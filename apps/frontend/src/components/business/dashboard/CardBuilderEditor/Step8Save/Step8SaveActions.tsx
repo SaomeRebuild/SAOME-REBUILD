@@ -15,7 +15,7 @@
 
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft, CheckCircle2, Loader2 } from 'lucide-react';
-import type { Step8SaveActionsProps } from './Step8Save.types';
+import { STEP8_IN_FLIGHT_STATUSES, type Step8SaveActionsProps } from './Step8Save.types';
 
 export function Step8SaveActions({
   status,
@@ -25,8 +25,34 @@ export function Step8SaveActions({
 }: Step8SaveActionsProps) {
   const { t } = useTranslation('cardEditor');
 
-  const isSaving = status === 'saving';
+  // Use the in-flight set so the button stays disabled across ALL
+  // 2026-10-14 Option B sub-states (composing-stamp-zero →
+  // uploading-stamp-zero → saving), not just 'saving'. Mirrors the
+  // `STEP8_IN_FLIGHT_STATUSES` definition in `Step8Save.types.ts`.
+  const isSaving = STEP8_IN_FLIGHT_STATUSES.has(status);
   const isDisabled = !validation.canPublish || isSaving;
+
+  // 2026-10-14 — When the publish is blocked on the 0.png pre-render,
+  // show a context-specific label so the user knows why the button
+  // is still spinning. Three sub-states map to three messages:
+  //   - 'composing-stamp-zero' → preparing the canvas
+  //   - 'uploading-stamp-zero' → pushing the PNG to R2
+  //   - 'saving'              → marking the template as published
+  // The mapping falls through to the generic 'publish' label when
+  // status is 'idle' / 'saved' / 'error' (button is enabled or
+  // hidden in those cases anyway).
+  const publishLabel = (() => {
+    switch (status) {
+      case 'composing-stamp-zero':
+        return t('steps.save.preparingStampPreview');
+      case 'uploading-stamp-zero':
+        return t('steps.save.uploadingStampPreview');
+      case 'saving':
+        return t('steps.save.publishing');
+      default:
+        return t('steps.save.publish');
+    }
+  })();
 
   // Build validation hint text — show the FIRST failing field only to
   // keep the hint compact. Mirrors the Step 7 hint pattern.
@@ -80,7 +106,7 @@ export function Step8SaveActions({
           ) : (
             <CheckCircle2 size={16} aria-hidden="true" />
           )}
-          {t('steps.save.publish')}
+          {publishLabel}
         </button>
       </div>
 

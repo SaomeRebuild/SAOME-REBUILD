@@ -30,21 +30,39 @@
  *     from the I/O behavior, and lets the I/O wrapper be replaced
  *     (e.g. for a future GraphQL upstream) without touching the mapping.
  *
+ * 2026-10-15 (v15) — Stamp-card push wiring:
+ *   For `card_type === 'stamp_card' || card_type === 'multipass'`,
+ *   this service reads the composed stamp-0.png R2 key from
+ *   `template_stamp_card_images` (via `findUploadedStampImage`) and
+ *   passes it to `mapTemplateToPasscreator` as `stampImageKey`. The
+ *   mapping then uses that key (instead of `settings.backgroundImage`)
+ *   when constructing `images.background`. Other card types continue
+ *   to use the tenant-uploaded `settings.backgroundImage`.
+ *
+ *   The DB read is colocated here (rather than in
+ *   `mapTemplateToPasscreator`) to keep the mapping a pure function.
+ *   `findUploadedStampImage` returns null when no uploaded row exists;
+ *   the mapping then falls back to `settings.backgroundImage` (graceful
+ *   path).
+ *
  * Rule references:
  *   - Rule 000 Part C.2 — third-party service module structure.
  *   - Rule 000 Part C.3 — third-party errors are wrapped at the
  *     boundary. We do NOT add another wrap layer here; the upstream
  *     service already throws `BadGatewayError`.
+ *   - Rule 019 § D.3 — third-party API shape is a contract.
  *
  * @see apps/backend/src/shared/lib/passcreator.ts (transport)
  * @see apps/backend/src/modules/pass-templates/services/passTemplateMapping.ts (pure)
  */
 
+import type { Sql } from '@/shared/db/client';
 import type { TemplatesRow } from '@/modules/cards/db/templates';
 import {
   createPassTemplate,
   updatePassTemplate,
 } from '@/shared/lib/passcreator';
+import { findUploadedStampImage } from '@/modules/stamp-images/db/stampImages';
 import { mapTemplateToPasscreator } from './passTemplateMapping';
 import type { PassLanguage } from '@saome/shared/i18n/fieldLabels';
 
@@ -54,6 +72,9 @@ import type { PassLanguage } from '@saome/shared/i18n/fieldLabels';
  * @param env   - Cloudflare Worker env (read by passcreator.ts via requireEnv).
  *                Type-erased to `unknown` to keep this module decoupled
  *                from the Hono `HonoEnv` type.
+ * @param sql   - postgres.js instance from `getDbForRequest(c)`. Required
+ *                since v15 (2026-10-15) to read the composed stamp-0.png
+ *                row for stamp_card / multipass pushes.
  * @param template - The current SAOME template row. `passcreator_template_id`
  *                   determines the create-vs-update branch.
  * @param language - The DB-stored template language ('zh-TW' | 'en').
@@ -71,14 +92,47 @@ import type { PassLanguage } from '@saome/shared/i18n/fieldLabels';
  */
 export async function syncTemplateToPasscreator(args: {
   env: unknown;
+  sql: Sql;
   template: TemplatesRow;
   language: PassLanguage;
   r2PublicUrl: string;
 }): Promise<{ id: string; created: boolean }> {
+  // 2026-10-15 v15 — Stamp-card / multipass push wiring.
+  // Read the composed stamp-0.png row (if any) and thread its R2 key
+  // through to the pure mapping. For non-stamp card types, `stampImageKey`
+  // is null and the mapping uses `settings.backgroundImage` (existing
+  // behavior).
+  //
+  // v18 (2026-10-15) — additionally thread `stampImageByteHash` so the
+  // mapping can append a `?v=<hash[:12]>` cache-bust query string to the
+  // R2 proxy URL. Regression trace:
+  //   `runs/improvements/feedback/20261015-stamp-card-push-cache-bust-url-hash.md`
+  // Without the cache-bust token, Passcreator caches the first
+  // fetched PNG keyed by the fixed `${tid}/stamp-image/0` URL and
+  // never re-fetches — even after R2 PUT overwrites with newer
+  // bytes. byteHash is bound 1:1 to the PNG bytes (any change →
+  // new hash → new query string → fresh Passcreator fetch).
+  const isStampish =
+    args.template.card_type === 'stamp_card' ||
+    args.template.card_type === 'multipass';
+  const stampImageRow = isStampish
+    ? await findUploadedStampImage(args.sql, args.template.id, 0)
+    : null;
+  const stampImageKey = stampImageRow?.r2Key ?? null;
+  const stampImageByteHash = stampImageRow?.byteHash ?? null;
+
   const body = mapTemplateToPasscreator({
     template: args.template,
     language: args.language,
     r2PublicUrl: args.r2PublicUrl,
+    stampImageKey,
+    // v18 — only thread the byteHash when the r2Key is present, so the
+    // mapping gate (`stampImageKey && stampImageByteHash`) keeps its
+    // invariant: null/undefined stampImageKey means "no stamp uploaded
+    // yet" — the mapping then falls back to settings.backgroundImage
+    // rather than emitting a query-string-flagged URL whose cache key
+    // we can't invalidate.
+    stampImageByteHash: stampImageKey ? stampImageByteHash : null,
   });
 
   const existingId = args.template.passcreator_template_id;

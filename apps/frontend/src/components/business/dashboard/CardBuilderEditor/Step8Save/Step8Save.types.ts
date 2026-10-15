@@ -34,12 +34,41 @@ export interface Step8SaveSummary {
  * State of the Save & Publish action. Drives the disabled state + loading
  * spinner + error toast of the primary action button.
  *
- *   - 'idle'    → user can click Publish.
- *   - 'saving'  → API call in flight; button disabled + spinner shown.
- *   - 'saved'   → successful publish; component will navigate to Library.
- *   - 'error'   → publish failed; error toast shown + button re-enabled.
+ *   - 'idle'                       → user can click Publish.
+ *   - 'composing-stamp-zero'       → Option B Phase: 0.png 正在前端組圖 (OffscreenCanvas)
+ *                                    觸發時機: stamp_card 類型 + publish click。
+ *                                    期間 spinner 顯示「正在準備蓋章卡預覽」。
+ *   - 'uploading-stamp-zero'       → Option B Phase: 0.png 已組好,正在 base64 encode + PUT 後端
+ *                                    期間 spinner 顯示「正在上傳蓋章卡預覽」。
+ *   - 'saving'                     → cardService.update({ status: 'published' }) in flight
+ *                                    (這階段在 0.png 上傳成功後才會進入)。
+ *   - 'saved'                      → successful publish; component will navigate to Library.
+ *   - 'error'                      → publish failed; error toast shown + button re-enabled.
+ *
+ * 2026-10-14 — Option B (runs/decisions/2026-10-14-stamp-card-publish-composition.md)
+ * adds the two new sub-states for stamp card image pre-render. The 'saving'
+ * state now only runs after 0.png PUT succeeds, so a 0.png compose/upload
+ * failure correctly blocks the entire publish.
  */
-export type Step8SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+export type Step8SaveStatus =
+  | 'idle'
+  | 'composing-stamp-zero'
+  | 'uploading-stamp-zero'
+  | 'saving'
+  | 'saved'
+  | 'error';
+
+/**
+ * Status values that should disable the publish button + show a spinner.
+ * Computed from `Step8SaveStatus` so the `Step8SaveActions` button can do
+ * a single boolean check. `'saved'` is excluded because the component
+ * navigates away; `'error'` is excluded because the user should retry.
+ */
+export const STEP8_IN_FLIGHT_STATUSES: ReadonlySet<Step8SaveStatus> = new Set<Step8SaveStatus>([
+  'composing-stamp-zero',
+  'uploading-stamp-zero',
+  'saving',
+]);
 
 /**
  * Sub-component prop shapes.
