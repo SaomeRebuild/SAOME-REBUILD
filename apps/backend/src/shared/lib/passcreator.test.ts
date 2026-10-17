@@ -1193,13 +1193,19 @@ describe('Passcreator client — live V3 SUCCESS fixture (regression — 2026-10
       expect(result.downloadPage).toMatch(/^https:\/\/app\.passcreator\.com\/en\/p\//);
       expect(result.iPhoneUri).toMatch(/^https:\/\/app\.passcreator\.com\/.*pkpass/);
       expect(result.androidUri).toMatch(/^https:\/\/(passwallet\.page\.link|pay\.google\.com)/);
-      // CRITICAL: `barcodeValue` is the LITERAL `"no value specified"`
-      // string from Passcreator when the template has no barcode. This
-      // test pins the current parser behavior (passes it through verbatim).
-      // Q2 fix (normalize to null) is a separate concern; the next-session
-      // fix will add a new test asserting `barcodeValue === null` and
-      // update the parser accordingly.
-      expect(result.barcodeValue).toBe('no value specified');
+      // CRITICAL: Passcreator's live-captured `barcodeValue` when the
+      // template has no barcode configured is the LITERAL string
+      // `"no value specified"` (per the 2026-10-17 V3 capture).
+      // Pre-fix (Q2 root cause) the parser passed this through
+      // verbatim → production `pass_holders.barcode_value` was stored
+      // as the literal `"no value specified"`. Post-fix, the parser's
+      // `normalizeBarcodeValue` helper collapses this sentinel string
+      // to `null` — the conformance tests in
+      // `"barcodeValue defensive normalize (P0 #3 — 2026-10-17 capture)"`
+      // pin all 4 placeholder strings + null + real-value branches.
+      // The assertion below documents the post-normalization contract
+      // for the live V3 fixture shape.
+      expect(result.barcodeValue).toBeNull();
     });
   });
 });
@@ -1278,19 +1284,20 @@ describe('Passcreator client — live V3 ERROR fixture (regression — 2026-10-1
       expect((body.errors as string[])[0]).toContain('Template not found');
     });
 
-    itFixture('current parser silently drops V3 string-array errors (TODO — flagged for next-session parser fix)', async () => {
-      // KNOWN LIMITATION (flagged in feedback `20261017-passcreator-v3-capture.md`):
-      // The shared `normalizePasscreatorErrorEntries` helper expects
-      // `{property, message}-shaped` objects. A V3 `errors: string[]`
-      // gets no `property` field to extract, so the helper returns an
-      // empty `upstreamErrors[]` array. The frontend banner therefore
-      // sees NO per-field reason — just "Bad request". This test pins
-      // the current (broken) behavior so the next-session fix has a
-      // clear before/after comparison.
+    itFixture('V3 string-array errors are wrapped into upstreamErrors (P0 #2 — 2026-10-17 capture)', async () => {
+      // After P0 #2 fix: V3 envelope's `errors: string[]` (live-captured
+      // 2026-10-17, distinct from V2's `{property, message}[]` shape) is
+      // wrapped by `normalizePasscreatorErrorEntries` into
+      // `{property: 'data', message: <string>}` entries — one per string.
+      // 'data' is the V3 envelope's top-level key (per docs § "The
+      // following properties of the `data` object can/must be submitted
+      // in the request body"); V3 does NOT include per-field paths in
+      // its error entries, so 'data' is the most accurate context prefix.
       //
-      // Do NOT fix the parser in this session — scope is "capture +
-      // pin shape". The fix is part of the broader V3 contract
-      // synchronization work tracked separately.
+      // The frontend banner now sees per-message entries instead of an
+      // empty array — so the user gets at least the literal message
+      // "Template not found!" surfaced (vs. only "Bad request" with no
+      // per-field reason).
       fetchSpy.mockResolvedValueOnce(
         makeResponse({ status: fixture!.response.status, body: fixture!.response.body }),
       );
@@ -1302,12 +1309,146 @@ describe('Passcreator client — live V3 ERROR fixture (regression — 2026-10-1
         const bge = err as BadGatewayError;
         expect(bge.details?.kind).toBe('upstream_rejected');
         expect(bge.details?.upstreamStatus).toBe(400);
-        // CURRENT (broken) behavior: string entries are dropped,
-        // so upstreamErrors is an empty array. The fix will change
-        // this to contain `[{ property: 'data.templateId', message: 'Template not found!' }]`.
-        expect(bge.details?.upstreamErrors ?? []).toEqual([]);
+        expect(bge.details?.upstreamErrors).toEqual([
+          { property: 'data', message: 'Template not found!' },
+        ]);
       }
     });
+  });
+});
+
+// ============================================================================
+// 2026-10-18 — P0 #2 V3 error envelope string-array wrap
+//
+// Live V3 capture (2026-10-17) showed Passcreator's V3 error envelope
+// uses `errors: string[]` — distinct from V2's `{property, message}[]`.
+// Pre-fix, `normalizePasscreatorErrorEntries` only handled the V2 shapes
+// (array-of-objects + singular-object), so V3 string entries got
+// silently dropped → frontend banner showed only "Bad request" with
+// no per-field reason.
+//
+// Post-fix, the helper recognizes a `string[]` errors shape (the FIRST
+// entry is a string) and maps each entry into `{property: 'data',
+// message: <string>}` so the frontend banner can render uniformly.
+// Empty strings are filtered out defensively.
+//
+// 4 tests pin the new behavior:
+//   - single string entry → 1-entry upstreamErrors
+//   - multiple string entries → each wrapped separately
+//   - empty string entries → filtered out
+//   - V2 array-of-objects shape → STILL uses property from each entry
+//     (regression guard — the V2 path must not regress when we add the
+//     string-array branch)
+// ============================================================================
+
+describe('Passcreator client — V3 string-array errors defensive wrap (P0 #2 — 2026-10-17 capture)', () => {
+  it('single string entry → wrapped as 1-entry upstreamErrors', async () => {
+    fetchSpy.mockResolvedValueOnce(
+      makeResponse({
+        status: 400,
+        body: {
+          success: false,
+          description: 'Bad request',
+          errors: ['Template not found!'],
+          data: [],
+          statusCode: 400,
+        },
+      }),
+    );
+    try {
+      await issuePass(VALID_ENV, 'pc-tpl-123', makeHolder());
+      expect.fail('should throw');
+    } catch (err) {
+      expect(err).toBeInstanceOf(BadGatewayError);
+      const bge = err as BadGatewayError;
+      expect(bge.details?.kind).toBe('upstream_rejected');
+      expect(bge.details?.upstreamErrors).toEqual([
+        { property: 'data', message: 'Template not found!' },
+      ]);
+    }
+  });
+
+  it('multiple string entries → each wrapped as separate upstreamErrors', async () => {
+    fetchSpy.mockResolvedValueOnce(
+      makeResponse({
+        status: 400,
+        body: {
+          success: false,
+          description: 'Invalid data',
+          errors: ['Template not found!', 'Email is invalid', 'Phone format wrong'],
+          data: [],
+          statusCode: 400,
+        },
+      }),
+    );
+    try {
+      await issuePass(VALID_ENV, 'pc-tpl-123', makeHolder());
+      expect.fail('should throw');
+    } catch (err) {
+      expect((err as BadGatewayError).details?.upstreamErrors).toEqual([
+        { property: 'data', message: 'Template not found!' },
+        { property: 'data', message: 'Email is invalid' },
+        { property: 'data', message: 'Phone format wrong' },
+      ]);
+    }
+  });
+
+  it('empty string entries filtered out (defensive)', async () => {
+    fetchSpy.mockResolvedValueOnce(
+      makeResponse({
+        status: 400,
+        body: {
+          success: false,
+          description: 'Bad request',
+          errors: ['Template not found!', '', '  '],
+          data: [],
+          statusCode: 400,
+        },
+      }),
+    );
+    try {
+      await issuePass(VALID_ENV, 'pc-tpl-123', makeHolder());
+      expect.fail('should throw');
+    } catch (err) {
+      // Empty / whitespace-only entries are filtered — only the
+      // non-empty message is surfaced.
+      expect((err as BadGatewayError).details?.upstreamErrors).toEqual([
+        { property: 'data', message: 'Template not found!' },
+      ]);
+    }
+  });
+
+  it('V2 array-of-objects shape STILL uses property from each entry (regression guard)', async () => {
+    // Pre-existing V2 path: errors[] of {property, message} objects.
+    // The new string-array branch must NOT regress this — when the
+    // first entry is an OBJECT, the helper should fall back to the
+    // existing `extractUpstreamErrorsFromArray` path (which preserves
+    // each entry's own `property` field).
+    fetchSpy.mockResolvedValueOnce(
+      makeResponse({
+        status: 400,
+        body: {
+          success: false,
+          description: 'Invalid data',
+          errors: [
+            { property: 'data.email', message: 'is invalid' },
+            { property: 'data.phone', message: 'format wrong' },
+          ],
+          data: [],
+          statusCode: 400,
+        },
+      }),
+    );
+    try {
+      await issuePass(VALID_ENV, 'pc-tpl-123', makeHolder());
+      expect.fail('should throw');
+    } catch (err) {
+      // Each entry keeps its own property — NOT collapsed to 'data'.
+      expect((err as BadGatewayError).details?.upstreamErrors).toEqual([
+        { property: 'data.email', message: 'is invalid' },
+        { property: 'data.phone', message: 'format wrong' },
+      ]);
+    }
   });
 });
 
@@ -1390,7 +1531,10 @@ function makeV3SuccessBody(overrides: Partial<{
         overrides.iPhoneUri ?? 'https://app.passcreator.com/linkToPassFile.pkpass',
       androidUri:
         overrides.androidUri ?? 'https://pay.google.com/save/linkToGoogleWalletPassUri',
-      barcodeValue: overrides.barcodeValue ?? '3897897988979823497234',
+      barcodeValue:
+        'barcodeValue' in overrides
+          ? overrides.barcodeValue
+          : '3897897988979823497234',
       bundleId: null,
       genericProperties: {},
     },
@@ -1589,5 +1733,117 @@ describe('issuePass — Passcreator V3 per-pass runtime endpoint', () => {
     const parsed = JSON.parse(bodyStr);
     expect(parsed.data.name).toBe(trickyName);
     expect(parsed).not.toHaveProperty('additionalPropertyValues');
+  });
+});
+
+// ============================================================================
+// 2026-10-18 — P0 #3 barcodeValue defensive normalize
+//
+// Live V3 capture (2026-10-17, runs/improvements/feedback/20261018-passcreator-v3-capture.md)
+// confirmed that Passcreator returns LITERAL placeholder strings in
+// `data.barcodeValue` when a template has no barcode configured:
+//
+//   - "no value specified"  — observed in V3 CREATE response (Q2 root cause:
+//                             production `pass_holders.barcode_value` was
+//                             literally this string instead of NULL)
+//   - "no value given"      — observed in V3 LIST response (no barcode per item)
+//   - "no barcode"          — observed in Passcreator error messages
+//   - ""                    — observed in some Passcreator responses
+//
+// Pre-fix, the parser passed the string through verbatim → DB stored the
+// placeholder as if it were a real barcode. This describe block pins the
+// defensive normalize: any of the 4 placeholders → null; real barcode
+// values (numeric strings) → unchanged.
+//
+// After the parser change, the EXISTING V3 success fixture test
+// (which pins `expect(result.barcodeValue).toBe('no value specified')`)
+// will be updated to assert `null` instead — see Phase 2 of
+// runs/improvements/feedback/20261018-passcreator-v3-parser-defensive-normalize.md.
+// ============================================================================
+
+describe('Passcreator client — barcodeValue defensive normalize (P0 #3 — 2026-10-17 capture)', () => {
+  /**
+   * Each test pins one branch of the placeholder set. Real barcode
+   * values (numeric strings like '3897897988979823497234') must
+   * pass through unchanged.
+   *
+   * The 6th test exercises the legacy flat-shape fallback of
+   * `extractPassIssueData` (when the response puts identifier +
+   * downloadPage at the top level rather than inside `data`).
+   */
+
+  it('"no value specified" → null (Q2 root case, live-captured)', async () => {
+    fetchSpy.mockResolvedValueOnce(
+      makeResponse({ status: 200, body: makeV3SuccessBody({ barcodeValue: 'no value specified' }) }),
+    );
+    const result = await issuePass(VALID_ENV, 'pc-tpl-123', makeHolder());
+    expect(result.barcodeValue).toBeNull();
+  });
+
+  it('"no value given" → null (observed in V3 list response)', async () => {
+    fetchSpy.mockResolvedValueOnce(
+      makeResponse({ status: 200, body: makeV3SuccessBody({ barcodeValue: 'no value given' }) }),
+    );
+    const result = await issuePass(VALID_ENV, 'pc-tpl-123', makeHolder());
+    expect(result.barcodeValue).toBeNull();
+  });
+
+  it('"no barcode" → null (defensive — seen in Passcreator error copy)', async () => {
+    fetchSpy.mockResolvedValueOnce(
+      makeResponse({ status: 200, body: makeV3SuccessBody({ barcodeValue: 'no barcode' }) }),
+    );
+    const result = await issuePass(VALID_ENV, 'pc-tpl-123', makeHolder());
+    expect(result.barcodeValue).toBeNull();
+  });
+
+  it('"" (empty string) → null (Passcreator sometimes returns empty)', async () => {
+    fetchSpy.mockResolvedValueOnce(
+      makeResponse({ status: 200, body: makeV3SuccessBody({ barcodeValue: '' }) }),
+    );
+    const result = await issuePass(VALID_ENV, 'pc-tpl-123', makeHolder());
+    expect(result.barcodeValue).toBeNull();
+  });
+
+  it('real barcode value (numeric string) → unchanged', async () => {
+    fetchSpy.mockResolvedValueOnce(
+      makeResponse({ status: 200, body: makeV3SuccessBody({ barcodeValue: '3897897988979823497234' }) }),
+    );
+    const result = await issuePass(VALID_ENV, 'pc-tpl-123', makeHolder());
+    expect(result.barcodeValue).toBe('3897897988979823497234');
+  });
+
+  it('non-string barcodeValue (e.g. null in body) → null (defensive)', async () => {
+    // Passcreator V3 docs § "Returned values" says barcodeValue
+    // can be a string OR null. We accept null and return null.
+    fetchSpy.mockResolvedValueOnce(
+      makeResponse({ status: 200, body: makeV3SuccessBody({ barcodeValue: null }) }),
+    );
+    const result = await issuePass(VALID_ENV, 'pc-tpl-123', makeHolder());
+    expect(result.barcodeValue).toBeNull();
+  });
+
+  it('legacy flat-shape response with placeholder barcodeValue → null (extractPassIssueData fallback branch)', async () => {
+    // Exercises the SECOND branch of extractPassIssueData (legacy /
+    // test-double flat shape: identifier + downloadPage at top level,
+    // no `data` wrapper). The defensive normalize must apply to
+    // BOTH branches — otherwise a future legacy mock with placeholder
+    // barcodeValue would slip through the parser unchanged.
+    fetchSpy.mockResolvedValueOnce(
+      makeResponse({
+        status: 200,
+        body: {
+          identifier: 'legacy-flat-1',
+          downloadPage: 'https://app.passcreator.com/p/legacy',
+          iPhoneUri: 'https://app.passcreator.com/legacy.pkpass',
+          androidUri: 'https://pay.google.com/save/legacy',
+          barcodeValue: 'no value specified',
+        },
+      }),
+    );
+    const result = await issuePass(VALID_ENV, 'pc-tpl-123', makeHolder());
+    expect(result.barcodeValue).toBeNull();
+    // Sanity: identifier + URLs still parse correctly from the flat shape
+    expect(result.identifier).toBe('legacy-flat-1');
+    expect(result.downloadPage).toBe('https://app.passcreator.com/p/legacy');
   });
 });

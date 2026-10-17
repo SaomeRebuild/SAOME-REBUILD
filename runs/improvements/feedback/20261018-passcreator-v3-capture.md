@@ -154,8 +154,8 @@ User 上一輪 spec 假設 `data.genericProperties: { ... }`（object）。真�
 
 ### Action item（給下一個 session，按優先順序）
 
-1. **P0 Q2 root-cause fix**：`extractPassIssueData` defensive normalize barcodeValue — `BARCODE_VALUE_PLACEHOLDERS = new Set(['no value given', 'no value specified', 'no barcode', ''])` → null。先 TDD Red 寫 failing test 斷言 `barcodeValue === null`，再改 parser。修完跑一次 production smoke test 確認 DB column 變 null。
-2. **P0 V3 error envelope fix**：`normalizePasscreatorErrorEntries` 加 string-array 分支（wrap 成 `{property: '<v3-context>', message: <string>}`）。先 TDD Red。
+1. ~~**P0 Q2 root-cause fix**：~~ ✅ **CLOSED**（[runs/improvements/feedback/20261018-passcreator-v3-parser-defensive-normalize.md](20261018-passcreator-v3-parser-defensive-normalize.md)）：`extractPassIssueData` defensive normalize barcodeValue — `BARCODE_VALUE_PLACEHOLDERS = new Set(['no value given', 'no value specified', 'no barcode', ''])` → null。TDD Red-first 寫了 7 條新 + 既有 fixture test 翻面成 `barcodeValue === null`。Production smoke test 仍 pending（follow-up #6）。
+2. ~~**P0 V3 error envelope fix**：~~ ✅ **CLOSED**（同上）：`normalizePasscreatorErrorEntries` 加 string-array 分支，wrap 成 `{property: 'data', message: <string>}`。TDD Red-first 4 條新 + 既有 fixture test 翻面。
 3. **P1 Drift #4 follow-up**：verify `passHolder.download.android*` i18n copy（"Save to Google Wallet" vs "Save to Passwallet"）+ 確認 `pickDownloadUri` UA detection 是否仍正確。
 4. **P1 Drift #1 follow-up**：parser 加 `linkToPassPage → downloadPage` fallback（for future V3-list consumers）。
 5. **P2 Drift #5 follow-up**：docblock 更新 `genericProperties: []`（array not object）。
