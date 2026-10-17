@@ -186,18 +186,19 @@ async function attemptIssuance(
       email: row.email,
     });
     const issuedAt = new Date();
-    // Persist the universal landing page URL into `download_url`
-    // (the DB column already exists from migration 025). The
-    // platform-specific `iPhoneUri` / `androidUri` are surfaced via
-    // the response payload only — frontend does user-agent detection
-    // for the actual CTA. Storing all 3 would require 2 new columns
-    // (out of scope for this fix; tracked as future hardening).
+    // 2026-10-19 — Persist ALL 3 URIs that V3 returns. Migration 026
+    // adds `iphone_uri` + `android_uri` columns; even Apple/Passwallet-
+    // only templates get a real androidUri string from V3, so we
+    // capture it for audit trail (frontend does user-agent detection
+    // via `pickDownloadUri()` to surface the right one in the UI).
     await updatePassHolderIssuance(sql, {
       id: row.id,
       passIdentifier: issued.identifier,
       downloadUrl: issued.downloadPage,
       barcodeValue: issued.barcodeValue,
       issuedAt,
+      iPhoneUri: issued.iPhoneUri,
+      androidUri: issued.androidUri,
     });
     return {
       passIdentifier: issued.identifier,

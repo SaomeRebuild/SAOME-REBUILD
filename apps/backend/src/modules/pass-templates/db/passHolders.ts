@@ -14,12 +14,17 @@
  *   - 20261019000001_025_add_pass_holder_issuance_fields.sql — Passcreator
  *     V3 per-pass runtime extension (pass_identifier, download_url,
  *     barcode_value, issued_at, issuance_error)
+ *   - 20261019000001_026_backfill_barcode_and_add_uri_columns.sql —
+ *     Closure: (a) backfill barcode_value placeholder strings to NULL,
+ *     (b) CHECK constraint blocking re-entry of placeholders,
+ *     (c) add iphone_uri / android_uri TEXT columns (V3 platform URIs)
  *
  * Decision log:
  *   - runs/decisions/2026-09-29-pass-templates-public-endpoint.md
  *   - runs/decisions/2026-10-16-pass-holder-paid-membership-snapshot.md
  *   - runs/decisions/2026-10-18-payment-status-not-required-enum.md
  *   - runs/decisions/2026-10-19-pass-holder-v3-issuance.md
+ *   - runs/decisions/2026-10-19-pass-holder-v3-jsonb-consolidation.md
  */
 
 import type { Sql } from '@/shared/db/client';
@@ -89,6 +94,24 @@ export interface PassHolderRow {
   issued_at?: Date | string | null;
   /** i18n key when issuance failed; NULL on success. */
   issuance_error?: string | null;
+  // ================================================================
+  // 2026-10-19 — Passcreator V3 platform URI columns (migration 026)
+  //   Both columns are NULLABLE on the row. They mirror V3's
+  //   `data.iPhoneUri` (Apple Wallet / Passwallet direct .pkpass) and
+  //   `data.androidUri` (Google Pay deeplink). V3 always returns all 3
+  //   URIs (downloadPage + iPhoneUri + androidUri) — even for
+  //   Apple/Passwallet-only templates, androidUri is a string. We
+  //   persist all of them so the holder's audit trail records the
+  //   exact artifact we issued, regardless of which platform they
+  //   install from. The frontend uses `pickDownloadUri()` helper to
+  //   user-agent-detect and surface the right one.
+  //   See runs/decisions/2026-10-19-pass-holder-v3-jsonb-consolidation.md
+  //   for the column-vs-JSONB tradeoff rationale.
+  // ================================================================
+  /** V3 `data.iPhoneUri` — direct .pkpass link for Apple Wallet / Passwallet. */
+  iphone_uri?: string | null;
+  /** V3 `data.androidUri` — Google Pay deeplink (still persisted for Apple-only templates). */
+  android_uri?: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -101,12 +124,19 @@ export interface PassHolderRow {
  *
  * `id` is the holder UUID; the rest of the fields are the runtime
  * artifact we want to persist. The UPDATE writes `pass_identifier`,
- * `download_url`, `barcode_value`, `issued_at`, `issuance_error` in
- * a single statement (atomic at the row level).
+ * `download_url`, `barcode_value`, `issued_at`, `issuance_error`,
+ * `iphone_uri`, `android_uri` in a single statement (atomic at the
+ * row level).
+ *
+ * 2026-10-19 — iPhoneUri / androidUri added per migration 026.
+ * V3 always returns all 3 URIs; even for Apple/Passwallet-only
+ * templates, `androidUri` is a string. Persisting both keeps the
+ * audit trail accurate (frontend does user-agent detection via
+ * `pickDownloadUri()`, but the DB row records what we actually got).
  *
  * Failure-mode construction: pass `issuanceError: 'passHolder.errors.upstreamFailed'`
  * and leave the other fields `undefined` — the function will set
- * `issued_at = NULL` and write the error key. The four runtime fields
+ * `issued_at = NULL` and write the error key. The six runtime fields
  * are coerced to NULL when omitted.
  */
 export interface PassHolderIssuanceUpdate {
@@ -132,6 +162,10 @@ export interface PassHolderIssuanceUpdate {
    * populate.
    */
   issuanceError?: string | null;
+  /** V3 `data.iPhoneUri` — direct .pkpass for Apple Wallet / Passwallet. NULL-able. */
+  iPhoneUri?: string | null;
+  /** V3 `data.androidUri` — Google Pay deeplink. NULL-able but typically non-null per V3. */
+  androidUri?: string | null;
 }
 
 /**
@@ -159,6 +193,7 @@ export async function findPassHolderByTemplateAndEmail(
            payment_provider, payment_status, paid_amount, currency,
            pass_identifier, download_url, barcode_value,
            issued_at, issuance_error,
+           iphone_uri, android_uri,
            created_at, updated_at
       FROM public.pass_holders
      WHERE template_id = ${templateId}
@@ -242,6 +277,7 @@ export async function upsertPassHolder(
               payment_provider, payment_status, paid_amount, currency,
               pass_identifier, download_url, barcode_value,
               issued_at, issuance_error,
+              iphone_uri, android_uri,
               created_at, updated_at
   `;
 
@@ -314,7 +350,9 @@ export async function updatePassHolderIssuance(
            download_url     = ${input.downloadUrl ?? null},
            barcode_value    = ${input.barcodeValue ?? null},
            issued_at        = ${issuedAtIso}::timestamptz,
-           issuance_error   = ${input.issuanceError ?? null}
+           issuance_error   = ${input.issuanceError ?? null},
+           iphone_uri       = ${input.iPhoneUri ?? null},
+           android_uri      = ${input.androidUri ?? null}
      WHERE id = ${input.id}
      RETURNING id, template_id, name, phone_country_code, phone_number,
                birthday::text AS birthday, email,
@@ -322,6 +360,7 @@ export async function updatePassHolderIssuance(
                payment_provider, payment_status, paid_amount, currency,
                pass_identifier, download_url, barcode_value,
                issued_at, issuance_error,
+               iphone_uri, android_uri,
                created_at, updated_at
   `;
   if (!rows[0]) {
