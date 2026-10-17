@@ -1,0 +1,41 @@
+{
+  "scenario": "v3-create-success",
+  "description": "POST /api/v3/pass?async=false with all 4 holder fields. Issues a REAL per-pass wallet pass in the Passcreator account (no documented V3 DELETE; cleanup is manual). Captures the success envelope shape with identifier + downloadPage + iPhoneUri + androidUri + barcodeValue — this is the production contract extractPassIssueData parses.",
+  "capturedAt": "2026-10-17T20:48:07.240Z",
+  "apiUrl": "https://app.passcreator.com",
+  "request": {
+    "method": "POST",
+    "path": "/api/v3/pass?async=false",
+    "body": {
+      "data": {
+        "templateId": "b5386504-4a40-4ad3-9ec6-a8fd139e3c2d",
+        "name": "Capture 測試 1792270086179",
+        "phone": "+886912345678",
+        "birthday": "1990-01-01",
+        "email": "capture-test-1792270086179@capture.invalid"
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "ok": true,
+    "contentType": "application/json",
+    "body": {
+      "statusCode": 200,
+      "success": true,
+      "description": "Successfully created!",
+      "errors": [],
+      "count": 1,
+      "responseMetaData": null,
+      "data": {
+        "identifier": "c2da13bc-2bab-4da8-837d-2857c7e23aee",
+        "downloadPage": "https://app.passcreator.com/en/p/iviq8ws65gnvt6ad3df070c658",
+        "barcodeValue": "no value specified",
+        "iPhoneUri": "https://app.passcreator.com/en/passinstance/pkpass?passInstance%5B__identity%5D=c2da13bc-2bab-4da8-837d-2857c7e23aee&t=3b53e76b3225e8817a523752c74a145199426599",
+        "androidUri": "https://passwallet.page.link/?apn=com.attidomobile.passwallet&link=https%3A%2F%2Fapp.passcreator.com%2Fen%2Fpassinstance%2Fpkpass%2Fc2da13bc-2bab-4da8-837d-2857c7e23aee",
+        "genericProperties": [],
+        "ErrorMessage": ""
+      }
+    }
+  }
+}

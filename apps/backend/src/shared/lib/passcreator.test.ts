@@ -26,6 +26,7 @@ import {
   createPassTemplate,
   updatePassTemplate,
   fetchPassTemplate,
+  issuePass,
 } from './passcreator';
 import { BadGatewayError } from './saomeError';
 import * as fs from 'node:fs';
@@ -726,14 +727,33 @@ function importFixturesGlob(): Record<string, CapturedFixture> {
     // The path is `../../../../../fixtures/passcreator/*.json` from
     // this test file (5 levels of `../` to climb out of
     // `apps/backend/src/shared/lib/` to the repo root).
+    //
+    // We glob two path patterns so both top-level V2 fixtures
+    // (`success-create.json` etc.) and V3 sub-folder fixtures
+    // (`v3/v3-create-success.json` etc.) are bundled. The key
+    // derivation below preserves the `v3/...` prefix so callers
+    // use `tryLoadFixture('v3/v3-create-success')` to opt into a
+    // V3 fixture without colliding with V2's `success-create`.
     const modules = import.meta.glob<CapturedFixture>(
-      '../../../../../fixtures/passcreator/*.json',
+      [
+        '../../../../../fixtures/passcreator/*.json',
+        '../../../../../fixtures/passcreator/v3/*.json',
+      ],
       { eager: true },
     );
     const out: Record<string, CapturedFixture> = {};
-    for (const [path, mod] of Object.entries(modules)) {
-      const match = path.match(/\/([^/]+)\.json$/);
-      if (match) out[match[1]] = mod;
+    for (const path of Object.keys(modules)) {
+      const mod = modules[path];
+      // V3 sub-folder: key includes the `v3/` prefix so it doesn't
+      // collide with V2 top-level filenames.
+      const m3 = path.match(/\/v3\/([^/]+)\.json$/);
+      if (m3) {
+        out[`v3/${m3[1]}`] = mod;
+        continue;
+      }
+      // V2 top-level: key is the basename only.
+      const m2 = path.match(/\/([^/]+)\.json$/);
+      if (m2) out[m2[1]] = mod;
     }
     return out;
   } catch {
@@ -1068,5 +1088,506 @@ describe('Passcreator client — live V2 error fixtures (regression — 2026-10-
       );
       expect(mentions).toBe(true);
     });
+  });
+});
+
+// ============================================================================
+// 2026-10-17 — Passcreator V3 LIVE fixtures (regression — `capture-passcreator-v3.cjs`)
+//
+// The 3 fixtures below were produced by
+//   `node apps/backend/scripts/capture-passcreator-v3.cjs`
+// which hits the REAL `https://app.passcreator.com/api/v3/pass` endpoint
+// with a real API key + a real V2 template (production `b5386504-...`)
+// and saves the responses. They pin the LIVE V3 envelope shape so
+// future Passcreator API changes are caught by these tests.
+//
+// Fixture inventory:
+//   - v3/v3-create-success.json — POST /api/v3/pass?async=false → 200
+//     with `data.{identifier, downloadPage, iPhoneUri, androidUri, barcodeValue}`.
+//     `barcodeValue` is the literal string `"no value specified"`
+//     when the template has no barcode configured (CONFIRMED Q2 root
+//     cause: this literal is what SAOME writes to `pass_holders.barcode_value`).
+//   - v3/v3-list.json — GET /api/v3/pass → 200 with paginated `data[]`
+//     (100 of 221 passes), cursor-based `page.next`, each item has
+//     `linkToPassPage` (NOT `downloadPage` — that field is V3-create only).
+//   - v3/v3-create-error.json — POST → 400 with `errors: string[]`
+//     (NOT `{property, message}[]` like V2). Passcreator returns
+//     `"Template not found!"` whether the templateId is missing OR
+//     references a non-existent template.
+//
+// CONTRACT DRIFTS captured here (see feedback
+// `runs/improvements/feedback/20261017-passcreator-v3-capture.md` for
+// full analysis):
+//   - V3 create response HAS `downloadPage + iPhoneUri + androidUri`
+//     (V3 docs § Returned values); V3 LIST response has `linkToPassPage`
+//     only (no `downloadPage`). The current `extractPassIssueData`
+//     parser handles the CREATE shape correctly (confirmed by this test).
+//   - V3 error envelope uses `errors: string[]` (NOT V2's `{property,
+//     message}[]`). The current `normalizePasscreatorErrorEntries` only
+//     handles object/array of objects — string entries get silently
+//     dropped. This is a known TODO for the parser fix (Rule 019 § 4.1
+//     contract sync — flagged for next session).
+//   - `barcodeValue: "no value specified"` is a LITERAL placeholder
+//     string Passcreator returns when no barcode is configured. The
+//     current parser passes it through verbatim → `pass_holders.barcode_value`
+//     ends up as `"no value specified"` in the DB. Q2 root-cause fix
+//     (defensive normalize → null) is flagged for next session.
+// ============================================================================
+
+describe('Passcreator client — live V3 SUCCESS fixture (regression — 2026-10-17 capture)', () => {
+  /**
+   * Captured 2026-10-17 against `https://app.passcreator.com/api/v3/pass?async=false`
+   * with a real V2 template (production UUID `b5386504-4a40-4ad3-9ec6-a8fd139e3c2d`)
+   * and dummy holder data (`capture-test-1792270086179@capture.invalid` + non-ASCII
+   * name `Capture 測試 1792270086179`). This pins the exact bytes Passcreator
+   * returns for a real successful per-pass issuance so future envelope-shape drift
+   * is caught.
+   */
+  const fixture = fixtureOrSkip('v3/v3-create-success');
+
+  describe('scenario: v3-create-success (POST /api/v3/pass?async=false → 200 with downloadPage + iPhoneUri + androidUri)', () => {
+    const itFixture = fixture ? it : it.skip;
+
+    itFixture('fixture exists with a 200 status and the V3 success envelope (data.{identifier, downloadPage, iPhoneUri, androidUri})', () => {
+      expect(fixture).not.toBeNull();
+      expect(fixture!.response.status).toBe(200);
+      const body = fixture!.response.body as {
+        success?: unknown;
+        data?: Record<string, unknown>;
+      };
+      expect(body.success).toBe(true);
+      // V3 create response HAS all 5 expected fields
+      expect(body.data).toHaveProperty('identifier');
+      expect(body.data).toHaveProperty('downloadPage');
+      expect(body.data).toHaveProperty('iPhoneUri');
+      expect(body.data).toHaveProperty('androidUri');
+      // V3 create response does NOT use V1's `linkToPassPage` field
+      expect(body.data).not.toHaveProperty('linkToPassPage');
+    });
+
+    itFixture('client correctly extracts identifier + downloadPage + iPhoneUri + androidUri + barcodeValue when mock returns the fixture body', async () => {
+      fetchSpy.mockResolvedValueOnce(
+        makeResponse({ status: fixture!.response.status, body: fixture!.response.body }),
+      );
+      // The fixture's captured `data` block contains the real production
+      // `templateId`; we feed it back to `issuePass` as if we had looked
+      // it up from the upstream template. The holder payload mirrors the
+      // request body the capture script sent (non-ASCII name tests the
+      // workerd JSON.stringify round-trip path).
+      const result = await issuePass(
+        VALID_ENV,
+        'b5386504-4a40-4ad3-9ec6-a8fd139e3c2d',
+        {
+          name: 'Capture 測試 1792270086179',
+          phone: '+886912345678',
+          birthday: '1990-01-01',
+          email: 'capture-test-1792270086179@capture.invalid',
+        },
+      );
+      // The 5 fields the parser is contracted to return. The exact
+      // identifier / URLs come from the live capture — they will
+      // shift if Passcreator rotates its URL scheme, but the SHAPE
+      // (string fields present, iPhoneUri ends with .pkpass, androidUri
+      // is a Passwallet / Google deep link) is what we pin.
+      expect(result.identifier).toBe('c2da13bc-2bab-4da8-837d-2857c7e23aee');
+      expect(result.downloadPage).toMatch(/^https:\/\/app\.passcreator\.com\/en\/p\//);
+      expect(result.iPhoneUri).toMatch(/^https:\/\/app\.passcreator\.com\/.*pkpass/);
+      expect(result.androidUri).toMatch(/^https:\/\/(passwallet\.page\.link|pay\.google\.com)/);
+      // CRITICAL: `barcodeValue` is the LITERAL `"no value specified"`
+      // string from Passcreator when the template has no barcode. This
+      // test pins the current parser behavior (passes it through verbatim).
+      // Q2 fix (normalize to null) is a separate concern; the next-session
+      // fix will add a new test asserting `barcodeValue === null` and
+      // update the parser accordingly.
+      expect(result.barcodeValue).toBe('no value specified');
+    });
+  });
+});
+
+describe('Passcreator client — live V3 LIST fixture (regression — 2026-10-17 capture)', () => {
+  /**
+   * Captured 2026-10-17 against `https://app.passcreator.com/api/v3/pass`
+   * (GET). Returns 100 of 221 production passes with cursor-based
+   * pagination. Each list item has `linkToPassPage` (NOT `downloadPage`
+   * — that's V3-create only). This fixture pins the list envelope shape
+   * so any future consumer that hits V3 list (e.g. retention / dashboard)
+   * doesn't accidentally assume V3-create field names.
+   */
+  const fixture = fixtureOrSkip('v3/v3-list');
+
+  describe('scenario: v3-list (GET /api/v3/pass → 200 with paginated data[])', () => {
+    const itFixture = fixture ? it : it.skip;
+
+    itFixture('fixture exists with a 200 status, pagination metadata, and an array data field', () => {
+      expect(fixture).not.toBeNull();
+      expect(fixture!.response.status).toBe(200);
+      const body = fixture!.response.body as {
+        success?: unknown;
+        responseMetaData?: { resultsTotal?: number; resultsThisPage?: number };
+        page?: { next?: string };
+        data?: unknown[];
+      };
+      expect(body.success).toBe(true);
+      // Pagination metadata is ALWAYS present (even when null on create)
+      expect(body.responseMetaData).not.toBeNull();
+      expect(body.responseMetaData?.resultsTotal).toBeGreaterThan(0);
+      // Cursor-based pagination — `next` is the full URL to fetch the
+      // next page; this is NOT offset/page-number style.
+      expect(body.page?.next).toMatch(/^https:\/\/app\.passcreator\.com\/api\/v3\/pass\/\?/);
+      expect(body.data).toBeInstanceOf(Array);
+      expect((body.data as unknown[]).length).toBeGreaterThan(0);
+    });
+
+    itFixture('each V3 list item has `linkToPassPage` (NOT `downloadPage` — V3-create field is not in list)', () => {
+      const body = fixture!.response.body as { data?: Array<Record<string, unknown>> };
+      const firstItem = body.data?.[0];
+      expect(firstItem).toBeDefined();
+      expect(firstItem).toHaveProperty('linkToPassPage');
+      // V3-create-only fields are NOT in list responses
+      expect(firstItem).not.toHaveProperty('downloadPage');
+      expect(firstItem).not.toHaveProperty('iPhoneUri');
+      expect(firstItem).not.toHaveProperty('androidUri');
+    });
+  });
+});
+
+describe('Passcreator client — live V3 ERROR fixture (regression — 2026-10-17 capture)', () => {
+  /**
+   * Captured 2026-10-17 against `https://app.passcreator.com/api/v3/pass?async=false`
+   * (POST) with `data.templateId` intentionally omitted. Passcreator
+   * returns 400 with `errors: string[]` (literal `"Template not found!"`)
+   * — NOT the `{property, message}[]` shape V2 uses. This is a real
+   * envelope drift between V2 and V3 that the parser does NOT currently
+   * handle (string entries get silently dropped by
+   * `normalizePasscreatorErrorEntries`).
+   */
+  const fixture = fixtureOrSkip('v3/v3-create-error');
+
+  describe('scenario: v3-create-error (POST /api/v3/pass → 400 with errors: string[])', () => {
+    const itFixture = fixture ? it : it.skip;
+
+    itFixture('fixture exists with a 400 status and an array of STRING errors (NOT {property, message}[])', () => {
+      expect(fixture).not.toBeNull();
+      expect(fixture!.response.status).toBe(400);
+      const body = fixture!.response.body as { success?: unknown; errors?: unknown };
+      expect(body.success).toBe(false);
+      // V3 envelope shape: errors is a string array (NOT objects)
+      expect(Array.isArray(body.errors)).toBe(true);
+      expect(typeof (body.errors as unknown[])[0]).toBe('string');
+      // Confirm the literal error string Passcreator returns
+      expect((body.errors as string[])[0]).toContain('Template not found');
+    });
+
+    itFixture('current parser silently drops V3 string-array errors (TODO — flagged for next-session parser fix)', async () => {
+      // KNOWN LIMITATION (flagged in feedback `20261017-passcreator-v3-capture.md`):
+      // The shared `normalizePasscreatorErrorEntries` helper expects
+      // `{property, message}-shaped` objects. A V3 `errors: string[]`
+      // gets no `property` field to extract, so the helper returns an
+      // empty `upstreamErrors[]` array. The frontend banner therefore
+      // sees NO per-field reason — just "Bad request". This test pins
+      // the current (broken) behavior so the next-session fix has a
+      // clear before/after comparison.
+      //
+      // Do NOT fix the parser in this session — scope is "capture +
+      // pin shape". The fix is part of the broader V3 contract
+      // synchronization work tracked separately.
+      fetchSpy.mockResolvedValueOnce(
+        makeResponse({ status: fixture!.response.status, body: fixture!.response.body }),
+      );
+      try {
+        await issuePass(VALID_ENV, 'b5386504-4a40-4ad3-9ec6-a8fd139e3c2d', makeHolder());
+        expect.fail('should have thrown');
+      } catch (err) {
+        expect(err).toBeInstanceOf(BadGatewayError);
+        const bge = err as BadGatewayError;
+        expect(bge.details?.kind).toBe('upstream_rejected');
+        expect(bge.details?.upstreamStatus).toBe(400);
+        // CURRENT (broken) behavior: string entries are dropped,
+        // so upstreamErrors is an empty array. The fix will change
+        // this to contain `[{ property: 'data.templateId', message: 'Template not found!' }]`.
+        expect(bge.details?.upstreamErrors ?? []).toEqual([]);
+      }
+    });
+  });
+});
+
+// ============================================================================
+// 2026-10-19 — Passcreator V3 per-pass issuance (`issuePass`)
+//
+// V3 contract (verified against https://developer.passcreator.com/en/api/v3/pass
+// — "Create a Pass" section, captured 2026-10-19):
+//
+//   - Endpoint: POST https://app.passcreator.com/api/v3/pass?async=false
+//   - async URL param defaults to `true`; MUST be `false` for barcodeValue
+//     to appear in the response.
+//   - Body is wrapped in a `data` object:
+//       { "data": { templateId, name, phone, birthday, email, ... } }
+//     additional properties (like `name` / `phone` / `birthday` / `email`)
+//     go directly inside `data`, NOT under an `additionalPropertyValues`
+//     wrapper (that field name does NOT exist on V3 create).
+//   - Success response shape:
+//       { success, data: { identifier, downloadPage, iPhoneUri,
+//                          androidUri, barcodeValue, ... }, statusCode }
+//     Note: V3 returns `downloadPage` (not `linkToPassPage` like V1's
+//     `linkToPassPage`); `iPhoneUri` and `androidUri` are the direct
+//     .pkpass / Google Wallet deeplinks.
+//
+// Six conformance tests pin the V3 wrapper contract so:
+//   1. Happy-path V3 envelope parses correctly.
+//   2. Network failure surfaces BadGatewayError(kind='network').
+//   3. V3 error envelope surfaces BadGatewayError(kind='upstream_rejected')
+//      with the per-field `upstreamErrors[]`.
+//   4. Singular-object errors shape is normalized to 1-entry array
+//      (same defensive path as V2).
+//   5. Response missing both `data.identifier` and top-level id
+//      throws BadGatewayError with a hint pointing to V3 envelope.
+//   6. Non-ASCII holder name round-trips correctly through JSON
+//      serialization (regression — workerd JSON.stringify pitfall).
+//
+// See runs/decisions/2026-10-19-pass-holder-v3-issuance.md and
+// runs/improvements/feedback/20261019-pass-holder-v3-issuance-v3-contract-fix.md
+// (the original mock shape was wrong — V3 docs `additionalPropertyValues`
+// wrapper / `linkToPassPage` response field do NOT exist on V3 create).
+// ============================================================================
+
+/**
+ * V3 minimal holder payload — matches the 4 fields pushed directly
+ * into the `data` object (NOT into `additionalPropertyValues`).
+ */
+function makeHolder(overrides: Partial<{ name: string; phone: string; birthday: string; email: string }> = {}) {
+  return {
+    name: overrides.name ?? '王小明',
+    phone: overrides.phone ?? '+886912345678',
+    birthday: overrides.birthday ?? '1990-01-15',
+    email: overrides.email ?? 'wang@example.com',
+  };
+}
+
+/** V3 success envelope — matches the documented shape from V3 docs
+ *  (Create a Pass → Returned values section). The real V3 response
+ *  has `downloadPage` (universal Passcreator landing page that
+ *  device-sniffs Apple vs Google), `iPhoneUri` (direct .pkpass),
+ *  `androidUri` (Google Pay / Passwallet deeplink), and `barcodeValue`.
+ *  V1 used `linkToPassPage` (deprecated on V3).
+ */
+function makeV3SuccessBody(overrides: Partial<{
+  identifier: string;
+  downloadPage: string;
+  iPhoneUri: string;
+  androidUri: string;
+  barcodeValue: string | null;
+}> = {}) {
+  return {
+    success: true,
+    description: 'Pass has been created.',
+    errors: [],
+    data: {
+      identifier: overrides.identifier ?? 'a0f629e6-6533-40cb-90b8-ef9093bfbb26',
+      templateId: 'pc-tpl-123',
+      downloadPage:
+        overrides.downloadPage ?? 'https://app.passcreator.com/p/a8976234876af9sdhk',
+      iPhoneUri:
+        overrides.iPhoneUri ?? 'https://app.passcreator.com/linkToPassFile.pkpass',
+      androidUri:
+        overrides.androidUri ?? 'https://pay.google.com/save/linkToGoogleWalletPassUri',
+      barcodeValue: overrides.barcodeValue ?? '3897897988979823497234',
+      bundleId: null,
+      genericProperties: {},
+    },
+    statusCode: 200,
+    count: 1,
+  };
+}
+
+describe('issuePass — Passcreator V3 per-pass runtime endpoint', () => {
+  it('happy path: V3 success envelope → returns identifier + downloadPage + iPhoneUri + androidUri + barcodeValue', async () => {
+    fetchSpy.mockResolvedValueOnce(
+      makeResponse({ status: 201, body: makeV3SuccessBody() }),
+    );
+    const result = await issuePass(VALID_ENV, 'pc-tpl-123', makeHolder());
+    // Real V3 fields returned by the wrapper
+    expect(result.identifier).toBe('a0f629e6-6533-40cb-90b8-ef9093bfbb26');
+    expect(result.downloadPage).toBe('https://app.passcreator.com/p/a8976234876af9sdhk');
+    expect(result.iPhoneUri).toBe('https://app.passcreator.com/linkToPassFile.pkpass');
+    expect(result.androidUri).toBe('https://pay.google.com/save/linkToGoogleWalletPassUri');
+    expect(result.barcodeValue).toBe('3897897988979823497234');
+
+    // URL + method + body shape pinned
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    // MUST include ?async=false — without it, Passcreator returns
+    // 200 with success:true but barcodeValue is empty (docs §
+    // "If you need to see the actual barcodeValue in the JSON
+    // response body, you need to set async to false").
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe(
+      'https://app.passcreator.com/api/v3/pass?async=false',
+    );
+    const init = fetchSpy.mock.calls[0]?.[1] as RequestInit;
+    expect(init.method).toBe('POST');
+    const body = JSON.parse(init.body as string);
+    // Body MUST wrap fields in a `data` object (V3 contract — docs
+    // § "The following properties of the `data` object can/must be
+    // submitted in the request body").
+    expect(body).toHaveProperty('data');
+    expect(body.data.templateId).toBe('pc-tpl-123');
+    // Additional properties go DIRECTLY inside `data` (NOT under an
+    // `additionalPropertyValues` wrapper — that field name does not
+    // exist on V3 create).
+    expect(body.data).not.toHaveProperty('additionalPropertyValues');
+    expect(body.data.name).toBe('王小明');
+    expect(body.data.phone).toBe('+886912345678');
+    expect(body.data.birthday).toBe('1990-01-15');
+    expect(body.data.email).toBe('wang@example.com');
+  });
+
+  it('network failure (fetch throws) → BadGatewayError kind="network"', async () => {
+    // Simulate Cloudflare Workers' `fetch` rejecting (DNS, TLS, abort,
+    // connection refused). The wrapper must wrap the underlying
+    // TypeError / Error into BadGatewayError with kind='network' so
+    // the route layer surfaces a "check your network" banner.
+    fetchSpy.mockRejectedValueOnce(new TypeError('fetch failed: ECONNREFUSED'));
+    try {
+      await issuePass(VALID_ENV, 'pc-tpl-123', makeHolder());
+      expect.fail('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(BadGatewayError);
+      const bge = err as BadGatewayError;
+      expect(bge.details?.kind).toBe('network');
+      expect(bge.details?.upstream).toBe('passcreator');
+      expect(bge.details?.upstreamStatus).toBeUndefined();
+      expect(String(bge.details?.upstreamBody ?? '')).toContain('ECONNREFUSED');
+    }
+  });
+
+  it('V3 error envelope → BadGatewayError kind="upstream_rejected" with upstreamErrors', async () => {
+    // Mirrors the V2 envelope shape — Passcreator V3 uses the same
+    // `{success, description, errors, data, statusCode}` envelope
+    // (verified against the V3 list endpoint 2026-10-19). Per-field
+    // paths in `errors[].property` use the OUTER `data` wrapper —
+    // e.g. `errors[].property === 'data.email'` (NOT
+    // `additionalPropertyValues.email`).
+    fetchSpy.mockResolvedValueOnce(
+      makeResponse({
+        status: 400,
+        body: {
+          success: false,
+          description: 'Invalid data.',
+          errors: [{ property: 'data.email', message: 'is invalid' }],
+          data: [],
+          statusCode: 400,
+        },
+      }),
+    );
+    try {
+      await issuePass(VALID_ENV, 'pc-tpl-123', makeHolder());
+      expect.fail('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(BadGatewayError);
+      const bge = err as BadGatewayError;
+      expect(bge.details?.kind).toBe('upstream_rejected');
+      expect(bge.details?.upstreamStatus).toBe(400);
+      expect(bge.details?.upstreamErrors).toEqual([
+        { property: 'data.email', message: 'is invalid' },
+      ]);
+    }
+  });
+
+  it('V3 singular-object errors shape → normalized to 1-entry upstreamErrors', async () => {
+    // Some Passcreator endpoints (verified against V2) use a
+    // singular-object `errors` field rather than an array. The
+    // shared `normalizePasscreatorErrorEntries` helper handles both
+    // shapes — V3 inherits the same path through `passcreatorFetch`.
+    fetchSpy.mockResolvedValueOnce(
+      makeResponse({
+        status: 422,
+        body: {
+          success: false,
+          description: 'Template not found.',
+          errors: { property: 'data.templateId', message: 'unknown templateId' },
+          data: [],
+          statusCode: 422,
+        },
+      }),
+    );
+    try {
+      await issuePass(VALID_ENV, 'pc-tpl-bogus', makeHolder());
+      expect.fail('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(BadGatewayError);
+      const bge = err as BadGatewayError;
+      expect(bge.details?.kind).toBe('upstream_rejected');
+      expect(bge.details?.upstreamErrors).toEqual([
+        { property: 'data.templateId', message: 'unknown templateId' },
+      ]);
+    }
+  });
+
+  it('V3 response missing both data.identifier and top-level id → BadGatewayError with hint', async () => {
+    // Defensive: even if the upstream returns 201 with junk body,
+    // we surface a clear error pointing at the V3 envelope contract.
+    // Note: V3 docs put the per-pass fields at `data.{identifier,
+    // downloadPage, iPhoneUri, androidUri, barcodeValue}` — not at
+    // `data.linkToPassPage` (that's the V1 field name).
+    fetchSpy.mockResolvedValueOnce(
+      makeResponse({
+        status: 201,
+        body: {
+          success: true,
+          description: 'Pass has been created.',
+          errors: [],
+          data: [],     // ← empty array, not the documented object
+          statusCode: 201,
+        },
+      }),
+    );
+    try {
+      await issuePass(VALID_ENV, 'pc-tpl-123', makeHolder());
+      expect.fail('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(BadGatewayError);
+      const bge = err as BadGatewayError;
+      // No upstreamStatus (the upstream was 2xx — we don't propagate that)
+      expect(bge.details?.upstreamStatus).toBeUndefined();
+      // Hint message points at the expected V3 envelope location
+      // (`data.identifier + data.downloadPage` per docs § Returned
+      // values). V1's `linkToPassPage` is no longer present.
+      expect(String(bge.details?.upstreamBody ?? '')).toContain('identifier+downloadPage');
+      expect(String(bge.details?.upstreamBody ?? '')).not.toContain('linkToPassPage');
+    }
+  });
+
+  it('non-ASCII holder name round-trips correctly through JSON serialization (regression — workerd JSON.stringify pitfall)', async () => {
+    // Rule 027 § workerd `JSON.stringify` pitfall: workerd's runtime
+    // breaks non-ASCII strings into `\uFFFD` (replacement character)
+    // when `JSON.stringify` is called manually. The wrapper here
+    // uses `JSON.stringify(init.body)` via the shared `passcreatorFetch`
+    // helper — but the body value comes from the SAOME backend's
+    // own JS object, NOT from a postgres-side `JSON.stringify`.
+    // This test pins the contract: a holder name with Chinese /
+    // emoji characters MUST survive the round-trip from JS object →
+    // fetch body → Passcreator envelope (where Passcreator's
+    // response echoes the value back). If workerd corrupts the body,
+    // Passcreator would return `errors: [{property:'data.name', ...}]`
+    // and our wrapper would throw upstream_rejected — that path is
+    // covered by the V3-error-envelope test above.
+    //
+    // The test asserts the OUTGOING fetch body contains the original
+    // bytes (not replacement characters), which is the strongest
+    // static guarantee the wrapper can provide.
+    fetchSpy.mockResolvedValueOnce(makeResponse({ status: 201, body: makeV3SuccessBody() }));
+
+    const trickyName = '哈囉 🎉 Café';   // zh-TW + emoji + accented Latin
+    await issuePass(VALID_ENV, 'pc-tpl-123', makeHolder({ name: trickyName }));
+
+    const init = fetchSpy.mock.calls[0]?.[1] as RequestInit;
+    const bodyStr = init.body as string;
+    // Body MUST contain the original non-ASCII bytes verbatim — no
+    // `\uFFFD` replacement characters.
+    expect(bodyStr).toContain(trickyName);
+    expect(bodyStr).not.toContain('\uFFFD');
+    // Bonus: confirm the JSON parse preserves the bytes too — and
+    // confirm the field is at `data.name` (NOT at `additionalPropertyValues.name`).
+    const parsed = JSON.parse(bodyStr);
+    expect(parsed.data.name).toBe(trickyName);
+    expect(parsed).not.toHaveProperty('additionalPropertyValues');
   });
 });

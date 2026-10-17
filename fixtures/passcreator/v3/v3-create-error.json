@@ -1,0 +1,41 @@
+{
+  "scenario": "v3-create-error",
+  "description": "POST /api/v3/pass?async=false with `data.templateId` intentionally omitted. Triggers a V3 validation error (templateId is required). The captured error envelope shape pins the `normalizePasscreatorErrorEntries` path on the receive side to reality. Earlier rounds observed that V3 error envelopes use `errors: string[]` (NOT `{property, message}[]` as V2 does) — the parser must handle both shapes.",
+  "capturedAt": "2026-10-17T20:48:39.261Z",
+  "apiUrl": "https://app.passcreator.com",
+  "request": {
+    "method": "POST",
+    "path": "/api/v3/pass?async=false",
+    "body": {
+      "data": {
+        "name": "Capture Error Test",
+        "phone": "+886912345678",
+        "birthday": "1990-01-01",
+        "email": "capture-test-error@capture.invalid"
+      }
+    }
+  },
+  "response": {
+    "status": 400,
+    "ok": false,
+    "contentType": "application/json",
+    "body": {
+      "statusCode": 400,
+      "success": false,
+      "description": "Bad request",
+      "errors": [
+        "Template not found!"
+      ],
+      "count": 0,
+      "responseMetaData": null,
+      "data": {
+        "data": {
+          "name": "Capture Error Test",
+          "phone": "+886912345678",
+          "birthday": "1990-01-01",
+          "email": "capture-test-error@capture.invalid"
+        }
+      }
+    }
+  }
+}
