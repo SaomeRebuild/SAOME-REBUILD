@@ -196,7 +196,9 @@ describe('PassHolderRegistration', () => {
       }),
     );
     await waitFor(() => {
-      expect(screen.getByTestId('pass-holder-success')).toBeInTheDocument();
+      // 2026-10-19 — the post-submit view is now `PassHolderPassDownload`
+      // (replaces the previous `PassHolderRegistrationSuccess` placeholder).
+      expect(screen.getByTestId('pass-holder-download')).toBeInTheDocument();
     });
   });
 
@@ -455,6 +457,7 @@ describe('PassHolderRegistration', () => {
     vi.mocked(passHolderService.register).mockResolvedValueOnce({
       ok: true,
       passHolderId: 'mock-after-error',
+      created: true,
     });
     await user.click(screen.getByTestId('pass-holder-submit'));
     await waitFor(() => {

@@ -50,9 +50,34 @@ export default {
     description: 'The Pass download feature is coming soon. Please check back later.',
     backToTemplate: 'Back to {{templateName}}',
   },
+  // 2026-10-19 — Passcreator V3 per-pass runtime integration.
+  // Mirror of zh-TW file; full English only, no Chinese (Rule 023 §
+  // translation discipline).
+  download: {
+    title: 'Your Pass is ready!',
+    subtitle: 'Add the Pass to your mobile wallet and show it at checkout.',
+    appleWallet: 'Add to Apple Wallet',
+    directDownload: 'Download .pkpass',
+    iosHint: 'iPhone users can add directly to Apple Wallet',
+    barcodeLabel: 'Barcode content',
+    showBarcodeHint: 'Show this barcode to the cashier at checkout',
+    notReadyYet: 'Pass has not been issued yet. Please try again shortly.',
+  },
+  passwalletReminder: {
+    title: 'Android users',
+    body: 'iPhone has Apple Wallet built-in. Android users should install Passwallet first, then tap "Download .pkpass" above to open it.',
+    installCta: 'Get Passwallet',
+  },
+  downloadError: {
+    title: 'Pass issuance is temporarily unavailable',
+    body: 'The server is busy. Please try again shortly.',
+    retry: 'Retry issuance',
+  },
   errors: {
     templateNotFound: 'This template cannot be found or has been removed.',
     networkError: 'Network error. Please try again later.',
+    // 2026-10-19 — V3 upstream failure i18n key (mirror of zh-TW).
+    upstreamFailed: 'Pass issuance is temporarily unavailable. Please try again later or contact support.',
     // 2026-10-17 — Backend-error capture (Bug 4 umbrella).
     // Mirror of zh-TW file; keep in sync with backend
     // `apps/backend/src/modules/pass-templates/schemas/request.ts`.

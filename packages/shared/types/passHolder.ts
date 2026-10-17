@@ -136,6 +136,60 @@ export interface MembershipTierSnapshot {
 export type PassHolderPhoneCountryCode = '+886' | '+27';
 
 /**
+ * Per-pass runtime artifact returned by Passcreator V3
+ * (`POST /api/v3/pass`) after a holder is registered against a template.
+ *
+ * All fields are optional because issuance can fail — the row in
+ * `public.pass_holders` records `issuanceError` + keeps the holder's
+ * registration intact, so the frontend can render a "重試簽發" banner
+ * with the existing data.
+ *
+ * See `runs/decisions/2026-10-19-pass-holder-v3-issuance.md` for the
+ * per-pass design (DB columns `pass_identifier` / `download_url` /
+ * `barcode_value` / `issued_at` / `issuance_error`).
+ *
+ * 2026-10-19 — V3 keys per the developer.passcreator.com V3 docs:
+ *   - `passIdentifier`  ← Passcreator `data.identifier`
+ *   - `downloadPage`    ← Passcreator `data.downloadPage` (universal landing page)
+ *   - `iPhoneUri`       ← Passcreator `data.iPhoneUri` (direct .pkpass)
+ *   - `androidUri`      ← Passcreator `data.androidUri` (Google Pay deeplink)
+ *   - `barcodeValue`    ← Passcreator `data.barcodeValue` (when present; null otherwise)
+ *   - `issuedAt`        ← ISO 8601 timestamp (UTC) the backend persisted
+ *   - `issuanceError`   ← i18n key when issuance failed (e.g. 'common.error.upstreamFailed');
+ *                         when set, the other fields are typically absent.
+ *
+ * NOTE on field rename history:
+ *   The pre-fix shape had `downloadUrl` mapped from V1's
+ *   `data.linkToPassPage`. V3 docs (verified 2026-10-19) renamed this
+ *   to `data.downloadPage` and split it into 3 URIs (the universal
+ *   landing page + the .pkpass direct link + the Google Wallet deeplink).
+ *   This rename was the root-cause fix for the "registration succeeds
+ *   but no pass arrives" regression — see
+ *   `runs/improvements/feedback/20261019-pass-holder-v3-issuance-v3-contract-fix.md`.
+ *   Frontend does user-agent detection to pick which URI to surface
+ *   as the download CTA.
+ */
+export interface PassHolderIssuance {
+  passIdentifier?: string;
+  /**
+   * Universal Passcreator landing page URL (Apple Safari → opens
+   * Wallet; Android Chrome → opens Google Wallet). This is the
+   * safest single link to surface when the frontend doesn't do
+   * user-agent detection.
+   */
+  downloadPage?: string;
+  /** Direct .pkpass link for Apple Wallet / Passwallet (iOS users). */
+  iPhoneUri?: string;
+  /** Google Pay / Passwallet deeplink (Android users). */
+  androidUri?: string;
+  barcodeValue?: string | null;
+  /** ISO 8601, e.g. '2026-10-19T08:42:13.123Z'. */
+  issuedAt?: string;
+  /** i18n key the frontend should render in the error banner (when failed). */
+  issuanceError?: string;
+}
+
+/**
  * Form payload for `POST /api/pass-templates/:id/register` (future) and
  * the mock service today.
  *
@@ -213,12 +267,30 @@ export interface PassHolderService {
   getTemplate(id: string): Promise<PublicPassTemplate>;
 
   /**
-   * Register a Pass Holder against a template. Today this just logs the
-   * payload and returns a fake id; future backend write goes to
-   * `public.pass_holders`.
+   * Register a Pass Holder against a template. Backend persists the
+   * payload to `public.pass_holders`, then immediately calls Passcreator
+   * V3 `/api/v3/pass` to issue the holder's wallet pass. The
+   * `issuance` field on the response carries the per-pass runtime
+   * fields (`passIdentifier`, `downloadUrl`, `barcodeValue`,
+   * `issuedAt`) when the upstream call succeeded, or `issuanceError`
+   * (an i18n key) when it failed.
+   *
+   * 2026-10-19 — response shape widened from
+   *   `{ ok: true; passHolderId: string }`
+   * to
+   *   `{ ok: true; passHolderId: string; issuance?: PassHolderIssuance }`
+   * to surface the per-pass issuance result to the frontend (download
+   * page). Issuance failure does NOT cause the HTTP response to fail —
+   * the row is persisted either way; the frontend surfaces a retry
+   * banner when `issuance.issuanceError` is set.
    */
   register(
     templateId: string,
     payload: PassHolderPayload,
-  ): Promise<{ ok: true; passHolderId: string }>;
+  ): Promise<{
+    ok: true;
+    passHolderId: string;
+    created: boolean;
+    issuance?: PassHolderIssuance;
+  }>;
 }

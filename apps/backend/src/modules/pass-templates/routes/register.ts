@@ -59,7 +59,7 @@ export const registerRoute = new Hono<HonoEnv>().post('/:id/register', async (c)
     });
   }
 
-  const result = await registerService(sql, templateId, parsed.data);
+  const result = await registerService(sql, c.env, templateId, parsed.data);
   return c.json(result, 200);
 });
 

@@ -135,6 +135,13 @@ export interface PassHolderRegisterPayloadDto {
  * The endpoint is idempotent on (template_id, email): re-registering the
  * same email against the same template returns the existing passHolderId.
  * See `pass_holders_template_email_unique` UNIQUE constraint.
+ *
+ * 2026-10-19 — `issuance` field added for the V3 per-pass runtime
+ * integration (`POST /api/v3/pass`). When `issuance` is omitted, the
+ * holder row was persisted but the Passcreator call was not attempted
+ * (e.g. test mocks); when `issuance.issuanceError` is set, the call
+ * failed and `downloadUrl` / `barcodeValue` may be absent. See
+ * `runs/decisions/2026-10-19-pass-holder-v3-issuance.md`.
  */
 export interface PassHolderRegisterResponseDto {
   ok: true;
@@ -142,6 +149,67 @@ export interface PassHolderRegisterResponseDto {
   passHolderId: string;
   /** True if a new row was inserted; false if an existing row was returned. */
   created: boolean;
+  /**
+   * Optional per-pass runtime artifact. Backend attempts to issue the
+   * pass via Passcreator V3 immediately after registering the holder;
+   * the response includes this field when the attempt completed
+   * (success OR failure with i18n key). Frontend uses `downloadUrl`
+   * for the .pkpass CTA + `barcodeValue` for in-page display; when
+   * `issuanceError` is set, render a retry banner.
+   */
+  issuance?: PassHolderIssuanceDto;
+}
+
+/**
+ * Per-pass runtime artifact returned by Passcreator V3.
+ *
+ * Mirrors `packages/shared/types/passHolder.ts::PassHolderIssuance`.
+ * All fields optional because issuance can fail mid-call (network,
+ * upstream timeout, etc.); the holder row stays persisted either way.
+ *
+ * Layer 2 of 4 per Rule 019 § 4.1:
+ *   - Layer 1: packages/shared/types/passHolder.ts::PassHolderIssuance
+ *   - Layer 2: this interface (backend DTO mirror)
+ *   - Layer 3: db/passHolders.ts::PassHolderRow (DB row shape)
+ *   - Layer 4: services/registerService.ts (assembled inside the service)
+ *
+ * 2026-10-19 — V3 keys per the developer.passcreator.com V3 docs:
+ *   - passIdentifier  ← V3 `data.identifier`
+ *   - downloadPage    ← V3 `data.downloadPage` (universal landing page)
+ *   - iPhoneUri       ← V3 `data.iPhoneUri` (direct .pkpass for Apple Wallet)
+ *   - androidUri      ← V3 `data.androidUri` (Google Pay deeplink)
+ *   - barcodeValue    ← V3 `data.barcodeValue` (nullable when absent OR
+ *                       when the request was sent without `?async=false`)
+ *   - issuedAt        ← ISO 8601 UTC (e.g. `2026-10-19T08:42:13.123Z`)
+ *   - issuanceError   ← i18n key when failed (e.g. `common.error.upstreamFailed`)
+ *
+ * NOTE on field name history:
+ *   The pre-fix shape had `downloadUrl` mapped from V1's
+ *   `data.linkToPassPage`. V3 docs (verified 2026-10-19) return
+ *   `data.downloadPage` as the universal landing page; the .pkpass
+ *   direct link is `data.iPhoneUri` (new in V3). This contract
+ *   rename was the root-cause fix for the "registration succeeds but
+ *   no pass arrives" regression — see
+ *   `runs/improvements/feedback/20261019-pass-holder-v3-issuance-v3-contract-fix.md`.
+ */
+export interface PassHolderIssuanceDto {
+  passIdentifier?: string;
+  /**
+   * Universal Passcreator landing page URL (Apple Safari → opens
+   * Wallet; Android Chrome → opens Google Wallet). This is the
+   * safest single link to surface when the frontend doesn't do
+   * user-agent detection.
+   */
+  downloadPage?: string;
+  /** Direct .pkpass link for Apple Wallet / Passwallet (iOS users). */
+  iPhoneUri?: string;
+  /** Google Pay / Passwallet deeplink (Android users). */
+  androidUri?: string;
+  barcodeValue?: string | null;
+  /** ISO 8601 timestamp (UTC); e.g. `2026-10-19T08:42:13.123Z`. */
+  issuedAt?: string;
+  /** i18n key the frontend should render in the error banner. */
+  issuanceError?: string;
 }
 
 /**

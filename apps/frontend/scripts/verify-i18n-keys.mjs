@@ -151,6 +151,18 @@ const ZHTW_ACRONYM_WHITELIST = new Set([
   'email',
   'SLA',
   'Org',
+  // 2026-10-19 — Pass Holder V3 issuance + Passwallet reminder. Brand
+  // names that don't have official zh-TW translations; same exemption
+  // rationale as `Apple` / `Passcreator` / `Payfast` above.
+  'iPhone', // Apple product family (zh-TW official name stays English)
+  'iOS',   // Apple OS family name
+  'Android', // Google OS family name (zh-TW official name stays English)
+  'Passwallet', // Android .pkpass installer (third-party app)
+  'pkpass', // Apple/Google Wallet file extension (lowercase per Apple's spec)
+  '.pkpass', // with leading dot, same exemption
+  'wallet', // lowercase variant of Apple Wallet / Google Wallet (e.g. 「下載 wallet」)
+  'Apple', // already whitelisted above
+  'Google', // already whitelisted above
   // GDPR / 隱私(legal namespace)
   'Controller',
   'Processor',

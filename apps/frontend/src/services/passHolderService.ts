@@ -71,6 +71,17 @@ export class PassHolderNotFoundError extends PassHolderError {
   }
 }
 
+/**
+ * Type alias for the per-pass runtime artifact surfaced by the
+ * register endpoint. Mirrors Layer 1
+ * `packages/shared/types/passHolder.ts::PassHolderIssuance`. The
+ * frontend re-exports it here so consumers don't need to import
+ * from `@saome/shared/types` just to read the response shape.
+ */
+export type Issuance = NonNullable<
+  Awaited<ReturnType<PassHolderService['register']>>['issuance']
+>;
+
 /** Simulate network latency (mock-only). */
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -251,11 +262,31 @@ function getMockTemplate(id: string): PublicPassTemplate {
 async function mockRegister(
   templateId: string,
   payload: PassHolderPayload,
-): Promise<{ ok: true; passHolderId: string }> {
+): Promise<{
+  ok: true;
+  passHolderId: string;
+  created: boolean;
+  issuance?: Issuance;
+}> {
   await delay(500);
   // eslint-disable-next-line no-console
   console.info('[passHolderService.register] mock', { templateId, payload });
-  return { ok: true, passHolderId: `mock-${Date.now()}` };
+  // 2026-10-19 — mock path now also returns a synthesized issuance so
+  // the post-submit view can be developed without the backend running.
+  // We deliberately return a `passIdentifier` but leave `downloadUrl`
+  // undefined so the pre-launch branch of `PassHolderPassDownload`
+  // surfaces the "Pass not ready yet" copy — this matches the real
+  // behavior for templates whose `passcreator_template_id` was never
+  // pushed upstream.
+  return {
+    ok: true,
+    passHolderId: `mock-${Date.now()}`,
+    created: true,
+    issuance: {
+      passIdentifier: `mock-pass-${Date.now()}`,
+      issuedAt: new Date().toISOString(),
+    },
+  };
 }
 
 // =============================================================================
@@ -317,11 +348,23 @@ export const passHolderService: PassHolderService = {
       return mockRegister(templateId, payload);
     }
     try {
-      const res = await httpClient.post<{ ok: true; passHolderId: string; created: boolean }>(
-        api.paths.passRegister(templateId),
-        payload,
-      );
-      return { ok: res.ok, passHolderId: res.passHolderId };
+      const res = await httpClient.post<{
+        ok: true;
+        passHolderId: string;
+        created: boolean;
+        issuance?: Issuance;
+      }>(api.paths.passRegister(templateId), payload);
+      // 2026-10-19 — surface the per-pass issuance artifact to callers
+      // so `PassHolderPassDownload` can render the download CTA, barcode
+      // value, or retry banner. The field is optional in the response
+      // (template may not yet be pushed to Passcreator → issuance
+      // omitted); the service propagates that as `issuance: undefined`.
+      return {
+        ok: res.ok,
+        passHolderId: res.passHolderId,
+        created: res.created,
+        issuance: res.issuance,
+      };
     } catch (err) {
       throw toPassHolderError(err, templateId);
     }

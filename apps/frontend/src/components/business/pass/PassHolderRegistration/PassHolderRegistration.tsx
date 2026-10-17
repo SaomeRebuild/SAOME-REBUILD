@@ -38,13 +38,14 @@ import { useTranslation } from 'react-i18next';
 import { PassHolderRegistrationHeader } from './PassHolderRegistrationHeader';
 import { PassHolderRegistrationForm } from './PassHolderRegistrationForm';
 import { PassHolderRegistrationFieldSet } from './PassHolderRegistrationFieldSet';
-import { PassHolderRegistrationSuccess } from './PassHolderRegistrationSuccess';
+import { PassHolderPassDownload } from '@/components/business/pass/PassHolderPassDownload';
 import { PassHolderMembershipTiers } from './PassHolderMembershipTiers';
 import { usePassHolderForm } from './PassHolderRegistration.hooks';
 import { passHolderService, PassHolderError } from '@/services/passHolderService';
 import { buildMembershipTierSnapshot, resolvePaymentFields } from './PassHolderRegistration.helpers';
 import type { PassHolderRegistrationProps } from './PassHolderRegistration.types';
 import type { PaymentState } from './PassHolderMembershipTiers';
+import type { PassHolderIssuanceView } from '@/components/business/pass/PassHolderPassDownload';
 
 const PAYMENT_SIMULATED_DELAY_MS = 1500;
 
@@ -108,6 +109,15 @@ export function PassHolderRegistration({
   const { t } = useTranslation(['passHolder', 'common']);
   const [submitted, setSubmitted] = useState(false);
   const [pending, setPending] = useState(false);
+  /**
+   * 2026-10-19 — per-pass runtime artifact captured from the register
+   * response. Forwarded to `PassHolderPassDownload` so the user sees
+   * the actual download CTA / barcode / retry banner instead of the
+   * previous placeholder. `null` = register was never attempted
+   * (initial render); `undefined` = register succeeded but the
+   * backend omitted the `issuance` field (template pre-launch).
+   */
+  const [lastIssuance, setLastIssuance] = useState<PassHolderIssuanceView | null>(null);
   const [selectedTierIndex, setSelectedTierIndex] = useState<number | null>(null);
   const [paymentState, setPaymentState] = useState<PaymentState>('idle');
   /**
@@ -167,6 +177,13 @@ export function PassHolderRegistration({
           paymentProvider,
           paymentStatus,
         });
+        // 2026-10-19 — capture the per-pass runtime artifact for the
+        // download view. Note: the response is captured but unused in
+        // this branch's success path — onValidSubmit (the non-paid
+        // path) doesn't render `PassHolderPassDownload` here; the
+        // paid path's `onCtaClick` below captures its own issuance
+        // and stores it via `setLastIssuance`. We snapshot in both
+        // paths to keep the contract uniform.
         setSubmitted(true);
         onSubmit();
       } catch (err) {
@@ -235,13 +252,19 @@ export function PassHolderRegistration({
         livePaymentStateLocal,
         liveTemplate.currency,
       );
-      await passHolderService.register(liveTemplate.id, {
+      const result = await passHolderService.register(liveTemplate.id, {
         ...values,
         selectedTierIndex: liveSelectedTierIndex ?? undefined,
         membershipTierSnapshot: tierSnapshot,
         paymentProvider,
         paymentStatus,
       });
+      // 2026-10-19 — capture the per-pass runtime artifact for the
+      // download view (paid path). `undefined` is allowed — the
+      // backend returns `issuance` only when V3 succeeded OR
+      // attempted; for templates without `passcreator_template_id`
+      // (pre-launch) the field is omitted entirely.
+      setLastIssuance(result.issuance ?? null);
       setSubmitted(true);
       onSubmit();
     } catch (err) {
@@ -255,6 +278,60 @@ export function PassHolderRegistration({
       setPending(false);
     }
   }, [form, onSubmit]);
+
+  /**
+   * Retry handler — re-invokes `passHolderService.register` with the
+   * last known form values + tier + payment snapshot, WITHOUT
+   * re-simulating the payment (the user already paid). Designed for
+   * the "重試簽發" button on `PassHolderPassDownload`'s error banner.
+   *
+   * Refs (not closure-captured state) ensure we read the live values
+   * even though the form fields are unmounted (the success view
+   * replaced them). `form.getValues()` returns the last submitted
+   * values from RHF's internal store.
+   *
+   * 2026-10-19 — added with the V3 issuance integration. If retry
+   * succeeds, the issuance state updates and the download CTA appears.
+   * If retry fails again, `lastIssuance.issuanceError` is overwritten
+   * with the new error key (could be different from the first try —
+   * e.g. transient network vs. upstream 4xx).
+   */
+  const onRetryIssuance = useCallback(async () => {
+    const liveTemplate = templateRef.current;
+    const liveSelectedTierIndex = selectedTierIndexRef.current;
+    const liveIsPaidTemplate = isPaidTemplateRef.current;
+    const livePaymentState: PaymentState = paymentStateRef.current;
+
+    setPending(true);
+    try {
+      const values = form.getValues();
+      const tierSnapshot =
+        liveIsPaidTemplate && liveSelectedTierIndex !== null
+          ? buildMembershipTierSnapshot(liveTemplate, liveSelectedTierIndex)
+          : undefined;
+      const { paymentProvider, paymentStatus } = resolvePaymentFields(
+        livePaymentState,
+        liveTemplate.currency,
+      );
+      const result = await passHolderService.register(liveTemplate.id, {
+        ...values,
+        selectedTierIndex: liveSelectedTierIndex ?? undefined,
+        membershipTierSnapshot: tierSnapshot,
+        paymentProvider,
+        paymentStatus,
+      });
+      setLastIssuance(result.issuance ?? null);
+    } catch (err) {
+      // Don't open the form's banner (we're in the success view).
+      // Surface the failure ONLY via `lastIssuance.issuanceError`
+      // — the error banner on `PassHolderPassDownload` renders the
+      // new key in place.
+      const state = toSubmitErrorState(err);
+      setLastIssuance({ issuanceError: state.i18nKey });
+    } finally {
+      setPending(false);
+    }
+  }, [form]);
 
   // 2026-10-17 — UX hygiene: dismiss the error banner once the user
   // edits any form field, so they get a fresh slate when retrying.
@@ -313,7 +390,18 @@ export function PassHolderRegistration({
     >
       <PassHolderRegistrationHeader template={template} />
       {submitted ? (
-        <PassHolderRegistrationSuccess template={template} />
+        <PassHolderPassDownload
+          template={template}
+          issuance={lastIssuance ?? undefined}
+          // Retry handler: re-runs the most-recent register attempt
+          // without re-validating the form (the form fields are no
+          // longer mounted once `submitted === true`, but the values
+          // are still in `form`'s internal state). Goes straight to
+          // `passHolderService.register` with the latest refs +
+          // snapshot. The retry will OVERWRITE the previous issuance
+          // artifact on success OR add another error key on failure.
+          onRetry={onRetryIssuance}
+        />
       ) : (
         <PassHolderRegistrationFieldSet cardType={template.cardType}>
           {bannerMessage !== null ? (

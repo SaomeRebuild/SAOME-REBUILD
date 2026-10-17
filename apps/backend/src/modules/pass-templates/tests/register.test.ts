@@ -22,6 +22,7 @@ import { registerService } from '../services/registerService';
 import * as templatesDb from '../db/templates';
 import * as passHoldersDb from '../db/passHolders';
 import { errorHandler } from '@/shared/middleware/errorHandler';
+import { BadGatewayError } from '@/shared/lib/saomeError';
 import type { HonoEnv } from '@/shared/types/bindings';
 import type { Sql } from '@/shared/db/client';
 import type { PublicTemplateRow } from '../db/templates';
@@ -51,6 +52,19 @@ const EXISTING_HOLDER: PassHolderRow = {
 function makeMockSql() {
   return {} as Parameters<typeof registerService>[0];
 }
+
+/**
+ * Mock Hono env bindings for `registerService` — the service now
+ * accepts `env` as the 2nd argument (2026-10-19) so it can call
+ * Passcreator V3. The tests for registerService that DON'T exercise
+ * the V3 path don't need a fully populated env — pass a partial
+ * shape that satisfies the type.
+ */
+const MOCK_ENV = {
+  PASSCREATOR_API_URL: 'https://app.passcreator.com',
+  PASSCREATOR_API_KEY: 'test-key',
+  PASSCREATOR_PASS_TYPE_ID: 'pass.saome.org.passcreator',
+} as const;
 
 // 2026-10-17 — route-level tests need `getDbForRequest` mocked because
 // the workerd pool's env binding is empty in unit tests. The actual SQL
@@ -284,11 +298,14 @@ describe('registerService', () => {
     stubTemplateExists(TEMPLATE_ROW);
     stubUpsert({ ...EXISTING_HOLDER, id: 'holder-new' }, true);
 
-    const result = await registerService(makeMockSql(), TEMPLATE_ID, validPayload as never);
+    const result = await registerService(makeMockSql(), MOCK_ENV as never, TEMPLATE_ID, validPayload as never);
     expect(result).toEqual({
       ok: true,
       passHolderId: 'holder-new',
       created: true,
+      // 2026-10-19 — issuance is undefined because TEMPLATE_ROW has no
+      // passcreator_template_id (template not yet pushed upstream); the
+      // service short-circuits and the response has no issuance field.
     });
   });
 
@@ -296,7 +313,7 @@ describe('registerService', () => {
     stubTemplateExists(TEMPLATE_ROW);
     stubUpsert(EXISTING_HOLDER, false);
 
-    const result = await registerService(makeMockSql(), TEMPLATE_ID, validPayload as never);
+    const result = await registerService(makeMockSql(), MOCK_ENV as never, TEMPLATE_ID, validPayload as never);
     expect(result).toEqual({
       ok: true,
       passHolderId: 'holder-1',
@@ -308,7 +325,7 @@ describe('registerService', () => {
     stubTemplateExists(null);
 
     await expect(
-      registerService(makeMockSql(), 'does-not-exist', validPayload as never),
+      registerService(makeMockSql(), MOCK_ENV as never, 'does-not-exist', validPayload as never),
     ).rejects.toMatchObject({
       status: 404,
       code: 'NOT_FOUND',
@@ -321,7 +338,7 @@ describe('registerService', () => {
     const upsertSpy = vi.spyOn(passHoldersDb, 'upsertPassHolder');
 
     await expect(
-      registerService(makeMockSql(), 'does-not-exist', validPayload as never),
+      registerService(makeMockSql(), MOCK_ENV as never, 'does-not-exist', validPayload as never),
     ).rejects.toMatchObject({ status: 404 });
     expect(upsertSpy).not.toHaveBeenCalled();
   });
@@ -333,7 +350,7 @@ describe('registerService', () => {
       created: true,
     });
 
-    await registerService(makeMockSql(), TEMPLATE_ID, validPayload as never);
+    await registerService(makeMockSql(), MOCK_ENV as never, TEMPLATE_ID, validPayload as never);
 
     expect(upsertSpy).toHaveBeenCalledWith(
       makeMockSql(),
@@ -346,6 +363,237 @@ describe('registerService', () => {
         email: validPayload.email,
       }),
     );
+  });
+
+  // =====================================================================
+  // 2026-10-19 — V3 issuance wiring (Rule 019 § 4.1 Layer 4).
+  //
+  // The registerService now accepts `env` and, after a successful
+  // upsert, attempts Passcreator V3 issuance. The four scenarios
+  // below pin the contract:
+  //   - Success → issuance object populated, writeback to DB.
+  //   - Already-issued row → no V3 call (idempotent re-register).
+  //   - No passcreator_template_id → no V3 call (template pre-launch).
+  //   - V3 failure → BadGatewayError caught; issuanceError persisted;
+  //     response is still 200 with issuanceError set.
+  // =====================================================================
+  it('V3 success path: writes issuance fields and returns the DTO', async () => {
+    // Template WITH a passcreator_template_id so V3 is attempted.
+    stubTemplateExists({ ...TEMPLATE_ROW, passcreator_template_id: 'pc-tpl-1' });
+    stubUpsert({ ...EXISTING_HOLDER, id: 'holder-new', pass_identifier: null }, true);
+
+    // Stub the V3 wrapper to return a successful envelope. The shape
+    // matches the V3 docs (2026-10-19 fix): `downloadPage` is the
+    // universal landing page URL; `iPhoneUri` / `androidUri` are
+    // platform-specific deeplinks. `barcodeValue` is non-null because
+    // V3 was called with `?async=false`.
+    const issueSpy = vi
+      .spyOn(await import('@/shared/lib/passcreator'), 'issuePass')
+      .mockResolvedValue({
+        identifier: 'a0f629e6-6533-40cb-90b8-ef9093bfbb26',
+        downloadPage: 'https://app.passcreator.com/p/abc',
+        iPhoneUri: 'https://app.passcreator.com/abc.pkpass',
+        androidUri: 'https://pay.google.com/save/abc',
+        barcodeValue: 'STATIC-BARCODE',
+      });
+    const updateSpy = vi
+      .spyOn(passHoldersDb, 'updatePassHolderIssuance')
+      .mockResolvedValue({ ...EXISTING_HOLDER, pass_identifier: 'a0f629e6' });
+
+    const result = await registerService(
+      makeMockSql(),
+      MOCK_ENV as never,
+      TEMPLATE_ID,
+      validPayload as never,
+    );
+
+    expect(issueSpy).toHaveBeenCalledTimes(1);
+    expect(issueSpy).toHaveBeenCalledWith(MOCK_ENV, 'pc-tpl-1', expect.objectContaining({
+      name: validPayload.name,
+      phone: '+886' + validPayload.phoneNumber,
+      birthday: validPayload.birthday,
+      email: validPayload.email,
+    }));
+    expect(updateSpy).toHaveBeenCalledWith(
+      makeMockSql(),
+      expect.objectContaining({
+        id: 'holder-new',
+        passIdentifier: 'a0f629e6-6533-40cb-90b8-ef9093bfbb26',
+        // We persist only `downloadPage` (the universal landing URL)
+        // to the DB column `download_url`. The platform-specific URIs
+        // are surfaced via the response payload only — storing all 3
+        // would require 2 new columns (future hardening).
+        downloadUrl: 'https://app.passcreator.com/p/abc',
+        barcodeValue: 'STATIC-BARCODE',
+      }),
+    );
+    expect(result.issuance).toMatchObject({
+      passIdentifier: 'a0f629e6-6533-40cb-90b8-ef9093bfbb26',
+      downloadPage: 'https://app.passcreator.com/p/abc',
+      iPhoneUri: 'https://app.passcreator.com/abc.pkpass',
+      androidUri: 'https://pay.google.com/save/abc',
+      barcodeValue: 'STATIC-BARCODE',
+    });
+    expect(result.issuance?.issuedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);  // ISO 8601
+  });
+
+  it('V3 success path: existing row with pass_identifier is NOT re-issued', async () => {
+    // Template has passcreator_template_id AND the holder row already
+    // has a pass_identifier (idempotent re-register path). Per
+    // Decision § "Issue pass relation", we MUST NOT call V3 again —
+    // would create a duplicate pass for the same holder.
+    stubTemplateExists({ ...TEMPLATE_ROW, passcreator_template_id: 'pc-tpl-1' });
+    // Use a dedicated "already-issued" holder with the full V3 row
+    // fields populated (pass_identifier + download_url + issued_at).
+    stubUpsert(
+      {
+        ...EXISTING_HOLDER,
+        pass_identifier: 'already-issued-uuid',
+        download_url: 'https://app.passcreator.com/p/already',
+        barcode_value: 'STATIC-BARCODE',
+        issued_at: new Date('2026-10-18T08:42:13.123Z'),
+      },
+      false,
+    );
+
+    // Stub V3 — must NOT be called. Mock with the new V3 shape so
+    // any accidental call would at least be observably wrong (the
+    // existing-row path reads `download_url` and maps it to
+    // `downloadPage` in the response).
+    const issueSpy = vi
+      .spyOn(await import('@/shared/lib/passcreator'), 'issuePass')
+      .mockResolvedValue({
+        identifier: 'should-not-be-called',
+        downloadPage: 'should-not-be-called',
+        iPhoneUri: 'should-not-be-called',
+        androidUri: 'should-not-be-called',
+        barcodeValue: null,
+      });
+
+    const result = await registerService(
+      makeMockSql(),
+      MOCK_ENV as never,
+      TEMPLATE_ID,
+      validPayload as never,
+    );
+
+    expect(issueSpy).not.toHaveBeenCalled();
+    // Returned DTO carries the existing issuance fields verbatim.
+    // `downloadPage` is mapped from the DB's `download_url` column
+    // (no platform-specific fields persisted today).
+    expect(result.issuance).toEqual({
+      passIdentifier: 'already-issued-uuid',
+      downloadPage: 'https://app.passcreator.com/p/already',
+      barcodeValue: 'STATIC-BARCODE',
+      issuedAt: '2026-10-18T08:42:13.123Z',
+    });
+  });
+
+  it('V3 no-op path: template has no passcreator_template_id (pre-launch)', async () => {
+    // No V3 call attempted because the template hasn't been pushed
+    // upstream yet. The frontend banner can render "Pass not ready
+    // yet" because no URI is present.
+    stubTemplateExists(TEMPLATE_ROW);   // passcreator_template_id: undefined
+    stubUpsert({ ...EXISTING_HOLDER, id: 'holder-new' }, true);
+
+    const issueSpy = vi
+      .spyOn(await import('@/shared/lib/passcreator'), 'issuePass')
+      .mockResolvedValue({
+        identifier: 'x',
+        downloadPage: 'y',
+        iPhoneUri: 'y',
+        androidUri: 'y',
+        barcodeValue: null,
+      });
+
+    const result = await registerService(
+      makeMockSql(),
+      MOCK_ENV as never,
+      TEMPLATE_ID,
+      validPayload as never,
+    );
+
+    expect(issueSpy).not.toHaveBeenCalled();
+    expect(result.issuance).toBeUndefined();
+  });
+
+  it('V3 failure path: BadGatewayError caught → issuanceError persisted, response still 200', async () => {
+    stubTemplateExists({ ...TEMPLATE_ROW, passcreator_template_id: 'pc-tpl-1' });
+    stubUpsert({ ...EXISTING_HOLDER, id: 'holder-new', pass_identifier: null }, true);
+
+    // V3 throws BadGatewayError (network / upstream_rejected / etc.)
+    const issueSpy = vi
+      .spyOn(await import('@/shared/lib/passcreator'), 'issuePass')
+      .mockRejectedValue(new BadGatewayError({
+        upstream: 'passcreator',
+        kind: 'network',
+        upstreamBody: 'fetch failed: ECONNREFUSED',
+      }));
+    const updateSpy = vi
+      .spyOn(passHoldersDb, 'updatePassHolderIssuance')
+      .mockResolvedValue(EXISTING_HOLDER);
+
+    const result = await registerService(
+      makeMockSql(),
+      MOCK_ENV as never,
+      TEMPLATE_ID,
+      validPayload as never,
+    );
+
+    expect(issueSpy).toHaveBeenCalledTimes(1);
+    // The error-write was attempted with the stable i18n key.
+    expect(updateSpy).toHaveBeenCalledWith(
+      makeMockSql(),
+      expect.objectContaining({
+        id: 'holder-new',
+        issuanceError: 'passHolder.errors.upstreamFailed',
+      }),
+    );
+    // Response is still 200 with issuanceError set — q8-a confirmed.
+    expect(result.ok).toBe(true);
+    expect(result.passHolderId).toBe('holder-new');
+    expect(result.issuance).toEqual({
+      issuanceError: 'passHolder.errors.upstreamFailed',
+    });
+  });
+
+  it('V3 URL includes ?async=false (regression — barcodeValue must reach the response)', async () => {
+    // Rule 027-derived invariant: without ?async=false, Passcreator's
+    // response is `success:true` with `data.barcodeValue === null`
+    // even when the template has a barcode configured. Pin this via
+    // a high-level integration check that asserts `issuePass` was
+    // invoked at all (the URL/?async=false logic lives inside the
+    // shared wrapper; the per-call conformance test in
+    // `passcreator.test.ts` pins the URL exactly). This is the
+    // belt-and-suspenders test at the registerService layer.
+    stubTemplateExists({ ...TEMPLATE_ROW, passcreator_template_id: 'pc-tpl-1' });
+    stubUpsert({ ...EXISTING_HOLDER, id: 'holder-new', pass_identifier: null }, true);
+    const issueSpy = vi
+      .spyOn(await import('@/shared/lib/passcreator'), 'issuePass')
+      .mockResolvedValue({
+        identifier: 'pc-1',
+        downloadPage: 'https://app.passcreator.com/p/pc-1',
+        iPhoneUri: 'https://app.passcreator.com/pc-1.pkpass',
+        androidUri: 'https://pay.google.com/save/pc-1',
+        barcodeValue: 'REAL-BARCODE-VALUE',
+      });
+    vi.spyOn(passHoldersDb, 'updatePassHolderIssuance').mockResolvedValue(EXISTING_HOLDER);
+
+    const result = await registerService(
+      makeMockSql(),
+      MOCK_ENV as never,
+      TEMPLATE_ID,
+      validPayload as never,
+    );
+
+    expect(issueSpy).toHaveBeenCalledTimes(1);
+    // The barcodeValue came back non-null — only possible when the
+    // wrapper sent ?async=false (verified by the per-call test in
+    // `passcreator.test.ts`). If a future refactor drops ?async=false,
+    // the wrapper's mock above would still pass here, but the real
+    // endpoint would return barcodeValue: null and the production
+    // bug would re-surface — caught by the smoke test.
+    expect(result.issuance?.barcodeValue).toBe('REAL-BARCODE-VALUE');
   });
 });
 

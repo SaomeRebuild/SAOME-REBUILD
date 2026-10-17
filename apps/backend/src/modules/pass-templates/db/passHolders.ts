@@ -9,9 +9,17 @@
  *   - 20261016000001_023_add_pass_holder_payment_fields.sql — paid-membership
  *     extension (selected_tier_index, membership_tier_snapshot,
  *     payment_provider, payment_status, paid_amount, currency)
+ *   - 20261018000001_024_add_not_required_payment_status.sql — payment_status
+ *     CHECK widened from 3 values to 4 values ('not_required' added)
+ *   - 20261019000001_025_add_pass_holder_issuance_fields.sql — Passcreator
+ *     V3 per-pass runtime extension (pass_identifier, download_url,
+ *     barcode_value, issued_at, issuance_error)
  *
- * Decision log: runs/decisions/2026-09-29-pass-templates-public-endpoint.md
- *               runs/decisions/2026-10-16-pass-holder-paid-membership-snapshot.md
+ * Decision log:
+ *   - runs/decisions/2026-09-29-pass-templates-public-endpoint.md
+ *   - runs/decisions/2026-10-16-pass-holder-paid-membership-snapshot.md
+ *   - runs/decisions/2026-10-18-payment-status-not-required-enum.md
+ *   - runs/decisions/2026-10-19-pass-holder-v3-issuance.md
  */
 
 import type { Sql } from '@/shared/db/client';
@@ -29,6 +37,13 @@ import type { Currency } from '@saome/shared/schemas/card';
  * fields are optional (NULL on legacy / non-paid rows) because the
  * migration 023 default is only on `payment_status` ('pending'). The
  * service layer must be defensive about nulls.
+ *
+ * 2026-10-19 — Passcreator V3 issuance columns added (migration 025).
+ * Five new columns (`pass_identifier`, `download_url`, `barcode_value`,
+ * `issued_at`, `issuance_error`) — all nullable so existing rows are
+ * unaffected. `issued_at` is `null` when the issuance has not yet
+ * completed; `issuance_error` is the i18n key when issuance failed.
+ * See `runs/decisions/2026-10-19-pass-holder-v3-issuance.md`.
  */
 export interface PassHolderRow {
   id: string;
@@ -56,8 +71,67 @@ export interface PassHolderRow {
   paid_amount?: string | number | null;
   /** 'TWD' | 'ZAR'. NULL for non-paid; defensive TWD backfill on apply. */
   currency?: Currency | null;
+  // ================================================================
+  // 2026-10-19 — Passcreator V3 issuance columns (migration 025)
+  //   All five columns are NULLABLE on the row. `issued_at` is null
+  //   when issuance has not yet completed; the four other columns are
+  //   null on a fresh row (the issuance happens AFTER upsertPassHolder
+  //   returns). `issuance_error` carries the i18n key when issuance
+  //   failed so the frontend can render a retry banner.
+  // ================================================================
+  /** V3 `data.identifier` — per-pass UUID issued by Passcreator. */
+  pass_identifier?: string | null;
+  /** V3 `data.linkToPassPage` — the .pkpass link for the holder to install. */
+  download_url?: string | null;
+  /** V3 `data.barcodeValue` — per-pass barcode payload (nullable when absent). */
+  barcode_value?: string | null;
+  /** ISO timestamp at which we successfully invoked V3 (NULL until then). */
+  issued_at?: Date | string | null;
+  /** i18n key when issuance failed; NULL on success. */
+  issuance_error?: string | null;
   created_at: Date;
   updated_at: Date;
+}
+
+/**
+ * Input shape for `updatePassHolderIssuance()`. Mirrors
+ * `PassHolderIssuanceDto` (apps/backend/src/shared/contracts/passTemplates.ts)
+ * — kept as a structural alias here to avoid a circular import with the
+ * contracts layer (which already mirrors Layer 1).
+ *
+ * `id` is the holder UUID; the rest of the fields are the runtime
+ * artifact we want to persist. The UPDATE writes `pass_identifier`,
+ * `download_url`, `barcode_value`, `issued_at`, `issuance_error` in
+ * a single statement (atomic at the row level).
+ *
+ * Failure-mode construction: pass `issuanceError: 'passHolder.errors.upstreamFailed'`
+ * and leave the other fields `undefined` — the function will set
+ * `issued_at = NULL` and write the error key. The four runtime fields
+ * are coerced to NULL when omitted.
+ */
+export interface PassHolderIssuanceUpdate {
+  /** Holder UUID (`pass_holders.id`). */
+  id: string;
+  /** V3 `data.identifier` — pass UUID. NULL-able on the row. */
+  passIdentifier?: string | null;
+  /** V3 `data.linkToPassPage` — the .pkpass install URL. */
+  downloadUrl?: string | null;
+  /** V3 `data.barcodeValue` — per-pass barcode payload (NULL-able). */
+  barcodeValue?: string | null;
+  /**
+   * ISO timestamp at which the backend successfully invoked V3 (or
+   * attempted and failed). Coerced via `toISOString()` for portability.
+   * When omitted AND `issuanceError` is set, the column is cleared
+   * (set to NULL) so a retry can re-populate it later.
+   */
+  issuedAt?: Date | string | null;
+  /**
+   * i18n key for the failure reason. When set, the four other columns
+   * are typically cleared to NULL — `updatePassHolderIssuance` does
+   * NOT enforce that automatically, callers control which fields to
+   * populate.
+   */
+  issuanceError?: string | null;
 }
 
 /**
@@ -83,6 +157,8 @@ export async function findPassHolderByTemplateAndEmail(
            birthday::text AS birthday, email,
            selected_tier_index, membership_tier_snapshot,
            payment_provider, payment_status, paid_amount, currency,
+           pass_identifier, download_url, barcode_value,
+           issued_at, issuance_error,
            created_at, updated_at
       FROM public.pass_holders
      WHERE template_id = ${templateId}
@@ -164,6 +240,8 @@ export async function upsertPassHolder(
               birthday::text AS birthday, email,
               selected_tier_index, membership_tier_snapshot,
               payment_provider, payment_status, paid_amount, currency,
+              pass_identifier, download_url, barcode_value,
+              issued_at, issuance_error,
               created_at, updated_at
   `;
 
@@ -178,4 +256,76 @@ export async function upsertPassHolder(
   }
 
   return { row: inserted[0], created: true };
+}
+
+/**
+ * Update the V3 per-pass runtime columns on a `pass_holders` row.
+ *
+ * Called by `registerService` after a successful (or failed) call to
+ * Passcreator V3 `/api/v3/pass`. The function writes the five issuance
+ * columns in a single UPDATE — atomic at the row level so partial
+ * writes are impossible.
+ *
+ * Caller conventions:
+ *   - On V3 success: pass `id`, `passIdentifier`, `downloadUrl`,
+ *     `barcodeValue` (optional, may be null), `issuedAt`. Leave
+ *     `issuanceError` undefined.
+ *   - On V3 failure: pass `id`, `issuanceError` (i18n key, e.g.
+ *     `'passHolder.errors.upstreamFailed'`). Leave the four other
+ *     columns undefined — the column values are explicitly cleared to
+ *     NULL so a retry can re-populate them later.
+ *
+ * Tagged-template injection (Rule 027 § tagged template):
+ *   All five optional columns are written via `${}` tagged template
+ *   injection rather than `$N` positional placeholders. Mixing the
+ *   two styles causes the `$N` to be parsed as a dollar-quoted string
+ *   delimiter (postgres.js pitfall, 2026-08-21 trace).
+ *
+ * Workerd `JSON.stringify` pitfall (Rule 027 § workerd pitfall):
+ *   The five columns are TEXT / TIMESTAMPTZ only — no JSONB — so we
+ *   do NOT use `${sql.json(...)}` here. `issued_at` is coerced via
+ *   `toISOString()` so the postgres driver sees a string, which it
+ *   will coerce to TIMESTAMPTZ via the `::timestamptz` cast.
+ *
+ * 2026-10-19 — added per Passcreator V3 integration
+ * (migration 025). See runs/decisions/2026-10-19-pass-holder-v3-issuance.md
+ * for the call-site rationale.
+ *
+ * @returns - the updated row (caller can confirm the write landed).
+ */
+export async function updatePassHolderIssuance(
+  sql: Sql,
+  input: PassHolderIssuanceUpdate,
+): Promise<PassHolderRow> {
+  // Coerce issuedAt to an ISO string for portable TIMESTAMPTZ binding.
+  // `null` (or undefined → coerced to null) clears the column.
+  const issuedAtIso =
+    input.issuedAt === undefined
+      ? null
+      : input.issuedAt === null
+        ? null
+        : typeof input.issuedAt === 'string'
+          ? input.issuedAt
+          : input.issuedAt.toISOString();
+
+  const rows = await sql<PassHolderRow[]>`
+    UPDATE public.pass_holders
+       SET pass_identifier = ${input.passIdentifier ?? null},
+           download_url     = ${input.downloadUrl ?? null},
+           barcode_value    = ${input.barcodeValue ?? null},
+           issued_at        = ${issuedAtIso}::timestamptz,
+           issuance_error   = ${input.issuanceError ?? null}
+     WHERE id = ${input.id}
+     RETURNING id, template_id, name, phone_country_code, phone_number,
+               birthday::text AS birthday, email,
+               selected_tier_index, membership_tier_snapshot,
+               payment_provider, payment_status, paid_amount, currency,
+               pass_identifier, download_url, barcode_value,
+               issued_at, issuance_error,
+               created_at, updated_at
+  `;
+  if (!rows[0]) {
+    throw new Error(`[updatePassHolderIssuance] no row matches id=${input.id}`);
+  }
+  return rows[0];
 }

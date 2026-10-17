@@ -50,9 +50,40 @@ export default {
     description: 'Pass 下載功能即將上線，請稍候。',
     backToTemplate: '返回 {{templateName}}',
   },
+  // 2026-10-19 — Passcreator V3 per-pass runtime integration.
+  // Replaces the prior `success.*` placeholder with the actual
+  // download CTA + barcode display + Passwallet reminder + retry
+  // banner. Full L2 view lives in
+  // `components/business/pass/PassHolderPassDownload/`.
+  download: {
+    title: 'Pass 已發行！',
+    subtitle: '把 Pass 加入你的手機錢包，隨時出示給店員掃描',
+    appleWallet: '加入 Apple 錢包',
+    directDownload: '下載 .pkpass',
+    iosHint: 'iPhone 用戶可直接加入 Apple 錢包',
+    barcodeLabel: '條碼內容',
+    showBarcodeHint: '櫃台掃描時請出示條碼',
+    // Shown when the backend returns no `issuance` field (template
+    // pre-launch — known waiting state, not an error).
+    notReadyYet: 'Pass 尚未發行，請稍候再試。',
+  },
+  passwalletReminder: {
+    title: 'Android 用戶',
+    body: 'iPhone 內建 Apple 錢包可直接加入。Android 用戶請先安裝 Passwallet App，再點上方「下載 .pkpass」開啟。',
+    installCta: '下載 Passwallet',
+  },
+  downloadError: {
+    title: '簽發暫時無法完成',
+    body: '伺服器忙碌中，請稍後重試。',
+    retry: '重試簽發',
+  },
   errors: {
     templateNotFound: '找不到此模板，可能已下架',
     networkError: '網路錯誤，請稍後重試',
+    // 2026-10-19 — V3 upstream failure i18n key. Backend writes this
+    // into `pass_holders.issuance_error` when Passcreator V3 rejects
+    // or times out. Frontend surfaces it via `PassHolderDownloadErrorBanner`.
+    upstreamFailed: '簽發服務暫時無法使用，請稍後再試或聯絡客服。',
     // 2026-10-17 — Backend-error capture (Bug 4 umbrella).
     // Backend `apps/backend/src/modules/pass-templates/schemas/request.ts`
     // throws these i18n keys when zod rejects a payload (400). The
