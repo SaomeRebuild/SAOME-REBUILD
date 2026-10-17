@@ -187,11 +187,41 @@ describe('PassHolderRegistration', () => {
         phoneNumber: '0912345678',
         birthday: '1990-01-01',
         email: 'test@example.com',
+        // 2026-10-18 — non-paid templates emit 'not_required' instead of
+        // 'pending' (replaces the previous 2-state ambiguity that polluted
+        // "find unfinished payment" queries with stamp-card / free-template
+        // rows). See runs/decisions/2026-10-18-payment-status-not-required-enum.md.
+        paymentStatus: 'not_required',
+        paymentProvider: undefined,
       }),
     );
     await waitFor(() => {
       expect(screen.getByTestId('pass-holder-success')).toBeInTheDocument();
     });
+  });
+
+  // 2026-10-18 — Conformance regression: stamp card / non-paid template
+  // must emit paymentStatus='not_required' (NOT 'pending') so the DB row
+  // doesn't pollute "find all unpaid" queries. This is the user-facing
+  // observable from the user's bug report ("註冊成功了但付費狀態還是 pending,
+  // 這張 pass 本來就不需要付費下載").
+  it('conformance: non-paid template register call uses paymentStatus "not_required" (regression 2026-10-18)', async () => {
+    const user = userEvent.setup();
+    const { passHolderService } = await import('@/services/passHolderService');
+    renderComponent();
+
+    await fillValidForm(user);
+    await user.click(screen.getByTestId('pass-holder-submit'));
+
+    await waitFor(() => {
+      expect(passHolderService.register).toHaveBeenCalledTimes(1);
+    });
+    const callArgs = vi.mocked(passHolderService.register).mock.calls[0]!;
+    const payload = callArgs[1];
+    expect(payload.paymentStatus).toBe('not_required');
+    expect(payload.paymentProvider).toBeUndefined();
+    expect(payload.selectedTierIndex).toBeUndefined();
+    expect(payload.membershipTierSnapshot).toBeUndefined();
   });
 
   it('invokes the consumer-provided onSubmit callback after success', async () => {

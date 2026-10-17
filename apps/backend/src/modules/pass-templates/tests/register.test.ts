@@ -216,6 +216,62 @@ describe('passHolderRegisterPayloadSchema (zod)', () => {
       parsed({ ...validPayload, phoneCountryCode: '+1' as unknown as '+886' }).success,
     ).toBe(false);
   });
+
+  // =====================================================================
+  // 2026-10-18 — Cross-field refinement for paymentStatus/paymentProvider.
+  // The 4 paid-membership fields stay optional (non-paid templates skip
+  // them entirely), but once `paymentStatus` is set to `'completed'` or
+  // `'not_required'`, the provider field's presence/absence must match.
+  // Without this refinement, a stale frontend could send
+  // `paymentStatus: 'completed'` without a provider (DB would accept via
+  // column CHECK, but the row would be incomplete) or send
+  // `paymentStatus: 'not_required'` with a provider (semantic garbage).
+  // See runs/decisions/2026-10-18-payment-status-not-required-enum.md.
+  // =====================================================================
+  it('accepts paymentStatus "not_required" without paymentProvider (non-paid template)', () => {
+    expect(
+      parsed({ ...validPayload, paymentStatus: 'not_required' }).success,
+    ).toBe(true);
+  });
+
+  it('rejects paymentStatus "not_required" with a paymentProvider (semantic garbage)', () => {
+    const result = parsed({
+      ...validPayload,
+      paymentStatus: 'not_required',
+      paymentProvider: 'ecpay',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find((i) => i.path[0] === 'paymentProvider');
+      expect(issue?.message).toBe(
+        'passHolder.errors.paymentProviderForbiddenForNotRequired',
+      );
+    }
+  });
+
+  it('rejects paymentStatus "completed" without paymentProvider (incomplete row)', () => {
+    const result = parsed({
+      ...validPayload,
+      paymentStatus: 'completed',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find((i) => i.path[0] === 'paymentProvider');
+      expect(issue?.message).toBe(
+        'passHolder.errors.paymentProviderRequiredForCompleted',
+      );
+    }
+  });
+
+  it('accepts paymentStatus "completed" with paymentProvider (paid happy path)', () => {
+    expect(
+      parsed({
+        ...validPayload,
+        paymentStatus: 'completed',
+        paymentProvider: 'ecpay',
+      }).success,
+    ).toBe(true);
+  });
 });
 
 /** Wrap safeParse so test bodies stay concise. */

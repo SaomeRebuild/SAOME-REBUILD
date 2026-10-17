@@ -181,11 +181,21 @@ export interface PassHolderPayload {
    */
   paymentProvider?: 'payfast' | 'ecpay';
   /**
-   * Payment status. Today only `'completed'` is reachable from the
-   * simulated UI; the others (`'pending'` / `'failed'`) are reserved
-   * for the real provider integration.
+   * Payment status.
+   * - `'pending'`   — paid template, awaiting real gateway callback.
+   * - `'completed'` — simulated (or real) payment succeeded; must be
+   *                   paired with `paymentProvider` (zod enforces).
+   * - `'failed'`    — real gateway declined (reserved for live integration).
+   * - `'not_required'` — non-paid template (stamp card / free reward /
+   *                   cashback / coupon / multipass / gift / free membership)
+   *                   that has no payment concept at all. zod forbids
+   *                   pairing this with `paymentProvider`.
+   *
+   * The 4-value enum replaces the previous 2-state ("pending" = ambiguous)
+   * pattern where non-paid registrations polluted pending queries.
+   * See runs/decisions/2026-10-18-payment-status-not-required-enum.md.
    */
-  paymentStatus?: 'pending' | 'completed' | 'failed';
+  paymentStatus?: 'pending' | 'completed' | 'failed' | 'not_required';
 }
 
 /**

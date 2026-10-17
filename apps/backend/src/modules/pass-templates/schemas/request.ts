@@ -63,8 +63,19 @@ const passHolderPaymentProviderSchema = z.enum(['payfast', 'ecpay']);
  * Payment status. The CHECK constraint defaults new rows to 'pending';
  * the simulated flow writes 'completed' once the user clicks through.
  * Real provider flows may emit 'failed' on gateway decline.
+ *
+ * 2026-10-18 — added 'not_required' for non-paid templates (stamp card
+ * / free reward / cashback / etc.). See
+ * runs/decisions/2026-10-18-payment-status-not-required-enum.md and
+ * the cross-field refinement on `passHolderRegisterPayloadSchema` that
+ * enforces (paymentStatus === 'completed') ↔ (paymentProvider set).
  */
-const passHolderPaymentStatusSchema = z.enum(['pending', 'completed', 'failed']);
+const passHolderPaymentStatusSchema = z.enum([
+  'pending',
+  'completed',
+  'failed',
+  'not_required',
+]);
 
 /**
  * Membership tier duration type. Mirrors the `durationType` field in
@@ -146,10 +157,41 @@ export const passHolderRegisterPayloadSchema = z.object({
    */
   paymentProvider: passHolderPaymentProviderSchema.optional(),
   /**
-   * Payment status. The simulated UI only emits 'completed'; 'pending'
-   * (default) and 'failed' are reserved for the real provider flows.
+   * Payment status. The simulated UI only emits 'completed' / 'not_required';
+   * 'pending' (default) and 'failed' are reserved for the real provider flows.
+   *
+   * 2026-10-18 — 'not_required' added for non-paid templates. Cross-field
+   * refinement below enforces:
+   *   - completed   → paymentProvider MUST be set
+   *   - not_required → paymentProvider MUST be unset
    */
   paymentStatus: passHolderPaymentStatusSchema.optional(),
-});
+})
+  /**
+   * 2026-10-18 — Cross-field validation for payment fields. Ensures the
+   * 4 paid-membership fields stay consistent: paymentProvider can only
+   * appear with paymentStatus='completed', and paymentStatus='not_required'
+   * forbids a provider. Without this, a stale frontend could send
+   * `paymentStatus: 'completed'` without a provider (DB would accept via
+   * column CHECK, but the row would be incomplete) or send
+   * `paymentStatus: 'not_required'` with a provider (semantic garbage).
+   * See runs/decisions/2026-10-18-payment-status-not-required-enum.md.
+   */
+  .superRefine((data, ctx) => {
+    if (data.paymentStatus === 'completed' && !data.paymentProvider) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['paymentProvider'],
+        message: 'passHolder.errors.paymentProviderRequiredForCompleted',
+      });
+    }
+    if (data.paymentStatus === 'not_required' && data.paymentProvider) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['paymentProvider'],
+        message: 'passHolder.errors.paymentProviderForbiddenForNotRequired',
+      });
+    }
+  });
 
 export type PassHolderRegisterPayload = z.infer<typeof passHolderRegisterPayloadSchema>;

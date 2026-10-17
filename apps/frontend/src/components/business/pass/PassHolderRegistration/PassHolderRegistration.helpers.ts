@@ -56,13 +56,25 @@ export function buildMembershipTierSnapshot(
  * Resolve the payment provider + status for the registration payload.
  * `state` drives `paymentStatus`; `currency` drives `paymentProvider`.
  * Returns undefined for either field when not in a `paid` state.
+ *
+ * 2026-10-18 — non-paid branch now returns `'not_required'` instead of
+ * `'pending'`. Stamp cards / free reward / cashback / coupon / multipass
+ * / gift / free-membership templates have no payment concept at all;
+ * recording `'pending'` polluted queries that look for "unfinished
+ * payments". See
+ * runs/decisions/2026-10-18-payment-status-not-required-enum.md and
+ * apps/backend/src/modules/pass-templates/schemas/request.ts for the
+ * backend cross-field validation that enforces consistency.
  */
 export function resolvePaymentFields(
   state: PaymentState,
   currency: PublicPassTemplate['currency'],
-): { paymentProvider?: PaymentProvider; paymentStatus?: 'pending' | 'completed' | 'failed' } {
+): { paymentProvider?: PaymentProvider; paymentStatus?: 'pending' | 'completed' | 'failed' | 'not_required' } {
   if (state !== 'paid') {
-    return { paymentStatus: 'pending' };
+    // Non-paid templates (stamp / reward / cashback / free membership /
+    // etc.) never have a payment concept — record that explicitly so
+    // queries can distinguish from "paid but awaiting real gateway".
+    return { paymentStatus: 'not_required' };
   }
   return {
     paymentProvider: currency === 'ZAR' ? 'payfast' : 'ecpay',

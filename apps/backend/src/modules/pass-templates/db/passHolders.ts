@@ -44,8 +44,14 @@ export interface PassHolderRow {
   membership_tier_snapshot?: unknown;
   /** 'payfast' (ZAR) | 'ecpay' (TWD). NULL for non-paid. */
   payment_provider?: 'payfast' | 'ecpay' | null;
-  /** 'pending' (default) | 'completed' | 'failed'. Always populated. */
-  payment_status: 'pending' | 'completed' | 'failed';
+  /**
+   * 'pending' (default) | 'completed' | 'failed' | 'not_required'.
+   * Always populated. 'not_required' (added 2026-10-18 via migration 024)
+   * signals a non-paid template (stamp card / free reward / etc.) that
+   * has no payment concept at all. See
+   * runs/decisions/2026-10-18-payment-status-not-required-enum.md.
+   */
+  payment_status: 'pending' | 'completed' | 'failed' | 'not_required';
   /** Amount actually paid. NULL for non-paid / pending. */
   paid_amount?: string | number | null;
   /** 'TWD' | 'ZAR'. NULL for non-paid; defensive TWD backfill on apply. */
@@ -115,7 +121,11 @@ export async function upsertPassHolder(
     selectedTierIndex?: number;
     membershipTierSnapshot?: unknown;
     paymentProvider?: 'payfast' | 'ecpay';
-    paymentStatus?: 'pending' | 'completed' | 'failed';
+    /**
+     * 2026-10-18 — added 'not_required' for non-paid templates.
+     * See runs/decisions/2026-10-18-payment-status-not-required-enum.md.
+     */
+    paymentStatus?: 'pending' | 'completed' | 'failed' | 'not_required';
     paidAmount?: number | null;
     currency?: Currency;
   },
