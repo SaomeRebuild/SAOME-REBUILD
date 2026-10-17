@@ -25,6 +25,19 @@ import type {
 export interface PassHolderRegistrationFormProps {
   form: UsePassHolderFormResult;
   isSubmitting?: boolean;
+  /**
+   * 2026-10-16 — When true, the form's own SubmitButton is suppressed.
+   * Used by the paid-membership flow where a single CTA (the payment
+   * button below the field set) drives both the simulated payment AND
+   * the form submission, removing the two-step "Get Pass → Pay with X"
+   * interaction that confused users.
+   *
+   * Rule 023 § component-bound i18n discipline is preserved: the
+   * alternative CTA still surfaces the localized "支付 NT$ 100 並領取
+   * Pass" label through its own component-bound translation context,
+   * not through this form.
+   */
+  hideSubmit?: boolean;
 }
 
 const COUNTRY_CODES = [
@@ -35,6 +48,7 @@ const COUNTRY_CODES = [
 export function PassHolderRegistrationForm({
   form,
   isSubmitting,
+  hideSubmit = false,
 }: PassHolderRegistrationFormProps) {
   const { t } = useTranslation('passHolder');
   const {
@@ -182,15 +196,17 @@ export function PassHolderRegistrationForm({
         />
       </Field>
 
-      <SubmitButton
-        type="submit"
-        loading={isSubmitting}
-        loadingText={t('submitting')}
-        fullWidth
-        data-testid="pass-holder-submit"
-      >
-        {t('submit')}
-      </SubmitButton>
+      {!hideSubmit ? (
+        <SubmitButton
+          type="submit"
+          loading={isSubmitting}
+          loadingText={t('submitting')}
+          fullWidth
+          data-testid="pass-holder-submit"
+        >
+          {t('submit')}
+        </SubmitButton>
+      ) : null}
     </form>
   );
 }

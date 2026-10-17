@@ -10,12 +10,18 @@ import { MemoryRouter } from 'react-router-dom';
 import { i18n as testI18n } from '@/test/i18n';
 import { PassHolderRegistration } from './PassHolderRegistration';
 import type { PublicPassTemplate } from '@saome/shared/types/passHolder';
+import { PassHolderError } from '@/services/passHolderService';
 
-vi.mock('@/services/passHolderService', () => ({
-  passHolderService: {
-    register: vi.fn().mockResolvedValue({ ok: true, passHolderId: 'mock-123' }),
-  },
-}));
+vi.mock('@/services/passHolderService', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/services/passHolderService')>();
+  return {
+    passHolderService: {
+      register: vi.fn().mockResolvedValue({ ok: true, passHolderId: 'mock-123' }),
+    },
+    PassHolderError: actual.PassHolderError,
+    PassHolderNotFoundError: actual.PassHolderNotFoundError,
+  };
+});
 
 const sampleTemplate: PublicPassTemplate = {
   id: 'demo-cafe',
@@ -50,7 +56,29 @@ const fillValidForm = async (user: ReturnType<typeof userEvent.setup>) => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Reset to real timers after every test — defense against fake
+  // timers leaking from a previous test that errored before its
+  // try/finally cleanup ran (vitest test isolation boundary).
+  vi.useRealTimers();
 });
+
+/**
+ * 2026-10-16 — Defense-in-depth: even though the active paid-template
+ * tests use real timers and `vi.advanceTimersByTimeAsync`, this helper
+ * remains for future tests that may need fake timers (kept here so the
+ * pattern is documented next to the live implementation, not pulled
+ * into a separate file).
+ *
+ * @deprecated kept for documentation; remove when fake-timer tests are
+ * either re-introduced or confirmed unnecessary.
+ */
+async function _flushPaymentSimulation() {
+  const { act } = await import('@testing-library/react');
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(2000);
+  });
+}
+void _flushPaymentSimulation;
 
 describe('PassHolderRegistration', () => {
   it('renders the form with all 4 fields and submit button', () => {
@@ -177,5 +205,531 @@ describe('PassHolderRegistration', () => {
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledTimes(1);
     });
+  });
+
+  // ========================================================================
+  // 2026-10-17 — Backend-error capture regression (Bug 4 umbrella).
+  // Backend zod rejects with i18n key `passHolder.errors.tooYoung`
+  // (and other `passHolder.errors.*` keys). Frontend must:
+  //   1. Catch the PassHolderError (no unhandled promise rejection)
+  //   2. Translate the i18n key via the `passHolder` namespace
+  //   3. Surface the message in a banner — NOT the raw key
+  // ========================================================================
+
+  /**
+   * Mock override that makes `passHolderService.register` reject with
+   * a PassHolderError(i18nKey). Mirrors what `toPassHolderError`
+   * produces from a backend 400 response (e.g. backend birthday
+   * validation rejecting a too-recent date).
+   */
+  async function mockRegisterReject(i18nKey: string) {
+    const { passHolderService } = await import('@/services/passHolderService');
+    vi.mocked(passHolderService.register).mockRejectedValueOnce(
+      new PassHolderError(i18nKey),
+    );
+  }
+
+  /**
+   * Mock override that simulates a backend 400 carrying a structured
+   * `details.issues[].received` + `details.minBirthdayBoundary` —
+   * the new diagnostic shape introduced 2026-10-17 so users can see
+   * what the API actually received (disambiguates "I typed 1989 but
+   * the form sent 2026 due to autofill" from a real backend bug).
+   */
+  async function mockRegisterTooYoungWithDiagnostic(opts: {
+    received: string;
+    minBirthdayBoundary: string;
+  }) {
+    const { passHolderService } = await import('@/services/passHolderService');
+    vi.mocked(passHolderService.register).mockRejectedValueOnce(
+      new PassHolderError('passHolder.errors.tooYoung', {
+        issues: [
+          {
+            path: 'birthday',
+            i18nKey: 'passHolder.errors.tooYoung',
+            received: opts.received,
+          },
+        ],
+        minBirthdayBoundary: opts.minBirthdayBoundary,
+      }),
+    );
+  }
+
+  it('2026-10-17: backend i18n key "passHolder.errors.tooYoung" is caught and rendered as translated text (Bug-4 regression)', async () => {
+    const user = userEvent.setup();
+    const unhandled = vi.fn();
+    window.addEventListener('unhandledrejection', unhandled);
+    await mockRegisterReject('passHolder.errors.tooYoung');
+    renderComponent();
+
+    await fillValidForm(user);
+    await user.click(screen.getByTestId('pass-holder-submit'));
+
+    // 1. Banner with translated text appears (NOT raw i18n key)
+    await waitFor(() => {
+      expect(screen.getByTestId('pass-holder-submit-error')).toBeInTheDocument();
+    });
+    const banner = screen.getByTestId('pass-holder-submit-error');
+    expect(banner.textContent).toContain('需年滿 13 歲');
+    // 2. Raw key MUST NOT leak into DOM
+    expect(banner.textContent).not.toContain('passHolder.errors.tooYoung');
+    expect(banner.textContent).not.toContain('passHolder.validation.ageTooYoung');
+
+    // 3. NO unhandled rejection (catch swallowed the error)
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(unhandled).not.toHaveBeenCalled();
+    window.removeEventListener('unhandledrejection', unhandled);
+  });
+
+  it('2026-10-17: backend i18n key "passHolder.errors.birthdayInvalid" is caught and rendered as translated text', async () => {
+    const user = userEvent.setup();
+    await mockRegisterReject('passHolder.errors.birthdayInvalid');
+    renderComponent();
+
+    await fillValidForm(user);
+    await user.click(screen.getByTestId('pass-holder-submit'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('pass-holder-submit-error')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('pass-holder-submit-error').textContent).toContain(
+      '生日格式不正確',
+    );
+    expect(screen.getByTestId('pass-holder-submit-error').textContent).not.toContain(
+      'passHolder.errors.birthdayInvalid',
+    );
+  });
+
+  it('2026-10-17: 5xx with no i18nKey falls back to common.error.serverError translation', async () => {
+    const user = userEvent.setup();
+    const { passHolderService } = await import('@/services/passHolderService');
+    vi.mocked(passHolderService.register).mockRejectedValueOnce(
+      // Server error without i18n key (toPassHolderError fallback path)
+      new Error('Internal Server Error'),
+    );
+    renderComponent();
+
+    await fillValidForm(user);
+    await user.click(screen.getByTestId('pass-holder-submit'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('pass-holder-submit-error')).toBeInTheDocument();
+    });
+    // Falls through toPassHolderError → 'common.error.serverError' translation
+    expect(screen.getByTestId('pass-holder-submit-error').textContent).not.toContain(
+      'common.error.serverError',
+    );
+    expect(screen.getByTestId('pass-holder-submit-error').textContent).not.toContain(
+      'Internal Server Error',
+    );
+  });
+
+  // ========================================================================
+  // 2026-10-17 — Diagnostic banner for "I typed 1989 but the API got 2026"
+  // User reported 400 tooYoung after entering birthday 1989. The schema's
+  // validation IS correct (1989 passes), so the only remaining explanation
+  // is that the form sent a different value than what the user saw. The
+  // backend now returns `details.issues[].received` + `details.minBirthdayBoundary`
+  // so the user can see what the API actually received. This test pins
+  // the frontend rendering of that diagnostic.
+  // ========================================================================
+
+  it('2026-10-17: tooYoung with diagnostic surfaces received value + boundary in monospace sub-line', async () => {
+    const user = userEvent.setup();
+    await mockRegisterTooYoungWithDiagnostic({
+      received: '2026-10-17',                  // what the API actually got
+      minBirthdayBoundary: '2013-10-16',       // what the API considers "≥ 13"
+    });
+    renderComponent();
+
+    await fillValidForm(user);
+    await user.click(screen.getByTestId('pass-holder-submit'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('pass-holder-submit-error-diagnostic')).toBeInTheDocument();
+    });
+    const diagnostic = screen.getByTestId('pass-holder-submit-error-diagnostic');
+    // 1. received value is visible — this is the core of the diagnostic
+    expect(screen.getByTestId('pass-holder-submit-error-received').textContent).toContain(
+      '2026-10-17',
+    );
+    // 2. boundary is visible — user can see "API requires you to be born
+    //    on or before 2013-10-16"
+    expect(screen.getByTestId('pass-holder-submit-error-boundary').textContent).toContain(
+      '2013-10-16',
+    );
+    // 3. Localized message still above the diagnostic
+    expect(screen.getByTestId('pass-holder-submit-error-message').textContent).toContain(
+      '需年滿 13 歲',
+    );
+    // 4. diagnostic is in monospace (visual hint this is debug info)
+    expect(diagnostic.className).toMatch(/font-mono/);
+  });
+
+  it('2026-10-17: non-tooYoung backend errors do NOT show the diagnostic line', async () => {
+    const user = userEvent.setup();
+    await mockRegisterReject('passHolder.errors.birthdayInvalid');
+    renderComponent();
+
+    await fillValidForm(user);
+    await user.click(screen.getByTestId('pass-holder-submit'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('pass-holder-submit-error')).toBeInTheDocument();
+    });
+    // No diagnostic sub-line for non-tooYoung errors — keeps the banner
+    // focused on the user-facing message.
+    expect(
+      screen.queryByTestId('pass-holder-submit-error-diagnostic'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('2026-10-17: tooYoung without diagnostic details still shows the translated message (back-compat)', async () => {
+    // Older backends (pre-2026-10-17) emit tooYoung without
+    // details.issues[].received. The translated message must still
+    // appear; only the diagnostic sub-line is omitted.
+    const user = userEvent.setup();
+    await mockRegisterReject('passHolder.errors.tooYoung');
+    renderComponent();
+
+    await fillValidForm(user);
+    await user.click(screen.getByTestId('pass-holder-submit'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('pass-holder-submit-error')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('pass-holder-submit-error-message').textContent).toContain(
+      '需年滿 13 歲',
+    );
+    expect(
+      screen.queryByTestId('pass-holder-submit-error-diagnostic'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('2026-10-17: error banner clears after the user re-submits successfully (UX hygiene)', async () => {
+    const user = userEvent.setup();
+    const { passHolderService } = await import('@/services/passHolderService');
+    // First attempt fails
+    vi.mocked(passHolderService.register).mockRejectedValueOnce(
+      new PassHolderError('passHolder.errors.tooYoung'),
+    );
+    renderComponent();
+
+    await fillValidForm(user);
+    await user.click(screen.getByTestId('pass-holder-submit'));
+    await waitFor(() => {
+      expect(screen.getByTestId('pass-holder-submit-error')).toBeInTheDocument();
+    });
+
+    // Second attempt succeeds (default mock from vi.mock factory)
+    vi.mocked(passHolderService.register).mockResolvedValueOnce({
+      ok: true,
+      passHolderId: 'mock-after-error',
+    });
+    await user.click(screen.getByTestId('pass-holder-submit'));
+    await waitFor(() => {
+      expect(screen.queryByTestId('pass-holder-submit-error')).not.toBeInTheDocument();
+    });
+  });
+
+  // ================================================================
+  // 2026-10-16 — paid-membership extension tests
+  // ================================================================
+  //
+  // The membership tiers section + payment button only render when
+  // `template.isPaid === true` AND `template.membershipTiers` is a
+  // non-empty array. The submit handler is gated on BOTH tier selection
+  // AND payment completion — defense-in-depth means even if the button
+  // is enabled, the onValidSubmit callback returns early when blocked.
+
+  const paidTemplate: PublicPassTemplate = {
+    ...sampleTemplate,
+    id: 'demo-gym',
+    name: 'FitClub Membership',
+    cardType: 'membership_card',
+    logoText: 'FitClub',
+    issuerName: 'FitClub Taiwan',
+    isPaid: true,
+    currency: 'TWD',
+    membershipTiers: [
+      {
+        name: 'Basic',
+        rewards: [{ label: '10% off drinks', value: 'https://example.com/basic' }],
+        monthlyCost: 100,
+        yearlyCost: null,
+        durationType: 'monthly',
+      },
+      {
+        name: 'VIP',
+        rewards: [
+          { label: 'Free smoothie', value: 'https://example.com/vip' },
+          { label: 'Priority booking', value: 'https://example.com/booking' },
+        ],
+        monthlyCost: 200,
+        yearlyCost: null,
+        durationType: 'monthly',
+      },
+    ],
+  };
+
+  it('paid template: renders the membership tiers section below the form', () => {
+    renderComponent({ template: paidTemplate });
+    expect(screen.getByTestId('pass-holder-membership-tiers')).toBeInTheDocument();
+    expect(screen.getAllByTestId('pass-holder-tier-row')).toHaveLength(2);
+    expect(screen.getByTestId('pass-holder-payment-button')).toBeInTheDocument();
+  });
+
+  // 2026-10-16 — Single-CTA refactor. On a paid template the form's
+  // own SubmitButton is suppressed (`hideSubmit` prop on the form).
+  // Only the PaymentButton remains as the user-facing CTA, and it
+  // drives the full validate → pay → submit chain. See feedback
+  // `20261016-pass-holder-paid-membership-single-cta` for the
+  // user-facing rationale.
+  it('paid template: form does NOT render its own submit button (single CTA)', () => {
+    renderComponent({ template: paidTemplate });
+    expect(screen.queryByTestId('pass-holder-submit')).not.toBeInTheDocument();
+    // The payment button IS the CTA.
+    expect(screen.getByTestId('pass-holder-payment-button')).toBeInTheDocument();
+  });
+
+  it('paid template: payment button is disabled until a tier is selected', () => {
+    renderComponent({ template: paidTemplate });
+    const button = screen.getByTestId('pass-holder-payment-button');
+    expect(button).toBeDisabled();
+  });
+
+  it('paid template: clicking CTA with empty form shows field errors and skips payment', async () => {
+    // We DO NOT enable fake timers here — the test short-circuits
+    // before the simulated payment setTimeout fires, so real timers
+    // are fine and we avoid the fake-timer-leak footgun.
+    const user = userEvent.setup();
+    const { passHolderService } = await import('@/services/passHolderService');
+    renderComponent({ template: paidTemplate });
+
+    // Select a tier first (so CTA is enabled) but leave form fields empty.
+    const rows = screen.getAllByTestId('pass-holder-tier-row');
+    await user.click(rows[0]!);
+
+    await user.click(screen.getByTestId('pass-holder-payment-button'));
+
+    // Field errors surface (form failed validation). The internal
+    // onCtaClick runs `await form.trigger()` which is async; give the
+    // microtask queue a chance to flush before asserting.
+    await waitFor(() => {
+      expect(screen.getAllByTestId('field-error').length).toBeGreaterThan(0);
+    });
+    // Payment should NOT have started (button stays in idle state — not 'paying')
+    expect(screen.getByTestId('pass-holder-payment-button')).toHaveAttribute(
+      'data-payment-state',
+      'idle',
+    );
+    // Register not called
+    expect(passHolderService.register).not.toHaveBeenCalled();
+  });
+
+  /**
+   * 2026-10-16 — Drive the single-CTA flow's `setTimeout(r, 1500)`
+   * simulated-payment via REAL timers (fake timers leaked across
+   * `user-event` interactions in earlier rounds, breaking the
+   * following tests' DOM render). The trade-off: 1.5s real-time wait
+   * per test → we bump `timeout` to 8s to absorb user.type × 4 fields
+   * (~1.5s) + 1.5s payment + register RTT (negligible). `beforeEach`
+   * resets `useRealTimers()` so no fake-timer state lingers.
+   */
+  async function runPaidFlowClick(opts: {
+    template: PublicPassTemplate;
+    fillForm: boolean;
+    tierIndex: number;
+  }) {
+    const { passHolderService } = await import('@/services/passHolderService');
+    renderComponent({ template: opts.template });
+    const user = userEvent.setup();
+
+    if (opts.fillForm) {
+      await fillValidForm(user);
+    }
+    const rows = screen.getAllByTestId('pass-holder-tier-row');
+    await user.click(rows[opts.tierIndex]!);
+    await user.click(screen.getByTestId('pass-holder-payment-button'));
+
+    return passHolderService;
+  }
+
+  it('paid template: selecting tier + clicking CTA completes the full flow in a single click', async () => {
+    const passHolderService = await runPaidFlowClick({
+      template: paidTemplate,
+      fillForm: true,
+      tierIndex: 1,
+    });
+    // Combined flow: trigger() → 1.5s payment → submitForm() → register()
+    // All under one CTA click. Real-time tolerance ≥ 6s.
+    await waitFor(
+      () => {
+        expect(passHolderService.register).toHaveBeenCalledTimes(1);
+      },
+      { timeout: 6000 },
+    );
+    expect(passHolderService.register).toHaveBeenCalledWith(
+      'demo-gym',
+      expect.objectContaining({
+        name: '王小明',
+        selectedTierIndex: 1,
+        paymentProvider: 'ecpay',
+        paymentStatus: 'completed',
+        membershipTierSnapshot: expect.objectContaining({
+          index: 1,
+          name: 'VIP',
+          durationType: 'monthly',
+          paidAmount: 200,
+          currency: 'TWD',
+        }),
+      }),
+    );
+  }, 8000);
+
+  it('paid template: ZAR currency single click flow produces payfast provider', async () => {
+    const zarTemplate: PublicPassTemplate = {
+      ...paidTemplate,
+      id: 'demo-gym-zar',
+      currency: 'ZAR',
+      membershipTiers: [
+        {
+          name: 'Basic',
+          rewards: [{ label: '10% off', value: 'https://example.com/basic' }],
+          monthlyCost: 500,
+          yearlyCost: null,
+          durationType: 'monthly',
+        },
+      ],
+    };
+    const passHolderService = await runPaidFlowClick({
+      template: zarTemplate,
+      fillForm: true,
+      tierIndex: 0,
+    });
+    await waitFor(
+      () => {
+        expect(passHolderService.register).toHaveBeenCalledTimes(1);
+      },
+      { timeout: 6000 },
+    );
+    expect(passHolderService.register).toHaveBeenCalledWith(
+      'demo-gym-zar',
+      expect.objectContaining({ paymentProvider: 'payfast' }),
+    );
+  }, 8000);
+
+  it('paid template: free tier + valid form + single CTA click calls register (no payment simulation block)', async () => {
+    const freeTiersTemplate: PublicPassTemplate = {
+      ...paidTemplate,
+      membershipTiers: [
+        {
+          name: 'Trial',
+          rewards: [{ label: '30-day trial', value: 'https://example.com/trial' }],
+          monthlyCost: null,
+          yearlyCost: null,
+          durationType: 'monthly',
+        },
+      ],
+    };
+    const passHolderService = await runPaidFlowClick({
+      template: freeTiersTemplate,
+      fillForm: true,
+      tierIndex: 0,
+    });
+    await waitFor(
+      () => {
+        expect(passHolderService.register).toHaveBeenCalledTimes(1);
+      },
+      { timeout: 6000 },
+    );
+    expect(passHolderService.register).toHaveBeenCalledWith(
+      'demo-gym',
+      expect.objectContaining({
+        paymentProvider: 'ecpay',
+        paymentStatus: 'completed',
+        membershipTierSnapshot: expect.objectContaining({
+          paidAmount: null,
+          currency: 'TWD',
+        }),
+      }),
+    );
+  }, 8000);
+
+  it('non-paid template: does NOT render the membership tiers section', () => {
+    renderComponent(); // sampleTemplate has no isPaid
+    expect(screen.queryByTestId('pass-holder-membership-tiers')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('pass-holder-payment-button')).not.toBeInTheDocument();
+  });
+
+  it('paid template with empty membershipTiers: section is hidden', () => {
+    renderComponent({ template: { ...paidTemplate, membershipTiers: [] } });
+    expect(screen.queryByTestId('pass-holder-membership-tiers')).not.toBeInTheDocument();
+  });
+
+  // ========================================================================
+  // 2026-10-16 — CTA shows amount + action (e2e regression)
+  // ========================================================================
+  // User must know what they pay and what they get BEFORE clicking the
+  // payment button. This is the user-facing commitment in the e2e flow:
+  //   - select a paid tier (monthlyCost > 0) → button label switches
+  //     from "以綠界付款" to "支付 NT$ 100 並領取 Pass"
+  //   - select a free tier (cost = null) → button shows "免費領取 Pass"
+  //   - unselect / change tier → button returns to fallback
+  // Locks the parent → button label data flow (Rule 023 § component-bound
+  // i18n discipline: all translation decisions live in the parent).
+
+  it('paid template e2e: selecting a paid tier surfaces the amount in the CTA', async () => {
+    const user = userEvent.setup();
+    renderComponent({ template: paidTemplate });
+    const button = screen.getByTestId('pass-holder-payment-button');
+
+    // Before any tier is selected → fallback
+    expect(button).toHaveTextContent('以綠界付款');
+
+    // Click the Basic tier (monthlyCost=100, TWD)
+    const rows = screen.getAllByTestId('pass-holder-tier-row');
+    await user.click(rows[0]!);
+
+    // CTA now shows the amount
+    expect(button).toHaveTextContent('支付 NT$ 100 並領取 Pass');
+  });
+
+  it('paid template e2e: switching tiers updates the CTA amount', async () => {
+    const user = userEvent.setup();
+    renderComponent({ template: paidTemplate });
+    const button = screen.getByTestId('pass-holder-payment-button');
+
+    // Select Basic (100)
+    const rows = screen.getAllByTestId('pass-holder-tier-row');
+    await user.click(rows[0]!);
+    expect(button).toHaveTextContent('支付 NT$ 100 並領取 Pass');
+
+    // Switch to VIP (200)
+    await user.click(rows[1]!);
+    expect(button).toHaveTextContent('支付 NT$ 200 並領取 Pass');
+  });
+
+  it('paid template e2e: free tier under paid template shows "免費領取 Pass"', async () => {
+    const user = userEvent.setup();
+    const freeTiersTemplate: PublicPassTemplate = {
+      ...paidTemplate,
+      membershipTiers: [
+        {
+          name: 'Trial',
+          rewards: [{ label: '30-day trial', value: 'https://example.com/trial' }],
+          monthlyCost: null,
+          yearlyCost: null,
+          durationType: 'monthly',
+        },
+      ],
+    };
+    renderComponent({ template: freeTiersTemplate });
+    const button = screen.getByTestId('pass-holder-payment-button');
+
+    expect(button).toHaveTextContent('以綠界付款');
+
+    await user.click(screen.getAllByTestId('pass-holder-tier-row')[0]!);
+    expect(button).toHaveTextContent('免費領取 Pass');
   });
 });

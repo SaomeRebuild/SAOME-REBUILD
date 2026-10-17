@@ -15,6 +15,7 @@ import type { PublicPassTemplateDto } from '@/shared/contracts/passTemplates';
 import {
   findPublicTemplateById,
   findPublicTemplateWithTenantById,
+  normalizeMembershipTiers,
 } from '../db/templates';
 
 /**
@@ -60,6 +61,17 @@ export async function getPublicTemplateService(
     issuerLogo: settings.issuerLogo,
     backgroundColor: settings.backgroundColor,
     textColor: settings.textColor,
+    // 2026-10-16 — paid-membership fields projected from settings JSONB.
+    // We only surface them when `isPaid === true`; otherwise omit the
+    // optional fields entirely so legacy non-paid templates don't carry
+    // a misleading `membershipTiers: []`.
+    ...(row.is_paid
+      ? {
+          isPaid: true,
+          currency: row.currency ?? 'TWD',
+          membershipTiers: normalizeMembershipTiers(row.membership_tiers),
+        }
+      : {}),
   };
 }
 
@@ -119,6 +131,16 @@ export async function getPublicTemplateWithTenantService(
     issuerLogo: settings.issuerLogo,
     backgroundColor: settings.backgroundColor,
     textColor: settings.textColor,
+    // 2026-10-16 — mirror getPublicTemplateService paid-membership
+    // projection (see comment above for the rationale on conditional
+    // surface — only emitted when `is_paid === true`).
+    ...(row.is_paid
+      ? {
+          isPaid: true,
+          currency: row.currency ?? 'TWD',
+          membershipTiers: normalizeMembershipTiers(row.membership_tiers),
+        }
+      : {}),
   };
   return { dto, tenantId: row.tenant_id };
 }

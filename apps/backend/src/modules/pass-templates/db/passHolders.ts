@@ -4,12 +4,19 @@
  * @module modules/pass-templates/db/passHolders
  * @description Pure SQL functions for the `pass_holders` table.
  *
- * Migration: supabase/migrations/20260929000001_019_init_pass_holders.sql
+ * Migration history:
+ *   - 20260929000001_019_init_pass_holders.sql — base table
+ *   - 20261016000001_023_add_pass_holder_payment_fields.sql — paid-membership
+ *     extension (selected_tier_index, membership_tier_snapshot,
+ *     payment_provider, payment_status, paid_amount, currency)
+ *
  * Decision log: runs/decisions/2026-09-29-pass-templates-public-endpoint.md
+ *               runs/decisions/2026-10-16-pass-holder-paid-membership-snapshot.md
  */
 
 import type { Sql } from '@/shared/db/client';
 import type { PassHolderPhoneCountryCodeDto } from '@/shared/contracts/passTemplates';
+import type { Currency } from '@saome/shared/schemas/card';
 
 /**
  * Minimal row shape returned by INSERT ... ON CONFLICT DO NOTHING + RETURNING.
@@ -17,6 +24,11 @@ import type { PassHolderPhoneCountryCodeDto } from '@/shared/contracts/passTempl
  * `created` is derived from `created_at === updated_at` at the row level
  * (within the same transaction both timestamps share the same `now()`).
  * See `registerService.ts` for how we use it.
+ *
+ * 2026-10-16 — paid-membership columns added (migration 023). All six
+ * fields are optional (NULL on legacy / non-paid rows) because the
+ * migration 023 default is only on `payment_status` ('pending'). The
+ * service layer must be defensive about nulls.
  */
 export interface PassHolderRow {
   id: string;
@@ -26,6 +38,18 @@ export interface PassHolderRow {
   phone_number: string;
   birthday: string;
   email: string;
+  /** 0-based index into the template's membershipTiers[]. NULL for non-paid. */
+  selected_tier_index?: number | null;
+  /** Frozen snapshot of the selected tier (JSONB). NULL for non-paid. */
+  membership_tier_snapshot?: unknown;
+  /** 'payfast' (ZAR) | 'ecpay' (TWD). NULL for non-paid. */
+  payment_provider?: 'payfast' | 'ecpay' | null;
+  /** 'pending' (default) | 'completed' | 'failed'. Always populated. */
+  payment_status: 'pending' | 'completed' | 'failed';
+  /** Amount actually paid. NULL for non-paid / pending. */
+  paid_amount?: string | number | null;
+  /** 'TWD' | 'ZAR'. NULL for non-paid; defensive TWD backfill on apply. */
+  currency?: Currency | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -50,7 +74,10 @@ export async function findPassHolderByTemplateAndEmail(
 ): Promise<PassHolderRow | null> {
   const rows = await sql<PassHolderRow[]>`
     SELECT id, template_id, name, phone_country_code, phone_number,
-           birthday::text AS birthday, email, created_at, updated_at
+           birthday::text AS birthday, email,
+           selected_tier_index, membership_tier_snapshot,
+           payment_provider, payment_status, paid_amount, currency,
+           created_at, updated_at
       FROM public.pass_holders
      WHERE template_id = ${templateId}
        AND email = ${email}
@@ -67,6 +94,14 @@ export async function findPassHolderByTemplateAndEmail(
  * postgres.js versions — we avoid the `WITH ... ON CONFLICT ... RETURNING`
  * pattern which can be flaky in some pg client versions. The SELECT-first
  * approach is explicit and easy to test.
+ *
+ * 2026-10-16 — paid-membership extension. The 4 pass-delivery fields stay
+ * the source of truth and remain required. The 5 paid-membership fields
+ * (`selectedTierIndex`, `membershipTierSnapshot`, `paymentProvider`,
+ * `paymentStatus`, `paidAmount`, `currency`) are optional — when
+ * omitted, the DB applies the migration 023 defaults (NULL for most,
+ * 'pending' for `payment_status`, TWD for `currency` via the
+ * backfill).
  */
 export async function upsertPassHolder(
   sql: Sql,
@@ -77,6 +112,12 @@ export async function upsertPassHolder(
     phoneNumber: string;
     birthday: string;
     email: string;
+    selectedTierIndex?: number;
+    membershipTierSnapshot?: unknown;
+    paymentProvider?: 'payfast' | 'ecpay';
+    paymentStatus?: 'pending' | 'completed' | 'failed';
+    paidAmount?: number | null;
+    currency?: Currency;
   },
 ): Promise<{ row: PassHolderRow; created: boolean }> {
   const existing = await findPassHolderByTemplateAndEmail(sql, input.templateId, input.email);
@@ -84,19 +125,36 @@ export async function upsertPassHolder(
     return { row: existing, created: false };
   }
 
+  // Use `sql.json()` for the membership_tier_snapshot JSONB column to
+  // avoid the workerd `JSON.stringify` non-ASCII pitfall (Rule 027
+  // § workerd `JSON.stringify` pitfall). All other values go through
+  // tagged template injection.
   const inserted = await sql<PassHolderRow[]>`
     INSERT INTO public.pass_holders (
-      template_id, name, phone_country_code, phone_number, birthday, email
+      template_id, name, phone_country_code, phone_number, birthday, email,
+      selected_tier_index, membership_tier_snapshot,
+      payment_provider, payment_status, paid_amount, currency
     ) VALUES (
       ${input.templateId},
       ${input.name},
       ${input.phoneCountryCode},
       ${input.phoneNumber},
       ${input.birthday}::date,
-      ${input.email}
+      ${input.email},
+      ${input.selectedTierIndex ?? null},
+      ${input.membershipTierSnapshot === undefined
+        ? null
+        : sql.json(input.membershipTierSnapshot as Parameters<typeof sql.json>[0])},
+      ${input.paymentProvider ?? null},
+      ${input.paymentStatus ?? 'pending'},
+      ${input.paidAmount ?? null},
+      ${input.currency ?? null}
     )
     RETURNING id, template_id, name, phone_country_code, phone_number,
-              birthday::text AS birthday, email, created_at, updated_at
+              birthday::text AS birthday, email,
+              selected_tier_index, membership_tier_snapshot,
+              payment_provider, payment_status, paid_amount, currency,
+              created_at, updated_at
   `;
 
   if (!inserted[0]) {

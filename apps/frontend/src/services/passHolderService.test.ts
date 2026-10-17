@@ -93,6 +93,33 @@ describe('passHolderService.getTemplate (mock mode — VITE_USE_PASS_MOCK=true)'
     }
   });
 
+  it('2026-10-16: demo-gym is a paid membership card (TWD, 2 tiers)', async () => {
+    const t = await mockService.getTemplate('demo-gym');
+    expect(t.isPaid).toBe(true);
+    expect(t.currency).toBe('TWD');
+    expect(t.membershipTiers).toHaveLength(2);
+    expect(t.membershipTiers?.[0]?.name).toBe('Basic');
+    expect(t.membershipTiers?.[1]?.name).toBe('VIP');
+    expect(t.membershipTiers?.[0]?.monthlyCost).toBe(100);
+    expect(t.membershipTiers?.[1]?.monthlyCost).toBe(200);
+  });
+
+  it('2026-10-16: demo-gym-zar is a paid membership card in ZAR (Payfast path)', async () => {
+    const t = await mockService.getTemplate('demo-gym-zar');
+    expect(t.isPaid).toBe(true);
+    expect(t.currency).toBe('ZAR');
+    expect(t.membershipTiers).toHaveLength(2);
+    expect(t.membershipTiers?.[0]?.monthlyCost).toBe(500);
+    expect(t.membershipTiers?.[1]?.monthlyCost).toBe(1000);
+  });
+
+  it('2026-10-16: non-paid templates (e.g. demo-cafe) have no membershipTiers / isPaid', async () => {
+    const t = await mockService.getTemplate('demo-cafe');
+    expect(t.isPaid).toBeUndefined();
+    expect(t.membershipTiers).toBeUndefined();
+    expect(t.currency).toBeUndefined();
+  });
+
   it('throws PassHolderNotFoundError for unknown ids', async () => {
     await expect(mockService.getTemplate('does-not-exist')).rejects.toBeInstanceOf(
       MockPassHolderNotFoundError,
@@ -137,6 +164,29 @@ describe('passHolderService.register (mock mode)', () => {
     };
     const result = await mockService.register('demo-gym', payload);
     expect(result.ok).toBe(true);
+  });
+
+  it('2026-10-16: register accepts paid-membership fields (selectedTierIndex / paymentProvider / status)', async () => {
+    const payload: PassHolderPayload = {
+      name: '王小明',
+      phoneCountryCode: '+886',
+      phoneNumber: '0912345678',
+      birthday: '1990-01-01',
+      email: 'wang@example.com',
+      selectedTierIndex: 1,
+      membershipTierSnapshot: {
+        index: 1,
+        name: 'VIP',
+        durationType: 'monthly',
+        paidAmount: 200,
+        currency: 'TWD',
+      },
+      paymentProvider: 'ecpay',
+      paymentStatus: 'completed',
+    };
+    const result = await mockService.register('demo-gym', payload);
+    expect(result.ok).toBe(true);
+    expect(result.passHolderId.startsWith('mock-')).toBe(true);
   });
 });
 
@@ -227,6 +277,49 @@ describe('passHolderService.getTemplate (HTTP mode)', () => {
     );
     expect(result.id).toBe('716c4244-6c63-496d-a967-6c87cdac605d');
     expect(result.cardType).toBe('reward_card');
+  });
+
+  // 2026-10-16 — regression for the bug "付費會員卡沒有出現會原方案跟付費按鈕"
+  // (paid membership card not showing tiers / payment buttons on the
+  // public page). The backend MUST project `isPaid` / `membershipTiers`
+  // / `currency` from `templates.settings` JSONB onto the public DTO;
+  // the frontend PassHolderRegistration gates the tier section on
+  // `template.isPaid && template.membershipTiers?.length`. If the HTTP
+  // response drops these fields, the picker silently disappears.
+  it('2026-10-16: passes through isPaid / membershipTiers / currency from HTTP response', async () => {
+    mockHttp.get.mockResolvedValueOnce({
+      template: {
+        id: '738d9a5e-7f25-414b-b0d9-0c3abce8cf52',
+        name: '搭哈哈',
+        cardType: 'membership_card',
+        logoText: '呼嚕嚕',
+        issuerName: 'fdsgsdg',
+        isPaid: true,
+        currency: 'ZAR',
+        membershipTiers: [
+          {
+            name: '嗯嗯',
+            rewards: [{ label: 'ao6', value: 'huohoij' }],
+            monthlyCost: 100,
+            yearlyCost: null,
+            durationType: 'monthly',
+          },
+          {
+            name: '貴',
+            rewards: [{ label: 'sadfasf', value: 'adsfasdf' }],
+            monthlyCost: 200,
+            yearlyCost: null,
+            durationType: 'monthly',
+          },
+        ],
+      },
+    });
+
+    const result = await httpService.getTemplate('738d9a5e-7f25-414b-b0d9-0c3abce8cf52');
+    expect(result.isPaid).toBe(true);
+    expect(result.currency).toBe('ZAR');
+    expect(result.membershipTiers).toHaveLength(2);
+    expect(result.membershipTiers?.[0]?.name).toBe('嗯嗯');
   });
 
   it('maps 404 SaomeApiError to PassHolderNotFoundError', async () => {

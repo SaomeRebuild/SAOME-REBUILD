@@ -273,4 +273,10 @@ const worker: ExportedHandler<HonoEnv['Bindings']> = {
   },
 };
 
+// 2026-10-17 — removed module-init Date probe (`/__debug/module-init-date`)
+//   and related schema debug imports. Root cause confirmed and fixed in
+//   pass-templates/schemas/request.ts (refine now computes the boundary
+//   at request time, not module init). Debug endpoints will be re-added
+//   in a follow-up if needed for further investigation.
+
 export default worker;

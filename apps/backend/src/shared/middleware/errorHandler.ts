@@ -74,6 +74,30 @@ export const errorHandler = (err: Error, c: Context<HonoEnv>) => {
   // Log for observability — console goes to wrangler stdout → backend.log
   const requestId = (c.get as (k: string) => string | undefined)(REQUEST_ID_KEY) ?? 'unknown';
   console.error(`[errorHandler] requestId=${requestId} error=${err?.constructor?.name} message=${err?.message ?? String(err)}`);
+
+  // 2026-10-17 — also dump SaomeError.details to stdout.
+  //
+  // Why: register.ts wraps zod issues into `details.issues[]` with
+  // { path, i18nKey, received } and (for birthday refine) a top-level
+  // `minBirthdayBoundary` — these are visible in the HTTP response
+  // body via buildErrorResponse, but console.error was only logging
+  // the generic `err.message = "Validation failed"`. Debugging
+  // required toggling to DevTools Network tab. Now: a single wrangler
+  // tail line reveals the offending field + received value + boundary,
+  // so the next "1983-11-16 tooYoung?" investigation is one log read.
+  //
+  // Truncate at 1000 chars — `details` can carry upstream bodies (502),
+  // conflict maps, or stacked validation issues, all of which are
+  // useful in slices but not full text. Keep one line for grep.
+  if (err instanceof SaomeError && err.details) {
+    const detailsJson = JSON.stringify(err.details);
+    const truncated =
+      detailsJson.length > 1000
+        ? `${detailsJson.slice(0, 1000)}... (truncated)`
+        : detailsJson;
+    console.error(`[errorHandler] details=${truncated}`);
+  }
+
   if (err?.stack) {
     console.error(`[errorHandler] stack:\n${err.stack.split('\n').slice(0, 5).join('\n')}`);
   }

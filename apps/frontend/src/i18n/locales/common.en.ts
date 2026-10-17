@@ -20,5 +20,9 @@ export default {
     // when the upstream is 'passcreator' — this key is the GENERIC
     // fallback for any other upstream.
     upstreamFailed: 'Failed to reach the external service. Please try again later.',
+    // 2026-10-17 — passHolderError fallback. Triggered when an
+    // SaomeApiError lacks an `i18nKey` (5xx without backend mapping).
+    // Surfaced as a localized banner via `PassHolderRegistration` catch.
+    serverError: 'Server error. Please try again later.',
   },
 };

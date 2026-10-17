@@ -17,7 +17,31 @@
  * email, created_at, updated_at) — NOT `public.members`.
  */
 
-import type { CardLanguage, CardType } from '../schemas/card';
+import type { CardLanguage, CardType, Currency } from '../schemas/card';
+
+/**
+ * Public-safe membership tier snapshot (read-only view of the card's
+ * `membershipTiers` field). Added 2026-10-16 with the paid-membership
+ * registration flow. Used by `template.membershipTiers` on the public
+ * pass-registration page so visitors can pick a tier + simulate payment.
+ *
+ * `monthlyCost` / `yearlyCost` are nullable so a tier can be
+ * "free + monthly duration" (cost = 0 or null) or "yearly only"
+ * (monthlyCost = null). The combination `null + null` is invalid and
+ * rejected by the snapshot builder.
+ */
+export interface PublicMembershipTier {
+  /** Display name, e.g. "Basic", "VIP", "Premium". */
+  name: string;
+  /** Reward description rows; rendered as a bullet list on the picker. */
+  rewards: ReadonlyArray<{ label: string; value: string }>;
+  /** Monthly cost in `template.currency`. null = "free" or "yearly only". */
+  monthlyCost: number | null;
+  /** Yearly cost in `template.currency`. null = "monthly only" or "free". */
+  yearlyCost: number | null;
+  /** Determines which cost field the picker surfaces in the UI. */
+  durationType: 'monthly' | 'yearly';
+}
 
 /**
  * Public-safe subset of a card template. Excludes sensitive fields like
@@ -31,6 +55,13 @@ import type { CardLanguage, CardType } from '../schemas/card';
  * the visitor's browser locale or saved preferences. Source of truth is
  * `templates.settings->>'language'` (JSONB); mirrors `languageSchema`
  * in `packages/shared/schemas/card.ts`.
+ *
+ * Paid-membership fields (2026-10-16):
+ *   - `currency` — 'TWD' | 'ZAR'; defaults to TWD for legacy rows
+ *   - `isPaid` — when true, render the membership-tier picker + simulated
+ *     payment UI (Payfast for ZAR, Ecpay for TWD).
+ *   - `membershipTiers` — when isPaid=true AND length > 0, the page
+ *     surfaces a Radio Card list with the tier reward bullets.
  */
 export interface PublicPassTemplate {
   /** Template UUID. */
@@ -55,6 +86,47 @@ export interface PublicPassTemplate {
   backgroundColor?: string;
   /** Optional pass text color hex (e.g. `#F8FAFC`). */
   textColor?: string;
+  /**
+   * Currency the membership tier is priced in. Drives the simulated
+   * payment button choice (TWD → Ecpay, ZAR → Payfast). Default TWD
+   * when the field is missing — see 023 migration `currency` backfill.
+   */
+  currency?: Currency;
+  /**
+   * When true, the public pass-registration page renders the
+   * membership-tier picker + simulated payment flow below the 4
+   * pass-delivery fields. Non-paid templates skip the section entirely.
+   */
+  isPaid?: boolean;
+  /**
+   * Membership tier list, only meaningful when `isPaid === true`. A
+   * non-paid template with `membershipTiers` populated is treated as
+   * non-paid (the picker is hidden regardless of the array contents).
+   */
+  membershipTiers?: ReadonlyArray<PublicMembershipTier>;
+}
+
+/**
+ * Frozen snapshot of the selected tier at registration time. Persisted
+ * in `public.pass_holders.membership_tier_snapshot` (JSONB) so the
+ * receipt / dashboard can show the original price even if the
+ * template's tier definition later changes. Index + name + cost
+ * are all denormalized here to keep the snapshot self-contained.
+ */
+export interface MembershipTierSnapshot {
+  /** 0-based index into the source `template.membershipTiers[]`. */
+  index: number;
+  /** Tier display name at registration time. */
+  name: string;
+  /** Duration type the holder subscribed to. */
+  durationType: 'monthly' | 'yearly';
+  /**
+   * Currency amount actually paid. null when the tier is free
+   * (e.g. promotional month, or monthlyCost/yearlyCost was null).
+   */
+  paidAmount: number | null;
+  /** Currency of `paidAmount`. Mirrors `template.currency`. */
+  currency: Currency;
 }
 
 /**
@@ -69,6 +141,13 @@ export type PassHolderPhoneCountryCode = '+886' | '+27';
  *
  * None of these fields are login credentials — they are pass-delivery /
  * display data written to `public.pass_holders` (NOT `public.members`).
+ *
+ * Paid-membership extension (2026-10-16):
+ *   - `selectedTierIndex` / `membershipTierSnapshot` / `paymentProvider`
+ *     / `paymentStatus` are required when `template.isPaid === true`; the
+ *     frontend blocks submit until they are populated. The four
+ *     pass-delivery fields stay the source of truth and remain required
+ *     regardless of paid status.
  */
 export interface PassHolderPayload {
   /** Holder name shown on the pass itself. */
@@ -81,6 +160,32 @@ export interface PassHolderPayload {
   birthday: string;
   /** Email used by Apple/Google Wallet to deliver the pass link. */
   email: string;
+  /**
+   * 0-based index into the template's `membershipTiers` array. Required
+   * when the template is a paid membership card. Frontend populates
+   * this before submit; the backend may re-validate against the
+   * template's actual tier list.
+   */
+  selectedTierIndex?: number;
+  /**
+   * Frozen snapshot of the selected tier. Required when isPaid — keeps
+   * the persisted receipt consistent even if the template's tier
+   * definition is later edited.
+   */
+  membershipTierSnapshot?: MembershipTierSnapshot;
+  /**
+   * Payment provider, populated after the simulated payment completes.
+   * `payfast` for ZAR, `ecpay` for TWD. Real providers will arrive with
+   * the Passcreator V3 backend integration; today this is a hint to
+   * the backend that a simulated payment succeeded.
+   */
+  paymentProvider?: 'payfast' | 'ecpay';
+  /**
+   * Payment status. Today only `'completed'` is reachable from the
+   * simulated UI; the others (`'pending'` / `'failed'`) are reserved
+   * for the real provider integration.
+   */
+  paymentStatus?: 'pending' | 'completed' | 'failed';
 }
 
 /**

@@ -24,6 +24,8 @@
  */
 
 import type { CardLanguage, CardType } from '@saome/shared/schemas/card';
+import type { Currency } from '@saome/shared/schemas/card';
+import type { PublicMembershipTier } from '@saome/shared/types/passHolder';
 
 /**
  * Public-safe subset of a card template.
@@ -64,6 +66,29 @@ export interface PublicPassTemplateDto {
   backgroundColor?: string;
   /** Optional pass text color hex (e.g. `#F8FAFC`). */
   textColor?: string;
+  /**
+   * 2026-10-16 — paid-membership extension. Optional currency code
+   * drives the simulated payment button (TWD → Ecpay, ZAR → Payfast).
+   * Mirrors `settings->>'currency'` (JSONB) on the `public.templates`
+   * row. Defaults to TWD when missing (legacy rows). Source of truth is
+   * `Currency` in `packages/shared/schemas/card.ts`.
+   */
+  currency?: Currency;
+  /**
+   * 2026-10-16 — paid-membership extension. When true, the public
+   * pass-registration page renders the membership-tier picker +
+   * simulated payment flow below the 4 pass-delivery fields. Mirrors
+   * `settings->>'isPaid'` (JSONB).
+   */
+  isPaid?: boolean;
+  /**
+   * 2026-10-16 — paid-membership extension. List of membership tiers.
+   * When `isPaid === true` AND `membershipTiers.length > 0` the page
+   * surfaces a Radio Card list. Mirrors `settings->'membershipTiers'`
+   * (JSONB); the service normalizes the free-form JSONB shape into the
+   * typed `PublicMembershipTier[]` contract.
+   */
+  membershipTiers?: ReadonlyArray<PublicMembershipTier>;
 }
 
 /**
@@ -75,7 +100,10 @@ export type PassHolderPhoneCountryCodeDto = '+886' | '+27';
 /**
  * Form payload for `POST /api/pass-templates/:id/register`.
  *
- * Mirrors `packages/shared/types/passHolder.ts::PassHolderPayload`.
+ * Mirrors `packages/shared/types/passHolder.ts::PassHolderPayload`. The
+ * 4 pass-delivery fields stay required; the 5 paid-membership fields are
+ * optional (only present when the template is a paid membership card).
+ * `currency` defaults to TWD in the DB layer (migration 023 backfill).
  */
 export interface PassHolderRegisterPayloadDto {
   /** Holder name shown on the pass itself. */
@@ -88,6 +116,17 @@ export interface PassHolderRegisterPayloadDto {
   birthday: string;
   /** Email used by Apple/Google Wallet to deliver the pass link. */
   email: string;
+  // ================================================================
+  // 2026-10-16 — paid-membership extension (Rule 019 § 4.1 quad-binding)
+  // ================================================================
+  /** 0-based index into the template's `membershipTiers[]`. */
+  selectedTierIndex?: number;
+  /** Frozen snapshot of the selected tier (JSONB-safe). */
+  membershipTierSnapshot?: unknown;
+  /** 'payfast' (ZAR) | 'ecpay' (TWD). */
+  paymentProvider?: 'payfast' | 'ecpay';
+  /** 'pending' (default) | 'completed' | 'failed'. */
+  paymentStatus?: 'pending' | 'completed' | 'failed';
 }
 
 /**

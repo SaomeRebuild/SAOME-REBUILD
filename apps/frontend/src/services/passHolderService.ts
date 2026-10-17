@@ -38,16 +38,28 @@ const useMock = import.meta.env.VITE_USE_PASS_MOCK === 'true';
  *
  * Today both mock and HTTP layers throw this shape; frontend UI translation
  * works the same regardless of which branch ran.
+ *
+ * `params` is typed as `unknown` (not the i18n-friendly
+ * `Record<string, string | number>`) because the new diagnostic flow
+ * (2026-10-17) carries a `details.issues[].received` array + a
+ * `details.minBirthdayBoundary` string from the backend's
+ * ValidationError envelope. Consumers (the banner in
+ * PassHolderRegistration) read these as opaque fields, not as i18n
+ * interpolation values, so a stricter type buys nothing and would force
+ * a separate `metadata` field. The cast is safe because the runtime
+ * shape is governed by `apps/backend/src/modules/pass-templates/routes/register.ts`.
  */
 export class PassHolderError extends Error {
   readonly i18nKey: string;
-  readonly params?: Record<string, string | number>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readonly params?: any;
 
-  constructor(i18nKey: string, params?: Record<string, string | number>) {
+  constructor(i18nKey: string, params?: unknown) {
     super(i18nKey);
     this.name = 'PassHolderError';
     this.i18nKey = i18nKey;
-    this.params = params;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    this.params = params as any;
   }
 }
 
@@ -120,6 +132,63 @@ const SAMPLE_TEMPLATES: Record<string, PublicPassTemplate> = {
     issuerLogo: 'https://picsum.photos/seed/saome-gym/96',
     backgroundColor: '#064E3B',
     textColor: '#ECFDF5',
+    // 2026-10-16 — paid-membership extension. TWD currency → Ecpay button.
+    currency: 'TWD',
+    isPaid: true,
+    membershipTiers: [
+      {
+        name: 'Basic',
+        rewards: [{ label: '10% off drinks', value: 'https://example.com/basic' }],
+        monthlyCost: 100,
+        yearlyCost: null,
+        durationType: 'monthly',
+      },
+      {
+        name: 'VIP',
+        rewards: [
+          { label: 'Free smoothie', value: 'https://example.com/vip' },
+          { label: 'Priority booking', value: 'https://example.com/booking' },
+        ],
+        monthlyCost: 200,
+        yearlyCost: null,
+        durationType: 'monthly',
+      },
+    ],
+  },
+  'demo-gym-zar': {
+    // South-Africa mirror of demo-gym, used to exercise the ZAR/Payfast
+    // payment button path. Same tier names + reward copy so the picker
+    // looks consistent across currencies.
+    id: 'demo-gym-zar',
+    name: 'FitClub ZA',
+    cardType: 'membership_card',
+    logoText: 'FitClub',
+    issuerName: 'FitClub South Africa',
+    language: 'en',
+    issuerLogo: 'https://picsum.photos/seed/saome-gym-zar/96',
+    backgroundColor: '#064E3B',
+    textColor: '#ECFDF5',
+    currency: 'ZAR',
+    isPaid: true,
+    membershipTiers: [
+      {
+        name: 'Basic',
+        rewards: [{ label: '10% off drinks', value: 'https://example.com/basic' }],
+        monthlyCost: 500,
+        yearlyCost: null,
+        durationType: 'monthly',
+      },
+      {
+        name: 'VIP',
+        rewards: [
+          { label: 'Free smoothie', value: 'https://example.com/vip' },
+          { label: 'Priority booking', value: 'https://example.com/booking' },
+        ],
+        monthlyCost: 1000,
+        yearlyCost: null,
+        durationType: 'monthly',
+      },
+    ],
   },
   'demo-discount': {
     id: 'demo-discount',

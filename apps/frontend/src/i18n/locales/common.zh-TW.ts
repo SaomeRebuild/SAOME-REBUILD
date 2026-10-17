@@ -20,5 +20,10 @@ export default {
     // this key is the GENERIC fallback used by the `errorHandler`
     // middleware when no namespace-specific banner is in scope.
     upstreamFailed: '連線至外部服務失敗,請稍後再試',
+    // 2026-10-17 — passHolderError fallback. Triggered by
+    // `passHolderService::toPassHolderError` when an SaomeApiError
+    // has no `i18nKey` (5xx without backend mapping). Surfaced as
+    // a localized banner via `PassHolderRegistration` catch.
+    serverError: '伺服器錯誤,請稍後重試',
   },
 };

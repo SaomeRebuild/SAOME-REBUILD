@@ -28,7 +28,23 @@ import { upsertPassHolder } from '../db/passHolders';
  *     (same email against same template).
  *
  * The route layer (`routes/register.ts`) is responsible for zod parsing
- * (passHolderRegisterPayloadSchema) before this service is invoked.
+ * (`passHolderRegisterPayloadSchema`) before this service is invoked.
+ *
+ * 2026-10-16 — paid-membership extension. The 4 pass-delivery fields
+ * stay the source of truth and remain required. The 5 paid-membership
+ * fields (`selectedTierIndex`, `membershipTierSnapshot`,
+ * `paymentProvider`, `paymentStatus`) are optional and only present
+ * when the template is a paid membership card. The DB layer
+ * (`upsertPassHolder`) handles the optionality and applies migration
+ * 023 defaults when the fields are missing.
+ *
+ * The service does NOT re-validate `selectedTierIndex` against the
+ * template's actual `membershipTiers` array today — the frontend's
+ * PassHolderRegistration gates the picker UI on
+ * `template.isPaid && template.membershipTiers.length > 0` and the
+ * route layer's zod parse ensures the index is a non-negative
+ * integer. A future hardening pass may add server-side re-validation
+ * once the Passcreator V3 integration is in place.
  *
  * @param sql        - postgres.js instance
  * @param templateId - template UUID from URL path
@@ -48,6 +64,10 @@ export async function registerService(
   }
 
   // 2. Idempotent INSERT (UNIQUE constraint on (template_id, email)).
+  // Pass through the paid-membership fields when present. The DB layer
+  // normalizes missing values via migration 023 defaults (NULL for
+  // most, 'pending' for `payment_status`, TWD for `currency` via the
+  // backfill).
   const { row, created } = await upsertPassHolder(sql, {
     templateId,
     name: payload.name,
@@ -55,6 +75,12 @@ export async function registerService(
     phoneNumber: payload.phoneNumber,
     birthday: payload.birthday,
     email: payload.email,
+    // Paid-membership extension — undefined flows through to the DB as
+    // NULL or the migration 023 default. See `upsertPassHolder`.
+    selectedTierIndex: payload.selectedTierIndex,
+    membershipTierSnapshot: payload.membershipTierSnapshot,
+    paymentProvider: payload.paymentProvider,
+    paymentStatus: payload.paymentStatus,
   });
 
   return {

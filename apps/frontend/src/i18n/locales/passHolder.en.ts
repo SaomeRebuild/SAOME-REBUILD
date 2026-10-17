@@ -32,6 +32,19 @@ export default {
   },
   submit: 'Get Pass',
   submitting: 'Submitting...',
+  // 2026-10-17 — submit-error banner copy (Bug 4 umbrella).
+  // Close button on the alert banner so the user can dismiss
+  // without retrying. Defaults to the localized 'Dismiss' label
+  // via i18next fallback if not present.
+  submitErrorDismiss: 'Dismiss',
+  // 2026-10-17 — diagnostic line shown under tooYoung errors so the
+  // user can see the exact value the API received (disambiguates
+  // "I typed 1989 but the form sent 2026 due to autofill" from a
+  // real backend math bug).
+  submitErrorDebug: {
+    receivedPrefix: 'API received birthday: ',
+    boundaryMid: 'Server requires ≤ ',
+  },
   success: {
     title: 'Thanks for registering!',
     description: 'The Pass download feature is coming soon. Please check back later.',
@@ -40,6 +53,12 @@ export default {
   errors: {
     templateNotFound: 'This template cannot be found or has been removed.',
     networkError: 'Network error. Please try again later.',
+    // 2026-10-17 — Backend-error capture (Bug 4 umbrella).
+    // Mirror of zh-TW file; keep in sync with backend
+    // `apps/backend/src/modules/pass-templates/schemas/request.ts`.
+    birthdayInvalid: 'Invalid birthday format',
+    phoneInvalid: 'Invalid phone number format',
+    tooYoung: 'Must be at least 13 years old',
   },
   validation: {
     nameRequired: 'Please enter your name',
@@ -48,5 +67,33 @@ export default {
     birthdayInvalid: 'Invalid birthday format',
     emailInvalid: 'Invalid email format',
     ageTooYoung: 'Must be at least 13 years old',
+  },
+  // 2026-10-16: Paid-membership tier picker + simulated payment UI.
+  // Translation writing discipline: full English only, no Chinese
+  // mixed in (Rule 023 § 翻譯書寫紀律).
+  membership: {
+    sectionTitle: 'Choose a Membership Plan',
+    sectionHint: 'Select a membership tier and complete the payment to continue.',
+    selectTier: 'Please select a plan',
+    costFree: 'Free',
+    perMonth: 'per month',
+    perYear: 'per year',
+    rewardsLabel: 'Member Rewards',
+    payBlockedHint: 'Please select a plan and complete payment first',
+    payButton: {
+      payfast: 'Pay with Payfast',
+      ecpay: 'Pay with Ecpay',
+    },
+    // 2026-10-16 — CTA shows amount + action: user knows what they pay
+    // and what they get before clicking. Full English (Rule 023 §
+    // translation discipline); "Pass" stays untranslated as a product name.
+    payWithTierAction: 'Pay {{amount}} & Get Pass',
+    payWithFreeTier: 'Get Free Pass',
+    paying: 'Processing payment…',
+    paid: 'Paid',
+    providerBadge: {
+      payfast: 'Payfast',
+      ecpay: 'Ecpay',
+    },
   },
 };

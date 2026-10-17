@@ -73,6 +73,26 @@ export interface UsePassHolderFormResult {
   trigger: ReturnType<typeof useForm<PassHolderFormValues>>['trigger'];
   /** Validate email only after the field loses focus (UX rule). */
   handleEmailBlur: () => void;
+  /**
+   * 2026-10-16 — Read current form values (synchronous). Used by
+   * `PassHolderRegistration.onCtaClick` after the simulated-payment
+   * `setTimeout` to grab the latest user inputs before assembling the
+   * register payload (bypasses the stale closure risk of the
+   * `handleSubmit(event)` event-driven path).
+   */
+  getValues: ReturnType<typeof useForm<PassHolderFormValues>>['getValues'];
+  /**
+   * 2026-10-16 — Programmatic submit. Use when an external CTA (e.g. the
+   * paid-membership PaymentButton) drives the form outside the
+   * `<form onSubmit>` event. Runs the same RHF validation + onValidSubmit
+   * pipeline as `handleSubmit`, but without requiring a form-submit event.
+   *
+   * `trigger()` is called inside, so any errors surface on the inputs
+   * exactly as if the user clicked the form's own SubmitButton. Pair
+   * with a `trigger()` call first if you want to short-circuit (e.g.
+   * "do not even start the simulated payment when fields are invalid").
+   */
+  submitForm: () => Promise<void>;
 }
 
 export function usePassHolderForm({
@@ -106,9 +126,19 @@ export function usePassHolderForm({
     [form, onValidSubmit],
   );
 
+  // 2026-10-16 — programmatic submit for external CTA drivers
+  // (e.g. paid-membership PaymentButton). Mirrors handleSubmit minus
+  // the event-driven preventDefault; RHF still runs validation and
+  // either calls onValidSubmit (valid) or sets errors (invalid).
+  const submitForm = useCallback(async () => {
+    await form.handleSubmit(onValidSubmit)();
+  }, [form, onValidSubmit]);
+
   return {
     register: form.register,
     handleSubmit,
+    submitForm,
+    getValues: form.getValues,
     formState: form.formState,
     watch: form.watch,
     errors: form.formState.errors,

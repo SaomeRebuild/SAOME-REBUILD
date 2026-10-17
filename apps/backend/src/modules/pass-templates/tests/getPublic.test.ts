@@ -32,6 +32,10 @@ describe('PublicPassTemplateDto schema conformance (Layer 1 vs Layer 2)', () => 
   // We compare shape via a sample object — TypeScript types are erased at
   // runtime, so we use the structural test pattern from Rule 019 § 3.
   // 'language' added 2026-10-01 (Q2): template-driven page i18n.
+  // 2026-10-16 — paid-membership fields (`isPaid` / `membershipTiers` /
+  //   `currency`) added as optional. They are CONDITIONALLY emitted by
+  //   the service (only when `settings->>'isPaid'` is true) but the
+  //   DTO type declares them as optional so the field set is stable.
   const EXPECTED_FIELDS = [
     'id',
     'name',
@@ -42,6 +46,9 @@ describe('PublicPassTemplateDto schema conformance (Layer 1 vs Layer 2)', () => 
     'issuerLogo',
     'backgroundColor',
     'textColor',
+    'currency',
+    'isPaid',
+    'membershipTiers',
   ] as const;
 
   it('PublicPassTemplateDto has the expected fields', () => {
@@ -58,6 +65,12 @@ describe('PublicPassTemplateDto schema conformance (Layer 1 vs Layer 2)', () => 
       issuerLogo: undefined,
       backgroundColor: undefined,
       textColor: undefined,
+      // 2026-10-16 — paid-membership optional fields, set to undefined so
+      // they appear in Object.keys() (the conformance test pins the full
+      // field set; the service decides at runtime whether to emit them).
+      currency: undefined,
+      isPaid: undefined,
+      membershipTiers: undefined,
     };
     const actual = Object.keys(sample).sort();
     const expected = [...EXPECTED_FIELDS].sort();
@@ -76,6 +89,9 @@ describe('PublicPassTemplateDto schema conformance (Layer 1 vs Layer 2)', () => 
       issuerLogo: undefined,
       backgroundColor: undefined,
       textColor: undefined,
+      currency: undefined,
+      isPaid: undefined,
+      membershipTiers: undefined,
     };
     const actual = Object.keys(sample).sort();
     const expected = [...EXPECTED_FIELDS].sort();
@@ -263,5 +279,221 @@ describe('getPublicTemplateService — field projection (v2)', () => {
     expect(dto).not.toHaveProperty('status');
     expect(dto).not.toHaveProperty('settings');
     expect(dto).not.toHaveProperty('expires_at');
+  });
+});
+
+// =============================================================================
+// 2026-10-16 — paid-membership field projection (regression for the
+// "membership tiers / payment buttons missing on the paid public page"
+// bug). The frontend renders the picker ONLY when `isPaid === true` AND
+// `membershipTiers.length > 0`. Backend MUST surface those fields when
+// the underlying `settings->>'isPaid'` is true, else the page silently
+// hides the tier UI.
+// =============================================================================
+
+const paidRow: PublicTemplateRow = {
+  id: '738d9a5e-7f25-414b-b0d9-0c3abce8cf52',
+  name: '搭哈哈',
+  card_type: 'membership_card',
+  settings: {
+    logoText: '呼嚕嚕',
+    issuerName: 'fdsgsdg',
+    language: 'en',
+    isPaid: true,
+    currency: 'ZAR',
+    membershipTiers: [
+      {
+        name: '嗯嗯',
+        rewards: [{ label: 'ao6', value: 'huohoij' }],
+        monthlyCost: 100,
+        yearlyCost: null,
+        durationType: 'monthly',
+      },
+      {
+        name: '貴',
+        rewards: [{ label: 'sadfasf', value: 'adsfasdf' }],
+        monthlyCost: 200,
+        yearlyCost: null,
+        durationType: 'monthly',
+      },
+    ],
+  },
+  // SQL projection fields — what `findPublicTemplateById` returns after
+  // applying `(settings->>'isPaid')::boolean` / `settings->'membershipTiers'`
+  // / `settings->>'currency'`.
+  is_paid: true,
+  membership_tiers: [
+    {
+      name: '嗯嗯',
+      rewards: [{ label: 'ao6', value: 'huohoij' }],
+      monthlyCost: 100,
+      yearlyCost: null,
+      durationType: 'monthly',
+    },
+    {
+      name: '貴',
+      rewards: [{ label: 'sadfasf', value: 'adsfasdf' }],
+      monthlyCost: 200,
+      yearlyCost: null,
+      durationType: 'monthly',
+    },
+  ],
+  currency: 'ZAR',
+};
+
+describe('getPublicTemplateService — paid-membership projection (2026-10-16)', () => {
+  it('projects isPaid / currency / membershipTiers when row.is_paid is true', async () => {
+    stubFindPublicTemplateById(paidRow);
+    const dto = await getPublicTemplateService(makeMockSql(), paidRow.id);
+    expect(dto?.isPaid).toBe(true);
+    expect(dto?.currency).toBe('ZAR');
+    expect(dto?.membershipTiers).toHaveLength(2);
+    expect(dto?.membershipTiers?.[0]).toMatchObject({
+      name: '嗯嗯',
+      monthlyCost: 100,
+      yearlyCost: null,
+      durationType: 'monthly',
+    });
+    expect(dto?.membershipTiers?.[0]?.rewards).toEqual([
+      { label: 'ao6', value: 'huohoij' },
+    ]);
+  });
+
+  it('OMITS isPaid / currency / membershipTiers when row.is_paid is false (or missing)', async () => {
+    stubFindPublicTemplateById(baseRow);
+    const dto = await getPublicTemplateService(makeMockSql(), baseRow.id);
+    expect(dto?.isPaid).toBeUndefined();
+    expect(dto?.currency).toBeUndefined();
+    expect(dto?.membershipTiers).toBeUndefined();
+  });
+
+  it('OMITS paid fields when row.is_paid is false even if settings has membershipTiers', async () => {
+    // Defensive: a non-paid template with stray membershipTiers in
+    // settings MUST NOT trigger the paid UI — only `is_paid = true` does.
+    stubFindPublicTemplateById({
+      ...baseRow,
+      is_paid: false,
+      membership_tiers: [
+        {
+          name: 'stale',
+          rewards: [],
+          monthlyCost: 0,
+          yearlyCost: null,
+          durationType: 'monthly',
+        },
+      ],
+    });
+    const dto = await getPublicTemplateService(makeMockSql(), baseRow.id);
+    expect(dto?.isPaid).toBeUndefined();
+    expect(dto?.membershipTiers).toBeUndefined();
+  });
+
+  it('defaults currency to TWD when row.currency is null (legacy paid templates)', async () => {
+    stubFindPublicTemplateById({
+      ...paidRow,
+      currency: undefined,
+    });
+    const dto = await getPublicTemplateService(makeMockSql(), paidRow.id);
+    expect(dto?.currency).toBe('TWD');
+  });
+
+  it('returns empty membershipTiers when raw JSONB is null / non-array (defensive)', async () => {
+    stubFindPublicTemplateById({
+      ...paidRow,
+      membership_tiers: null,
+    });
+    const dto = await getPublicTemplateService(makeMockSql(), paidRow.id);
+    expect(dto?.isPaid).toBe(true);
+    expect(dto?.membershipTiers).toEqual([]);
+  });
+
+  it('normalizes malformed tier rows (drops tiers with empty name)', async () => {
+    stubFindPublicTemplateById({
+      ...paidRow,
+      membership_tiers: [
+        // valid
+        { name: 'Basic', rewards: [], monthlyCost: 100, yearlyCost: null, durationType: 'monthly' },
+        // missing name → dropped
+        { name: '', rewards: [], monthlyCost: 0, yearlyCost: null, durationType: 'monthly' },
+        // not an object → dropped
+        null,
+        // non-string monthlyCost → normalized to null
+        { name: 'Pro', rewards: [], monthlyCost: 'abc', yearlyCost: null, durationType: 'monthly' },
+      ],
+    });
+    const dto = await getPublicTemplateService(makeMockSql(), paidRow.id);
+    expect(dto?.membershipTiers).toHaveLength(2);
+    expect(dto?.membershipTiers?.map((t) => t.name)).toEqual(['Basic', 'Pro']);
+    expect(dto?.membershipTiers?.[1]?.monthlyCost).toBeNull();
+  });
+});
+
+/**
+ * Direct unit tests for `normalizeMembershipTiers` — the pure-function
+ * boundary. Keep these at the top of the test file (next to the import)
+ * for visibility? No — they're after the live usage tests so the reader
+ * sees the projection first. Order matters for debugging output.
+ */
+describe('normalizeMembershipTiers (db/templates.ts) — pure-function unit tests', () => {
+  it('returns [] for non-array input', async () => {
+    const { normalizeMembershipTiers } = await import('../db/templates');
+    expect(normalizeMembershipTiers(null)).toEqual([]);
+    expect(normalizeMembershipTiers(undefined)).toEqual([]);
+    expect(normalizeMembershipTiers('string')).toEqual([]);
+    expect(normalizeMembershipTiers({})).toEqual([]);
+  });
+
+  it('drops rows with empty / missing name', async () => {
+    const { normalizeMembershipTiers } = await import('../db/templates');
+    expect(
+      normalizeMembershipTiers([
+        { name: '', rewards: [], monthlyCost: 0, yearlyCost: null, durationType: 'monthly' },
+        { rewards: [], monthlyCost: 0, yearlyCost: null, durationType: 'monthly' },
+        null,
+        'string',
+        { name: 'OK', rewards: [], monthlyCost: 0, yearlyCost: null, durationType: 'monthly' },
+      ]),
+    ).toHaveLength(1);
+  });
+
+  it('defaults durationType to "monthly" when missing or unknown', async () => {
+    const { normalizeMembershipTiers } = await import('../db/templates');
+    const result = normalizeMembershipTiers([
+      { name: 'A', rewards: [], monthlyCost: 0, yearlyCost: null, durationType: 'bogus' },
+      { name: 'B', rewards: [], monthlyCost: 0, yearlyCost: null }, // missing
+    ]);
+    expect(result[0]?.durationType).toBe('monthly');
+    expect(result[1]?.durationType).toBe('monthly');
+  });
+
+  it('defaults non-number cost fields to null', async () => {
+    const { normalizeMembershipTiers } = await import('../db/templates');
+    const result = normalizeMembershipTiers([
+      { name: 'A', rewards: [], monthlyCost: '100', yearlyCost: NaN, durationType: 'monthly' },
+    ]);
+    expect(result[0]?.monthlyCost).toBeNull();
+    expect(result[0]?.yearlyCost).toBeNull();
+  });
+
+  it('filters out reward rows where both label and value are empty', async () => {
+    const { normalizeMembershipTiers } = await import('../db/templates');
+    const result = normalizeMembershipTiers([
+      {
+        name: 'A',
+        rewards: [
+          { label: 'x', value: 'y' },         // kept
+          { label: '', value: '' },           // dropped
+          { label: 'only-label', value: '' }, // kept
+          null,                               // dropped
+        ],
+        monthlyCost: 0,
+        yearlyCost: null,
+        durationType: 'monthly',
+      },
+    ]);
+    expect(result[0]?.rewards).toEqual([
+      { label: 'x', value: 'y' },
+      { label: 'only-label', value: '' },
+    ]);
   });
 });

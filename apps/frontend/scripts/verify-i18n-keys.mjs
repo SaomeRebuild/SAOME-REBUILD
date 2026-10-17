@@ -86,6 +86,12 @@ const ZHTW_ACRONYM_WHITELIST = new Set([
   // 2026-10-11 — Step 8 v4 plan: Passcreator is the upstream service we
   // push templates to. Brand name; same exemption as LINE / Apple.
   'Passcreator',
+  // 2026-10-17 — paid-membership: Payfast (TW payment gateway brand
+  // for ZAR currency tier). Brand name, no established zh-TW 譯名;
+  // same exemption as Passcreator / LINE / Apple. Ecpay uses 綠界
+  // (official Chinese brand name) — handled at the translation site
+  // instead of being whitelisted.
+  'Payfast',
   // B. 法遵 / 文件縮寫
   'DPA',
   'MSA',
