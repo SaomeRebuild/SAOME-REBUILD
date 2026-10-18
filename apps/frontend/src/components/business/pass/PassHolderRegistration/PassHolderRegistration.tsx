@@ -170,20 +170,26 @@ export function PassHolderRegistration({
           paymentState,
           template.currency,
         );
-        await passHolderService.register(template.id, {
+        // Capture the response so we can persist the per-pass runtime
+        // artifact into state for `PassHolderPassDownload`. Without
+        // this, `lastIssuance` would stay `null` and the download
+        // view would render the "Pass has not been issued yet"
+        // pre-launch copy instead of the actual CTA + barcode + Tips
+        // (regression — see `runs/improvements/feedback/20261019-
+        // pass-holder-nonpaid-issuance-capture.md`).
+        const result = await passHolderService.register(template.id, {
           ...values,
           selectedTierIndex: selectedTierIndex ?? undefined,
           membershipTierSnapshot: tierSnapshot,
           paymentProvider,
           paymentStatus,
         });
-        // 2026-10-19 — capture the per-pass runtime artifact for the
-        // download view. Note: the response is captured but unused in
-        // this branch's success path — onValidSubmit (the non-paid
-        // path) doesn't render `PassHolderPassDownload` here; the
-        // paid path's `onCtaClick` below captures its own issuance
-        // and stores it via `setLastIssuance`. We snapshot in both
-        // paths to keep the contract uniform.
+        // 2026-10-19 — propagate `result.issuance` from BOTH the
+        // paid path (`onCtaClick` below) AND this non-paid path so
+        // the contract is uniform: `PassHolderPassDownload` always
+        // receives the per-pass artifact (or `null` when V3 omitted
+        // it, e.g. for templates without `passcreator_template_id`).
+        setLastIssuance(result.issuance ?? null);
         setSubmitted(true);
         onSubmit();
       } catch (err) {
@@ -219,6 +225,22 @@ export function PassHolderRegistration({
       await new Promise<void>((resolve) => {
         window.setTimeout(resolve, PAYMENT_SIMULATED_DELAY_MS);
       });
+      // 2026-10-18 — Rule 018 § 2: the 1.5s payment simulation is
+      // exactly the race window Chrome / 1Password uses to autofill
+      // the email / phone fields. Reconcile DOM → RHF BEFORE
+      // `form.getValues()` so the register payload carries the
+      // user's actual values (not stale empty strings).
+      for (const name of ['name', 'phoneNumber', 'birthday', 'email'] as const) {
+        const dom = document.querySelector<HTMLInputElement>(
+          `input[name="${name}"]`,
+        );
+        if (!dom) continue;
+        const domValue = dom.value;
+        const formValue = form.getValues(name);
+        if (domValue !== formValue) {
+          form.setValue(name, domValue, { shouldDirty: false });
+        }
+      }
       setPaymentState('paid');
       livePaymentStateLocal = 'paid';
       // Yield so React commits 'paid' before downstream code reads state.

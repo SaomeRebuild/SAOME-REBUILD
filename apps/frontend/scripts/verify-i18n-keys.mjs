@@ -161,6 +161,12 @@ const ZHTW_ACRONYM_WHITELIST = new Set([
   'pkpass', // Apple/Google Wallet file extension (lowercase per Apple's spec)
   '.pkpass', // with leading dot, same exemption
   'wallet', // lowercase variant of Apple Wallet / Google Wallet (e.g. 「下載 wallet」)
+  // 2026-10-19 — v3-fix-tips-copy: passwalletReminder.body now
+  // references 「Play 商店」(Google Play Store) to explain the
+  // auto-guided install flow. Play is a Google product brand name
+  // with the same exemption rationale as Apple / Android / Google.
+  'Play',
+  'Store', // Google Play Store (paired with Play)
   'Apple', // already whitelisted above
   'Google', // already whitelisted above
   // GDPR / 隱私(legal namespace)

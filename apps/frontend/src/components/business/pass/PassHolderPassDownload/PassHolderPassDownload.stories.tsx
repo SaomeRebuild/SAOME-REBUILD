@@ -29,9 +29,11 @@ const passHolderZhTW = {
   download: {
     title: 'Pass 已發行！',
     subtitle: '把 Pass 加入你的手機錢包，隨時出示給店員掃描（{{issuerName}}）',
-    appleWallet: '加入 Apple 錢包',
-    directDownload: '下載 .pkpass',
-    iosHint: 'iPhone 用戶可直接加入 Apple 錢包',
+    // split-two-platform-buttons (2026-10-19): the two
+    // platform CTAs share these keys; the legacy appleWallet /
+    // directDownload / iosHint keys are gone.
+    forIos: '給 iPhone 用戶',
+    forAndroid: 'Android 用戶',
     barcodeLabel: '條碼內容',
     showBarcodeHint: '櫃台掃描時請出示條碼',
     notReadyYet: 'Pass 尚未發行，請稍候再試。',

@@ -17,6 +17,24 @@
  * 2026-10-19 — initial version. The component is i18n-driven
  * (`t('passHolder.download.*')` / `t('passHolder.passwalletReminder.*')`)
  * — keeps the view localizable to en / zh-TW without code changes.
+ *
+ * 2026-10-19 — **lost-data fallback** (regression for production row
+ * `83d3139a-c3bb-4806-8900-5e9b759d0122`). Holder rows registered
+ * BEFORE the COALESCE partial-update fix landed will have
+ * `barcode_value` populated but ALL 3 URIs (downloadPage / iPhoneUri
+ * / androidUri) NULL because the second barcode backfill UPDATE
+ * (which only passed `barcodeValue`) wiped the 6 sibling columns
+ * via unconditional `SET xxx = null`. The frontend recognizes this
+ * partial state (`barcodeValue` set + 0 URIs) and renders a
+ * "請聯絡客服重新簽發" banner INSTEAD of the pre-launch "not
+ * ready" copy — the i18n key `passHolder.download.lostData.*`
+ * carries the recovery messaging. Lost data is unrecoverable from
+ * V3 LIST alone (only `downloadPage` is theoretically recoverable
+ * — identifier / iPhoneUri / androidUri aren't exposed by V3 LIST),
+ * so a human-in-the-loop contact-support flow is the only path.
+ *
+ * @see runs/improvements/feedback/20261019-pass-holder-v3-partial-update-bug.md
+ * @see apps/backend/src/modules/pass-templates/db/passHolders.ts::updatePassHolderIssuance
  */
 
 import { useTranslation } from 'react-i18next';
@@ -26,6 +44,7 @@ import { PassHolderDownloadButton } from './PassHolderDownloadButton';
 import { PassHolderBarcodeDisplay } from './PassHolderBarcodeDisplay';
 import { PassHolderAndroidReminder } from './PassHolderAndroidReminder';
 import { PassHolderDownloadErrorBanner } from './PassHolderDownloadErrorBanner';
+import { PassHolderLostDataBanner } from './PassHolderLostDataBanner';
 
 export function PassHolderPassDownload({
   template,
@@ -34,19 +53,22 @@ export function PassHolderPassDownload({
 }: PassHolderPassDownloadProps) {
   const { t } = useTranslation('passHolder');
 
-  // Three distinct states driven by `issuance`:
-  //   1. Failed (issuanceError set)  → error banner + retry CTA
-  //   2. Success                     → download buttons + barcode + Android reminder
-  //   3. Pre-launch (no issuance)    → "pass not ready yet" copy (template not pushed)
-  //
-  // V3 contract (2026-10-19 fix): the "downloadUrl is set" gate now
-  // checks ANY of the 3 URIs (downloadPage / iPhoneUri / androidUri).
-  // The `PassHolderDownloadButton` does its own user-agent detection
-  // to pick which URI to surface as the href.
+  // 4 distinct states driven by `issuance`:
+  //   1. Failed (issuanceError set)   → error banner + retry CTA
+  //   2. Success                      → download buttons + barcode + Android reminder
+  //   3. Pre-launch (no issuance)     → "pass not ready yet" copy (template not pushed)
+  //   4. Lost data (barcode set, 0 URIs) → barcode + 聯絡客服 banner (regression 2026-10-19)
   const hasError = Boolean(issuance?.issuanceError);
   const hasAnyUri = Boolean(
     issuance?.downloadPage || issuance?.iPhoneUri || issuance?.androidUri,
   );
+  const hasBarcodeButNoUri = Boolean(issuance?.barcodeValue && !hasAnyUri);
+
+  // supportEmail isn't on `PublicPassTemplate` yet — when added, swap
+  // for the typed accessor. Today the type widening lets older rows
+  // carry the value without TS errors (defensive — keeps the cast
+  // local to this fallback path).
+  const supportEmail = (template as { supportEmail?: string }).supportEmail;
 
   return (
     <section
@@ -80,7 +102,7 @@ export function PassHolderPassDownload({
         </div>
       </header>
 
-      {/* Error banner (failure path) — takes priority over download */}
+      {/* Error banner (failure path) — priority over success/download */}
       {hasError && (
         <PassHolderDownloadErrorBanner
           errorKey={issuance!.issuanceError!}
@@ -88,29 +110,34 @@ export function PassHolderPassDownload({
         />
       )}
 
-      {/* Download CTA row (success path) */}
+      {/* Success path: download CTA + barcode + Android reminder.
+          PassHolderDownloadButton (split-two-platform-buttons, 2026-10-19)
+          renders BOTH iOS + Android platform-specific anchors; barcode
+          and Tips render as siblings (per the 4-state branch order in
+          this component's docblock). */}
       {!hasError && hasAnyUri && (
         <PassHolderDownloadButton
           downloadPage={issuance!.downloadPage}
           iPhoneUri={issuance!.iPhoneUri}
           androidUri={issuance!.androidUri}
-          barcodeValue={issuance!.barcodeValue ?? null}
           templateId={template.id}
         />
       )}
-
-      {/* Barcode display (success path, only when barcode value is set) */}
       {!hasError && hasAnyUri && issuance?.barcodeValue && (
         <PassHolderBarcodeDisplay barcodeValue={issuance.barcodeValue} />
       )}
+      {!hasError && hasAnyUri && <PassHolderAndroidReminder />}
 
-      {/* Android reminder (success path) */}
-      {!hasError && hasAnyUri && (
-        <PassHolderAndroidReminder />
+      {/* Lost-data fallback — barcode recovered, URIs missing (regression 2026-10-19) */}
+      {!hasError && hasBarcodeButNoUri && issuance?.barcodeValue && (
+        <PassHolderBarcodeDisplay barcodeValue={issuance.barcodeValue} />
+      )}
+      {!hasError && hasBarcodeButNoUri && (
+        <PassHolderLostDataBanner supportEmail={supportEmail} />
       )}
 
-      {/* Pre-launch state: no issuance, no error — known waiting state */}
-      {!hasError && !hasAnyUri && (
+      {/* Pre-launch: no issuance, no error, no barcode — known waiting state */}
+      {!hasError && !hasAnyUri && !hasBarcodeButNoUri && (
         <p
           className="text-sm"
           style={{ color: 'var(--color-muted-foreground)' }}

@@ -27,11 +27,27 @@ import {
   updatePassTemplate,
   fetchPassTemplate,
   issuePass,
+  getPassByIdentifier,
+  listPasses,
 } from './passcreator';
 import { BadGatewayError } from './saomeError';
 import * as fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import * as nodePath from 'node:path';
+
+/**
+ * Repository root, computed from this test file's location so the
+ * v3-fix capture-fixture test can resolve
+ * `fixtures/passcreator/v3/v3-create-success.json` without hard-coding
+ * absolute paths. Mirrors `apps/backend/scripts/capture-passcreator-v3.cjs::REPO_ROOT`.
+ */
+const REPO_ROOT = nodePath.resolve(
+  nodePath.dirname(fileURLToPath(import.meta.url)),
+  '..',
+  '..',
+  '..',
+  '..',
+);
 
 /**
  * Minimal Passcreator env shape that the client reads via `requireEnv`.
@@ -1577,7 +1593,15 @@ describe('issuePass — Passcreator V3 per-pass runtime endpoint', () => {
     // `additionalPropertyValues` wrapper — that field name does not
     // exist on V3 create).
     expect(body.data).not.toHaveProperty('additionalPropertyValues');
-    expect(body.data.name).toBe('王小明');
+    // v3-fix-2026-10-19: SAOME template mapping emits `memberName`
+    // as primaryFields[0].key (see passTemplateMapping.ts v12-followup).
+    // Passcreator resolves `{memberName}` against this exact body
+    // field name — sending `data.name` previously left the rendered
+    // pass blank. The renamed field is the regression target for
+    // `v3-fix: request body sends data.memberName (NOT data.name)`
+    // below.
+    expect(body.data.memberName).toBe('王小明');
+    expect(body.data).not.toHaveProperty('name');
     expect(body.data.phone).toBe('+886912345678');
     expect(body.data.birthday).toBe('1990-01-15');
     expect(body.data.email).toBe('wang@example.com');
@@ -1731,8 +1755,84 @@ describe('issuePass — Passcreator V3 per-pass runtime endpoint', () => {
     // Bonus: confirm the JSON parse preserves the bytes too — and
     // confirm the field is at `data.name` (NOT at `additionalPropertyValues.name`).
     const parsed = JSON.parse(bodyStr);
-    expect(parsed.data.name).toBe(trickyName);
+    // v3-fix-2026-10-19: must pin the post-rename field name.
+    expect(parsed.data.memberName).toBe(trickyName);
     expect(parsed).not.toHaveProperty('additionalPropertyValues');
+  });
+
+  // =====================================================================
+  // 2026-10-19 — v3-fix conformance: holder name MUST be sent at
+  // `data.memberName` (NOT `data.name`) so the per-pass `{memberName}`
+  // placeholder configured by
+  // `apps/backend/src/modules/pass-templates/services/passTemplateMapping.ts::primaryFields`
+  // (v12-followup, 2026-10-12) can resolve. Sending `data.name` left
+  // `memberName:` empty in Passcreator's dashboard — the rendered pass
+  // had no holder name. The capture script
+  // (`apps/backend/scripts/capture-passcreator-v3.cjs`) is the fixture
+  // source-of-truth and MUST be aligned with this wire shape (Task 1.2).
+  // =====================================================================
+  it('v3-fix: request body sends data.memberName (NOT data.name)', async () => {
+    fetchSpy.mockResolvedValueOnce(makeResponse({ status: 201, body: makeV3SuccessBody() }));
+
+    await issuePass(VALID_ENV, 'pc-tpl-123', makeHolder({ name: '王小明' }));
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const init = fetchSpy.mock.calls[0]?.[1] as RequestInit;
+    const body = JSON.parse(init.body as string);
+
+    // The new field MUST carry the holder name verbatim.
+    expect(body.data.memberName).toBe('王小明');
+
+    // The old field MUST be ABSENT — sending both would either be
+    // silently dropped by Passcreator (best case) or cause an
+    // upstream rejection on the per-pass "field name not declared
+    // by template" rule (worst case). Either way: pin absence.
+    expect(body.data).not.toHaveProperty('name');
+
+    // Other 3 fields are unaffected by the rename.
+    expect(body.data.phone).toBe('+886912345678');
+    expect(body.data.birthday).toBe('1990-01-15');
+    expect(body.data.email).toBe('wang@example.com');
+  });
+
+  it('v3-fix: capture fixture (v3-create-success.json) reflects the renamed memberName wire shape', async () => {
+    // The capture script's `data` block is the live source-of-truth
+    // fixture. This test fails if the fixture still uses the old
+    // `name` key, catching the most likely drift vector
+    // (someone edits the capture script but forgets to update
+    // `passcreator.ts`, or vice versa).
+    //
+    // Skip if the fixture doesn't exist yet (first-time run before
+    // `node apps/backend/scripts/capture-passcreator-v3.cjs`); a
+    // missing fixture is NOT the same as a wrong-shape fixture.
+    const fixturePath = nodePath.join(
+      REPO_ROOT,
+      'fixtures',
+      'passcreator',
+      'v3',
+      'v3-create-success.json',
+    );
+    if (!fs.existsSync(fixturePath)) {
+      // No fixture yet — nothing to pin. The first test above
+      // already pins the wire shape via the production code path.
+      return;
+    }
+
+    const fixtureContent = JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
+    const requestBody = fixtureContent?.request?.body;
+
+    expect(requestBody).toBeDefined();
+    expect(requestBody).toHaveProperty('data');
+    // The renamed field MUST be present in the live fixture.
+    expect(requestBody.data).toHaveProperty('memberName');
+    expect(typeof requestBody.data.memberName).toBe('string');
+    // The old field MUST be absent — drift vector guard.
+    expect(requestBody.data).not.toHaveProperty('name');
+    // Other 3 fields are stable across the rename.
+    expect(requestBody.data).toHaveProperty('phone');
+    expect(requestBody.data).toHaveProperty('birthday');
+    expect(requestBody.data).toHaveProperty('email');
+    expect(requestBody.data).toHaveProperty('templateId');
   });
 });
 
@@ -1845,5 +1945,441 @@ describe('Passcreator client — barcodeValue defensive normalize (P0 #3 — 202
     // Sanity: identifier + URLs still parse correctly from the flat shape
     expect(result.identifier).toBe('legacy-flat-1');
     expect(result.downloadPage).toBe('https://app.passcreator.com/p/legacy');
+  });
+});
+
+// ============================================================================
+// 2026-10-18 — V3 per-pass GET/LIST helpers for barcode backfill
+//
+// Production bug (2026-10-18): V3 CREATE returns `barcodeValue:
+// "no value specified"` (a literal sentinel) for templates with
+// `useAutoIdForValue=true` — even when the template HAS an auto-
+// generated ID configured. The real per-pass barcode rendered on
+// the wallet pass lives at `generatedId` (single-pass GET) or
+// `autoGeneratedId` (LIST filter). SAOME's create response parsing
+// collapses both sentinels AND null to `barcodeValue = null`, so
+// the DB ends up storing `barcode_value = NULL` — even though
+// Passcreator's dashboard shows the live barcode (e.g.
+// "zbood1tvxrvl31kv9e6ad3ef2f71561" for the ILJOI holder).
+//
+// Fix: after a successful `issuePass` returns `barcodeValue: null`
+// (or a sentinel), the registerService calls one of these two
+// helpers to backfill the real value:
+//
+//   - `getPassByIdentifier` — PRIMARY path. Returns a single
+//     per-pass runtime object. Real auto-gen barcode lives at
+//     `data.generatedId` (singular — only this endpoint uses the
+//     singular form).
+//
+//   - `listPasses` — FALLBACK path. Returns the list envelope
+//     (paginated). Real auto-gen barcode lives at
+//     `data[].autoGeneratedId` (plural). Used when single-pass
+//     GET is unavailable (network race, Passcreator changes
+//     contract, etc.).
+//
+// Both helpers MUST populate `barcodeValue` via the unified
+// `extractBackfillBarcodeValue` helper, which collapses any of the
+// 4 placeholder strings to `null` AND falls back to `generatedId` /
+// `autoGeneratedId` when `barcodeValue` is a placeholder — so the
+// registerService layer can persist a real string OR null without
+// needing to know about Passcreator's two-tiered data layout.
+//
+// Reference (live capture 2026-10-18):
+//   - fixtures/passcreator/v3/v3-get-single.json (REST path)
+//   - fixtures/passcreator/v3/v3-list-filtered.json (LIST filter)
+//   - fixtures/passcreator/v3/probe/SUMMARY.md (4 candidate URLs
+//     probed against the ILJOI holder identifier)
+// ============================================================================
+
+const BACKFILL_IDENTIFIER = '5615a280-fac3-4d64-a4ea-34d8b5d7b0ee';
+const BACKFILL_BARCODE = 'zbood1tvxrvl31kv9e6ad3ef2f71561';
+
+/**
+ * Single-pass GET success envelope — mirrors the real V3 response
+ * shape captured 2026-10-18 against the ILJOI holder. Note:
+ * - `data.generatedId` is SINGULAR (only the single-pass GET uses
+ *   this name — LIST uses `autoGeneratedId` PLURAL).
+ * - `data.barcodeValue` is ABSENT (not a placeholder — Passcreator
+ *   simply omits the field when useAutoIdForValue=true).
+ * - `data.linkToPassPage` is present (the universal landing page).
+ */
+function makeV3GetSingleBody(overrides: {
+  identifier?: string;
+  generatedId?: string | null;
+  linkToPassPage?: string;
+} = {}) {
+  return {
+    statusCode: 200,
+    success: true,
+    description: 'Success',
+    errors: [],
+    count: 1,
+    responseMetaData: null,
+    data: {
+      identifier: overrides.identifier ?? BACKFILL_IDENTIFIER,
+      templateId: '22d0d89d-9a5e-4b7d-9aae-3259312f8849',
+      generatedId: overrides.generatedId ?? BACKFILL_BARCODE,
+      linkToPassPage:
+        overrides.linkToPassPage ?? 'https://app.passcreator.com/en/p/y6zcwu9qty1ml6ad3ef2f714f7',
+      qrCodeImage: 'https://app.passcreator.com/qr/no%20value%20given',
+      name: 'not good',
+      type: 'storeCard',
+      // CRITICAL: barcodeValue is intentionally ABSENT here. The
+      // production behavior is "field omitted entirely" — not a
+      // placeholder string. The backfill helper MUST tolerate both
+      // shapes (absent + placeholder).
+    },
+  };
+}
+
+/**
+ * LIST filter success envelope — mirrors the real V3 response shape
+ * captured 2026-10-18 against the ILJOI holder. Note:
+ * - `data[]` is an ARRAY (paginated).
+ * - Each item has `autoGeneratedId` PLURAL (not `generatedId`).
+ * - `barcodeValue: "no value given"` is the LITERAL placeholder
+ *   string (per `BARCODE_VALUE_PLACEHOLDERS`).
+ */
+function makeV3ListFilteredBody(overrides: {
+  identifier?: string;
+  autoGeneratedId?: string;
+  barcodeValue?: string | null;
+} = {}) {
+  return {
+    statusCode: 200,
+    success: true,
+    description: 'Success',
+    errors: [],
+    count: 100,
+    responseMetaData: { resultsTotal: 225, resultsThisPage: 100 },
+    page: {
+      next: 'https://app.passcreator.com/api/v3/pass/?pageSize=100&startUid=abc&startCreatedOnTimestamp=1772563198000',
+    },
+    data: [
+      {
+        identifier: overrides.identifier ?? BACKFILL_IDENTIFIER,
+        autoGeneratedId: overrides.autoGeneratedId ?? BACKFILL_BARCODE,
+        voided: false,
+        notYetValid: false,
+        templateId: '22d0d89d-9a5e-4b7d-9aae-3259312f8849',
+        templateName: 'not good',
+        linkToPassPage: 'https://app.passcreator.com/en/p/y6zcwu9qty1ml6ad3ef2f714f7',
+        barcodeValue: overrides.barcodeValue ?? 'no value given',
+        bundleId: null,
+      },
+      // Second item (different identifier) — confirms the helper
+      // filters by `identifier` AND that other items are ignored.
+      {
+        identifier: '755fd7d7-ed6b-4150-859c-ac642b483b17',
+        autoGeneratedId: 's7m9ho6nlc6ft0356v6ad3e4611c0db',
+        barcodeValue: 'no value given',
+      },
+    ],
+  };
+}
+
+describe('getPassByIdentifier — V3 single-pass GET (regression — 2026-10-18 barcode backfill)', () => {
+  it('happy path: 200 + generatedId → returns identifier + barcodeValue + 3 URIs', async () => {
+    // Mirrors the live V3 capture against the ILJOI holder
+    // (`v3-get-single.json` fixture). The `data.barcodeValue` field
+    // is ABSENT (Passcreator omits the field entirely for
+    // useAutoIdForValue=true templates) — the backfill helper
+    // MUST fall back to `data.generatedId` and return that as the
+    // barcodeValue. This is the P0 #4 root-cause fix: production
+    // was persisting `barcode_value = NULL` when the real value
+    // was sitting right there in `generatedId`.
+    fetchSpy.mockResolvedValueOnce(
+      makeResponse({ status: 200, body: makeV3GetSingleBody() }),
+    );
+    const result = await getPassByIdentifier(VALID_ENV, BACKFILL_IDENTIFIER);
+    // All 4 fields populated
+    expect(result.identifier).toBe(BACKFILL_IDENTIFIER);
+    // barcodeValue falls back to generatedId when the field is
+    // absent (or contains a placeholder string).
+    expect(result.barcodeValue).toBe(BACKFILL_BARCODE);
+    // The 3 URIs are extracted from the V3 single-pass GET
+    // envelope shape (`data.linkToPassPage` for downloadPage,
+    // no `iPhoneUri` / `androidUri` in this minimal envelope —
+    // they would be absent in the real capture too).
+    expect(result.downloadPage).toBe(
+      'https://app.passcreator.com/en/p/y6zcwu9qty1ml6ad3ef2f714f7',
+    );
+
+    // URL + method pinned
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe(
+      `https://app.passcreator.com/api/v3/pass/${BACKFILL_IDENTIFIER}`,
+    );
+    const init = fetchSpy.mock.calls[0]?.[1] as RequestInit;
+    expect(init.method).toBe('GET');
+  });
+
+  it('network failure → BadGatewayError kind="network" (mirrors issuePass behavior)', async () => {
+    // The helper reuses `passcreatorFetch`, so the 3-layer error
+    // envelope is identical to V2 surface — including network /
+    // invalid_response / upstream_rejected categorization. This
+    // test pins the network path so a future refactor that swaps
+    // `passcreatorFetch` for raw `fetch` is caught loudly.
+    fetchSpy.mockRejectedValueOnce(new TypeError('fetch failed: ECONNREFUSED'));
+    try {
+      await getPassByIdentifier(VALID_ENV, BACKFILL_IDENTIFIER);
+      expect.fail('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(BadGatewayError);
+      const bge = err as BadGatewayError;
+      expect(bge.details?.kind).toBe('network');
+      expect(bge.details?.upstream).toBe('passcreator');
+    }
+  });
+
+  it('identifier absent from envelope → throws BadGatewayError (regression — fixture-shape guard)', async () => {
+    // Defensive: if Passcreator's single-pass GET envelope shape
+    // ever drifts (e.g. they move `identifier` under a different
+    // key), the helper MUST throw rather than silently return a
+    // bogus barcodeValue. This pins the contract.
+    fetchSpy.mockResolvedValueOnce(
+      makeResponse({
+        status: 200,
+        body: {
+          statusCode: 200,
+          success: true,
+          description: 'Success',
+          errors: [],
+          count: 1,
+          responseMetaData: null,
+          data: {
+            // identifier intentionally absent — simulates envelope drift
+            generatedId: BACKFILL_BARCODE,
+            linkToPassPage: 'https://app.passcreator.com/p/x',
+          },
+        },
+      }),
+    );
+    try {
+      await getPassByIdentifier(VALID_ENV, BACKFILL_IDENTIFIER);
+      expect.fail('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(BadGatewayError);
+      const bge = err as BadGatewayError;
+      expect(String(bge.details?.upstreamBody ?? '')).toMatch(
+        /missing identifier/,
+      );
+    }
+  });
+});
+
+describe('listPasses — V3 LIST filter fallback (regression — 2026-10-18 barcode backfill)', () => {
+  it('happy path: 200 + autoGeneratedId → returns filtered array with the matching identifier', async () => {
+    // Mirrors the live V3 capture (`v3-list-filtered.json`). The
+    // list response includes BOTH `barcodeValue` (placeholder) AND
+    // `autoGeneratedId` (real). The helper MUST extract from
+    // `autoGeneratedId` when `barcodeValue` is a placeholder.
+    fetchSpy.mockResolvedValueOnce(
+      makeResponse({ status: 200, body: makeV3ListFilteredBody() }),
+    );
+    const result = await listPasses(VALID_ENV, {
+      templateId: '22d0d89d-9a5e-4b7d-9aae-3259312f8849',
+      identifier: BACKFILL_IDENTIFIER,
+    });
+    // The filter MUST isolate the matching identifier (not return
+    // every pass in the template — there are 100+ in the real
+    // capture, and the helper filters down to the one row we need).
+    expect(result).toHaveLength(1);
+    expect(result[0]?.identifier).toBe(BACKFILL_IDENTIFIER);
+    expect(result[0]?.barcodeValue).toBe(BACKFILL_BARCODE);
+    // downloadPage falls back to linkToPassPage (the list endpoint
+    // uses the V1 field name, not V3-create's `downloadPage`).
+    expect(result[0]?.downloadPage).toBe(
+      'https://app.passcreator.com/en/p/y6zcwu9qty1ml6ad3ef2f714f7',
+    );
+
+    // URL + query params pinned
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const url = fetchSpy.mock.calls[0]?.[0] as string;
+    expect(url).toContain('/api/v3/pass');
+    expect(url).toContain(`identifier=${BACKFILL_IDENTIFIER}`);
+    expect(url).toContain('templateId=22d0d89d-9a5e-4b7d-9aae-3259312f8849');
+    const init = fetchSpy.mock.calls[0]?.[1] as RequestInit;
+    expect(init.method).toBe('GET');
+  });
+
+  it('identifier absent from filtered list → returns empty array (NOT a throw)', async () => {
+    // Defensive: if the identifier isn't in the list (e.g. the
+    // template has 100+ items but the cursor pagination would
+    // require more pages), the helper returns an empty array —
+    // the caller can fall back to "barcode_value stays null"
+    // rather than treating it as a hard failure. This avoids
+    // breaking the registration flow when Passcreator paginates
+    // the list away from the target identifier.
+    fetchSpy.mockResolvedValueOnce(
+      makeResponse({
+        status: 200,
+        body: {
+          statusCode: 200,
+          success: true,
+          errors: [],
+          data: [
+            {
+              identifier: 'some-other-pass',
+              autoGeneratedId: 'aaaaa',
+              barcodeValue: 'no value given',
+            },
+          ],
+        },
+      }),
+    );
+    const result = await listPasses(VALID_ENV, {
+      templateId: '22d0d89d-9a5e-4b7d-9aae-3259312f8849',
+      identifier: BACKFILL_IDENTIFIER,
+    });
+    expect(result).toEqual([]);
+  });
+
+  it('barcodeValue placeholder + autoGeneratedId absent → barcodeValue stays null (no barcode configured)', async () => {
+    // Real scenario: a template WITHOUT `useAutoIdForValue=true`
+    // AND without a barcode config. Both `barcodeValue` AND
+    // `autoGeneratedId` are absent / placeholders. The helper
+    // MUST return `null` (NOT throw, NOT return the placeholder)
+    // so the caller persists NULL → DB row correctly records
+    // "no barcode configured for this holder".
+    fetchSpy.mockResolvedValueOnce(
+      makeResponse({
+        status: 200,
+        body: {
+          statusCode: 200,
+          success: true,
+          errors: [],
+          data: [
+            {
+              identifier: BACKFILL_IDENTIFIER,
+              // barcodeValue is the placeholder — same shape as
+              // production captured in the 2026-10-18 LIST response
+              barcodeValue: 'no value given',
+              // autoGeneratedId intentionally absent
+              linkToPassPage: 'https://app.passcreator.com/p/x',
+            },
+          ],
+        },
+      }),
+    );
+    const result = await listPasses(VALID_ENV, {
+      templateId: '22d0d89d-9a5e-4b7d-9aae-3259312f8849',
+      identifier: BACKFILL_IDENTIFIER,
+    });
+    expect(result).toHaveLength(1);
+    expect(result[0]?.barcodeValue).toBeNull();
+  });
+});
+
+// ============================================================================
+// 2026-10-18 — Live V3 GET/LIST backfill fixtures (regression — production
+// barcode_value drift)
+//
+// The two fixtures below are produced by `capture-passcreator-v3.cjs`
+// (and `probe-passcreator-v3-get.cjs`). They pin the LIVE V3 single-pass
+// GET and LIST filter response shapes so the backfill helpers'
+// envelope-parsing logic is verified against real production bytes —
+// not just our hand-rolled mocks.
+//
+// Fixture inventory:
+//   - v3/v3-get-single.json — GET /api/v3/pass/{identifier} → 200 with
+//     `data.{identifier, generatedId, linkToPassPage}`. Note: NO
+//     `barcodeValue` field. The `generatedId` IS the real barcode for
+//     useAutoIdForValue=true templates.
+//   - v3/v3-list-filtered.json — GET /api/v3/pass?identifier={id} → 200
+//     with paginated `data[]`. Each item has `barcodeValue: "no value
+//     given"` (placeholder) + `autoGeneratedId: <real>`.
+//
+// These tests are SKIPPED when the fixture file is missing (e.g., the
+// capture script has not been run yet) — same convention as the V3
+// SUCCESS / LIST / ERROR fixture tests above.
+// ============================================================================
+
+describe('Passcreator client — live V3 GET-single fixture (regression — 2026-10-18 backfill)', () => {
+  const fixture = fixtureOrSkip('v3/v3-get-single');
+
+  describe('scenario: v3-get-single (GET /api/v3/pass/{id} → 200 with generatedId)', () => {
+    const itFixture = fixture ? it : it.skip;
+
+    itFixture('fixture exists with a 200 status and the V3 single-pass envelope (data.{identifier, generatedId, linkToPassPage})', () => {
+      expect(fixture).not.toBeNull();
+      expect(fixture!.response.status).toBe(200);
+      const body = fixture!.response.body as {
+        success?: unknown;
+        data?: Record<string, unknown>;
+      };
+      expect(body.success).toBe(true);
+      expect(body.data).toHaveProperty('identifier');
+      // CRITICAL: `generatedId` is SINGULAR here (only this
+      // endpoint uses this name — LIST uses `autoGeneratedId`).
+      expect(body.data).toHaveProperty('generatedId');
+      expect(typeof body.data.generatedId).toBe('string');
+      expect((body.data.generatedId as string).length).toBeGreaterThan(0);
+      // linkToPassPage is the universal landing page URL on
+      // single-pass GET (LIST also returns it; V3-create uses
+      // `downloadPage` instead).
+      expect(body.data).toHaveProperty('linkToPassPage');
+      // barcodeValue is ABSENT (not a placeholder — the field is
+      // simply missing from this endpoint's envelope).
+      expect(body.data).not.toHaveProperty('barcodeValue');
+    });
+
+    itFixture('client correctly extracts generatedId as barcodeValue when mock returns the fixture body', async () => {
+      fetchSpy.mockResolvedValueOnce(
+        makeResponse({ status: fixture!.response.status, body: fixture!.response.body }),
+      );
+      const result = await getPassByIdentifier(VALID_ENV, BACKFILL_IDENTIFIER);
+      // The fixture's `data.generatedId` field carries the real
+      // auto-generated barcode for the ILJOI holder. The helper
+      // MUST surface this as `result.barcodeValue` — that's the
+      // whole point of the backfill.
+      expect(result.identifier).toBe(BACKFILL_IDENTIFIER);
+      expect(result.barcodeValue).toBe(BACKFILL_BARCODE);
+    });
+  });
+});
+
+describe('Passcreator client — live V3 LIST-filtered fixture (regression — 2026-10-18 backfill)', () => {
+  const fixture = fixtureOrSkip('v3/v3-list-filtered');
+
+  describe('scenario: v3-list-filtered (GET /api/v3/pass?identifier={id} → 200 with autoGeneratedId)', () => {
+    const itFixture = fixture ? it : it.skip;
+
+    itFixture('fixture exists with a 200 status, paginated data[], and the V3 LIST envelope', () => {
+      expect(fixture).not.toBeNull();
+      expect(fixture!.response.status).toBe(200);
+      const body = fixture!.response.body as {
+        success?: unknown;
+        data?: unknown[];
+      };
+      expect(body.success).toBe(true);
+      expect(body.data).toBeInstanceOf(Array);
+      // The target identifier MUST be in the data[] — that's the
+      // whole point of the LIST filter fallback.
+      const matching = (body.data as Array<Record<string, unknown>>).find(
+        (item) => item.identifier === BACKFILL_IDENTIFIER,
+      );
+      expect(matching).toBeDefined();
+      // The matching item has both `barcodeValue` (placeholder)
+      // AND `autoGeneratedId` (real). The helper MUST extract
+      // from `autoGeneratedId`.
+      expect(matching?.barcodeValue).toBe('no value given');
+      expect(matching?.autoGeneratedId).toBe(BACKFILL_BARCODE);
+    });
+
+    itFixture('listPasses filters down to the matching identifier and surfaces autoGeneratedId as barcodeValue', async () => {
+      fetchSpy.mockResolvedValueOnce(
+        makeResponse({ status: fixture!.response.status, body: fixture!.response.body }),
+      );
+      const result = await listPasses(VALID_ENV, {
+        templateId: '22d0d89d-9a5e-4b7d-9aae-3259312f8849',
+        identifier: BACKFILL_IDENTIFIER,
+      });
+      // The helper filters out the second item (different
+      // identifier) and returns ONLY the matching one.
+      expect(result).toHaveLength(1);
+      expect(result[0]?.identifier).toBe(BACKFILL_IDENTIFIER);
+      expect(result[0]?.barcodeValue).toBe(BACKFILL_BARCODE);
+    });
   });
 });

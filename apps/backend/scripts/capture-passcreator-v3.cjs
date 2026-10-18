@@ -103,8 +103,15 @@ const KNOWN_TEMPLATES = [
  * V3 create request body. Mirrors the shape the SAOME registerService
  * sends today (see `passcreator.ts::issuePass`):
  *   - `data.templateId` — V2 template UUID
- *   - `data.name` — holder display name (non-ASCII to also exercise
- *     the workerd JSON.stringify pitfall path)
+ *   - `data.memberName` — holder display name (non-ASCII to also
+ *     exercise the workerd JSON.stringify pitfall path).
+ *     v3-fix-2026-10-19: SAOME template mapping emits
+ *     `primaryFields[0].key` as `memberName` for membership-style
+ *     templates. Sending `name` here would leave the rendered pass
+ *     blank because Passcreator resolves `{memberName}` against this
+ *     exact body field name. Capture script is fixture
+ *     source-of-truth — keeping it in lock-step with
+ *     `passcreator.ts` is mandatory.
  *   - `data.phone` — E.164 string
  *   - `data.birthday` — ISO date
  *   - `data.email` — used by Apple/Google Wallet to deliver the link
@@ -122,7 +129,7 @@ function makeV3CreateBody(templateId) {
       // Non-ASCII name exercises the workerd JSON.stringify round-trip
       // path so the fixture doubles as a regression test for the
       // Rule 027 pitfall (jsonb-style unicode preservation).
-      name: `Capture 測試 ${ts}`,
+      memberName: `Capture 測試 ${ts}`,
       phone: '+886912345678',
       birthday: '1990-01-01',
       // `.invalid` TLD is RFC 6761 reserved — guaranteed never to
@@ -161,7 +168,7 @@ function buildScenarios(templateId, { readOnly }) {
       body: {
         data: {
           // templateId: intentionally omitted — required by V3
-          name: 'Capture Error Test',
+          memberName: 'Capture Error Test',
           phone: '+886912345678',
           birthday: '1990-01-01',
           email: 'capture-test-error@capture.invalid',

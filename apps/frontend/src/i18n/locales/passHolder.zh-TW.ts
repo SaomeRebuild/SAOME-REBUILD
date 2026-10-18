@@ -55,12 +55,21 @@ export default {
   // download CTA + barcode display + Passwallet reminder + retry
   // banner. Full L2 view lives in
   // `components/business/pass/PassHolderPassDownload/`.
+  //
+  // 2026-10-19 (split-two-platform-buttons) — Renamed
+  // `appleWallet` / `androidWallet` / `directDownload` / `iosHint`
+  // to `forIos` / `forAndroid`. The download view now renders TWO
+  // side-by-side platform-specific buttons (iOS + Android) instead
+  // of one UA-keyed primary + a universal-secondary pair. Each
+  // 按鈕各自帶獨立 URI，universal 「下載 .pkpass」按鈕已移除。
+  // 翻譯書寫紀律：zh-TW 全中文，Apple / Android 當產品 / 平台名直接寫不翻譯，
+  // 符合 Rule 023 § 翻譯書寫紀律的「產品名直接保留」例外。
+  // See runs/improvements/feedback/20261019-pass-holder-split-two-platform-buttons.md.
   download: {
     title: 'Pass 已發行！',
     subtitle: '把 Pass 加入你的手機錢包，隨時出示給店員掃描',
-    appleWallet: '加入 Apple 錢包',
-    directDownload: '下載 .pkpass',
-    iosHint: 'iPhone 用戶可直接加入 Apple 錢包',
+    forIos: '給 iPhone 用戶',
+    forAndroid: 'Android 用戶',
     barcodeLabel: '條碼內容',
     showBarcodeHint: '櫃台掃描時請出示條碼',
     // Shown when the backend returns no `issuance` field (template
@@ -69,13 +78,39 @@ export default {
   },
   passwalletReminder: {
     title: 'Android 用戶',
-    body: 'iPhone 內建 Apple 錢包可直接加入。Android 用戶請先安裝 Passwallet App，再點上方「下載 .pkpass」開啟。',
+    // v3-fix-tips-copy (2026-10-19): refreshed copy explains that
+    // a first install will guide the user to the Play Store to
+    // install Passwallet — this is normal expected behavior, not
+    // a bug. The previous copy ("請先安裝 Passwallet App，再點
+    // 上方「下載 .pkpass」開啟") implied a manual install step
+    // that confused users when the actual flow is auto-guided.
+    body: '如果 Android 裝置沒有 Passwallet，首次安裝卡片時會被引導至 Play 商店安裝 Passwallet，這是正常現象。安裝後再點上方按鈕即可加入錢包。',
     installCta: '下載 Passwallet',
   },
   downloadError: {
     title: '簽發暫時無法完成',
     body: '伺服器忙碌中，請稍後重試。',
     retry: '重試簽發',
+  },
+  // 2026-10-19 — Production recovery UI for the V3 partial-update bug.
+  // When a holder row was registered BEFORE the COALESCE fix landed
+  // (2026-10-19), the barcode backfill's second UPDATE wiped
+  // pass_identifier / download_url / issued_at / iphone_uri /
+  // android_uri back to NULL. Such rows now have `barcode_value`
+  // set but all 3 URIs missing — the frontend distinguishes this
+  // state ("lost data" from the pre-fix era) and renders a banner
+  // asking the user to contact support, since V3 LIST response
+  // doesn't expose identifier / iPhoneUri / androidUri for
+  // re-issuance — only downloadPage is recoverable.
+  //
+  // See:
+  //   - runs/improvements/feedback/20261019-pass-holder-v3-partial-update-bug.md
+  //   - apps/backend/src/modules/pass-templates/db/passHolders.ts::updatePassHolderIssuance
+  //     (COALESCE partial update fix — runtime columns preserved).
+  lostData: {
+    title: '您的 Pass 缺少部分資訊',
+    body: '此筆 Pass 的某些欄位因系統異常而遺失，請聯絡客服協助重新簽發。我們仍可保留您的條碼內容。',
+    contactCta: '聯絡客服',
   },
   errors: {
     templateNotFound: '找不到此模板，可能已下架',

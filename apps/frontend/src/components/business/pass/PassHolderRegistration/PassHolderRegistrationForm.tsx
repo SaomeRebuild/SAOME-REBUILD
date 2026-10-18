@@ -16,6 +16,7 @@
  * (.hooks.ts). Submit calls the consumer-provided `onValidSubmit`.
  */
 
+import { useEffect } from 'react';
 import { Field, SubmitButton } from '@/components/ui';
 import { useTranslation } from 'react-i18next';
 import type {
@@ -45,6 +46,56 @@ const COUNTRY_CODES = [
   { value: '+27', label: '+27' },
 ] as const;
 
+/**
+ * 2026-10-18 — Autofill defense (Rule 018 § 1).
+ *
+ * Chrome (and other browsers / 1Password / LastPass) injects values
+ * into `<input type="email">` / `<input type="tel">` based on form
+ * history — sometimes AFTER React's first commit but BEFORE the user
+ * types. Without defense, the user's actual input gets overwritten:
+ * production saw the phone field pre-filled with `0943222444` and the
+ * email field pre-filled with `josh1989gmail.com` (Chrome's
+ * guess-from-history).
+ *
+ * Defense: defer the clear to multiple frames + a 100ms timeout so we
+ * catch the autofill race regardless of when Chrome commits. Guard
+ * each input with `!form.getValues(name)` so user-typed values are
+ * preserved during the sweep window.
+ *
+ * Mirrors `RegisterForm.tsx` § "Clear browser-autofilled values on
+ * Step 2 mount" (the canonical Rule 018 § 1 reference implementation).
+ */
+function useAutofillSweep(form: UsePassHolderFormResult) {
+  useEffect(() => {
+    const clearAutofill = () => {
+      // The 4 form field names — must match the zod schema in
+      // PassHolderRegistration.hooks.ts. `phoneCountryCode` is the
+      // <select>; we skip it because Chrome never autofills selects.
+      for (const name of ['name', 'phoneNumber', 'birthday', 'email'] as const) {
+        const dom = document.querySelector<HTMLInputElement>(
+          `input[name="${name}"]`,
+        );
+        if (dom && dom.value !== '' && !form.getValues(name)) {
+          dom.value = '';
+          form.setValue(name, '', { shouldDirty: false });
+        }
+      }
+    };
+    // Chrome autofill is async; defer to multiple frames + a 100ms
+    // fallback (mirrors RegisterForm.tsx lines 145-149).
+    const raf1 = requestAnimationFrame(clearAutofill);
+    const raf2 = requestAnimationFrame(() =>
+      requestAnimationFrame(clearAutofill),
+    );
+    const timeoutId = window.setTimeout(clearAutofill, 100);
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+      window.clearTimeout(timeoutId);
+    };
+  }, [form]);
+}
+
 export function PassHolderRegistrationForm({
   form,
   isSubmitting,
@@ -57,6 +108,12 @@ export function PassHolderRegistrationForm({
     errors,
     handleEmailBlur,
   } = form;
+
+  // 2026-10-18 — Rule 018 § 1 autofill sweep. Mount-only effect;
+  // sweeps 4 fields on every mount (component mounts once per
+  // submitted→edit retry cycle, so the sweep runs once per form
+  // session).
+  useAutofillSweep(form);
 
   return (
     <form
@@ -83,6 +140,9 @@ export function PassHolderRegistrationForm({
           }}
           {...register('name')}
           data-testid="pass-holder-name"
+          // 2026-10-18 — Rule 018 § 5: 1Password / LastPass ignore
+          // hints (defense-in-depth alongside the raf+timeout sweep).
+          data-1p-ignore
         />
       </Field>
 
@@ -125,7 +185,13 @@ export function PassHolderRegistrationForm({
             type="tel"
             inputMode="numeric"
             pattern="[0-9]*"
-            autoComplete="tel-national"
+            // 2026-10-18 — `tel-national` is a triple-hint that
+            // Chrome aggressively autofills from the user's phone
+            // history. The form is for a fresh registration; we don't
+            // want Chrome's guess. Switch to `off` (the hint, not
+            // the override — see Rule 018 § 1 footnote about Chrome
+            // treating `off` as "hints").
+            autoComplete="off"
             placeholder={t('fields.phone.numberPlaceholder')}
             aria-label={t('fields.phone.numberLabel')}
             className="flex-1 rounded border px-3 py-2 text-base"
@@ -137,6 +203,10 @@ export function PassHolderRegistrationForm({
             }}
             {...register('phoneNumber')}
             data-testid="pass-holder-phone"
+            // 2026-10-18 — 1Password + LastPass ignore hints (defense
+            // in depth alongside the raf+timeout sweep).
+            data-1p-ignore
+            data-lpignore="true"
           />
         </div>
         {errors.phoneNumber?.message ? (
@@ -169,6 +239,7 @@ export function PassHolderRegistrationForm({
           }}
           {...register('birthday')}
           data-testid="pass-holder-birthday"
+          data-1p-ignore
         />
       </Field>
 
@@ -193,6 +264,8 @@ export function PassHolderRegistrationForm({
             onBlur: handleEmailBlur,
           })}
           data-testid="pass-holder-email"
+          data-1p-ignore
+          data-lpignore="true"
         />
       </Field>
 

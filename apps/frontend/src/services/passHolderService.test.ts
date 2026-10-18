@@ -426,7 +426,17 @@ describe('passHolderService.register (HTTP mode)', () => {
       '/api/pass-templates/716c4244-6c63-496d-a967-6c87cdac605d/register',
       payload,
     );
-    expect(result).toEqual({ ok: true, passHolderId: 'holder-new-uuid' });
+    // 2026-10-19 — V3 issuance: the response now carries `created`
+    // + `issuance` (undefined when template has no
+    // passcreator_template_id, or when the create flow succeeded
+    // but V3 was not invoked). `created: true` here because the
+    // mock above specifies it.
+    expect(result).toEqual({
+      ok: true,
+      passHolderId: 'holder-new-uuid',
+      created: true,
+      issuance: undefined,
+    });
   });
 
   it('returns passHolderId even when created=false (idempotent re-register)', async () => {

@@ -1,0 +1,507 @@
+{
+  "label": "01-rest-path-no-async",
+  "url": "https://app.passcreator.com/api/v3/pass/5615a280-fac3-4d64-a4ea-34d8b5d7b0ee",
+  "method": "GET",
+  "capturedAt": "2026-10-18T08:10:34.118Z",
+  "response": {
+    "status": 200,
+    "ok": true,
+    "contentType": "application/json; charset=utf-8",
+    "body": {
+      "statusCode": 200,
+      "success": true,
+      "description": "Success",
+      "errors": [],
+      "count": 1,
+      "responseMetaData": null,
+      "data": {
+        "identifier": "5615a280-fac3-4d64-a4ea-34d8b5d7b0ee",
+        "templateId": "22d0d89d-9a5e-4b7d-9aae-3259312f8849",
+        "generatedId": "zbood1tvxrvl31kv9e6ad3ef2f71561",
+        "voided": false,
+        "notYetValid": false,
+        "redeemed": false,
+        "createdOn": "2026-10-18 05:57:03",
+        "modifiedOn": "2026-10-18 05:57:03",
+        "userProvidedId": "",
+        "linkToPassPage": "https://app.passcreator.com/en/p/y6zcwu9qty1ml6ad3ef2f714f7",
+        "qrCodeImage": "https://app.passcreator.com/qr/no%20value%20given",
+        "storedValue": null,
+        "numberOfActive": 0,
+        "numberOfInactive": 0,
+        "numberOfPrinted": 0,
+        "lastUsage": null,
+        "eligibleValidationPlaces": [],
+        "placesUsedAt": [],
+        "downloadPin": null,
+        "bundleId": null,
+        "valueAddedOpportunities": [],
+        "name": "not good",
+        "description": "uihiuh",
+        "organizationName": "fdsgsdg",
+        "type": "storeCard",
+        "preferredStyleScheme": null,
+        "walletApps": {
+          "apple": {
+            "appleWallet": {
+              "active": true
+            }
+          },
+          "android": {
+            "primary": {
+              "app": "passwallet",
+              "data": {
+                "passType": "storeCard"
+              }
+            },
+            "secondary": {
+              "app": null,
+              "data": {
+                "passType": "storeCard"
+              }
+            },
+            "samsung": {
+              "active": null,
+              "templateCreated": false,
+              "pendingActivation": false,
+              "activationFailed": false,
+              "state": null,
+              "contentDrifted": false,
+              "layoutVersion": 3
+            }
+          }
+        },
+        "googlePayActive": false,
+        "archived": false,
+        "bundlingOrder": 0,
+        "huaweiWalletActive": false,
+        "passTypeId": "pass.saome.org.passcreator",
+        "passTypeIdExpiration": "2027-01-10 12:01",
+        "expiration": {
+          "expirationDate": null,
+          "expirationDateDifferentForEachPass": null,
+          "limitExpirationDateOfPassWithTemplate": false,
+          "fallbackToTemplateExpirationDateIfEmpty": false,
+          "validityInDays": null
+        },
+        "relevantDate": null,
+        "relevantDates": [],
+        "relevantDateDifferentForEachPass": false,
+        "excludeRelevantDateIfLocationsSetOnIos": false,
+        "validAsOfDateDifferentForEachPass": false,
+        "logoText": "sdf",
+        "fields": {
+          "headerFields": [
+            {
+              "index": 0,
+              "type": "number",
+              "label": "Balance",
+              "value": "",
+              "androidValue": "",
+              "androidLabel": "",
+              "changeMessage": "",
+              "condition": "",
+              "useAutoId": false,
+              "ignoresTimezone": false,
+              "isRelative": false,
+              "dateStyle": "PKDateStyleShort",
+              "timeStyle": "PKDateStyleShort",
+              "numberStyle": "PKNumberStyleDecimal",
+              "currencyCode": "EUR",
+              "alignment": "PKTextAlignmentNatural",
+              "voidedLabel": "",
+              "voidedValue": ""
+            }
+          ],
+          "primaryFields": [],
+          "secondaryFields": [
+            {
+              "index": 0,
+              "type": "date",
+              "label": "Birthday",
+              "value": "1966-10-18",
+              "androidValue": "",
+              "androidLabel": "",
+              "changeMessage": "",
+              "condition": "",
+              "useAutoId": false,
+              "ignoresTimezone": false,
+              "isRelative": false,
+              "dateStyle": "PKDateStyleShort",
+              "timeStyle": "PKDateStyleShort",
+              "numberStyle": "PKNumberStyleDecimal",
+              "currencyCode": "EUR",
+              "alignment": "PKTextAlignmentNatural",
+              "voidedLabel": "",
+              "voidedValue": ""
+            },
+            {
+              "index": 1,
+              "type": "number",
+              "label": "Available Rewards",
+              "value": "",
+              "androidValue": "",
+              "androidLabel": "",
+              "changeMessage": "",
+              "condition": "",
+              "useAutoId": false,
+              "ignoresTimezone": false,
+              "isRelative": false,
+              "dateStyle": "PKDateStyleShort",
+              "timeStyle": "PKDateStyleShort",
+              "numberStyle": "PKNumberStyleDecimal",
+              "currencyCode": "EUR",
+              "alignment": "PKTextAlignmentNatural",
+              "voidedLabel": "",
+              "voidedValue": ""
+            }
+          ],
+          "auxiliaryFields": [],
+          "backFields": [
+            {
+              "index": 0,
+              "type": "text",
+              "label": "",
+              "value": "hbibk",
+              "androidValue": "",
+              "androidLabel": "",
+              "changeMessage": "",
+              "condition": "",
+              "useAutoId": false,
+              "ignoresTimezone": false,
+              "isRelative": false,
+              "dateStyle": "",
+              "timeStyle": "",
+              "numberStyle": "",
+              "currencyCode": "",
+              "alignment": "",
+              "voidedLabel": "",
+              "voidedValue": ""
+            }
+          ],
+          "footerFields": []
+        },
+        "nfcEnabled": false,
+        "nfcNoBarcode": false,
+        "nfcRequiresAuthentication": false,
+        "passDownloadDeactivated": false,
+        "barcode": {
+          "format": "PKBarcodeFormatPDF417",
+          "value": "no value given",
+          "valueDifferentForEachPass": null,
+          "useAutoIdForValue": true,
+          "prefix": null,
+          "alternativeText": null,
+          "alternativeTextDifferentForEachPass": null,
+          "useAutoIdForAlternativeText": null,
+          "securityAnimationEnabled": false,
+          "conditionForVisibilityBarcode": null,
+          "messageEncoding": null
+        },
+        "links": [
+          {
+            "label": "",
+            "value": "tel:0943222444"
+          },
+          {
+            "label": "",
+            "value": "mailto:josh1989@gmail.com"
+          }
+        ],
+        "showValueAddedOpportunitiesOnAppleWalletBack": false,
+        "googleWallet": {
+          "cardTitle": "",
+          "header": "",
+          "subHeader": "",
+          "frontLink": null,
+          "frontLinkLabel": null,
+          "linksOnTop": false
+        },
+        "images": {
+          "logo": "https://app.passcreator.com/assets/e457f5d2bba8a9545fdd43e526138cd0b9e7f60b/logo.png",
+          "logoDifferentForEachPass": false,
+          "logoHidden": false,
+          "background": "https://app.passcreator.com/assets/fe20890a595691923c7a13612fe96aaeed9f63f6/strip.png",
+          "backgroundHidden": false,
+          "backgroundDifferentForEachPass": true,
+          "thumbnail": null,
+          "thumbnailHidden": false,
+          "thumbnailDifferentForEachPass": false,
+          "icon": "https://app.passcreator.com/assets/945b9ee1eac73dccc8ca5a15cfb58e5c2378fa7a/icon.png",
+          "artwork": null,
+          "venueMap": null,
+          "primaryLogo": null,
+          "secondaryLogo": null,
+          "footer": null,
+          "googlePayLogo": null,
+          "backgroundAndroid": null
+        },
+        "colors": {
+          "labelColor": "#000000",
+          "labelColorDifferentForEachPass": false,
+          "foregroundColor": "#06B6D4",
+          "foregroundColorDifferentForEachPass": false,
+          "backgroundColor": "#F97316",
+          "backgroundColorDifferentForEachPass": false,
+          "voidedBackgroundColor": "#FFFFFF",
+          "footerBackgroundColor": null,
+          "useAutomaticColors": false
+        },
+        "additionalProperties": [
+          {
+            "id": "6ad03aea8c23a9.32198773",
+            "name": "balance",
+            "placeholder": "",
+            "type": "number",
+            "required": false,
+            "hidden": false,
+            "unique": false,
+            "otp": false,
+            "options": [],
+            "sortOptionsAlphabetically": false,
+            "pinned": false,
+            "system": false,
+            "value": ""
+          },
+          {
+            "id": "6ad03aea8c2402.26872683",
+            "name": "birthday",
+            "placeholder": "1966-10-18",
+            "type": "text",
+            "required": false,
+            "hidden": false,
+            "unique": false,
+            "otp": false,
+            "options": [],
+            "sortOptionsAlphabetically": false,
+            "pinned": false,
+            "system": false,
+            "value": "1966-10-18"
+          },
+          {
+            "id": "6ad03aea8c2435.45446335",
+            "name": "availableRewards",
+            "placeholder": "",
+            "type": "number",
+            "required": false,
+            "hidden": false,
+            "unique": false,
+            "otp": false,
+            "options": [],
+            "sortOptionsAlphabetically": false,
+            "pinned": false,
+            "system": false,
+            "value": ""
+          },
+          {
+            "id": "6ad03aea8c2452.15992501",
+            "name": "0943222444",
+            "placeholder": "",
+            "type": "url",
+            "required": false,
+            "hidden": false,
+            "unique": false,
+            "otp": false,
+            "options": [],
+            "sortOptionsAlphabetically": false,
+            "pinned": false,
+            "system": false,
+            "value": ""
+          },
+          {
+            "id": "6ad03aea8c2474.41230849",
+            "name": "josh1989gmail.com",
+            "placeholder": "",
+            "type": "url",
+            "required": false,
+            "hidden": false,
+            "unique": false,
+            "otp": false,
+            "options": [],
+            "sortOptionsAlphabetically": false,
+            "pinned": false,
+            "system": false,
+            "value": ""
+          },
+          {
+            "id": "deviceOperatingSystem",
+            "name": "Operating System",
+            "placeholder": "",
+            "type": "text",
+            "required": false,
+            "hidden": true,
+            "unique": false,
+            "otp": false,
+            "options": [],
+            "sortOptionsAlphabetically": false,
+            "pinned": false,
+            "system": true,
+            "value": ""
+          },
+          {
+            "id": "deviceOperatingSystemVersion",
+            "name": "OS Version",
+            "placeholder": "",
+            "type": "text",
+            "required": false,
+            "hidden": true,
+            "unique": false,
+            "otp": false,
+            "options": [],
+            "sortOptionsAlphabetically": false,
+            "pinned": false,
+            "system": true,
+            "value": ""
+          },
+          {
+            "id": "deviceVendor",
+            "name": "Vendor",
+            "placeholder": "",
+            "type": "text",
+            "required": false,
+            "hidden": true,
+            "unique": false,
+            "otp": false,
+            "options": [],
+            "sortOptionsAlphabetically": false,
+            "pinned": false,
+            "system": true,
+            "value": ""
+          },
+          {
+            "id": "deviceModel",
+            "name": "Device Model",
+            "placeholder": "",
+            "type": "text",
+            "required": false,
+            "hidden": true,
+            "unique": false,
+            "otp": false,
+            "options": [],
+            "sortOptionsAlphabetically": false,
+            "pinned": false,
+            "system": true,
+            "value": ""
+          },
+          {
+            "id": "deviceBrowser",
+            "name": "Browser",
+            "placeholder": "",
+            "type": "text",
+            "required": false,
+            "hidden": true,
+            "unique": false,
+            "otp": false,
+            "options": [],
+            "sortOptionsAlphabetically": false,
+            "pinned": false,
+            "system": true,
+            "value": ""
+          }
+        ],
+        "trackingParameters": [],
+        "maximumNumberOfPasses": 0,
+        "linkedApps": {
+          "iOS": {
+            "associatedStoreIdentifiers": "",
+            "appLaunchUrl": ""
+          },
+          "android": {
+            "associatedStoreIdentifier": "",
+            "name": ""
+          }
+        },
+        "customDataOverview": "",
+        "hidePrintVersion": false,
+        "hideSendEmailButton": false,
+        "limitToOneActivePerPass": false,
+        "deviceTrackingEnabled": true,
+        "sharingProhibited": false,
+        "suppressHeaderDarkening": false,
+        "useAutomaticColors": false,
+        "includeSocialOnDownloadPage": false,
+        "redirectToPassOnAndroid": false,
+        "excludeFromDataRetention": false,
+        "genericProperties": [],
+        "locationsDisabled": false,
+        "locations": [
+          {
+            "latitude": 25.17499413989801,
+            "longitude": 121.44767705633879,
+            "relevantText": "njiojpo",
+            "name": "whitehouse"
+          }
+        ],
+        "locationsMaxDistance": 120,
+        "beaconsDisabled": false,
+        "beacons": [],
+        "functionality": null,
+        "validValidationPlaces": [],
+        "eligibleValidationPlacesDynamic": false,
+        "addAsEligibleValidationPlace": [],
+        "editPassDataPageEnabled": false,
+        "initialMessage": "nkjnjk",
+        "askForUserProvidedIdInBacked": false,
+        "useCustomRangeOfNumbers": false,
+        "enforceUniqueUserProvidedId": false,
+        "userProvidedIdPattern": null,
+        "sendoutOptions": {
+          "adHoc": {
+            "emailTemplate": null,
+            "subject": ""
+          },
+          "downloadPages": {
+            "emailTemplate": null,
+            "subject": ""
+          },
+          "passCreationNotification": {
+            "emailTemplate": null,
+            "subject": null,
+            "recipient": null
+          },
+          "adHocSmsText": "",
+          "deactivateDeduplicationSendout": false
+        },
+        "semantics": [],
+        "featuredActions": [],
+        "additionalInfoFields": null,
+        "deviceBindingEnabled": false,
+        "deviceBindingLearnMoreURL": null,
+        "bagPolicyURL": null,
+        "directionsInformationURL": null,
+        "orderFoodURL": null,
+        "parkingInformationURL": null,
+        "contactVenuePhoneNumber": null,
+        "contactVenueWebsite": null,
+        "contactVenueEmail": null,
+        "accessibilityURL": null,
+        "addOnURL": null,
+        "purchaseParkingURL": null,
+        "merchandiseURL": null,
+        "transitInformationURL": null,
+        "changeSeatURL": null,
+        "entertainmentURL": null,
+        "purchaseAdditionalBaggageURL": null,
+        "purchaseLoungeAccessURL": null,
+        "purchaseWifiURL": null,
+        "upgradeURL": null,
+        "managementURL": null,
+        "registerServiceAnimalURL": null,
+        "reportLostBagURL": null,
+        "requestWheelchairURL": null,
+        "transitProviderWebsiteURL": null,
+        "sellURL": null,
+        "transferURL": null,
+        "hasDraft": false,
+        "optInEnabled": false,
+        "localization": {
+          "defaultLanguage": null,
+          "localizedLanguages": [],
+          "localizedContent": []
+        },
+        "validAsOf": null
+      }
+    }
+  },
+  "classification": "success-object (hasBarcode=false, hasIdentifier=true)"
+}

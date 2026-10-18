@@ -53,25 +53,56 @@ export default {
   // 2026-10-19 — Passcreator V3 per-pass runtime integration.
   // Mirror of zh-TW file; full English only, no Chinese (Rule 023 §
   // translation discipline).
+  //
+  // 2026-10-19 (split-two-platform-buttons) — Renamed
+  // `appleWallet` / `androidWallet` / `directDownload` / `iosHint`
+  // to `forIos` / `forAndroid`. The download view now renders TWO
+  // side-by-side platform-specific buttons (iOS + Android) instead
+  // of one UA-keyed primary + a universal-secondary pair. The
+  // universal "Download .pkpass" button is gone — users pick the
+  // platform they want directly. See
+  // runs/improvements/feedback/20261019-pass-holder-split-two-platform-buttons.md.
   download: {
     title: 'Your Pass is ready!',
     subtitle: 'Add the Pass to your mobile wallet and show it at checkout.',
-    appleWallet: 'Add to Apple Wallet',
-    directDownload: 'Download .pkpass',
-    iosHint: 'iPhone users can add directly to Apple Wallet',
+    forIos: 'For iOS',
+    forAndroid: 'For Android',
     barcodeLabel: 'Barcode content',
     showBarcodeHint: 'Show this barcode to the cashier at checkout',
     notReadyYet: 'Pass has not been issued yet. Please try again shortly.',
   },
   passwalletReminder: {
     title: 'Android users',
-    body: 'iPhone has Apple Wallet built-in. Android users should install Passwallet first, then tap "Download .pkpass" above to open it.',
+    // v3-fix-tips-copy (2026-10-19): refreshed copy (mirror of zh-TW)
+    // explains that the first install guides the user to the Play
+    // Store to install Passwallet — this is normal, not a bug.
+    body: 'If your Android device does not have Passwallet installed, the first install will guide you to the Play Store to get Passwallet — this is normal. After installing, tap the button above again to add to your wallet.',
     installCta: 'Get Passwallet',
   },
   downloadError: {
     title: 'Pass issuance is temporarily unavailable',
     body: 'The server is busy. Please try again shortly.',
     retry: 'Retry issuance',
+  },
+  // 2026-10-19 — Production recovery UI for the V3 partial-update
+  // bug. When a holder row was registered BEFORE the COALESCE fix
+  // landed (2026-10-19), the barcode backfill's second UPDATE
+  // wiped pass_identifier / download_url / issued_at / iphone_uri /
+  // android_uri back to NULL. Such rows now have `barcode_value`
+  // set but all 3 URIs missing — the frontend distinguishes this
+  // state ("lost data" from the pre-fix era) and renders a banner
+  // asking the user to contact support, since V3 LIST response
+  // doesn't expose identifier / iPhoneUri / androidUri for
+  // re-issuance — only downloadPage is recoverable.
+  //
+  // See:
+  //   - runs/improvements/feedback/20261019-pass-holder-v3-partial-update-bug.md
+  //   - apps/backend/src/modules/pass-templates/db/passHolders.ts::updatePassHolderIssuance
+  //     (COALESCE partial update fix — runtime columns preserved).
+  lostData: {
+    title: 'Your Pass is missing some details',
+    body: 'Some fields of this pass were lost due to a system anomaly. Please contact support to re-issue. Your barcode value has been preserved.',
+    contactCta: 'Contact support',
   },
   errors: {
     templateNotFound: 'This template cannot be found or has been removed.',

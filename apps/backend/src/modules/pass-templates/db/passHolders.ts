@@ -327,6 +327,24 @@ export async function upsertPassHolder(
  * (migration 025). See runs/decisions/2026-10-19-pass-holder-v3-issuance.md
  * for the call-site rationale.
  *
+ * 2026-10-19 — **partial update fix** (production bug: row
+ * `83d3139a-c3bb-4806-8900-5e9b759d0122`). The previous
+ * implementation unconditionally `SET xxx = ${input.xxx ?? null}` for
+ * ALL 7 runtime columns, which silently nullified the 6 columns
+ * not present in the caller's payload. `registerService` runs TWO
+ * calls to this function on the V3 barcode-backfill path (first call
+ * with all 7 fields, second call with `barcodeValue` only) — the
+ * second call wiped `pass_identifier` / `download_url` / `issued_at`
+ * / `iphone_uri` / `android_uri` / `issuance_error` back to NULL.
+ * The fix wraps the 6 runtime columns in `COALESCE(${newValue},
+ * <col>)` so the column keeps its previous value when the caller
+ * omits the field. `issuance_error` is INTENTIONALLY NOT wrapped in
+ * COALESCE — the success path wants to CLEAR stale errors
+ * (issuing_error: undefined → NULL), the failure path wants to
+ * OVERWRITE with a fresh i18n key. See
+ * `runs/improvements/feedback/20261019-pass-holder-v3-partial-update-bug.md`
+ * for the full production trace + 4 conformance tests.
+ *
  * @returns - the updated row (caller can confirm the write landed).
  */
 export async function updatePassHolderIssuance(
@@ -334,7 +352,9 @@ export async function updatePassHolderIssuance(
   input: PassHolderIssuanceUpdate,
 ): Promise<PassHolderRow> {
   // Coerce issuedAt to an ISO string for portable TIMESTAMPTZ binding.
-  // `null` (or undefined → coerced to null) clears the column.
+  // `null` (or undefined → coerced to null) preserves the existing
+  // value via the COALESCE wrapper below (Rule 032 partial-update
+  // pattern).
   const issuedAtIso =
     input.issuedAt === undefined
       ? null
@@ -344,15 +364,21 @@ export async function updatePassHolderIssuance(
           ? input.issuedAt
           : input.issuedAt.toISOString();
 
+  // PARTIAL UPDATE — 6 runtime columns use COALESCE so callers can
+  // ship a partial payload (e.g. barcode backfill) without wiping
+  // sibling columns. `issuance_error` is intentionally NOT wrapped
+  // in COALESCE: success path wants to clear stale errors
+  // (undefined → NULL → clear), failure path wants to overwrite
+  // (string → overwrite).
   const rows = await sql<PassHolderRow[]>`
     UPDATE public.pass_holders
-       SET pass_identifier = ${input.passIdentifier ?? null},
-           download_url     = ${input.downloadUrl ?? null},
-           barcode_value    = ${input.barcodeValue ?? null},
-           issued_at        = ${issuedAtIso}::timestamptz,
+       SET pass_identifier = COALESCE(${input.passIdentifier ?? null}, pass_identifier),
+           download_url     = COALESCE(${input.downloadUrl ?? null}, download_url),
+           barcode_value    = COALESCE(${input.barcodeValue ?? null}, barcode_value),
+           issued_at        = COALESCE(${issuedAtIso}::timestamptz, issued_at),
            issuance_error   = ${input.issuanceError ?? null},
-           iphone_uri       = ${input.iPhoneUri ?? null},
-           android_uri      = ${input.androidUri ?? null}
+           iphone_uri       = COALESCE(${input.iPhoneUri ?? null}, iphone_uri),
+           android_uri      = COALESCE(${input.androidUri ?? null}, android_uri)
      WHERE id = ${input.id}
      RETURNING id, template_id, name, phone_country_code, phone_number,
                birthday::text AS birthday, email,

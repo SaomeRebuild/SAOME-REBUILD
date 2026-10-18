@@ -748,6 +748,262 @@ describe('registerService', () => {
     expect(result.issuance?.iPhoneUri).toBeDefined();
     expect(result.issuance?.androidUri).toBeDefined();
   });
+
+  // =======================================================================
+  // 2026-10-18 — P0 #4 barcode backfill via single-pass GET + LIST.
+  //
+  // Production bug (2026-10-18): for `useAutoIdForValue=true`
+  // templates, Passcreator V3 CREATE returns `barcodeValue: "no
+  // value specified"` (a literal placeholder). SAOME's parser
+  // normalizes this to `null`, so the DB stores
+  // `barcode_value = NULL` even though the real auto-generated
+  // barcode is rendered on the wallet pass (visible in
+  // Passcreator's dashboard as `Barcode: zbood1tvxrvl31kv9e6ad3ef2f71561`
+  // for the ILJOI holder).
+  //
+  // Fix: when the V3 create response carries `barcodeValue: null`
+  // (after parser normalize), the service calls `getPassByIdentifier`
+  // (PRIMARY) to fetch the real value from `data.generatedId`. If
+  // that fails, it falls back to `listPasses` with the identifier
+  // filter (FALLBACK). If both fail, the holder row keeps
+  // `barcode_value = NULL` and registration still returns 200 —
+  // barcode is best-effort.
+  //
+  // The 3 conformance tests below pin this behavior at the
+  // registerService layer so a future refactor that drops the
+  // backfill call (and regresses production) fails loudly.
+  //
+  // Reference: runs/improvements/feedback/20261018-passcreator-v3-barcode-backfill.md
+  // =======================================================================
+  it('V3 barcode backfill: auto-gen template → getPassByIdentifier returns real barcode (regression — 2026-10-18)', async () => {
+    // Simulate the production scenario:
+    //   - V3 CREATE returns `barcodeValue: null` (placeholder
+    //     normalized) for a useAutoIdForValue=true template
+    //   - getPassByIdentifier returns the real barcode from
+    //     `data.generatedId`
+    //   - The service MUST persist the real barcode via a second
+    //     `updatePassHolderIssuance` call (NOT leave the DB at null).
+    stubTemplateExists({ ...TEMPLATE_ROW, passcreator_template_id: 'pc-tpl-1' });
+    stubUpsert({ ...EXISTING_HOLDER, id: 'holder-backfill', pass_identifier: null }, true);
+
+    const REAL_BARCODE = 'zbood1tvxrvl31kv9e6ad3ef2f71561';
+    vi.spyOn(await import('@/shared/lib/passcreator'), 'issuePass').mockResolvedValue({
+      identifier: '5615a280-fac3-4d64-a4ea-34d8b5d7b0ee',
+      downloadPage: 'https://app.passcreator.com/p/5615a280',
+      iPhoneUri: 'https://app.passcreator.com/5615a280.pkpass',
+      androidUri: 'https://pay.google.com/save/5615a280',
+      barcodeValue: null,   // ← placeholder normalized to null
+    });
+    const getSpy = vi
+      .spyOn(await import('@/shared/lib/passcreator'), 'getPassByIdentifier')
+      .mockResolvedValue({
+        identifier: '5615a280-fac3-4d64-a4ea-34d8b5d7b0ee',
+        downloadPage: 'https://app.passcreator.com/p/5615a280',
+        iPhoneUri: 'https://app.passcreator.com/5615a280.pkpass',
+        androidUri: 'https://pay.google.com/save/5615a280',
+        // Real barcode from data.generatedId (single-pass GET shape)
+        barcodeValue: REAL_BARCODE,
+      });
+    const listSpy = vi
+      .spyOn(await import('@/shared/lib/passcreator'), 'listPasses')
+      .mockResolvedValue([]);
+    const updateSpy = vi
+      .spyOn(passHoldersDb, 'updatePassHolderIssuance')
+      .mockResolvedValue(EXISTING_HOLDER);
+
+    const result = await registerService(
+      makeMockSql(),
+      MOCK_ENV as never,
+      TEMPLATE_ID,
+      validPayload as never,
+    );
+
+    // PRIMARY path called exactly once (no LIST fallback when
+    // single-pass GET succeeds).
+    expect(getSpy).toHaveBeenCalledTimes(1);
+    expect(getSpy).toHaveBeenCalledWith(
+      MOCK_ENV,
+      '5615a280-fac3-4d64-a4ea-34d8b5d7b0ee',
+    );
+    expect(listSpy).not.toHaveBeenCalled();
+
+    // The service MUST persist the backfilled barcode via a SECOND
+    // updatePassHolderIssuance call — the first call carries the
+    // CREATE-response fields (barcodeValue: null), the second
+    // carries ONLY the backfilled barcode.
+    expect(updateSpy).toHaveBeenCalledTimes(2);
+    // First update: CREATE-response fields (barcodeValue: null)
+    expect(updateSpy).toHaveBeenNthCalledWith(
+      1,
+      makeMockSql(),
+      expect.objectContaining({
+        id: 'holder-backfill',
+        passIdentifier: '5615a280-fac3-4d64-a4ea-34d8b5d7b0ee',
+        barcodeValue: null,
+      }),
+    );
+    // Second update: backfilled barcode
+    expect(updateSpy).toHaveBeenNthCalledWith(
+      2,
+      makeMockSql(),
+      expect.objectContaining({
+        id: 'holder-backfill',
+        barcodeValue: REAL_BARCODE,
+      }),
+    );
+
+    // Response DTO reflects the backfilled barcode (NOT null).
+    // The frontend renders this so the user sees the real barcode
+    // value on the wallet pass confirmation screen.
+    expect(result.issuance?.barcodeValue).toBe(REAL_BARCODE);
+  });
+
+  it('V3 barcode backfill: single-pass GET fails → listPasses fallback still persists real barcode', async () => {
+    // PRIMARY path throws (network / upstream_rejected), FALLBACK
+    // path returns the matched identifier with the real auto-gen
+    // barcode. The service MUST still persist the backfilled
+    // barcode via listPasses' autoGeneratedId field.
+    stubTemplateExists({ ...TEMPLATE_ROW, passcreator_template_id: 'pc-tpl-1' });
+    stubUpsert({ ...EXISTING_HOLDER, id: 'holder-fallback', pass_identifier: null }, true);
+
+    const REAL_BARCODE = 'fonfkq7icjwqpd0vjp6a1b46573a9bb';
+    vi.spyOn(await import('@/shared/lib/passcreator'), 'issuePass').mockResolvedValue({
+      identifier: '1468809c-14a8-4160-9d93-757ea6d80b0e',
+      downloadPage: 'https://app.passcreator.com/p/1468809c',
+      iPhoneUri: 'https://app.passcreator.com/1468809c.pkpass',
+      androidUri: 'https://pay.google.com/save/1468809c',
+      barcodeValue: null,   // ← placeholder normalized to null
+    });
+    // PRIMARY throws (e.g., Passcreator changes the single-pass
+    // GET endpoint shape, or transient network error).
+    const getSpy = vi
+      .spyOn(await import('@/shared/lib/passcreator'), 'getPassByIdentifier')
+      .mockRejectedValue(new BadGatewayError({
+        upstream: 'passcreator',
+        kind: 'network',
+        upstreamBody: 'fetch failed: ECONNREFUSED',
+      }));
+    // FALLBACK returns the matched item with `autoGeneratedId`
+    // (LIST shape — plural field name).
+    const listSpy = vi
+      .spyOn(await import('@/shared/lib/passcreator'), 'listPasses')
+      .mockResolvedValue([{
+        identifier: '1468809c-14a8-4160-9d93-757ea6d80b0e',
+        downloadPage: 'https://app.passcreator.com/p/1468809c',
+        iPhoneUri: 'https://app.passcreator.com/1468809c.pkpass',
+        androidUri: 'https://pay.google.com/save/1468809c',
+        barcodeValue: REAL_BARCODE,   // from autoGeneratedId
+      }]);
+    const updateSpy = vi
+      .spyOn(passHoldersDb, 'updatePassHolderIssuance')
+      .mockResolvedValue(EXISTING_HOLDER);
+
+    const result = await registerService(
+      makeMockSql(),
+      MOCK_ENV as never,
+      TEMPLATE_ID,
+      validPayload as never,
+    );
+
+    // PRIMARY attempted (threw), FALLBACK attempted (succeeded).
+    expect(getSpy).toHaveBeenCalledTimes(1);
+    expect(listSpy).toHaveBeenCalledTimes(1);
+    expect(listSpy).toHaveBeenCalledWith(
+      MOCK_ENV,
+      expect.objectContaining({
+        templateId: 'pc-tpl-1',
+        identifier: '1468809c-14a8-4160-9d93-757ea6d80b0e',
+      }),
+    );
+
+    // Second update carries the backfilled barcode from LIST.
+    expect(updateSpy).toHaveBeenCalledTimes(2);
+    expect(updateSpy).toHaveBeenNthCalledWith(
+      2,
+      makeMockSql(),
+      expect.objectContaining({
+        id: 'holder-fallback',
+        barcodeValue: REAL_BARCODE,
+      }),
+    );
+
+    expect(result.issuance?.barcodeValue).toBe(REAL_BARCODE);
+  });
+
+  it('V3 barcode backfill: BOTH paths fail → barcode_value stays null, registration still 200 (best-effort)', async () => {
+    // Both backfill paths fail (network outage on both endpoints,
+    // OR Passcreator returns empty data, etc.). The service MUST
+    // still return 200 with barcodeValue=null — barcode is
+    // best-effort, and the holder row's registration is the
+    // primary success signal.
+    stubTemplateExists({ ...TEMPLATE_ROW, passcreator_template_id: 'pc-tpl-1' });
+    stubUpsert({ ...EXISTING_HOLDER, id: 'holder-nobackfill', pass_identifier: null }, true);
+
+    vi.spyOn(await import('@/shared/lib/passcreator'), 'issuePass').mockResolvedValue({
+      identifier: 'failing-backfill-uuid',
+      downloadPage: 'https://app.passcreator.com/p/failing',
+      iPhoneUri: 'https://app.passcreator.com/failing.pkpass',
+      androidUri: 'https://pay.google.com/save/failing',
+      barcodeValue: null,
+    });
+    // Both backfill paths throw (simulating a Passcreator outage).
+    const getSpy = vi
+      .spyOn(await import('@/shared/lib/passcreator'), 'getPassByIdentifier')
+      .mockRejectedValue(new BadGatewayError({
+        upstream: 'passcreator',
+        kind: 'network',
+        upstreamBody: 'fetch failed: ETIMEDOUT',
+      }));
+    const listSpy = vi
+      .spyOn(await import('@/shared/lib/passcreator'), 'listPasses')
+      .mockRejectedValue(new BadGatewayError({
+        upstream: 'passcreator',
+        kind: 'network',
+        upstreamBody: 'fetch failed: ETIMEDOUT',
+      }));
+    const updateSpy = vi
+      .spyOn(passHoldersDb, 'updatePassHolderIssuance')
+      .mockResolvedValue(EXISTING_HOLDER);
+
+    const result = await registerService(
+      makeMockSql(),
+      MOCK_ENV as never,
+      TEMPLATE_ID,
+      validPayload as never,
+    );
+
+    // Both backfill paths attempted (PRIMARY then FALLBACK).
+    expect(getSpy).toHaveBeenCalledTimes(1);
+    expect(listSpy).toHaveBeenCalledTimes(1);
+
+    // Only ONE update call (the initial CREATE-response write with
+    // barcodeValue: null). NO second update because there's nothing
+    // to backfill — the service didn't crash, it just gave up
+    // gracefully.
+    expect(updateSpy).toHaveBeenCalledTimes(1);
+    const updateCall = updateSpy.mock.calls[0]?.[1];
+    expect(updateCall).toMatchObject({
+      id: 'holder-nobackfill',
+      barcodeValue: null,
+    });
+    // No `issuanceError` i18n key — barcode backfill failures are
+    // NOT surfaced as issuance errors. The holder row's registration
+    // succeeded; only the barcode persistence was best-effort. The
+    // frontend banner doesn't show a retry prompt for the holder.
+    // (`issuanceError` may be absent or `null` — both are accepted;
+    // what matters is that the failure-banner i18n key is NOT set.)
+    expect(updateCall?.issuanceError ?? null).not.toBe(
+      'passHolder.errors.upstreamFailed',
+    );
+
+    // Response DTO: barcodeValue stays null; registration still
+    // succeeded with the rest of the artifact.
+    expect(result.ok).toBe(true);
+    expect(result.issuance?.barcodeValue).toBeNull();
+    expect(result.issuance?.passIdentifier).toBe('failing-backfill-uuid');
+    // No issuanceError key — backfill failure is silent (best-effort).
+    expect(result.issuance?.issuanceError).toBeUndefined();
+  });
 });
 
 // =============================================================================

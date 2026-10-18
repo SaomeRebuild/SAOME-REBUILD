@@ -118,21 +118,50 @@ export function usePassHolderForm({
     void form.trigger('email');
   }, [form]);
 
+  // 2026-10-18 — Rule 018 § 2 DOM reconcile helper. Before RHF
+  // runs validation/submit, copy any DOM value that RHF missed
+  // (e.g. autofill wrote to `input.value` AFTER React committed
+  // but BEFORE RHF's _formValues sync picked it up). Without the
+  // reconcile, the submit payload would carry the stale RHF value
+  // (often empty or the user's pre-autofill typed value).
+  const reconcileDomToForm = useCallback(() => {
+    for (const name of ['name', 'phoneNumber', 'birthday', 'email'] as const) {
+      const dom = document.querySelector<HTMLInputElement>(
+        `input[name="${name}"]`,
+      );
+      if (!dom) continue;
+      const domValue = dom.value;
+      const formValue = form.getValues(name);
+      if (domValue !== formValue) {
+        // Mirror the DOM value into RHF state. `shouldDirty: false`
+        // so the user doesn't see "form has unsaved changes" just
+        // because Chrome autofilled something.
+        form.setValue(name, domValue, { shouldDirty: false });
+      }
+    }
+  }, [form]);
+
   const handleSubmit = useCallback<FormEventHandler<HTMLFormElement>>(
     (event) => {
       event.preventDefault();
+      // Rule 018 § 2 — DOM reconcile BEFORE RHF reads _formValues.
+      reconcileDomToForm();
       void form.handleSubmit(onValidSubmit)(event);
     },
-    [form, onValidSubmit],
+    [form, onValidSubmit, reconcileDomToForm],
   );
 
   // 2026-10-16 — programmatic submit for external CTA drivers
   // (e.g. paid-membership PaymentButton). Mirrors handleSubmit minus
   // the event-driven preventDefault; RHF still runs validation and
   // either calls onValidSubmit (valid) or sets errors (invalid).
+  // 2026-10-18 — also runs DOM reconcile per Rule 018 § 2 — the
+  // paid path's 1.5s setTimeout is exactly the race window Chrome
+  // needs to autofill (user idles while the simulated payment runs).
   const submitForm = useCallback(async () => {
+    reconcileDomToForm();
     await form.handleSubmit(onValidSubmit)();
-  }, [form, onValidSubmit]);
+  }, [form, onValidSubmit, reconcileDomToForm]);
 
   return {
     register: form.register,
