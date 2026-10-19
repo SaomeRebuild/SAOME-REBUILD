@@ -1065,6 +1065,7 @@ export function mapTemplateToPasscreator(args: MapTemplateToPasscreatorArgs): Pa
         header: headerEntry?.key,
         left: s.leftField ?? null,
         right: s.rightField ?? null,
+        primary: primaryFields[0]?.key ?? null,
       },
     }),
   };
@@ -1143,12 +1144,20 @@ export function buildAdditionalProperties(args: {
    *   - `right`   — `settings.rightField` (Step 3 "Right Slot" dropdown;
    *                 v12-followup: emitted into `secondaryFields[1]`).
    *                 `null` / `undefined` ⇒ no secondaryFields slot was emitted.
+   *   - `primary` — `primaryFields[0].key` (v12-followup: for `membership_card`
+   *                 this is `'memberName'`; all other cardTypes emit `[]`).
+   *                 `null` / `undefined` ⇒ no primaryFields slot was emitted.
    *
    * Order in the returned array: slot entries come FIRST (most visible
    * to the tenant), then `links`. Order within each block is the
    * same as the source iteration order.
    */
-  slotKeys?: { header?: string | null; left?: string | null; right?: string | null };
+  slotKeys?: {
+    header?: string | null;
+    left?: string | null;
+    right?: string | null;
+    primary?: string | null;
+  };
 }): PasscreatorAdditionalProperty[] {
   const out: PasscreatorAdditionalProperty[] = [];
 
@@ -1157,7 +1166,12 @@ export function buildAdditionalProperties(args: {
   //    `type` is derived via `mapFieldType`; date-typed keys fall back to
   //    'text' (Passcreator's additionalProperties.type enum doesn't
   //    include 'date' — the date semantic lives on the field slot itself).
-  for (const k of [args.slotKeys?.header, args.slotKeys?.left, args.slotKeys?.right]) {
+  for (const k of [
+    args.slotKeys?.header,
+    args.slotKeys?.left,
+    args.slotKeys?.right,
+    args.slotKeys?.primary,
+  ]) {
     if (!k) continue;
     const fieldType = mapFieldType(k);
     const propertyType: PasscreatorAdditionalProperty['type'] = fieldType === 'number' ? 'number' : 'text';

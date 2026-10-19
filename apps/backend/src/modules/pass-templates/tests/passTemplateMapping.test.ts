@@ -398,6 +398,45 @@ describe('mapTemplateToPasscreator — fields (header / primary / secondary / ba
     expect(names).toContain('phone');
     expect(names).toContain('email');
   });
+
+  // 2026-10-19 regression fix: primaryFields[0].key = 'memberName' for
+  // membership_card emits {memberName} in the slot's value, so additionalProperties[]
+  // MUST also carry the entry so the cross-reference resolves in Passcreator.
+  it('membership_card → additionalProperties contains memberName (regression — 2026-10-19)', () => {
+    const row = makeRow({ card_type: 'membership_card' });
+    const body = mapTemplateToPasscreator({ template: row, language: 'zh-TW', r2PublicUrl: R2_URL });
+    const names = (body.additionalProperties ?? []).map((p) => p.name);
+    expect(names).toContain('memberName');
+    const memberNameEntry = body.additionalProperties!.find((p) => p.name === 'memberName');
+    expect(memberNameEntry).toEqual({
+      name: 'memberName',
+      placeholder: '{memberName}',
+      type: 'text',
+      required: false,
+      hidden: false,
+    });
+  });
+
+  it('membership_card → additionalProperties contains ALL 4 slot keys (header + left + right + primary)', () => {
+    const row = makeRow({ card_type: 'membership_card' });
+    const body = mapTemplateToPasscreator({ template: row, language: 'zh-TW', r2PublicUrl: R2_URL });
+    const names = (body.additionalProperties ?? []).map((p) => p.name);
+    // header: memberExpiry (membership_card header)
+    expect(names).toContain('memberExpiry');
+    // left: phone (from makeRow defaults)
+    expect(names).toContain('phone');
+    // right: email (from makeRow defaults)
+    expect(names).toContain('email');
+    // primary: memberName (membership_card reserved slot — THIS IS THE FIX)
+    expect(names).toContain('memberName');
+  });
+
+  it('reward_card → additionalProperties does NOT contain memberName (non-membership regression)', () => {
+    const row = makeRow({ card_type: 'reward_card' });
+    const body = mapTemplateToPasscreator({ template: row, language: 'zh-TW', r2PublicUrl: R2_URL });
+    const names = (body.additionalProperties ?? []).map((p) => p.name);
+    expect(names).not.toContain('memberName');
+  });
 });
 
 describe('mapTemplateToPasscreator — passTypeId', () => {
