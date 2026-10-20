@@ -34,6 +34,8 @@
  */
 
 import { GiftCardAmountField } from './GiftCardAmountField';
+import { GiftCardCheckoutLimitsSection } from './GiftCardCheckoutLimitsSection';
+import { GiftCardDesignLimitsSection } from './GiftCardDesignLimitsSection';
 import { GiftCardPointsField } from './GiftCardPointsField';
 import { GiftCardRatePreview } from './GiftCardRatePreview';
 import type { GiftCardLogicProps } from './GiftCardLogic.types';
@@ -51,6 +53,14 @@ export function GiftCardLogic({ showValidation }: GiftCardLogicProps) {
           (> 0, finite, integer). Defensive guard prevents "0 元 = 0 點"
           mid-edit noise. */}
       <GiftCardRatePreview />
+      {/* 4. Card-design fence (2026-10-20, PR 1 of 2): bounds the points
+          range this gift_card template can configure. Wider bound for
+          admin-promos; checkout fence (PR 2) bounds per-transaction. */}
+      <GiftCardDesignLimitsSection showValidation={showValidation} />
+      {/* 5. Checkout fence (2026-10-20, PR 2 of 2): bounds the customer's
+          per-transaction purchase range. Stricter than card-design —
+          defaults to 100 / 10_000 per `all_reasonable` strategy. */}
+      <GiftCardCheckoutLimitsSection showValidation={showValidation} />
     </div>
   );
 }

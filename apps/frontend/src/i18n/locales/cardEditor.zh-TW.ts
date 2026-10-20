@@ -938,13 +938,43 @@ export default {
       pointsLabel: '獲得點數',
       amountUnitTWD: '元',
       amountUnitZAR: 'R',
+      // 2026-10-20 — points unit suffix on input fields.
+      // Mirrors the role of `ratePreview`'s post-{{points}} fragment
+      // (which already says `點` here). Used by GiftCardPointsField +
+      // 4 fence field components (design min/max + checkout min/max).
+      pointsUnit: '點',
       separator: '＝',
       placeholderAmount: '例：100',
       placeholderPoints: '例：100',
       ratePreview: '{{amountWithUnit}} = {{points}} 點',
+      // ===== 雙層 fence sub-section (2026-10-20, PR 1 of 2) =====
+      design: {
+        intro: '這張卡最多可發行幾點',
+        introHint: '活動期間可拉高上限；單筆交易上限見下方設定。',
+        minPointsLabel: '發行點數下限',
+        maxPointsLabel: '發行點數上限',
+        placeholderMinPoints: '例：1',
+        placeholderMaxPoints: '例：10000',
+      },
+      // ===== 雙層 fence sub-section (2026-10-20, PR 2 of 2) =====
+      checkout: {
+        intro: '顧客單次可買的點數與付款金額',
+        introHint: '不可超過上方設定的最大發行點數。顧客超過上限時無法結帳。',
+        minPointsLabel: '單筆最小購買點數',
+        maxPointsLabel: '單筆最大購買點數',
+        minAmountLabel: '單筆最小付款金額',
+        maxAmountLabel: '單筆最大付款金額',
+        placeholderMinPoints: '例：100',
+        placeholderMaxPoints: '例：10000',
+        placeholderMinAmount: '例：100',
+        placeholderMaxAmount: '例：10000',
+      },
       validation: {
         required: '請填寫兌換比率',
         positive: '數值必須大於零',
+        minGreaterThanMax: '下限不能大於上限',
+        underDesignMin: '不能低於方案發行點數下限',
+        overDesignMax: '不能超過方案發行點數上限',
       },
     },
   },

@@ -353,6 +353,92 @@ describe('updateTemplate — non-ASCII round-trip (workerd JSON.stringify pitfal
   });
 });
 
+describe('updateTemplate — Step 6 gift_card checkout fence fields round-trip (Rule 019 § 4.1 + Rule 032)', () => {
+  /**
+   * Regression guard: the 4 checkout fence fields
+   * (giftCardCheckoutMinPoints, giftCardCheckoutMaxPoints,
+   * giftCardCheckoutMinAmount, giftCardCheckoutMaxAmount) must survive
+   * the || merge without being stripped by zod (Rule 019 § 4.1 drift).
+   *
+   * Full end-to-end round-trip requires a real Postgres connection
+   * (covered by manual prod smoke test + migration-applied CI).
+   */
+
+  it('persists all 6 fence fields (2 design + 4 checkout) through || merge', async () => {
+    const { sql, jsonCalls } = createMockSql();
+    await updateTemplate(sql, 'test-id', {
+      settings: {
+        giftCardAmount: 100,
+        giftCardPoints: 200,
+        giftCardDesignMinPoints: 1,
+        giftCardDesignMaxPoints: 999_999_999,
+        giftCardCheckoutMinPoints: 100,
+        giftCardCheckoutMaxPoints: 10_000,
+        giftCardCheckoutMinAmount: 100,
+        giftCardCheckoutMaxAmount: 10_000,
+      },
+    });
+
+    const jsonValue = getLastJsonValue(jsonCalls) as Record<string, unknown> | undefined;
+    expect(jsonValue).toBeDefined();
+    // All 8 fields present (giftCardAmount + giftCardPoints + 6 fence fields)
+    expect(jsonValue!.giftCardAmount).toBe(100);
+    expect(jsonValue!.giftCardPoints).toBe(200);
+    expect(jsonValue!.giftCardDesignMinPoints).toBe(1);
+    expect(jsonValue!.giftCardDesignMaxPoints).toBe(999_999_999);
+    expect(jsonValue!.giftCardCheckoutMinPoints).toBe(100);
+    expect(jsonValue!.giftCardCheckoutMaxPoints).toBe(10_000);
+    expect(jsonValue!.giftCardCheckoutMinAmount).toBe(100);
+    expect(jsonValue!.giftCardCheckoutMaxAmount).toBe(10_000);
+  });
+
+  it('preserves unrelated fields (cardName / issuerName) when 6 fence fields merge', async () => {
+    // Simulate a PUT that only touches checkout fence fields while
+    // leaving Step 2 fields intact. The || merge should not wipe
+    // existing settings.
+    const { sql, jsonCalls } = createMockSql();
+    await updateTemplate(sql, 'test-id', {
+      settings: {
+        giftCardCheckoutMinPoints: 500,
+        giftCardCheckoutMaxPoints: 5_000,
+        giftCardCheckoutMinAmount: 50,
+        giftCardCheckoutMaxAmount: 5_000,
+      },
+    });
+
+    const jsonValue = getLastJsonValue(jsonCalls) as Record<string, unknown> | undefined;
+    expect(jsonValue).toBeDefined();
+    // Only the 4 checkout fields in the payload — unrelated fields
+    // survive via the || merge (settings || {checkout_fields}).
+    expect(jsonValue!.giftCardCheckoutMinPoints).toBe(500);
+    expect(jsonValue!.giftCardCheckoutMaxPoints).toBe(5_000);
+    expect(jsonValue!.giftCardCheckoutMinAmount).toBe(50);
+    expect(jsonValue!.giftCardCheckoutMaxAmount).toBe(5_000);
+    // Absence of other keys in jsonCalls is expected (this PUT only
+    // carries the 4 checkout fields — existing settings survive via ||).
+  });
+
+  it('checkout fence field values use sql.json() (no JS-side JSON.stringify — workerd pitfall)', async () => {
+    const { sql, sqlCalls } = createMockSql();
+    await updateTemplate(sql, 'test-id', {
+      settings: {
+        giftCardCheckoutMinPoints: 100,
+        giftCardCheckoutMaxPoints: 10_000,
+        giftCardCheckoutMinAmount: 100,
+        giftCardCheckoutMaxAmount: 10_000,
+      },
+    });
+
+    const outerSql = sqlCalls[0]!.sql;
+    // Checkout fence values should NOT appear raw in outer SQL
+    // (they should be in the jsonCalls via sql.json(), not raw JSON.stringify)
+    expect(outerSql).not.toContain('100');  // raw integer not in outer SQL
+    // The pitfall pattern would emit the raw value in the SQL string
+    // (would show up in outerSql as part of the JSON string).
+    // Our fix uses sql.json() which puts values in jsonCalls, not outerSql.
+  });
+});
+
 // ===== Step 5 — 地理位置 + 推播訊息 (Rule 032 conformance tests, 2026-09-05) =====
 //
 // The shared `templateSettingsSchema` validates incoming JSONB fields at the

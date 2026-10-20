@@ -57,6 +57,12 @@ import {
   type CouponDiscountType,
   GIFT_CARD_DEFAULT_AMOUNT,
   GIFT_CARD_DEFAULT_POINTS,
+  GIFT_CARD_DESIGN_MIN_POINTS,
+  GIFT_CARD_DESIGN_MAX_POINTS,
+  GIFT_CARD_CHECKOUT_MIN_POINTS,
+  GIFT_CARD_CHECKOUT_MAX_POINTS,
+  GIFT_CARD_CHECKOUT_MIN_AMOUNT,
+  GIFT_CARD_CHECKOUT_MAX_AMOUNT,
   type AccrualMode,
   type RewardType,
   type EarningMode,
@@ -928,6 +934,98 @@ interface CardBuilderState {
    * 預設 1.
    */
   setGiftCardPoints: (points: number) => void;
+
+  // ===== Step 6 — Gift Card 雙層 fence: 方案發行點數範圍 (2026-10-20, PR 1 of 2) =====
+  // Card-design fence guards the points range this gift_card template can
+  // configure (admin-facing). The narrower customer-facing checkout fence
+  // (PR 2) bounds per-transaction purchase amounts/points.
+  //
+  // Cross-field invariant: min ≤ max. Enforced by setters rejecting writes
+  // that violate this, AND by loadSettings defensive coerce that clamps
+  // corrupted rows (Rule 030 / 032).
+  //
+  // Mirrors `shared/templateSettingsSchema.giftCardDesignMinPoints /
+  // giftCardDesignMaxPoints` (Rule 019 § 4.1).
+  /**
+   * 禮品卡方案可發行點數下限. 整數 ≥ 1. 預設 1.
+   * Mirrors `shared/templateSettingsSchema.giftCardDesignMinPoints`.
+   */
+  giftCardDesignMinPoints: number;
+  /**
+   * 禮品卡方案可發行點數上限. 整數 ≥ 1. 預設 999_999_999.
+   * Mirrors `shared/templateSettingsSchema.giftCardDesignMaxPoints`.
+   */
+  giftCardDesignMaxPoints: number;
+  /**
+   * 設定禮品卡方案可發行點數下限. Cross-field invariant:
+   * 拒絕 > `giftCardDesignMaxPoints` 與 > checkout max points (PR 2).
+   * 拒絕 ≤ 0、非整數、NaN.
+   */
+  setGiftCardDesignMinPoints: (points: number) => void;
+  /**
+   * 設定禮品卡方案可發行點數上限. Cross-field invariant:
+   * 拒絕 < `giftCardDesignMinPoints`.
+   * 拒絕 ≤ 0、非整數、NaN.
+   */
+  setGiftCardDesignMaxPoints: (points: number) => void;
+
+  // ===== Step 6 — Gift Card 雙層 fence: 顧客單筆交易範圍 (2026-10-20, PR 2 of 2) =====
+  // Checkout fence bounds customer's per-transaction purchase range.
+  // Stricter than card-design (PR 1) — defaults to 100 / 10_000.
+  //
+  // Cross-field invariants:
+  //   - Within checkout fence: min ≤ max (for both points + amount)
+  //   - Cross-fence: checkoutMinPoints ≥ giftCardDesignMinPoints,
+  //                  checkoutMaxPoints ≤ giftCardDesignMaxPoints
+  //     (cannot buy less or more than template allows)
+  //
+  // Mirrors `shared/templateSettingsSchema.giftCardCheckout*` (Rule 019 § 4.1).
+  /**
+   * 顧客單筆交易最小購買點數. 整數 ≥ 1. 預設 100.
+   * Mirrors `shared/templateSettingsSchema.giftCardCheckoutMinPoints`.
+   */
+  giftCardCheckoutMinPoints: number;
+  /**
+   * 顧客單筆交易最大購買點數. 整數 ≥ 1. 預設 10_000.
+   * Mirrors `shared/templateSettingsSchema.giftCardCheckoutMaxPoints`.
+   */
+  giftCardCheckoutMaxPoints: number;
+  /**
+   * 顧客單筆交易最小付款金額. 整數 ≥ 1. 預設 100.
+   * Mirrors `shared/templateSettingsSchema.giftCardCheckoutMinAmount`.
+   */
+  giftCardCheckoutMinAmount: number;
+  /**
+   * 顧客單筆交易最大付款金額. 整數 ≥ 1. 預設 10_000.
+   * Mirrors `shared/templateSettingsSchema.giftCardCheckoutMaxAmount`.
+   */
+  giftCardCheckoutMaxAmount: number;
+  /**
+   * 設定顧客單筆交易最小購買點數. Cross-field invariants:
+   *   - 拒絕 > `giftCardCheckoutMaxPoints`
+   *   - 拒絕 < `giftCardDesignMinPoints`（跨 fence：不能買比方案下限少）
+   *   - 拒絕 ≤ 0、非整數、NaN.
+   */
+  setGiftCardCheckoutMinPoints: (points: number) => void;
+  /**
+   * 設定顧客單筆交易最大購買點數. Cross-field invariants:
+   *   - 拒絕 < `giftCardCheckoutMinPoints`
+   *   - 拒絕 > `giftCardDesignMaxPoints`（跨 fence：不能買比方案上限多）
+   *   - 拒絕 ≤ 0、非整數、NaN.
+   */
+  setGiftCardCheckoutMaxPoints: (points: number) => void;
+  /**
+   * 設定顧客單筆交易最小付款金額. Cross-field invariants:
+   *   - 拒絕 > `giftCardCheckoutMaxAmount`
+   *   - 拒絕 ≤ 0、非整數、NaN.
+   */
+  setGiftCardCheckoutMinAmount: (amount: number) => void;
+  /**
+   * 設定顧客單筆交易最大付款金額. Cross-field invariants:
+   *   - 拒絕 < `giftCardCheckoutMinAmount`
+   *   - 拒絕 ≤ 0、非整數、NaN.
+   */
+  setGiftCardCheckoutMaxAmount: (amount: number) => void;
 
   /** 新增一組空白 multipass 級距. 在 MAX_MULTIPASS_TIERS=5 時為 no-op. */
   addMultipassTier: () => void;
@@ -1827,6 +1925,17 @@ const initialState = {
   // 預設兌換比率 1:1 (1 元 = 1 點). per user decision 2026-09-27.
   giftCardAmount: GIFT_CARD_DEFAULT_AMOUNT,
   giftCardPoints: GIFT_CARD_DEFAULT_POINTS,
+  // ===== Step 6 — Gift Card 卡 card-design fence 初始狀態 (2026-10-20, PR 1 of 2) =====
+  // 預設方案發行點數範圍 1–999_999_999 (寬鬆,允許特殊 campaign).
+  giftCardDesignMinPoints: GIFT_CARD_DESIGN_MIN_POINTS,
+  giftCardDesignMaxPoints: GIFT_CARD_DESIGN_MAX_POINTS,
+  // ===== Step 6 — Gift Card 卡 checkout fence 初始狀態 (2026-10-20, PR 2 of 2) =====
+  // 預設顧客單筆交易範圍 100–10_000 (點數 + 金額). 比 design fence
+  // 嚴格,符合 `all_reasonable` 策略.
+  giftCardCheckoutMinPoints: GIFT_CARD_CHECKOUT_MIN_POINTS,
+  giftCardCheckoutMaxPoints: GIFT_CARD_CHECKOUT_MAX_POINTS,
+  giftCardCheckoutMinAmount: GIFT_CARD_CHECKOUT_MIN_AMOUNT,
+  giftCardCheckoutMaxAmount: GIFT_CARD_CHECKOUT_MAX_AMOUNT,
   // ===== Step 7 — 客製化桌牌初始狀態 (2026-09-27) =====
   // Empty elements array — user adds via Toolbar. Default bleed 3mm.
   // exportKey / lastExportedAt are undefined until first export.
@@ -2659,6 +2768,159 @@ export const useCardBuilderStore = create<CardBuilderState>()((set, get) => ({
     }
     if (!Number.isInteger(points)) return;
     set({ giftCardPoints: points });
+  },
+  /**
+   * 設定禮品卡方案發行點數下限 (2026-10-20, PR 1 of 2).
+   * Cross-field invariant: 拒絕 > `giftCardDesignMaxPoints`(防止
+   * min > max,使 store 進入 invalid state).
+   * 拒絕 ≤ 0、NaN、非有限數字、非整數。
+   * 預設 GIFT_CARD_DESIGN_MIN_POINTS (= 1).
+   */
+  setGiftCardDesignMinPoints: (points) => {
+    if (typeof points !== 'number' || !Number.isFinite(points) || points <= 0) {
+      return;
+    }
+    if (!Number.isInteger(points)) return;
+    // Cross-field guard: don't allow min to exceed current max.
+    const currentMax = get().giftCardDesignMaxPoints;
+    if (points > currentMax) {
+      console.warn(
+        '[CardBuilderEditor.store] setGiftCardDesignMinPoints blocked — min > max',
+        { attempted: points, currentMax },
+      );
+      return;
+    }
+    set({ giftCardDesignMinPoints: points });
+  },
+  /**
+   * 設定禮品卡方案發行點數上限 (2026-10-20, PR 1 of 2).
+   * Cross-field invariant: 拒絕 < `giftCardDesignMinPoints`.
+   * 拒絕 ≤ 0、NaN、非有限數字、非整數。
+   * 預設 GIFT_CARD_DESIGN_MAX_POINTS (= 999_999_999).
+   */
+  setGiftCardDesignMaxPoints: (points) => {
+    if (typeof points !== 'number' || !Number.isFinite(points) || points <= 0) {
+      return;
+    }
+    if (!Number.isInteger(points)) return;
+    // Cross-field guard: don't allow max to be lower than current min.
+    const currentMin = get().giftCardDesignMinPoints;
+    if (points < currentMin) {
+      console.warn(
+        '[CardBuilderEditor.store] setGiftCardDesignMaxPoints blocked — max < min',
+        { attempted: points, currentMin },
+      );
+      return;
+    }
+    set({ giftCardDesignMaxPoints: points });
+  },
+
+  /**
+   * 設定顧客單筆交易最小購買點數 (2026-10-20, PR 2 of 2).
+   * Cross-field invariants:
+   *   - 拒絕 > `giftCardCheckoutMaxPoints`(防止 min > max,store invalid)
+   *   - 拒絕 < `giftCardDesignMinPoints`(跨 fence:不能買比方案下限少)
+   *   - 拒絕 ≤ 0、NaN、非有限數字、非整數。
+   * 預設 GIFT_CARD_CHECKOUT_MIN_POINTS (= 100).
+   */
+  setGiftCardCheckoutMinPoints: (points) => {
+    if (typeof points !== 'number' || !Number.isFinite(points) || points <= 0) {
+      return;
+    }
+    if (!Number.isInteger(points)) return;
+    const state = get();
+    // Cross-fence guard (read current design min — defensive coerce at
+    // load time ensures this matches the design fence baseline).
+    const designMin = state.giftCardDesignMinPoints;
+    if (points < designMin) {
+      console.warn(
+        '[CardBuilderEditor.store] setGiftCardCheckoutMinPoints blocked — below design min',
+        { attempted: points, designMin },
+      );
+      return;
+    }
+    // Within-fence guard (prevent min > max).
+    if (points > state.giftCardCheckoutMaxPoints) {
+      console.warn(
+        '[CardBuilderEditor.store] setGiftCardCheckoutMinPoints blocked — min > max',
+        { attempted: points, currentMax: state.giftCardCheckoutMaxPoints },
+      );
+      return;
+    }
+    set({ giftCardCheckoutMinPoints: points });
+  },
+  /**
+   * 設定顧客單筆交易最大購買點數 (2026-10-20, PR 2 of 2).
+   * Cross-field invariants:
+   *   - 拒絕 < `giftCardCheckoutMinPoints`
+   *   - 拒絕 > `giftCardDesignMaxPoints`(跨 fence:不能買比方案上限多)
+   *   - 拒絕 ≤ 0、NaN、非有限數字、非整數。
+   * 預設 GIFT_CARD_CHECKOUT_MAX_POINTS (= 10_000).
+   */
+  setGiftCardCheckoutMaxPoints: (points) => {
+    if (typeof points !== 'number' || !Number.isFinite(points) || points <= 0) {
+      return;
+    }
+    if (!Number.isInteger(points)) return;
+    const state = get();
+    const designMax = state.giftCardDesignMaxPoints;
+    if (points > designMax) {
+      console.warn(
+        '[CardBuilderEditor.store] setGiftCardCheckoutMaxPoints blocked — above design max',
+        { attempted: points, designMax },
+      );
+      return;
+    }
+    if (points < state.giftCardCheckoutMinPoints) {
+      console.warn(
+        '[CardBuilderEditor.store] setGiftCardCheckoutMaxPoints blocked — max < min',
+        { attempted: points, currentMin: state.giftCardCheckoutMinPoints },
+      );
+      return;
+    }
+    set({ giftCardCheckoutMaxPoints: points });
+  },
+  /**
+   * 設定顧客單筆交易最小付款金額 (2026-10-20, PR 2 of 2).
+   * Cross-field invariants:
+   *   - 拒絕 > `giftCardCheckoutMaxAmount`
+   *   - 拒絕 ≤ 0、NaN、非有限數字、非整數.
+   * 預設 GIFT_CARD_CHECKOUT_MIN_AMOUNT (= 100).
+   */
+  setGiftCardCheckoutMinAmount: (amount) => {
+    if (typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0) {
+      return;
+    }
+    if (!Number.isInteger(amount)) return;
+    if (amount > get().giftCardCheckoutMaxAmount) {
+      console.warn(
+        '[CardBuilderEditor.store] setGiftCardCheckoutMinAmount blocked — min > max',
+        { attempted: amount, currentMax: get().giftCardCheckoutMaxAmount },
+      );
+      return;
+    }
+    set({ giftCardCheckoutMinAmount: amount });
+  },
+  /**
+   * 設定顧客單筆交易最大付款金額 (2026-10-20, PR 2 of 2).
+   * Cross-field invariants:
+   *   - 拒絕 < `giftCardCheckoutMinAmount`
+   *   - 拒絕 ≤ 0、NaN、非有限數字、非整數.
+   * 預設 GIFT_CARD_CHECKOUT_MAX_AMOUNT (= 10_000).
+   */
+  setGiftCardCheckoutMaxAmount: (amount) => {
+    if (typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0) {
+      return;
+    }
+    if (!Number.isInteger(amount)) return;
+    if (amount < get().giftCardCheckoutMinAmount) {
+      console.warn(
+        '[CardBuilderEditor.store] setGiftCardCheckoutMaxAmount blocked — max < min',
+        { attempted: amount, currentMin: get().giftCardCheckoutMinAmount },
+      );
+      return;
+    }
+    set({ giftCardCheckoutMaxAmount: amount });
   },
 
   // ===== Step 7 — 客製化桌牌 setters (2026-09-27) =====
@@ -4206,6 +4468,163 @@ export const useCardBuilderStore = create<CardBuilderState>()((set, get) => ({
             return raw;
           }
           return state.giftCardPoints;
+        })(),
+        // ===== Gift Card 雙層 fence: card-design fence loadSettings (2026-10-20, PR 1 of 2) =====
+        // giftCardDesignMinPoints / giftCardDesignMaxPoints: 整數 ≥ 1.
+        // Defensive coerce — corrupted DB rows (e.g. null / 非整數 / ≤ 0)
+        // fall back to initialState defaults (= GIFT_CARD_DESIGN_MIN/MAX_POINTS).
+        // Cross-field invariant (min ≤ max): if a corrupted row contains
+        // both keys but min > max, clamp min down to max (= sane safe state).
+        // 與 giftCardAmount/Points 同一 pattern (loadSettings 4292 行 area).
+        giftCardDesignMinPoints: (() => {
+          let raw = resolved?.giftCardDesignMinPoints;
+          // Cross-field clamp: if both keys present and min > max,
+          // clamp min to max (preferring "max" as the corrupt authoritative
+          // value to avoid losing admin's upper-bound intent).
+          const rawMax =
+            typeof resolved?.giftCardDesignMaxPoints === 'number'
+              ? resolved.giftCardDesignMaxPoints
+              : undefined;
+          if (
+            typeof raw === 'number' &&
+            Number.isInteger(raw) &&
+            raw >= 1 &&
+            typeof rawMax === 'number' &&
+            Number.isInteger(rawMax) &&
+            rawMax >= 1 &&
+            raw > rawMax
+          ) {
+            raw = rawMax;
+          }
+          if (typeof raw === 'number' && Number.isInteger(raw) && raw >= 1) {
+            return raw;
+          }
+          return state.giftCardDesignMinPoints;
+        })(),
+        giftCardDesignMaxPoints: (() => {
+          const raw = resolved?.giftCardDesignMaxPoints;
+          if (typeof raw === 'number' && Number.isInteger(raw) && raw >= 1) {
+            return raw;
+          }
+          return state.giftCardDesignMaxPoints;
+        })(),
+        // ===== Gift Card 雙層 fence: checkout fence loadSettings (2026-10-20, PR 2 of 2) =====
+        // giftCardCheckout{Min,Max}{Points,Amount}: 整數 ≥ 1. Defensive
+        // coerce — corrupted DB rows (null / 非整數 / ≤ 0) fall back to
+        // initialState defaults (= GIFT_CARD_CHECKOUT_{MIN,MAX}_{POINTS,AMOUNT}).
+        //
+        // Cross-fence invariants (applied per-fence as 4 separate guards):
+        //   - checkout min points ≥ design min points
+        //     (cannot buy less than template allows)
+        //   - checkout max points ≤ design max points
+        //     (cannot buy more than template allows)
+        //   - checkout min ≤ checkout max (within-fence)
+        //   - checkout min amount ≤ checkout max amount (within-fence, separate pair)
+        //
+        // Clamp strategy: clamp to LOWER of (attempted, design-bounded
+        // upper bound). When admin shrinks the design fence, checkout
+        // values that exceed the new design bound are auto-clamped down.
+        // When user data is wider than the design fence (corrupted row),
+        // prefer the design fence upper bound as the safe state.
+        giftCardCheckoutMinPoints: (() => {
+          let raw = resolved?.giftCardCheckoutMinPoints;
+          // Cross-fence clamp: clamp min to design min lower bound
+          // (i.e. we can't accept a checkout min that's BELOW the
+          // design min — admin already declared the floor).
+          const resolvedDesignMin =
+            typeof resolved?.giftCardDesignMinPoints === 'number'
+              ? resolved.giftCardDesignMinPoints
+              : state.giftCardDesignMinPoints;
+          if (
+            typeof raw === 'number' &&
+            Number.isInteger(raw) &&
+            raw >= 1 &&
+            typeof resolvedDesignMin === 'number' &&
+            Number.isInteger(resolvedDesignMin) &&
+            resolvedDesignMin >= 1 &&
+            raw < resolvedDesignMin
+          ) {
+            raw = resolvedDesignMin;
+          }
+          if (typeof raw === 'number' && Number.isInteger(raw) && raw >= 1) {
+            return raw;
+          }
+          return state.giftCardCheckoutMinPoints;
+        })(),
+        giftCardCheckoutMaxPoints: (() => {
+          let raw = resolved?.giftCardCheckoutMaxPoints;
+          // Cross-fence clamp: clamp max to design max upper bound.
+          const resolvedDesignMax =
+            typeof resolved?.giftCardDesignMaxPoints === 'number'
+              ? resolved.giftCardDesignMaxPoints
+              : state.giftCardDesignMaxPoints;
+          if (
+            typeof raw === 'number' &&
+            Number.isInteger(raw) &&
+            raw >= 1 &&
+            typeof resolvedDesignMax === 'number' &&
+            Number.isInteger(resolvedDesignMax) &&
+            resolvedDesignMax >= 1 &&
+            raw > resolvedDesignMax
+          ) {
+            raw = resolvedDesignMax;
+          }
+          if (typeof raw === 'number' && Number.isInteger(raw) && raw >= 1) {
+            return raw;
+          }
+          return state.giftCardCheckoutMaxPoints;
+        })(),
+        // Amount fence: independent of points fence (admin can set
+        // different bounds per dimension). Mirrors the points pair but
+        // no cross-fence binding (amount doesn't relate to design's
+        // points-only fence).
+        giftCardCheckoutMinAmount: (() => {
+          let raw = resolved?.giftCardCheckoutMinAmount;
+          // Within-fence clamp: prefer the lower of (attempted, current
+          // max). Covers corrupted rows that say 50000 for min with a
+          // 1000 max — auto-clamp.
+          if (
+            typeof raw === 'number' &&
+            Number.isInteger(raw) &&
+            raw >= 1 &&
+            typeof raw === 'number' &&
+            raw > (typeof resolved?.giftCardCheckoutMaxAmount === 'number'
+              ? resolved.giftCardCheckoutMaxAmount
+              : state.giftCardCheckoutMaxAmount)
+          ) {
+            raw =
+              typeof resolved?.giftCardCheckoutMaxAmount === 'number'
+                ? resolved.giftCardCheckoutMaxAmount
+                : state.giftCardCheckoutMaxAmount;
+          }
+          if (typeof raw === 'number' && Number.isInteger(raw) && raw >= 1) {
+            return raw;
+          }
+          return state.giftCardCheckoutMinAmount;
+        })(),
+        giftCardCheckoutMaxAmount: (() => {
+          let raw = resolved?.giftCardCheckoutMaxAmount;
+          // Within-fence clamp: prefer the higher of (attempted, current
+          // min). Covers corrupted rows that say 50 for max with a
+          // 1000 min — auto-clamp up to current min.
+          if (
+            typeof raw === 'number' &&
+            Number.isInteger(raw) &&
+            raw >= 1 &&
+            typeof raw === 'number' &&
+            raw < (typeof resolved?.giftCardCheckoutMinAmount === 'number'
+              ? resolved.giftCardCheckoutMinAmount
+              : state.giftCardCheckoutMinAmount)
+          ) {
+            raw =
+              typeof resolved?.giftCardCheckoutMinAmount === 'number'
+                ? resolved.giftCardCheckoutMinAmount
+                : state.giftCardCheckoutMinAmount;
+          }
+          if (typeof raw === 'number' && Number.isInteger(raw) && raw >= 1) {
+            return raw;
+          }
+          return state.giftCardCheckoutMaxAmount;
         })(),
         // ===== Step 7 — 客製化桌牌 loadSettings (2026-09-27) =====
         // `resolved.tableCard` is the raw JSONB payload — validate via

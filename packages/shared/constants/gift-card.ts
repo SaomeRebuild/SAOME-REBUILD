@@ -57,6 +57,50 @@ export const GIFT_CARD_DEFAULT_AMOUNT = 1;
 export const GIFT_CARD_DEFAULT_POINTS = 1;
 
 /**
+ * Card-design fence default values for gift_card Step 6 (2026-10-20, PR 1 of
+ * 雙層 fence 補強).
+ *
+ * The card-design fence bounds the points range that an admin can configure
+ * for a gift_card template (i.e. this template's exchange rate). Wide range
+ * is intentional — admin/saome-account can set extreme values for special
+ * promos, and the narrower `checkout` fence (PR 2) provides the
+ * customer-facing per-transaction bound.
+ *
+ * Mirrors `templateSettingsSchema.giftCardDesignMinPoints / giftCardDesignMaxPoints`
+ * in `packages/shared/schemas/card.ts` (Rule 019 § 4.1 single source of truth).
+ * Both fields stay `.int().positive().optional()` in shared schema, so the
+ * default initialState values are 1 and 999_999_999 respectively.
+ */
+export const GIFT_CARD_DESIGN_MIN_POINTS = 1;
+export const GIFT_CARD_DESIGN_MAX_POINTS = 999_999_999;
+
+/**
+ * Checkout fence default values for gift_card Step 6 (2026-10-20, PR 2 of
+ * 雙層 fence 補強).
+ *
+ * The checkout fence bounds the customer's per-transaction purchase range
+ * (i.e. min/max points + amount the customer can buy in one checkout).
+ * Stricter than card-design — uses business-realistic defaults
+ * (100 / 10_000) per `all_reasonable` strategy, leaving the card-design
+ * fence to absorb admin-controlled wider ranges for special campaigns.
+ *
+ * Cross-field invariants enforced by store setters + loadSettings
+ * defensive coerce:
+ *   - min ≤ max for both points and amount dimensions
+ *   - checkoutMinPoints ≥ design min points (cannot buy less than template
+ *     allows)
+ *   - checkoutMaxPoints ≤ design max points (cannot buy more than template
+ *     allows)
+ *
+ * Mirrors `templateSettingsSchema.giftCardCheckout*` in
+ * `packages/shared/schemas/card.ts` (Rule 019 § 4.1 single source of truth).
+ */
+export const GIFT_CARD_CHECKOUT_MIN_POINTS = 100;
+export const GIFT_CARD_CHECKOUT_MAX_POINTS = 10_000;
+export const GIFT_CARD_CHECKOUT_MIN_AMOUNT = 100;
+export const GIFT_CARD_CHECKOUT_MAX_AMOUNT = 10_000;
+
+/**
  * Currency-aware unit label for the amount field (mirrors
  * `CouponDiscountAmountField.tsx` pattern):
  *   - TWD zh-TW: 「消費 [input] 元」 → suffix

@@ -40,9 +40,28 @@ vi.mock('react-i18next', () => ({
         // so ratePreview interpolation looks like the actual rendered output.
         'step6.gift.amountUnitTWD': '元',
         'step6.gift.amountUnitZAR': 'R',
+        'step6.gift.pointsUnit': '點',
         'step6.gift.ratePreview': '{{amountWithUnit}} = {{points}} 點',
         'step6.gift.amountLabel': '消費金額',
         'step6.gift.pointsLabel': '獲得點數',
+        // Card-design fence keys (2026-10-20, PR 1)
+        'step6.gift.design.minPointsLabel': '發行點數下限',
+        'step6.gift.design.maxPointsLabel': '發行點數上限',
+        'step6.gift.design.placeholderMinPoints': '例：1',
+        'step6.gift.design.placeholderMaxPoints': '例：10000',
+        // Checkout fence keys (2026-10-20, PR 2)
+        'step6.gift.checkout.minPointsLabel': '單筆最小購買點數',
+        'step6.gift.checkout.maxPointsLabel': '單筆最大購買點數',
+        'step6.gift.checkout.minAmountLabel': '單筆最小付款金額',
+        'step6.gift.checkout.maxAmountLabel': '單筆最大付款金額',
+        'step6.gift.checkout.placeholderMinPoints': '例：100',
+        'step6.gift.checkout.placeholderMaxPoints': '例：10000',
+        'step6.gift.checkout.placeholderMinAmount': '例：100',
+        'step6.gift.checkout.placeholderMaxAmount': '例：10000',
+        'step6.gift.validation.minGreaterThanMax': '下限不能大於上限',
+        'step6.gift.validation.positive': '數值必須大於零',
+        'step6.gift.validation.underDesignMin': '不能低於方案發行點數下限',
+        'step6.gift.validation.overDesignMax': '不能超過方案發行點數上限',
       };
       let template = lookup[key] ?? key;
       if (key === 'step6.gift.ratePreview' && opts) {
@@ -73,6 +92,42 @@ describe('GiftCardLogic — main component composition (Rule 000 § A.1)', () =>
     // RatePreview renders when both fields are valid (default 1:1).
     expect(screen.getByTestId('gift-rate-preview')).toBeInTheDocument();
     expect(screen.getByTestId('gift-rate-preview').textContent).toContain('1 元 = 1 點');
+  });
+
+  it('renders the card-design fence section with default bounds (PR 1, 2026-10-20)', () => {
+    // GiftCardDesignLimitsSection renders min/max fields as the 4th section.
+    render(<GiftCardLogic showValidation={false} />);
+
+    // Min field: label + input with default 1.
+    const minInput = screen.getByLabelText('發行點數下限');
+    expect(minInput).toBeInTheDocument();
+    expect(minInput).toHaveValue(1);
+
+    // Max field: label + input with default 999_999_999.
+    const maxInput = screen.getByLabelText('發行點數上限');
+    expect(maxInput).toBeInTheDocument();
+    expect(maxInput).toHaveValue(999_999_999);
+  });
+
+  it('renders the checkout fence section with default values (PR 2, 2026-10-20)', () => {
+    // GiftCardCheckoutLimitsSection renders 4 fields as the 5th section.
+    render(<GiftCardLogic showValidation={false} />);
+
+    // Points: default 100 / 10_000
+    const minPtsInput = screen.getByLabelText('單筆最小購買點數');
+    const maxPtsInput = screen.getByLabelText('單筆最大購買點數');
+    expect(minPtsInput).toBeInTheDocument();
+    expect(maxPtsInput).toBeInTheDocument();
+    expect(minPtsInput).toHaveValue(100);
+    expect(maxPtsInput).toHaveValue(10_000);
+
+    // Amount: default 100 / 10_000 (currency-aware)
+    const minAmtInput = screen.getByLabelText('單筆最小付款金額');
+    const maxAmtInput = screen.getByLabelText('單筆最大付款金額');
+    expect(minAmtInput).toBeInTheDocument();
+    expect(maxAmtInput).toBeInTheDocument();
+    expect(minAmtInput).toHaveValue(100);
+    expect(maxAmtInput).toHaveValue(10_000);
   });
 
   it('updates the rate preview when amount changes', () => {

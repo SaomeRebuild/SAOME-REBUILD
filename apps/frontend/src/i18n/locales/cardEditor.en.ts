@@ -901,13 +901,43 @@ export default {
       pointsLabel: 'Points Earned',
       amountUnitTWD: 'NT$',
       amountUnitZAR: 'R',
+      // 2026-10-20 — points unit suffix on input fields.
+      // Mirrors the role of `ratePreview`'s post-{{points}} fragment
+      // (which already says `pts` here). Used by GiftCardPointsField +
+      // 4 fence field components (design min/max + checkout min/max).
+      pointsUnit: 'pts',
       separator: '=',
       placeholderAmount: 'e.g. 100',
       placeholderPoints: 'e.g. 100',
       ratePreview: '{{amountWithUnit}} = {{points}} pts',
+      // ===== 雙層 fence sub-section (2026-10-20, PR 1 of 2) =====
+      design: {
+        intro: 'Maximum points this card can issue',
+        introHint: 'You can raise this for campaigns. Per-purchase limit is set below.',
+        minPointsLabel: 'Minimum Points',
+        maxPointsLabel: 'Maximum Points',
+        placeholderMinPoints: 'e.g. 1',
+        placeholderMaxPoints: 'e.g. 10000',
+      },
+      // ===== 雙層 fence sub-section (2026-10-20, PR 2 of 2) =====
+      checkout: {
+        intro: 'Per-purchase limits (points & amount)',
+        introHint: 'Cannot exceed your card\'s max points above. Customers will be blocked at checkout.',
+        minPointsLabel: 'Min Points Per Transaction',
+        maxPointsLabel: 'Max Points Per Transaction',
+        minAmountLabel: 'Min Amount Per Transaction',
+        maxAmountLabel: 'Max Amount Per Transaction',
+        placeholderMinPoints: 'e.g. 100',
+        placeholderMaxPoints: 'e.g. 10000',
+        placeholderMinAmount: 'e.g. 100',
+        placeholderMaxAmount: 'e.g. 10000',
+      },
       validation: {
         required: 'Please fill in the exchange rate',
         positive: 'Value must be greater than zero',
+        minGreaterThanMax: 'Minimum must not exceed maximum',
+        underDesignMin: 'Cannot be below the design minimum points',
+        overDesignMax: 'Cannot exceed the design maximum points',
       },
     },
   },

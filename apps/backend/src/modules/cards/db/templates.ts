@@ -284,6 +284,55 @@ export interface TemplateSettings {
    * Mirrors `shared/templateSettingsSchema.giftCardPoints`.
    */
   giftCardPoints?: number | null;
+  // ===== Step 6 — Gift Card 雙層 fence: 方案發行點數範圍 (Rule 019 § 4.1, layer 3 of 4, 2026-10-20, PR 1 of 2) =====
+  // Mirrors `shared/templateSettingsSchema.giftCardDesignMinPoints / giftCardDesignMaxPoints`.
+  // Card-design fence bounds the points range this gift_card template can
+  // configure. Cross-field invariant (min ≤ max) is enforced at the
+  // application layer (frontend setter + loadSettings defensive coerce).
+  // All fields are optional because Step 6 is conditional on cardType
+  // (only gift_card); old rows lack these keys and loadSettings falls back
+  // to GIFT_CARD_DESIGN_MIN_POINTS / GIFT_CARD_DESIGN_MAX_POINTS defaults.
+  /**
+   * 禮品卡方案可發行點數下限. 整數 ≥ 1. 預設 1.
+   * Mirrors `shared/templateSettingsSchema.giftCardDesignMinPoints`.
+   */
+  giftCardDesignMinPoints?: number | null;
+  /**
+   * 禮品卡方案可發行點數上限. 整數 ≥ 1. 預設 999_999_999.
+   * Mirrors `shared/templateSettingsSchema.giftCardDesignMaxPoints`.
+   */
+  giftCardDesignMaxPoints?: number | null;
+  // ===== Step 6 — Gift Card 雙層 fence: 顧客單筆交易範圍 (Rule 019 § 4.1, layer 3 of 4, 2026-10-20, PR 2 of 2) =====
+  // Mirrors `shared/templateSettingsSchema.giftCardCheckout*` (Layer 1).
+  // Checkout fence bounds customer's per-transaction purchase range.
+  // All fields are optional because Step 6 is conditional on cardType
+  // (only gift_card); old rows lack these keys and loadSettings falls
+  // back to GIFT_CARD_CHECKOUT_MIN_POINTS / MAX_POINTS / MIN_AMOUNT /
+  // MAX_AMOUNT defaults in `packages/shared/constants/gift-card.ts`.
+  // Cross-field invariants (min ≤ max, checkout vs design fence) are
+  // enforced at the application layer (Rule 032 § 1) — `updateTemplate`
+  // SQL silently trusts the JSONB merge and any bad value can later be
+  // caught by an admin re-edit.
+  /**
+   * 顧客單筆交易最小購買點數. 整數 ≥ 1. 預設 100.
+   * Mirrors `shared/templateSettingsSchema.giftCardCheckoutMinPoints`.
+   */
+  giftCardCheckoutMinPoints?: number | null;
+  /**
+   * 顧客單筆交易最大購買點數. 整數 ≥ 1. 預設 10_000.
+   * Mirrors `shared/templateSettingsSchema.giftCardCheckoutMaxPoints`.
+   */
+  giftCardCheckoutMaxPoints?: number | null;
+  /**
+   * 顧客單筆交易最小付款金額. 整數 ≥ 1. 預設 100.
+   * Mirrors `shared/templateSettingsSchema.giftCardCheckoutMinAmount`.
+   */
+  giftCardCheckoutMinAmount?: number | null;
+  /**
+   * 顧客單筆交易最大付款金額. 整數 ≥ 1. 預設 10_000.
+   * Mirrors `shared/templateSettingsSchema.giftCardCheckoutMaxAmount`.
+   */
+  giftCardCheckoutMaxAmount?: number | null;
   // ===== Step 6 — REWARD 卡 (Rule 019 § 4.1, layer 3 of 4) =====
   // Mirrors `shared/templateSettingsSchema.rewardTiers`.
   // Step 6 plan 2026-09-09: second card-type-specific logic editor (after

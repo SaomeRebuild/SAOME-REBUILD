@@ -73,13 +73,9 @@ export function GiftCardPointsField({ showValidation }: GiftCardPointsFieldProps
           `}
         />
         <span className="shrink-0 text-sm text-muted-foreground">
-          {/* Points unit — points don't change with currency. Use the
-              ratePreview template's "{{points}} 點" / "{{points}} pts"
-              fragment by reading just the post-= part via a small
-              derived key. We hardcode "點" / "pts" here to keep the
-              component dependency-free (the full preview template is
-              ratePreview). Falls back to a constant string. */}
-          {giftCardPoints > 0 ? '點' : '點'}
+          {/* Points unit — points don't change with currency, but the
+              visible suffix is locale-dependent (zh-TW: 點, en: pts). */}
+          {t('step6.gift.pointsUnit')}
         </span>
       </div>
 

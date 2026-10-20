@@ -211,6 +211,25 @@ export const templateSettingsSchema = z.object({
   // keys absent; loadSettings defaults them to 1.
   giftCardAmount: z.number().int().positive().optional(),
   giftCardPoints: z.number().int().positive().optional(),
+  // ===== Step 6 — Gift Card 雙層 fence: 方案發行點數範圍 (2026-10-20, gift_card only, PR 1 of 2) =====
+  // Mirrors `shared/templateSettingsSchema.giftCardDesignMinPoints / giftCardDesignMaxPoints`
+  // (Rule 019 § 4.1 layer 2). Card-design fence bounds the points range an
+  // admin can configure for this gift_card template. Cross-field invariant
+  // (min ≤ max) is enforced at the application layer (store setter +
+  // loadSettings), not via zod (zod can't easily compare two sibling fields).
+  giftCardDesignMinPoints: z.number().int().positive().optional(),
+  giftCardDesignMaxPoints: z.number().int().positive().optional(),
+  // ===== Step 6 — Gift Card 雙層 fence: 顧客單筆交易範圍 (Rule 019 § 4.1, layer 2 of 4, 2026-10-20, PR 2 of 2) =====
+  // Mirrors `shared/templateSettingsSchema.giftCardCheckout*` (layer 1 of 4).
+  // Checkout fence bounds customer's per-transaction purchase range (gift_card only).
+  // Cross-field invariants (min ≤ max for both points + amount;
+  // checkout min ≥ design min, checkout max ≤ design max) are enforced
+  // at the application layer (frontend setters + loadSettings), NOT via
+  // zod (zod cannot easily compare sibling fields).
+  giftCardCheckoutMinPoints: z.number().int().positive().optional(),
+  giftCardCheckoutMaxPoints: z.number().int().positive().optional(),
+  giftCardCheckoutMinAmount: z.number().int().positive().optional(),
+  giftCardCheckoutMaxAmount: z.number().int().positive().optional(),
   // ===== Step 6 — REWARD 卡 (2026-09-09, reward_card only) =====
   // Mirrors `shared/templateSettingsSchema.rewardTiers`.
   // Single source of truth:

@@ -857,6 +857,22 @@ export function CardBuilderEditor({
 
   const giftCardAmount = useCardBuilderStore((s) => s.giftCardAmount);
   const giftCardPoints = useCardBuilderStore((s) => s.giftCardPoints);
+  // ===== 雙層 fence: card-design fence (2026-10-20, PR 1 of 2) =====
+  // Added to autosave snapshot per Rule 030/031 (same pattern as
+  // giftCardAmount/Points above). The setter already enforces
+  // cross-field invariant (min ≤ max); the snapshot diff catches
+  // any user edits to either fence field.
+  const giftCardDesignMinPoints = useCardBuilderStore((s) => s.giftCardDesignMinPoints);
+  const giftCardDesignMaxPoints = useCardBuilderStore((s) => s.giftCardDesignMaxPoints);
+  // ===== 雙層 fence: checkout fence (2026-10-20, PR 2 of 2) =====
+  // Added to autosave snapshot per Rule 030/031. 4 additional fields:
+  // checkout min/max points + checkout min/max amount. Within-fence
+  // cross-field invariant enforced by setters; cross-fence invariant
+  // (checkout vs design fence) enforced by both setters + loadSettings.
+  const giftCardCheckoutMinPoints = useCardBuilderStore((s) => s.giftCardCheckoutMinPoints);
+  const giftCardCheckoutMaxPoints = useCardBuilderStore((s) => s.giftCardCheckoutMaxPoints);
+  const giftCardCheckoutMinAmount = useCardBuilderStore((s) => s.giftCardCheckoutMinAmount);
+  const giftCardCheckoutMaxAmount = useCardBuilderStore((s) => s.giftCardCheckoutMaxAmount);
 
   const giftBaselineArmedRef = useRef(false);
 
@@ -872,6 +888,12 @@ export function CardBuilderEditor({
     const snapshot = JSON.stringify({
       giftCardAmount,
       giftCardPoints,
+      giftCardDesignMinPoints,
+      giftCardDesignMaxPoints,
+      giftCardCheckoutMinPoints,
+      giftCardCheckoutMaxPoints,
+      giftCardCheckoutMinAmount,
+      giftCardCheckoutMaxAmount,
     });
 
     // First run: seed the baseline. Do NOT schedule a timer — the store
@@ -898,6 +920,12 @@ export function CardBuilderEditor({
       const s = useCardBuilderStore.getState();
       const a = s.giftCardAmount;
       const p = s.giftCardPoints;
+      const dMin = s.giftCardDesignMinPoints;
+      const dMax = s.giftCardDesignMaxPoints;
+      const coMinPts = s.giftCardCheckoutMinPoints;
+      const coMaxPts = s.giftCardCheckoutMaxPoints;
+      const coMinAmt = s.giftCardCheckoutMinAmount;
+      const coMaxAmt = s.giftCardCheckoutMaxAmount;
 
       // Field-level validation gate: skip the PUT only when the value
       // is OUT-OF-BOUNDS (would 400 from backend zod). The store
@@ -918,6 +946,47 @@ export function CardBuilderEditor({
       ) {
         return;
       }
+      // Card-design fence (PR 1 of 2): cross-field invariant guard at
+      // the autosave boundary. Setter already rejects min > max, but
+      // defensive recheck handles a corrupted DB row where both keys
+      // load with min > max (loadSettings clamps min, but defensive).
+      if (
+        typeof dMin !== 'number' ||
+        !Number.isInteger(dMin) ||
+        dMin < 1 ||
+        typeof dMax !== 'number' ||
+        !Number.isInteger(dMax) ||
+        dMax < 1 ||
+        dMin > dMax
+      ) {
+        return;
+      }
+      // Checkout fence (PR 2 of 2): 4-field validation gate.
+      // Within-fence: each min ≤ max pair enforced by setters;
+      // cross-fence: checkout min ≥ design min, checkout max ≤ design max.
+      // All 8 conditions checked here as a single defensive gate.
+      if (
+        typeof coMinPts !== 'number' ||
+        !Number.isInteger(coMinPts) ||
+        coMinPts < 1 ||
+        typeof coMaxPts !== 'number' ||
+        !Number.isInteger(coMaxPts) ||
+        coMaxPts < 1 ||
+        typeof coMinAmt !== 'number' ||
+        !Number.isInteger(coMinAmt) ||
+        coMinAmt < 1 ||
+        typeof coMaxAmt !== 'number' ||
+        !Number.isInteger(coMaxAmt) ||
+        coMaxAmt < 1 ||
+        // Within-fence violations (shouldn't happen with setters)
+        coMinPts > coMaxPts ||
+        coMinAmt > coMaxAmt ||
+        // Cross-fence violations (shouldn't happen with setters + loadSettings)
+        coMinPts < dMin ||
+        coMaxPts > dMax
+      ) {
+        return;
+      }
 
       // Gate by cardType === 'gift_card' to avoid wasting RTT when the
       // user has switched to a different cardType (the field may still
@@ -935,6 +1004,12 @@ export function CardBuilderEditor({
         settings: {
           giftCardAmount: a,
           giftCardPoints: p,
+          giftCardDesignMinPoints: dMin,
+          giftCardDesignMaxPoints: dMax,
+          giftCardCheckoutMinPoints: coMinPts,
+          giftCardCheckoutMaxPoints: coMaxPts,
+          giftCardCheckoutMinAmount: coMinAmt,
+          giftCardCheckoutMaxAmount: coMaxAmt,
         },
       }).catch((err) => {
         console.warn('[CardBuilderEditor] Step 6 gift auto-save failed:', err);
@@ -947,7 +1022,7 @@ export function CardBuilderEditor({
         giftSaveTimerRef.current = null;
       }
     };
-  }, [cardId, giftCardAmount, giftCardPoints]);
+  }, [cardId, giftCardAmount, giftCardPoints, giftCardDesignMinPoints, giftCardDesignMaxPoints, giftCardCheckoutMinPoints, giftCardCheckoutMaxPoints, giftCardCheckoutMinAmount, giftCardCheckoutMaxAmount]);
 
   // ============================================================
   // Auto-save: Step 7 — 客製化桌牌 (tableCard) → debounced PUT.

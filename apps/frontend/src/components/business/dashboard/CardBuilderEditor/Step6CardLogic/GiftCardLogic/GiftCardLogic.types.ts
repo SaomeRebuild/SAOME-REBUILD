@@ -20,3 +20,37 @@ export interface GiftCardAmountFieldProps {
 export interface GiftCardPointsFieldProps {
   showValidation: boolean;
 }
+
+// ===== 雙層 fence sub-component props (2026-10-20, PR 1 of 2) =====
+export interface GiftCardDesignMinPointsFieldProps {
+  showValidation: boolean;
+}
+
+export interface GiftCardDesignMaxPointsFieldProps {
+  showValidation: boolean;
+}
+
+export interface GiftCardDesignLimitsSectionProps {
+  showValidation: boolean;
+}
+
+// ===== 雙層 fence sub-component props (2026-10-20, PR 2 of 2) =====
+export interface GiftCardCheckoutMinPointsFieldProps {
+  showValidation: boolean;
+}
+
+export interface GiftCardCheckoutMaxPointsFieldProps {
+  showValidation: boolean;
+}
+
+export interface GiftCardCheckoutMinAmountFieldProps {
+  showValidation: boolean;
+}
+
+export interface GiftCardCheckoutMaxAmountFieldProps {
+  showValidation: boolean;
+}
+
+export interface GiftCardCheckoutLimitsSectionProps {
+  showValidation: boolean;
+}

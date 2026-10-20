@@ -719,7 +719,16 @@ export function CardBuilderEditorWorkspace({
    * the setter via loadSettings.
    */
   function isGiftCardStep6Valid(): boolean {
-    const { giftCardAmount, giftCardPoints } = useCardBuilderStore.getState();
+    const {
+      giftCardAmount,
+      giftCardPoints,
+      giftCardDesignMinPoints,
+      giftCardDesignMaxPoints,
+      giftCardCheckoutMinPoints,
+      giftCardCheckoutMaxPoints,
+      giftCardCheckoutMinAmount,
+      giftCardCheckoutMaxAmount,
+    } = useCardBuilderStore.getState();
 
     if (
       typeof giftCardAmount !== 'number' ||
@@ -732,6 +741,47 @@ export function CardBuilderEditorWorkspace({
       typeof giftCardPoints !== 'number' ||
       !Number.isInteger(giftCardPoints) ||
       giftCardPoints < 1
+    ) {
+      return false;
+    }
+    // ===== 雙層 fence: card-design fence cross-field invariant (2026-10-20, PR 1 of 2) =====
+    // Setter already rejects min > max on writes; this re-check at the
+    // workspace boundary defends against corrupted DB rows that bypassed
+    // the setter via loadSettings.
+    if (
+      typeof giftCardDesignMinPoints !== 'number' ||
+      !Number.isInteger(giftCardDesignMinPoints) ||
+      giftCardDesignMinPoints < 1 ||
+      typeof giftCardDesignMaxPoints !== 'number' ||
+      !Number.isInteger(giftCardDesignMaxPoints) ||
+      giftCardDesignMaxPoints < 1 ||
+      giftCardDesignMinPoints > giftCardDesignMaxPoints
+    ) {
+      return false;
+    }
+    // ===== 雙層 fence: checkout fence cross-field invariant (2026-10-20, PR 2 of 2) =====
+    // 4-field validation gate. Within-fence + cross-fence checks:
+    //   - checkout min ≤ max for both points and amount
+    //   - checkout min ≥ design min, checkout max ≤ design max
+    if (
+      typeof giftCardCheckoutMinPoints !== 'number' ||
+      !Number.isInteger(giftCardCheckoutMinPoints) ||
+      giftCardCheckoutMinPoints < 1 ||
+      typeof giftCardCheckoutMaxPoints !== 'number' ||
+      !Number.isInteger(giftCardCheckoutMaxPoints) ||
+      giftCardCheckoutMaxPoints < 1 ||
+      typeof giftCardCheckoutMinAmount !== 'number' ||
+      !Number.isInteger(giftCardCheckoutMinAmount) ||
+      giftCardCheckoutMinAmount < 1 ||
+      typeof giftCardCheckoutMaxAmount !== 'number' ||
+      !Number.isInteger(giftCardCheckoutMaxAmount) ||
+      giftCardCheckoutMaxAmount < 1 ||
+      // Within-fence violations
+      giftCardCheckoutMinPoints > giftCardCheckoutMaxPoints ||
+      giftCardCheckoutMinAmount > giftCardCheckoutMaxAmount ||
+      // Cross-fence violations
+      giftCardCheckoutMinPoints < giftCardDesignMinPoints ||
+      giftCardCheckoutMaxPoints > giftCardDesignMaxPoints
     ) {
       return false;
     }
@@ -980,6 +1030,16 @@ export function CardBuilderEditorWorkspace({
             // coupon_card pattern.
             giftCardAmount,
             giftCardPoints,
+            // 2026-10-20: card-design fence fields (PR 1 of 2). 整數 ≥ 1,
+            // cross-field invariant 由 setter enforce. Always read store
+            // at the same point as amount/points to keep snapshot 同步。
+            giftCardDesignMinPoints,
+            giftCardDesignMaxPoints,
+            // 2026-10-20: checkout fence fields (PR 2 of 2). 4 fields.
+            giftCardCheckoutMinPoints,
+            giftCardCheckoutMaxPoints,
+            giftCardCheckoutMinAmount,
+            giftCardCheckoutMaxAmount,
           } = useCardBuilderStore.getState();
           // Strip `id` field from each reward tier before sending to backend
           // (id is a UI-only React key, not part of the data contract).
@@ -1163,6 +1223,23 @@ export function CardBuilderEditorWorkspace({
               cardType === 'gift_card' ? giftCardAmount : undefined,
             giftCardPoints:
               cardType === 'gift_card' ? giftCardPoints : undefined,
+            // ===== Gift Card 雙層 fence: card-design fence (2026-10-20, PR 1 of 2) =====
+            // 只在 gift_card cardType 時送。scheme optional 接受 undefined,
+            // 其他 cardType 不會 leak 到 settings。Cross-field invariant
+            // (min ≤ max) 由 setter 防護,前端只送通過 invariant 的值。
+            giftCardDesignMinPoints:
+              cardType === 'gift_card' ? giftCardDesignMinPoints : undefined,
+            giftCardDesignMaxPoints:
+              cardType === 'gift_card' ? giftCardDesignMaxPoints : undefined,
+            // ===== Gift Card 雙層 fence: checkout fence (2026-10-20, PR 2 of 2) =====
+            giftCardCheckoutMinPoints:
+              cardType === 'gift_card' ? giftCardCheckoutMinPoints : undefined,
+            giftCardCheckoutMaxPoints:
+              cardType === 'gift_card' ? giftCardCheckoutMaxPoints : undefined,
+            giftCardCheckoutMinAmount:
+              cardType === 'gift_card' ? giftCardCheckoutMinAmount : undefined,
+            giftCardCheckoutMaxAmount:
+              cardType === 'gift_card' ? giftCardCheckoutMaxAmount : undefined,
           });
           console.log('[handleNext] Step 6 card logic saved', {
             stampAccrualMode,
@@ -1201,6 +1278,13 @@ export function CardBuilderEditorWorkspace({
             // 2026-09-27 gift-card logging
             giftCardAmount,
             giftCardPoints,
+            // 2026-10-20 PR 1 + 2: gift-card 雙層 fence logging
+            giftCardDesignMinPoints,
+            giftCardDesignMaxPoints,
+            giftCardCheckoutMinPoints,
+            giftCardCheckoutMaxPoints,
+            giftCardCheckoutMinAmount,
+            giftCardCheckoutMaxAmount,
           });
         } catch (err) {
           // Don't block step transition — let the user proceed and retry later.
