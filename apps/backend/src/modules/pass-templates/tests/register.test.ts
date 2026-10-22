@@ -1087,3 +1087,252 @@ describe('POST /:id/register — error envelope includes received value', () => 
     expect(res.status).toBe(200);   // happy path, not 400
   });
 });
+
+// =============================================================================
+// 2026-10-23 — Gift-card purchase registration.
+//
+// The security property pinned here: the backend RE-DERIVES the amount
+// from the template's own `giftCard*` settings. A client that sends
+// `purchasedPoints: 10000` alongside a fabricated price must not be
+// able to influence what gets charged or persisted.
+//
+// See runs/decisions/2026-10-23-gift-card-paid-registration.md
+// =============================================================================
+
+const GIFT_TEMPLATE_ROW: PublicTemplateRow = {
+  id: TEMPLATE_ID,
+  name: 'Gift Card Studio',
+  card_type: 'gift_card',
+  settings: { logoText: 'Gift', issuerName: 'Gift Card Studio' },
+  is_paid: false,
+  currency: 'TWD',
+  gift_card_config: {
+    giftCardAmount: 100,
+    giftCardPoints: 10,
+    giftCardCheckoutMinPoints: 100,
+    giftCardCheckoutMaxPoints: 10_000,
+    giftCardCheckoutMinAmount: 100,
+    giftCardCheckoutMaxAmount: 10_000,
+  },
+};
+
+const giftPayload = {
+  ...validPayload,
+  purchasedPoints: 500,
+  paymentProvider: 'ecpay' as const,
+  paymentStatus: 'completed' as const,
+};
+
+describe('passHolderRegisterPayloadSchema — purchasedPoints (2026-10-23)', () => {
+  it('accepts a positive integer purchasedPoints', () => {
+    expect(parsed({ ...validPayload, purchasedPoints: 500 }).success).toBe(true);
+  });
+
+  it('rejects non-integer / non-positive purchasedPoints', () => {
+    for (const purchasedPoints of [0, -100, 10.5]) {
+      expect(parsed({ ...validPayload, purchasedPoints }).success).toBe(false);
+    }
+  });
+
+  it('rejects purchasedPoints WITHOUT a paymentProvider (gift cards are always paid)', () => {
+    const result = parsed({
+      ...validPayload,
+      purchasedPoints: 500,
+      paymentStatus: 'completed',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find((i) => i.path[0] === 'paymentProvider');
+      expect(issue?.message).toBe(
+        'passHolder.errors.paymentProviderRequiredForCompleted',
+      );
+    }
+  });
+
+  it('accepts purchasedPoints with paymentStatus "not_required"? NO — rejects', () => {
+    // A gift purchase is never free. If the frontend somehow emits
+    // 'not_required' alongside points, the cross-field rule must reject
+    // rather than persist a "free" purchase of real points.
+    const result = parsed({
+      ...validPayload,
+      purchasedPoints: 500,
+      paymentStatus: 'not_required',
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('registerService — gift-card purchase (2026-10-23)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('persists purchasedPoints + a server-derived amount + currency + snapshot', async () => {
+    stubTemplateExists(GIFT_TEMPLATE_ROW);
+    stubUpsert({ ...EXISTING_HOLDER, id: 'holder-gift' }, true);
+
+    await registerService(
+      makeMockSql(),
+      MOCK_ENV as never,
+      TEMPLATE_ID,
+      giftPayload as never,
+    );
+
+    const upsertSpy = vi.mocked(passHoldersDb.upsertPassHolder);
+    expect(upsertSpy).toHaveBeenCalledWith(
+      makeMockSql(),
+      expect.objectContaining({
+        purchasedPoints: 500,
+        // 500 點 ÷ 10 點/單位 × 100 元/單位 = 5000 元 — derived by the
+        // SERVER from the template config, never read from the payload.
+        paidAmount: 5000,
+        currency: 'TWD',
+        giftCardSnapshot: expect.objectContaining({
+          points: 500,
+          amount: 5000,
+          currency: 'TWD',
+          unitAmount: 100,
+          unitPoints: 10,
+        }),
+      }),
+    );
+  });
+
+  it('ignores a client-supplied price — the amount is always re-derived', async () => {
+    // Defense-in-depth: even if a future payload field carries an
+    // amount, the service must ignore it. The snapshot's `amount` is
+    // provably the server's own arithmetic.
+    stubTemplateExists(GIFT_TEMPLATE_ROW);
+    stubUpsert({ ...EXISTING_HOLDER, id: 'holder-gift' }, true);
+
+    await registerService(
+      makeMockSql(),
+      MOCK_ENV as never,
+      TEMPLATE_ID,
+      { ...giftPayload, paidAmount: 1, amount: 1, giftCardSnapshot: { amount: 1 } } as never,
+    );
+
+    const input = vi.mocked(passHoldersDb.upsertPassHolder).mock.calls[0]?.[1];
+    expect(input?.paidAmount).toBe(5000);
+    expect(
+      (input?.giftCardSnapshot as { amount: number } | undefined)?.amount,
+    ).toBe(5000);
+  });
+
+  it('REJECTS points below the checkout minimum', async () => {
+    stubTemplateExists(GIFT_TEMPLATE_ROW);
+    const upsertSpy = vi.spyOn(passHoldersDb, 'upsertPassHolder');
+
+    await expect(
+      registerService(
+        makeMockSql(),
+        MOCK_ENV as never,
+        TEMPLATE_ID,
+        { ...giftPayload, purchasedPoints: 50 } as never,
+      ),
+    ).rejects.toThrow();
+    expect(upsertSpy).not.toHaveBeenCalled();
+  });
+
+  it('REJECTS points above the checkout maximum', async () => {
+    stubTemplateExists(GIFT_TEMPLATE_ROW);
+    const upsertSpy = vi.spyOn(passHoldersDb, 'upsertPassHolder');
+
+    await expect(
+      registerService(
+        makeMockSql(),
+        MOCK_ENV as never,
+        TEMPLATE_ID,
+        { ...giftPayload, purchasedPoints: 20_000 } as never,
+      ),
+    ).rejects.toThrow();
+    expect(upsertSpy).not.toHaveBeenCalled();
+  });
+
+  it('REJECTS points the rate cannot price (not a multiple of unitPoints)', async () => {
+    // 505 點 ÷ 10 = 50.5 units → 5050 元 is expressible, but the rate
+    // contract requires whole units. Reject rather than round.
+    stubTemplateExists(GIFT_TEMPLATE_ROW);
+    const upsertSpy = vi.spyOn(passHoldersDb, 'upsertPassHolder');
+
+    await expect(
+      registerService(
+        makeMockSql(),
+        MOCK_ENV as never,
+        TEMPLATE_ID,
+        { ...giftPayload, purchasedPoints: 505 } as never,
+      ),
+    ).rejects.toThrow();
+    expect(upsertSpy).not.toHaveBeenCalled();
+  });
+
+  it('REJECTS a gift-card registration with NO purchasedPoints at all', async () => {
+    // A gift card is always paid. Registering without points would
+    // create a "free gift card" row — the exact class of semantic
+    // garbage migration 024's cross-field rules were built to stop.
+    stubTemplateExists(GIFT_TEMPLATE_ROW);
+    const upsertSpy = vi.spyOn(passHoldersDb, 'upsertPassHolder');
+
+    await expect(
+      registerService(
+        makeMockSql(),
+        MOCK_ENV as never,
+        TEMPLATE_ID,
+        { ...validPayload, paymentProvider: 'ecpay', paymentStatus: 'completed' } as never,
+      ),
+    ).rejects.toThrow();
+    expect(upsertSpy).not.toHaveBeenCalled();
+  });
+
+  it('REJECTS when the template has no configured rate', async () => {
+    stubTemplateExists({ ...GIFT_TEMPLATE_ROW, gift_card_config: null });
+    const upsertSpy = vi.spyOn(passHoldersDb, 'upsertPassHolder');
+
+    await expect(
+      registerService(
+        makeMockSql(),
+        MOCK_ENV as never,
+        TEMPLATE_ID,
+        giftPayload as never,
+      ),
+    ).rejects.toThrow();
+    expect(upsertSpy).not.toHaveBeenCalled();
+  });
+
+  it('uses ZAR + payfast for a ZAR gift template', async () => {
+    stubTemplateExists({ ...GIFT_TEMPLATE_ROW, currency: 'ZAR' });
+    stubUpsert({ ...EXISTING_HOLDER, id: 'holder-gift-zar' }, true);
+
+    await registerService(
+      makeMockSql(),
+      MOCK_ENV as never,
+      TEMPLATE_ID,
+      { ...giftPayload, paymentProvider: 'payfast' } as never,
+    );
+
+    expect(vi.mocked(passHoldersDb.upsertPassHolder).mock.calls[0]?.[1]).toMatchObject({
+      currency: 'ZAR',
+      paidAmount: 5000,
+    });
+  });
+
+  it('does NOT touch the gift path for a non-gift template (regression)', async () => {
+    // The existing membership / stamp / reward registrations must be
+    // byte-for-byte unaffected.
+    stubTemplateExists(TEMPLATE_ROW);
+    stubUpsert({ ...EXISTING_HOLDER, id: 'holder-new' }, true);
+
+    await registerService(
+      makeMockSql(),
+      MOCK_ENV as never,
+      TEMPLATE_ID,
+      validPayload as never,
+    );
+
+    const input = vi.mocked(passHoldersDb.upsertPassHolder).mock.calls[0]?.[1];
+    expect(input?.purchasedPoints).toBeUndefined();
+    expect(input?.giftCardSnapshot).toBeUndefined();
+    expect(input?.paidAmount).toBeUndefined();
+    expect(input?.currency).toBeUndefined();
+  });
+});

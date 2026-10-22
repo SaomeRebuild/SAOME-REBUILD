@@ -16,3 +16,4 @@ export * from './cardSettings';
 export * from './locations';
 export * from './currency';
 export * from './stampCardImage';
+export * from './giftCardPurchase';

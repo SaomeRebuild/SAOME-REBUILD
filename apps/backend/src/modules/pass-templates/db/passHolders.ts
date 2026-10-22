@@ -18,6 +18,8 @@
  *     Closure: (a) backfill barcode_value placeholder strings to NULL,
  *     (b) CHECK constraint blocking re-entry of placeholders,
  *     (c) add iphone_uri / android_uri TEXT columns (V3 platform URIs)
+ *   - 20261023000001_027_add_pass_holder_gift_card_purchase_fields.sql —
+ *     Gift-card purchase extension (purchased_points, gift_card_snapshot)
  *
  * Decision log:
  *   - runs/decisions/2026-09-29-pass-templates-public-endpoint.md
@@ -25,6 +27,7 @@
  *   - runs/decisions/2026-10-18-payment-status-not-required-enum.md
  *   - runs/decisions/2026-10-19-pass-holder-v3-issuance.md
  *   - runs/decisions/2026-10-19-pass-holder-v3-jsonb-consolidation.md
+ *   - runs/decisions/2026-10-23-gift-card-paid-registration.md
  */
 
 import type { Sql } from '@/shared/db/client';
@@ -112,6 +115,23 @@ export interface PassHolderRow {
   iphone_uri?: string | null;
   /** V3 `data.androidUri` — Google Pay deeplink (still persisted for Apple-only templates). */
   android_uri?: string | null;
+  // ================================================================
+  // 2026-10-23 — Gift-card purchase columns (migration 027)
+  //   Both columns are NULLABLE: every non-gift-card row keeps them
+  //   NULL, so the migration is a no-op for existing data and needs no
+  //   backfill. `purchased_points` carries a DB-level CHECK (> 0) as
+  //   defence-in-depth; the PRIMARY gate is the application layer
+  //   (`shared/logic/giftCardPurchase.ts` + `registerService`).
+  //   See runs/decisions/2026-10-23-gift-card-paid-registration.md.
+  // ================================================================
+  /** Points the customer purchased. NULL for every non-gift card type. */
+  purchased_points?: number | null;
+  /**
+   * Frozen exchange rate + derived amount (JSONB), validated against
+   * `giftCardSnapshotSchema` before the write (Rule 032 § 1). NULL for
+   * every non-gift card type.
+   */
+  gift_card_snapshot?: unknown;
   created_at: Date;
   updated_at: Date;
 }
@@ -194,6 +214,7 @@ export async function findPassHolderByTemplateAndEmail(
            pass_identifier, download_url, barcode_value,
            issued_at, issuance_error,
            iphone_uri, android_uri,
+           purchased_points, gift_card_snapshot,
            created_at, updated_at
       FROM public.pass_holders
      WHERE template_id = ${templateId}
@@ -239,6 +260,20 @@ export async function upsertPassHolder(
     paymentStatus?: 'pending' | 'completed' | 'failed' | 'not_required';
     paidAmount?: number | null;
     currency?: Currency;
+    /**
+     * 2026-10-23 — gift-card purchase. Points the customer bought.
+     * Undefined / null for every non-gift card type.
+     */
+    purchasedPoints?: number;
+    /**
+     * 2026-10-23 — gift-card purchase. Frozen exchange rate + derived
+     * amount, built by `buildGiftCardSnapshot` from the TEMPLATE's own
+     * settings (never from a client-supplied price). Injected with
+     * `${sql.json(...)}` per Rule 027 § workerd `JSON.stringify`
+     * pitfall — the workerd runtime corrupts non-ASCII through a manual
+     * `JSON.stringify` + `::jsonb` cast.
+     */
+    giftCardSnapshot?: unknown;
   },
 ): Promise<{ row: PassHolderRow; created: boolean }> {
   const existing = await findPassHolderByTemplateAndEmail(sql, input.templateId, input.email);
@@ -246,15 +281,16 @@ export async function upsertPassHolder(
     return { row: existing, created: false };
   }
 
-  // Use `sql.json()` for the membership_tier_snapshot JSONB column to
-  // avoid the workerd `JSON.stringify` non-ASCII pitfall (Rule 027
-  // § workerd `JSON.stringify` pitfall). All other values go through
-  // tagged template injection.
+  // Use `sql.json()` for the two JSONB columns (membership_tier_snapshot,
+  // gift_card_snapshot) to avoid the workerd `JSON.stringify` non-ASCII
+  // pitfall (Rule 027 § workerd `JSON.stringify` pitfall). All other
+  // values go through tagged template injection.
   const inserted = await sql<PassHolderRow[]>`
     INSERT INTO public.pass_holders (
       template_id, name, phone_country_code, phone_number, birthday, email,
       selected_tier_index, membership_tier_snapshot,
-      payment_provider, payment_status, paid_amount, currency
+      payment_provider, payment_status, paid_amount, currency,
+      purchased_points, gift_card_snapshot
     ) VALUES (
       ${input.templateId},
       ${input.name},
@@ -269,7 +305,11 @@ export async function upsertPassHolder(
       ${input.paymentProvider ?? null},
       ${input.paymentStatus ?? 'pending'},
       ${input.paidAmount ?? null},
-      ${input.currency ?? null}
+      ${input.currency ?? null},
+      ${input.purchasedPoints ?? null},
+      ${input.giftCardSnapshot === undefined
+        ? null
+        : sql.json(input.giftCardSnapshot as Parameters<typeof sql.json>[0])}
     )
     RETURNING id, template_id, name, phone_country_code, phone_number,
               birthday::text AS birthday, email,
@@ -278,6 +318,7 @@ export async function upsertPassHolder(
               pass_identifier, download_url, barcode_value,
               issued_at, issuance_error,
               iphone_uri, android_uri,
+              purchased_points, gift_card_snapshot,
               created_at, updated_at
   `;
 
@@ -387,6 +428,7 @@ export async function updatePassHolderIssuance(
                pass_identifier, download_url, barcode_value,
                issued_at, issuance_error,
                iphone_uri, android_uri,
+               purchased_points, gift_card_snapshot,
                created_at, updated_at
   `;
   if (!rows[0]) {

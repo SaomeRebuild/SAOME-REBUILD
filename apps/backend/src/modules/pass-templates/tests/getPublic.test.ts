@@ -497,3 +497,209 @@ describe('normalizeMembershipTiers (db/templates.ts) — pure-function unit test
     ]);
   });
 });
+
+// =============================================================================
+// 2026-10-23 — gift-card purchase projection.
+//
+// A gift card is ALWAYS paid, but it is NOT a "paid membership card":
+// it has no `isPaid` flag and no tier list. The backend therefore
+// projects it on a SEPARATE `card_type === 'gift_card'` branch. Before
+// this, `currency` was emitted only inside the `is_paid` branch, so a
+// gift-card template could never tell the frontend which payment
+// provider to offer — a silent dead end on the public page.
+//
+// See runs/decisions/2026-10-23-gift-card-paid-registration.md
+// =============================================================================
+
+const GIFT_SETTINGS = {
+  giftCardAmount: 100,
+  giftCardPoints: 10,
+  giftCardCheckoutMinPoints: 100,
+  giftCardCheckoutMaxPoints: 10_000,
+  giftCardCheckoutMinAmount: 100,
+  giftCardCheckoutMaxAmount: 10_000,
+  giftCardDesignMinPoints: 1,
+  giftCardDesignMaxPoints: 999_999_999,
+  currency: 'TWD',
+};
+
+const giftRow: PublicTemplateRow = {
+  id: 'aaaaaaa1-7f25-414b-b0d9-0c3abce8cf52',
+  name: 'Gift Card Studio',
+  card_type: 'gift_card',
+  settings: {
+    logoText: 'Gift Studio',
+    issuerName: 'Gift Card Studio',
+    language: 'zh-TW',
+    ...GIFT_SETTINGS,
+  },
+  is_paid: false,
+  membership_tiers: null,
+  currency: 'TWD',
+  gift_card_config: {
+    giftCardAmount: 100,
+    giftCardPoints: 10,
+    giftCardCheckoutMinPoints: 100,
+    giftCardCheckoutMaxPoints: 10_000,
+    giftCardCheckoutMinAmount: 100,
+    giftCardCheckoutMaxAmount: 10_000,
+  },
+};
+
+describe('getPublicTemplateService — gift-card projection (2026-10-23)', () => {
+  it('projects giftCard + currency for a gift_card template (is_paid = false)', async () => {
+    stubFindPublicTemplateById(giftRow);
+    const dto = await getPublicTemplateService(makeMockSql(), giftRow.id);
+    expect(dto?.cardType).toBe('gift_card');
+    expect(dto?.currency).toBe('TWD');
+    expect(dto?.giftCard).toEqual({
+      unitAmount: 100,
+      unitPoints: 10,
+      checkoutMinPoints: 100,
+      checkoutMaxPoints: 10_000,
+      checkoutMinAmount: 100,
+      checkoutMaxAmount: 10_000,
+    });
+  });
+
+  it('does NOT project isPaid / membershipTiers for a gift card', async () => {
+    // A gift card must not render the membership tier picker — the two
+    // branches are mutually exclusive.
+    stubFindPublicTemplateById(giftRow);
+    const dto = await getPublicTemplateService(makeMockSql(), giftRow.id);
+    expect(dto?.isPaid).toBeUndefined();
+    expect(dto?.membershipTiers).toBeUndefined();
+  });
+
+  it('projects ZAR currency so the page can offer Payfast', async () => {
+    stubFindPublicTemplateById({ ...giftRow, currency: 'ZAR' });
+    const dto = await getPublicTemplateService(makeMockSql(), giftRow.id);
+    expect(dto?.currency).toBe('ZAR');
+    expect(dto?.giftCard?.unitAmount).toBe(100);
+  });
+
+  it('defaults currency to TWD when the template has none configured', async () => {
+    stubFindPublicTemplateById({ ...giftRow, currency: undefined });
+    const dto = await getPublicTemplateService(makeMockSql(), giftRow.id);
+    expect(dto?.currency).toBe('TWD');
+  });
+
+  it('omits giftCard when the tenant never configured a rate', async () => {
+    stubFindPublicTemplateById({ ...giftRow, gift_card_config: null });
+    const dto = await getPublicTemplateService(makeMockSql(), giftRow.id);
+    expect(dto?.giftCard).toBeUndefined();
+    // currency still rides along — the card type alone warrants it.
+    expect(dto?.currency).toBe('TWD');
+  });
+
+  it('does NOT project giftCard on a non-gift card type (regression guard)', async () => {
+    // A stamp card carrying stale giftCard* keys in settings must not
+    // render a purchase UI.
+    stubFindPublicTemplateById({
+      ...baseRow,
+      card_type: 'stamp_card',
+      gift_card_config: giftRow.gift_card_config,
+    });
+    const dto = await getPublicTemplateService(makeMockSql(), baseRow.id);
+    expect(dto?.giftCard).toBeUndefined();
+    expect(dto?.currency).toBeUndefined();
+  });
+
+  it('a paid membership card keeps the is_paid branch (branches do not collide)', async () => {
+    stubFindPublicTemplateById(paidRow);
+    const dto = await getPublicTemplateService(makeMockSql(), paidRow.id);
+    expect(dto?.isPaid).toBe(true);
+    expect(dto?.giftCard).toBeUndefined();
+  });
+});
+
+describe('normalizeGiftCardConfig (db/templates.ts) — pure-function unit tests', () => {
+  async function loadNormalizer() {
+    const mod = await import('../db/templates');
+    return mod.normalizeGiftCardConfig;
+  }
+
+  it('returns null when the config is missing entirely', async () => {
+    const normalizeGiftCardConfig = await loadNormalizer();
+    expect(normalizeGiftCardConfig(null)).toBeNull();
+    expect(normalizeGiftCardConfig(undefined)).toBeNull();
+  });
+
+  it('returns null when the rate fields are absent (template not configured)', async () => {
+    const normalizeGiftCardConfig = await loadNormalizer();
+    expect(normalizeGiftCardConfig({})).toBeNull();
+  });
+
+  it('returns null when a required numeric field is missing or non-numeric', async () => {
+    const normalizeGiftCardConfig = await loadNormalizer();
+    const valid = {
+      giftCardAmount: 100,
+      giftCardPoints: 10,
+      giftCardCheckoutMinPoints: 100,
+      giftCardCheckoutMaxPoints: 10_000,
+      giftCardCheckoutMinAmount: 100,
+      giftCardCheckoutMaxAmount: 10_000,
+    };
+    for (const key of Object.keys(valid)) {
+      expect(normalizeGiftCardConfig({ ...valid, [key]: 'abc' })).toBeNull();
+      expect(normalizeGiftCardConfig({ ...valid, [key]: undefined })).toBeNull();
+    }
+  });
+
+  it('returns null for a non-positive or non-integer rate (corrupt row)', async () => {
+    const normalizeGiftCardConfig = await loadNormalizer();
+    const valid = {
+      giftCardAmount: 100,
+      giftCardPoints: 10,
+      giftCardCheckoutMinPoints: 100,
+      giftCardCheckoutMaxPoints: 10_000,
+      giftCardCheckoutMinAmount: 100,
+      giftCardCheckoutMaxAmount: 10_000,
+    };
+    expect(normalizeGiftCardConfig({ ...valid, giftCardAmount: 0 })).toBeNull();
+    expect(normalizeGiftCardConfig({ ...valid, giftCardPoints: -1 })).toBeNull();
+    expect(normalizeGiftCardConfig({ ...valid, giftCardAmount: 10.5 })).toBeNull();
+  });
+
+  it('returns null when the checkout fence is inverted (min > max)', async () => {
+    const normalizeGiftCardConfig = await loadNormalizer();
+    expect(
+      normalizeGiftCardConfig({
+        giftCardAmount: 100,
+        giftCardPoints: 10,
+        giftCardCheckoutMinPoints: 10_000,
+        giftCardCheckoutMaxPoints: 100,
+        giftCardCheckoutMinAmount: 100,
+        giftCardCheckoutMaxAmount: 10_000,
+      }),
+    ).toBeNull();
+  });
+
+  it('returns null for a non-object payload (JSONB free-form guard)', async () => {
+    const normalizeGiftCardConfig = await loadNormalizer();
+    expect(normalizeGiftCardConfig('string')).toBeNull();
+    expect(normalizeGiftCardConfig(42)).toBeNull();
+    expect(normalizeGiftCardConfig([1, 2, 3])).toBeNull();
+  });
+
+  it('accepts a complete config and maps it to the public shape', async () => {
+    const normalizeGiftCardConfig = await loadNormalizer();
+    expect(
+      normalizeGiftCardConfig({
+        giftCardAmount: 1,
+        giftCardPoints: 1,
+        giftCardCheckoutMinPoints: 100,
+        giftCardCheckoutMaxPoints: 10_000,
+        giftCardCheckoutMinAmount: 100,
+        giftCardCheckoutMaxAmount: 10_000,
+      }),
+    ).toEqual({
+      unitAmount: 1,
+      unitPoints: 1,
+      checkoutMinPoints: 100,
+      checkoutMaxPoints: 10_000,
+      checkoutMinAmount: 100,
+      checkoutMaxAmount: 10_000,
+    });
+  });
+});

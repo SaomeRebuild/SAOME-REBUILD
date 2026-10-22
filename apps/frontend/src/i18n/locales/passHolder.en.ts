@@ -115,6 +115,15 @@ export default {
     birthdayInvalid: 'Invalid birthday format',
     phoneInvalid: 'Invalid phone number format',
     tooYoung: 'Must be at least 13 years old',
+    // 2026-10-23 — Gift-card purchase errors. Thrown by the backend
+    // `registerService::deriveGiftCardPurchase` and surfaced verbatim
+    // in the frontend banner. Keep in sync with the backend.
+    // The customer buys POINTS, not an amount — the price is derived
+    // from the tenant's rate and can never be client-edited.
+    pointsForbiddenForNotRequired: 'A points purchase cannot be marked as free',
+    giftCardPointsRequired: 'Please choose how many points to buy',
+    giftCardNotConfigured:
+      'This gift card has no exchange rate configured. Please contact the merchant.',
   },
   validation: {
     nameRequired: 'Please enter your name',
@@ -123,6 +132,14 @@ export default {
     birthdayInvalid: 'Invalid birthday format',
     emailInvalid: 'Invalid email format',
     ageTooYoung: 'Must be at least 13 years old',
+    // 2026-10-23 — Gift-card purchase validation messages. These keys
+    // are produced by `packages/shared/logic/giftCardPurchase.ts` and
+    // shared by web + (future) React Native (Rule 023 § Shared
+    // Validation 用 i18n Key).
+    pointsInvalid: 'Please enter a valid number of points',
+    pointsBelowMin: 'Points are below the minimum purchase',
+    pointsAboveMax: 'Points exceed the per-checkout maximum',
+    pointsNotMultipleOfRate: 'Points must be a multiple of the exchange unit',
   },
   // 2026-10-16: Paid-membership tier picker + simulated payment UI.
   // Translation writing discipline: full English only, no Chinese
@@ -151,5 +168,42 @@ export default {
       payfast: 'Payfast',
       ecpay: 'Ecpay',
     },
+  },
+  // 2026-10-23: Gift-card purchase section (exchange-rate explanation +
+  // points input + gifting hint). Mirror of the zh-TW `gift.*` block.
+  //
+  // A gift card sells POINTS, not money: the customer types points and
+  // the payable amount is derived from the tenant's rate. There is no
+  // amount input — the price is a read-only computation, and the
+  // backend re-derives it from the same shared function.
+  //
+  // Translation discipline: full English only (Rule 023 § 翻譯書寫
+  // 紀律). Ranges use {{min}} / {{max}} interpolation so the copy
+  // tracks the merchant's settings instead of hardcoding numbers.
+  gift: {
+    sectionTitle: 'Buy Points',
+    sectionHint:
+      'Here is the exchange rate set by the merchant. Points can be spent in store right away.',
+    rateLabel: 'Exchange rate',
+    rateValue: '{{points}} points for every {{amount}}',
+    rangeLabel: 'Per-purchase range',
+    rangePoints: '{{min}} – {{max}} points',
+    usageHint:
+      'Show the pass in your mobile wallet at checkout and the cashier will scan it to deduct your points.',
+    tipsTitle: 'Buying this for someone else?',
+    tipsBody:
+      "Just fill in their name, phone, birthday and email — the pass will be sent to them.",
+    pointsLabel: 'Points to buy',
+    pointsPlaceholder: 'Enter points',
+    amountLabel: 'Amount payable',
+    amountEmpty: 'No points entered',
+    fenceHintLabel: 'You can buy:',
+    payButton: {
+      payfast: 'Pay with Payfast',
+      ecpay: 'Pay with Ecpay',
+    },
+    payWithAmountAction: 'Pay {{amount}} & Get Pass',
+    paying: 'Processing payment…',
+    paid: 'Paid',
   },
 };

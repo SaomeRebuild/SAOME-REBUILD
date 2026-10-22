@@ -44,6 +44,39 @@ export interface PublicMembershipTier {
 }
 
 /**
+ * Public-safe gift-card purchase configuration.
+ *
+ * Source of truth is the card template's `settings` JSONB, configured in
+ * CardBuilder Step 6 (`GiftCardLogic`). Every field here is a
+ * customer-facing constraint, so it is safe to project anonymously —
+ * unlike `tenant_id` / `status`.
+ *
+ * The rate is expressed as "1 unit of currency buys `unitPoints`
+ * points" (`unitAmount` currency per `unitPoints` points). A 100元 = 10點
+ * template therefore has `unitAmount: 100, unitPoints: 10`, and a customer
+ * buying 500 點 pays `(500 / 10) * 100 = 5000` 元.
+ *
+ * All six fields are `.int().positive().optional()` in
+ * `templateSettingsSchema` (packages/shared/schemas/card.ts) — a template
+ * that never configured them projects `null` here and the frontend hides
+ * the purchase section entirely.
+ */
+export interface PublicGiftCardConfig {
+  /** Currency units per `unitPoints`. Mirrors `settings.giftCardAmount`. */
+  unitAmount: number;
+  /** Points granted per `unitAmount`. Mirrors `settings.giftCardPoints`. */
+  unitPoints: number;
+  /** Minimum points purchasable in ONE checkout. */
+  checkoutMinPoints: number;
+  /** Maximum points purchasable in ONE checkout. */
+  checkoutMaxPoints: number;
+  /** Minimum currency amount the customer pays in ONE checkout. */
+  checkoutMinAmount: number;
+  /** Maximum currency amount the customer pays in ONE checkout. */
+  checkoutMaxAmount: number;
+}
+
+/**
  * Public-safe subset of a card template. Excludes sensitive fields like
  * `tenant_id` / `status` that would leak tenant information to anonymous
  * visitors. Used by `GET /api/pass-templates/:id/public` (future) and the
@@ -62,6 +95,18 @@ export interface PublicMembershipTier {
  *     payment UI (Payfast for ZAR, Ecpay for TWD).
  *   - `membershipTiers` — when isPaid=true AND length > 0, the page
  *     surfaces a Radio Card list with the tier reward bullets.
+ *
+ * Gift-card fields (2026-10-23):
+ *   - `giftCard` — when the template is a `gift_card`, this carries the
+ *     tenant's exchange rate plus the per-checkout points / amount
+ *     fences. The public page renders a points purchase UI behind a
+ *     simulated payment gate — gift cards are ALWAYS paid (see
+ *     `runs/decisions/2026-10-23-gift-card-paid-registration.md`).
+ *     Unlike `isPaid` / `membershipTiers`, this is projected on the
+ *     `cardType === 'gift_card'` branch and NOT behind `is_paid`: a gift
+ *     card is not a "paid membership card", it merely requires a
+ *     purchase. `currency` rides along with it so the page can resolve
+ *     Payfast (ZAR) vs 綠界 (TWD).
  */
 export interface PublicPassTemplate {
   /** Template UUID. */
@@ -104,6 +149,13 @@ export interface PublicPassTemplate {
    * non-paid (the picker is hidden regardless of the array contents).
    */
   membershipTiers?: ReadonlyArray<PublicMembershipTier>;
+  /**
+   * Gift-card purchase configuration. Only meaningful when
+   * `cardType === 'gift_card'`. Absent / undefined when the tenant has
+   * not configured a rate, in which case the public page renders no
+   * purchase section.
+   */
+  giftCard?: PublicGiftCardConfig;
 }
 
 /**
@@ -127,6 +179,37 @@ export interface MembershipTierSnapshot {
   paidAmount: number | null;
   /** Currency of `paidAmount`. Mirrors `template.currency`. */
   currency: Currency;
+}
+
+/**
+ * Frozen snapshot of a gift-card purchase at registration time.
+ * Persisted in `public.pass_holders.gift_card_snapshot` (JSONB) alongside
+ * `purchased_points` / `paid_amount` / `currency`.
+ *
+ * Why freeze: the tenant can later edit the exchange rate. Without a
+ * snapshot, a receipt rendered weeks after purchase would show a price
+ * the customer never agreed to. Mirrors `MembershipTierSnapshot`.
+ *
+ * Self-consistency contract (pinned by
+ * `shared/logic/giftCardPurchase.test.ts`):
+ *   `amount === (points / unitPoints) * unitAmount`
+ * so the DB row alone is enough to recompute the price.
+ */
+export interface GiftCardSnapshot {
+  /** Points the customer purchased. Mirrors `purchased_points`. */
+  points: number;
+  /** Currency amount charged. Mirrors `paid_amount`. */
+  amount: number;
+  /** Currency of `amount`. Mirrors the template's `currency`. */
+  currency: Currency;
+  /** `settings.giftCardAmount` at purchase time. */
+  unitAmount: number;
+  /** `settings.giftCardPoints` at purchase time. */
+  unitPoints: number;
+  /** `settings.giftCardCheckoutMinPoints` at purchase time. */
+  checkoutMinPoints: number;
+  /** `settings.giftCardCheckoutMaxPoints` at purchase time. */
+  checkoutMaxPoints: number;
 }
 
 /**
@@ -250,6 +333,16 @@ export interface PassHolderPayload {
    * See runs/decisions/2026-10-18-payment-status-not-required-enum.md.
    */
   paymentStatus?: 'pending' | 'completed' | 'failed' | 'not_required';
+  /**
+   * 2026-10-23 — gift-card extension. Points the customer purchased.
+   * Required when `template.cardType === 'gift_card'`; the backend
+   * re-derives the currency amount from the template's own rate and
+   * NEVER trusts a client-supplied price.
+   *
+   * Optional for every other card type (a stamp / reward / membership
+   * holder has no purchased points).
+   */
+  purchasedPoints?: number;
 }
 
 /**

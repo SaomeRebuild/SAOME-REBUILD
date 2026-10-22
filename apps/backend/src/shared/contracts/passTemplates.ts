@@ -25,7 +25,10 @@
 
 import type { CardLanguage, CardType } from '@saome/shared/schemas/card';
 import type { Currency } from '@saome/shared/schemas/card';
-import type { PublicMembershipTier } from '@saome/shared/types/passHolder';
+import type {
+  PublicGiftCardConfig,
+  PublicMembershipTier,
+} from '@saome/shared/types/passHolder';
 
 /**
  * Public-safe subset of a card template.
@@ -89,6 +92,21 @@ export interface PublicPassTemplateDto {
    * typed `PublicMembershipTier[]` contract.
    */
   membershipTiers?: ReadonlyArray<PublicMembershipTier>;
+  /**
+   * 2026-10-23 — gift-card purchase configuration. Only emitted when
+   * `cardType === 'gift_card'` AND the tenant configured a usable rate
+   * (the service normalizes the free-form JSONB into a typed config and
+   * returns `null` for a partial / corrupt row, in which case this field
+   * is omitted entirely).
+   *
+   * Unlike `isPaid` / `membershipTiers`, this is NOT behind `is_paid`: a
+   * gift card is not a "paid membership card", it merely requires a
+   * purchase. `currency` is emitted alongside it so the public page can
+   * resolve the payment provider (TWD → 綠界, ZAR → Payfast).
+   *
+   * Mirrors `packages/shared/types/passHolder.ts::PublicGiftCardConfig`.
+   */
+  giftCard?: PublicGiftCardConfig;
 }
 
 /**
@@ -125,8 +143,21 @@ export interface PassHolderRegisterPayloadDto {
   membershipTierSnapshot?: unknown;
   /** 'payfast' (ZAR) | 'ecpay' (TWD). */
   paymentProvider?: 'payfast' | 'ecpay';
-  /** 'pending' (default) | 'completed' | 'failed'. */
-  paymentStatus?: 'pending' | 'completed' | 'failed';
+  /**
+   * 'pending' (default) | 'completed' | 'failed' | 'not_required'.
+   */
+  paymentStatus?: 'pending' | 'completed' | 'failed' | 'not_required';
+  /**
+   * 2026-10-23 — gift-card extension. Points the customer purchased.
+   * Required when the template is a `gift_card`; the backend re-derives
+   * the currency amount from the template's own `giftCard*` settings and
+   * NEVER trusts a client-supplied price (see
+   * `runs/decisions/2026-10-23-gift-card-paid-registration.md`).
+   *
+   * Optional for every other card type — a stamp / reward / membership
+   * holder has no purchased points.
+   */
+  purchasedPoints?: number;
 }
 
 /**

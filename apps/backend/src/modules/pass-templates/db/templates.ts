@@ -22,7 +22,10 @@
 import type { Sql } from '@/shared/db/client';
 import type { CardLanguage, CardType } from '@saome/shared/schemas/card';
 import type { Currency } from '@saome/shared/schemas/card';
-import type { PublicMembershipTier } from '@saome/shared/types/passHolder';
+import type {
+  PublicGiftCardConfig,
+  PublicMembershipTier,
+} from '@saome/shared/types/passHolder';
 
 /**
  * Minimal DB row shape read by the public endpoint.
@@ -75,6 +78,17 @@ export interface PublicTemplateRow {
    */
   currency?: Currency;
   /**
+   * 2026-10-23 — gift-card purchase config, built in SQL from the six
+   * `giftCard*` keys inside `settings` (`jsonb_build_object` +
+   * `COALESCE`, so the result is a single object rather than 6 more
+   * top-level columns). NULL when the tenant never configured a rate.
+   *
+   * The service layer normalizes this to `PublicGiftCardConfig` via
+   * `normalizeGiftCardConfig` — kept as `unknown` here because JSONB
+   * is opaque at the DB layer.
+   */
+  gift_card_config?: unknown;
+  /**
    * Upstream Passcreator template UUID (migration 021, 2026-10-11).
    * Surfaced in the public response so the public page can build a
    * "View in Passcreator" deep link if the tenant wants it. NULL for
@@ -82,6 +96,31 @@ export interface PublicTemplateRow {
    */
   passcreator_template_id?: string | null;
 }
+
+/**
+ * Build the gift-card config object in SQL from the `settings` JSONB.
+ *
+ * Returns NULL when NEITHER rate key is present, so an unconfigured
+ * gift template produces `gift_card_config = NULL` (rather than an
+ * object full of nulls) and the public DTO can omit `giftCard`
+ * entirely — the page then renders no purchase section at all.
+ *
+ * Reused verbatim by BOTH `findPublicTemplateById` and
+ * `findPublicTemplateWithTenantById` so the two public reads can never
+ * disagree about a gift card's rate.
+ */
+const GIFT_CARD_CONFIG_SQL_FRAGMENT = `
+  CASE WHEN settings ? 'giftCardAmount' OR settings ? 'giftCardPoints'
+    THEN jsonb_build_object(
+      'giftCardAmount',             settings->'giftCardAmount',
+      'giftCardPoints',             settings->'giftCardPoints',
+      'giftCardCheckoutMinPoints',  settings->'giftCardCheckoutMinPoints',
+      'giftCardCheckoutMaxPoints',  settings->'giftCardCheckoutMaxPoints',
+      'giftCardCheckoutMinAmount',  settings->'giftCardCheckoutMinAmount',
+      'giftCardCheckoutMaxAmount',  settings->'giftCardCheckoutMaxAmount'
+    )
+    ELSE NULL
+  END`;
 
 /**
  * Normalize a raw `settings->'membershipTiers'` JSONB value into a typed
@@ -140,6 +179,74 @@ export function normalizeMembershipTiers(raw: unknown): PublicMembershipTier[] {
 }
 
 /**
+ * Normalize a raw `gift_card_config` JSONB value into a typed
+ * `PublicGiftCardConfig` (or `null` when unusable).
+ *
+ * Defensive in the same spirit as `normalizeMembershipTiers`: the
+ * `settings` JSONB is free-form, so any of the six keys can be missing,
+ * the wrong type, or hold an impossible value (min > max). Every one of
+ * those cases yields `null` — the public page then renders NO purchase
+ * section, rather than a section that would reject every input.
+ *
+ * We deliberately do NOT apply defaults. CardBuilder Step 6 always writes
+ * all six keys together, and `templateSettingsSchema` already enforces
+ * `.int().positive()` on each. A partial config means either a corrupt
+ * row or a mid-migration legacy value — both are safer to hide than to
+ * guess at. (Membership tiers DO get defaults because their shape has
+ * meaningful per-field fallbacks; a gift-card rate does not.)
+ *
+ * @param raw  JSONB value from the `gift_card_config` SQL projection.
+ * @returns    - `PublicGiftCardConfig`, or `null` when unusable.
+ *
+ * @see runs/decisions/2026-10-23-gift-card-paid-registration.md
+ */
+export function normalizeGiftCardConfig(
+  raw: unknown,
+): PublicGiftCardConfig | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const row = raw as Record<string, unknown>;
+  const asPositiveInt = (key: string): number | null => {
+    const value = row[key];
+    if (typeof value !== 'number') return null;
+    if (!Number.isFinite(value) || !Number.isInteger(value) || value <= 0) {
+      return null;
+    }
+    return value;
+  };
+
+  const unitAmount = asPositiveInt('giftCardAmount');
+  const unitPoints = asPositiveInt('giftCardPoints');
+  const checkoutMinPoints = asPositiveInt('giftCardCheckoutMinPoints');
+  const checkoutMaxPoints = asPositiveInt('giftCardCheckoutMaxPoints');
+  const checkoutMinAmount = asPositiveInt('giftCardCheckoutMinAmount');
+  const checkoutMaxAmount = asPositiveInt('giftCardCheckoutMaxAmount');
+
+  if (
+    unitAmount === null ||
+    unitPoints === null ||
+    checkoutMinPoints === null ||
+    checkoutMaxPoints === null ||
+    checkoutMinAmount === null ||
+    checkoutMaxAmount === null
+  ) {
+    return null;
+  }
+  // Inverted fences are unrecoverable at runtime (the UI would have to
+  // show a range like "10,000–100"), so treat them as an unusable config.
+  if (checkoutMinPoints > checkoutMaxPoints) return null;
+  if (checkoutMinAmount > checkoutMaxAmount) return null;
+
+  return {
+    unitAmount,
+    unitPoints,
+    checkoutMinPoints,
+    checkoutMaxPoints,
+    checkoutMinAmount,
+    checkoutMaxAmount,
+  };
+}
+
+/**
  * Find a single template by UUID — public, no-auth read.
  *
  * Returns null if the template does not exist. The route layer maps null to
@@ -168,6 +275,7 @@ export async function findPublicTemplateById(
            (settings->>'isPaid')::boolean                       AS is_paid,
            settings->'membershipTiers'                          AS membership_tiers,
            settings->>'currency'                                AS currency,
+           ${sql.unsafe(GIFT_CARD_CONFIG_SQL_FRAGMENT)}        AS gift_card_config,
            passcreator_template_id
       FROM public.templates
      WHERE id = ${id}
@@ -213,6 +321,14 @@ export interface PublicTemplateRowWithTenant {
    * 2026-10-16 — projected from `settings->>'currency'`.
    */
   currency?: Currency;
+  /**
+   * 2026-10-23 — gift-card purchase config, built in SQL by the same
+   * `GIFT_CARD_CONFIG_SQL_FRAGMENT` used in `findPublicTemplateById`.
+   * Mirrored here so the two public reads can never disagree about a
+   * gift card's rate (Rule 019 § 2 mirror discipline). Typed `unknown`
+   * for the same reason as `PublicTemplateRow::gift_card_config`.
+   */
+  gift_card_config?: unknown;
   passcreator_template_id?: string | null;
 }
 
@@ -237,6 +353,7 @@ export async function findPublicTemplateWithTenantById(
            (settings->>'isPaid')::boolean                       AS is_paid,
            settings->'membershipTiers'                          AS membership_tiers,
            settings->>'currency'                                AS currency,
+           ${sql.unsafe(GIFT_CARD_CONFIG_SQL_FRAGMENT)}        AS gift_card_config,
            passcreator_template_id
       FROM public.templates
      WHERE id = ${id}

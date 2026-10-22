@@ -11,3 +11,4 @@ export * from './pass';
 export * from './auth';
 export * from './card';
 export * from './stampCard';
+export * from './passHolder';

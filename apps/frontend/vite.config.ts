@@ -39,6 +39,11 @@ const alias = [
   // generic `@saome/shared/logic` per Rule 016 § Vite 8.x alias 順序.
   { find: /^@saome\/shared\/logic\/stampCardImage$/, replacement: path.resolve(sharedRoot, 'logic/stampCardImage.ts') },
   { find: /^@saome\/shared\/logic\/stamp-card$/, replacement: path.resolve(sharedRoot, 'logic/stamp-card.ts') },
+  // 2026-10-23 — gift-card purchase math (points → amount + fences).
+  // Shared with the backend register path so the price preview and the
+  // charge can never disagree. Must come BEFORE generic
+  // `@saome/shared/logic` per Rule 016 § Vite 8.x alias 順序.
+  { find: /^@saome\/shared\/logic\/giftCardPurchase$/, replacement: path.resolve(sharedRoot, 'logic/giftCardPurchase.ts') },
   { find: /^@saome\/shared\/logic$/, replacement: path.resolve(sharedRoot, 'logic/index.ts') },
   { find: /^@saome\/shared\/types\/member$/, replacement: path.resolve(sharedRoot, 'types/member.ts') },
   { find: /^@saome\/shared\/types\/order$/, replacement: path.resolve(sharedRoot, 'types/order.ts') },

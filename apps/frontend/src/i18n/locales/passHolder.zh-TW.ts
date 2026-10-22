@@ -129,6 +129,14 @@ export default {
     birthdayInvalid: '生日格式不正確',
     phoneInvalid: '電話號碼格式不正確',
     tooYoung: '需年滿 13 歲',
+    // 2026-10-23 — 贈品卡購買流程。Backend `registerService::
+    // deriveGiftCardPurchase` 在下列情境會 throw 這些 key,前端 banner
+    // 直接顯示（與 backend `schemas/request.ts` 保持同步）。
+    // 「購買點數」而不是「購買金額」——價格由商家設定的兌換率換算,
+    // 顧客永遠不能自己改價。
+    pointsForbiddenForNotRequired: '購買點數不可標示為免費',
+    giftCardPointsRequired: '請選擇要購買的點數',
+    giftCardNotConfigured: '此贈品卡尚未設定兌換率,請聯絡商家',
   },
   validation: {
     nameRequired: '請輸入姓名',
@@ -137,6 +145,14 @@ export default {
     birthdayInvalid: '生日格式不正確',
     emailInvalid: 'Email 格式不正確',
     ageTooYoung: '需年滿 13 歲',
+    // 2026-10-23 — 贈品卡購買驗證訊息。
+    // 這四個 key 由 `packages/shared/logic/giftCardPurchase.ts` 產生,
+    // 網頁與未來的手機版 App 共用同一組 key（Rule 023 §
+    // Shared Validation 用 i18n Key）。
+    pointsInvalid: '請輸入有效的點數',
+    pointsBelowMin: '點數低於最低購買量',
+    pointsAboveMax: '點數高於單次購買上限',
+    pointsNotMultipleOfRate: '點數必須是兌換單位的倍數',
   },
   // 2026-10-16: Paid-membership tier picker + simulated payment UI.
   // 翻譯書寫紀律：全中文，禁止中英夾雜（Rule 023 § 翻譯書寫紀律）。
@@ -166,5 +182,36 @@ export default {
       payfast: 'Payfast',
       ecpay: '綠界',
     },
+  },
+  // 2026-10-23: 贈品卡購買區塊（兌換率說明 + 點數輸入 + 贈送提示）。
+  //
+  // 贈品卡賣的是「點數」不是「金額」:顧客輸入點數,應付金額由商家
+  // 設定的兌換率換算,所以介面上沒有金額輸入框——金額永遠是唯讀的
+  // 計算結果,後端也會用同一套換算邏輯重新計算一次。
+  //
+  // 翻譯書寫紀律:zh-TW 全中文（點數 / 兌換 / 贈品）;數字範圍用
+  // {{min}} / {{max}} 插值,不寫死數字,商家改設定後文案自動跟上。
+  gift: {
+    sectionTitle: '購買點數',
+    sectionHint: '以下為商家設定的兌換方式,購買後點數可直接於店家使用',
+    rateLabel: '兌換率',
+    rateValue: '每 {{amount}} 可獲得 {{points}} 點',
+    rangeLabel: '單次購買範圍',
+    rangePoints: '{{min}} 點 ~ {{max}} 點',
+    usageHint: '結帳時出示手機錢包中的卡片,店員掃描條碼即可扣抵點數',
+    tipsTitle: '要送人嗎?',
+    tipsBody: '直接填寫對方的姓名、電話、生日與信箱即可,Pass 會寄給對方。',
+    pointsLabel: '購買點數',
+    pointsPlaceholder: '請輸入點數',
+    amountLabel: '應付金額',
+    amountEmpty: '尚未輸入點數',
+    fenceHintLabel: '可購買範圍:',
+    payButton: {
+      payfast: '以 Payfast 付款',
+      ecpay: '以綠界付款',
+    },
+    payWithAmountAction: '支付 {{amount}} 並領取 Pass',
+    paying: '付款處理中…',
+    paid: '已付款',
   },
 };

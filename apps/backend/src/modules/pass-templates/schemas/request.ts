@@ -166,6 +166,20 @@ export const passHolderRegisterPayloadSchema = z.object({
    *   - not_required → paymentProvider MUST be unset
    */
   paymentStatus: passHolderPaymentStatusSchema.optional(),
+  /**
+   * 2026-10-23 — gift-card extension. Points the customer purchased.
+   *
+   * Deliberately POINTS, not an amount: the price is always re-derived
+   * from the template's own `giftCard*` settings inside `registerService`,
+   * so a client can never propose its own price (Rule 032 § 1).
+   *
+   * Required when the template is a `gift_card`; optional for every
+   * other card type. The service enforces the template-dependent part
+   * (it needs the template row to know the rate + fences); the
+   * cross-field parts that don't need the template are enforced in the
+   * `superRefine` below.
+   */
+  purchasedPoints: z.number().int().positive().optional(),
 })
   /**
    * 2026-10-18 — Cross-field validation for payment fields. Ensures the
@@ -176,6 +190,15 @@ export const passHolderRegisterPayloadSchema = z.object({
    * column CHECK, but the row would be incomplete) or send
    * `paymentStatus: 'not_required'` with a provider (semantic garbage).
    * See runs/decisions/2026-10-18-payment-status-not-required-enum.md.
+   *
+   /**
+   * 2026-10-23 — added the gift-card cross-field rule: a payload that
+   * carries `purchasedPoints` may not also claim the purchase was
+   * `not_required` — a points purchase is never free. The mirrored
+   * rule in `registerService::deriveGiftCardPurchase` covers the
+   * template-dependent cases (a gift card MUST carry points; the
+   * amount is re-derived server-side), which the schema cannot check
+   * without the template row.
    */
   .superRefine((data, ctx) => {
     if (data.paymentStatus === 'completed' && !data.paymentProvider) {
@@ -190,6 +213,29 @@ export const passHolderRegisterPayloadSchema = z.object({
         code: z.ZodIssueCode.custom,
         path: ['paymentProvider'],
         message: 'passHolder.errors.paymentProviderForbiddenForNotRequired',
+      });
+    }
+    // 2026-10-23 — gift-card cross-field rule. A points purchase is
+    // never free, so `purchasedPoints` may not be paired with
+    // `paymentStatus: 'not_required'`; otherwise migration 024's enum
+    // would happily persist a "free gift card" row.
+    //
+    // Deliberately NOT "purchasedPoints requires a paymentProvider":
+    // the schema cannot know the template's card type, and a bare
+    // `{ purchasedPoints }` (no payment fields at all) must still parse
+    // so non-gift callers that send points are not rejected at the
+    // wrong layer. The template-dependent half — "a gift card MUST
+    // carry points, and the provider must match the template currency"
+    // — is enforced in `registerService::deriveGiftCardPurchase`, which
+    // is the only place that can read the template's own rate.
+    if (
+      data.purchasedPoints !== undefined &&
+      data.paymentStatus === 'not_required'
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['paymentStatus'],
+        message: 'passHolder.errors.pointsForbiddenForNotRequired',
       });
     }
   });

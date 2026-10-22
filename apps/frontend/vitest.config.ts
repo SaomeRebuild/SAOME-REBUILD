@@ -27,6 +27,11 @@ const aliasArray: { find: string | RegExp; replacement: string }[] = [
   // 2026-10-14). Must come BEFORE generic `@saome/shared/schemas` per
   // Rule 016 § vitest alias 順序.
   { find: '@saome/shared/schemas/stampCard', replacement: resolve(sharedRoot, 'schemas/stampCard.ts') },
+  // 2026-10-23 — gift-card purchase contract (Layer 1) + math.
+  // Specific entries MUST come before the generic ones (Rule 016:
+  // vitest alias is prefix-matching, first match wins).
+  { find: '@saome/shared/schemas/passHolder', replacement: resolve(sharedRoot, 'schemas/passHolder.ts') },
+  { find: '@saome/shared/logic/giftCardPurchase', replacement: resolve(sharedRoot, 'logic/giftCardPurchase.ts') },
   { find: '@saome/shared/schemas', replacement: resolve(sharedRoot, 'schemas/index.ts') },
   { find: '@saome/shared/logic/member', replacement: resolve(sharedRoot, 'logic/member.ts') },
   { find: '@saome/shared/logic/order', replacement: resolve(sharedRoot, 'logic/order.ts') },

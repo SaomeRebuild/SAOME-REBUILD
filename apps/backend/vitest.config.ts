@@ -64,6 +64,14 @@ export default defineWorkersConfig({
       // subpath lookups; the bare `@saome/shared/schemas` resolves to the
       // barrel `index.ts` for callers that import from the index only.
       '@saome/shared/schemas/card': path.resolve(__dirname, '../../packages/shared/schemas/card.ts'),
+      // 2026-10-23 — gift-card purchase contract (Layer 1). Value
+      // imports need an EXPLICIT `.ts` entry: the generic trailing-slash
+      // alias below only resolves for `import type` (erased at compile
+      // time, never handed to Vite). Same pattern as `schemas/card` and
+      // `logic/cardSettings` above. Declared BEFORE the generic entries
+      // per Rule 016 (vite alias is prefix-matching, first match wins).
+      '@saome/shared/schemas/passHolder': path.resolve(__dirname, '../../packages/shared/schemas/passHolder.ts'),
+      '@saome/shared/logic/giftCardPurchase': path.resolve(__dirname, '../../packages/shared/logic/giftCardPurchase.ts'),
       // 2026-10-14 — stamp card image composition (Phase 3). Specific
       // entries MUST come before the generic ones per Rule 016.
       '@saome/shared/schemas/stampCard': path.resolve(__dirname, '../../packages/shared/schemas/stampCard.ts'),

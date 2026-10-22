@@ -244,6 +244,21 @@ const SAMPLE_TEMPLATES: Record<string, PublicPassTemplate> = {
     issuerLogo: 'https://picsum.photos/seed/saome-gift/96',
     backgroundColor: '#831843',
     textColor: '#FDF2F8',
+    // 2026-10-23 — gift-card purchase config. Before this the mock
+    // gift template had no `giftCard` block, so the purchase section
+    // could never be developed with `VITE_USE_PASS_MOCK=true` — the
+    // UI was only reachable against a real backend row.
+    // Mirrors what `normalizeGiftCardConfig` produces from a template
+    // whose `settings` carries all six `giftCard*` keys.
+    currency: 'TWD',
+    giftCard: {
+      unitAmount: 100,
+      unitPoints: 10,
+      checkoutMinPoints: 100,
+      checkoutMaxPoints: 10_000,
+      checkoutMinAmount: 100,
+      checkoutMaxAmount: 10_000,
+    },
   },
 };
 

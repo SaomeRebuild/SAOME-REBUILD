@@ -12,11 +12,64 @@
 
 import type { Sql } from '@/shared/db/client';
 import type { PublicPassTemplateDto } from '@/shared/contracts/passTemplates';
+import type { Currency } from '@saome/shared/schemas/card';
 import {
   findPublicTemplateById,
   findPublicTemplateWithTenantById,
+  normalizeGiftCardConfig,
   normalizeMembershipTiers,
 } from '../db/templates';
+
+/**
+ * Build the card-type-specific optional-field block shared by both
+ * public services.
+ *
+ * 2026-10-23 — gift cards get their OWN branch, not the `is_paid`
+ * one. A gift card is always paid, but it is not a "paid membership
+ * card": it has no `isPaid` flag and no tier list. Before this change
+ * `currency` was emitted ONLY inside the `is_paid` branch, so a gift
+ * template could never tell the frontend which payment provider to
+ * offer (TWD → 綠界, ZAR → Payfast) — the public page had no way to
+ * complete a purchase. `currency` now rides along with the gift block.
+ *
+ * The two branches are mutually exclusive by construction: `is_paid` is
+ * a membership concept, `gift_card` is a `card_type`. A template that
+ * somehow satisfied both would take the gift branch first (the card type
+ * is the stronger signal — it determines the page layout), so the paid
+ * block is only emitted when the card is NOT a gift card.
+ *
+ * @see runs/decisions/2026-10-23-gift-card-paid-registration.md
+ */
+function projectOptionalFields(row: {
+  card_type: string | null;
+  is_paid?: boolean;
+  membership_tiers?: unknown;
+  currency?: Currency;
+  gift_card_config?: unknown;
+}): Pick<PublicPassTemplateDto, 'currency' | 'isPaid' | 'membershipTiers' | 'giftCard'> {
+  // Gift-card branch — keyed on `card_type`, NOT on `is_paid`.
+  if (row.card_type === 'gift_card') {
+    const giftCard = normalizeGiftCardConfig(row.gift_card_config);
+    return {
+      currency: row.currency ?? 'TWD',
+      // Omitted entirely when the tenant never configured a rate so
+      // the public page renders no purchase section (rather than an
+      // empty input that rejects every value).
+      ...(giftCard ? { giftCard } : {}),
+    };
+  }
+  // Paid-membership branch — only emitted when `is_paid` is true so
+  // legacy non-paid templates don't carry a misleading
+  // `membershipTiers: []`.
+  if (row.is_paid) {
+    return {
+      isPaid: true,
+      currency: row.currency ?? 'TWD',
+      membershipTiers: normalizeMembershipTiers(row.membership_tiers),
+    };
+  }
+  return {};
+}
 
 /**
  * Look up a public-safe template view by ID.
@@ -61,17 +114,10 @@ export async function getPublicTemplateService(
     issuerLogo: settings.issuerLogo,
     backgroundColor: settings.backgroundColor,
     textColor: settings.textColor,
-    // 2026-10-16 — paid-membership fields projected from settings JSONB.
-    // We only surface them when `isPaid === true`; otherwise omit the
-    // optional fields entirely so legacy non-paid templates don't carry
-    // a misleading `membershipTiers: []`.
-    ...(row.is_paid
-      ? {
-          isPaid: true,
-          currency: row.currency ?? 'TWD',
-          membershipTiers: normalizeMembershipTiers(row.membership_tiers),
-        }
-      : {}),
+    // 2026-10-16 / 2026-10-23 — paid-membership OR gift-card fields,
+    // both projected from the `settings` JSONB column. See
+    // `projectOptionalFields` for why they are two separate branches.
+    ...projectOptionalFields(row),
   };
 }
 
@@ -131,16 +177,12 @@ export async function getPublicTemplateWithTenantService(
     issuerLogo: settings.issuerLogo,
     backgroundColor: settings.backgroundColor,
     textColor: settings.textColor,
-    // 2026-10-16 — mirror getPublicTemplateService paid-membership
-    // projection (see comment above for the rationale on conditional
-    // surface — only emitted when `is_paid === true`).
-    ...(row.is_paid
-      ? {
-          isPaid: true,
-          currency: row.currency ?? 'TWD',
-          membershipTiers: normalizeMembershipTiers(row.membership_tiers),
-        }
-      : {}),
+    // 2026-10-16 / 2026-10-23 — mirror getPublicTemplateService
+    // (Decision 2026-10-01 § 5 option "a": two narrow services > one
+    // fat with optional flag). Same conditional surface, same two
+    // branches, same fallbacks — the two services must return
+    // identical DTO shapes.
+    ...projectOptionalFields(row),
   };
   return { dto, tenantId: row.tenant_id };
 }

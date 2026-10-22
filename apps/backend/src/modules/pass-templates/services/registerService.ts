@@ -15,20 +15,99 @@
  * Decision log:
  *   - runs/decisions/2026-09-29-pass-templates-public-endpoint.md
  *   - runs/decisions/2026-10-19-pass-holder-v3-issuance.md
+ *   - runs/decisions/2026-10-23-gift-card-paid-registration.md
  */
 
 import type { Sql } from '@/shared/db/client';
 import type { HonoEnv } from '@/shared/types/bindings';
-import { NotFoundError, BadGatewayError } from '@/shared/lib/saomeError';
+import {
+  NotFoundError,
+  BadGatewayError,
+  ValidationError,
+} from '@/shared/lib/saomeError';
 import type { PassHolderRegisterResponseDto, PassHolderIssuanceDto } from '@/shared/contracts/passTemplates';
 import type { PassHolderRegisterPayload } from '../schemas/request';
-import { findPublicTemplateById } from '../db/templates';
+import {
+  findPublicTemplateById,
+  normalizeGiftCardConfig,
+} from '../db/templates';
 import {
   upsertPassHolder,
   updatePassHolderIssuance,
   type PassHolderRow,
 } from '../db/passHolders';
 import { issuePass, getPassByIdentifier, listPasses } from '@/shared/lib/passcreator';
+import {
+  buildGiftCardSnapshot,
+  validateGiftCardPurchase,
+} from '@saome/shared/logic/giftCardPurchase';
+import { giftCardSnapshotSchema } from '@saome/shared/schemas/passHolder';
+import type { PublicGiftCardConfig } from '@saome/shared/types/passHolder';
+
+/**
+ * Gift-card purchase fields derived server-side from the template.
+ *
+ * `amount` is NEVER read from the request body — it is computed from the
+ * template's own `giftCard*` settings by `buildGiftCardSnapshot`, so a
+ * client cannot propose a price. The snapshot is additionally parsed
+ * through `giftCardSnapshotSchema` before it reaches SQL (Rule 032 § 1:
+ * validate jsonb in the application layer, never pass through).
+ */
+interface DerivedGiftCardPurchase {
+  purchasedPoints: number;
+  paidAmount: number;
+  currency: 'TWD' | 'ZAR';
+  giftCardSnapshot: unknown;
+}
+
+/**
+ * Re-derive (and validate) a gift-card purchase from the TEMPLATE's own
+ * settings. Called only when `template.card_type === 'gift_card'`.
+ *
+ * Throws `ValidationError` with the stable i18n key produced by the
+ * shared validator, so the frontend banner renders the same copy the
+ * purchase form showed inline.
+ *
+ * @see runs/decisions/2026-10-23-gift-card-paid-registration.md
+ */
+function deriveGiftCardPurchase(
+  payload: PassHolderRegisterPayload,
+  giftConfig: PublicGiftCardConfig | null,
+  currency: 'TWD' | 'ZAR',
+): DerivedGiftCardPurchase {
+  if (!giftConfig) {
+    throw new ValidationError('passHolder.errors.giftCardNotConfigured', {
+      reason: 'Gift card template has no usable purchase configuration',
+    });
+  }
+  const points = payload.purchasedPoints;
+  if (points === undefined) {
+    // A gift card is always paid. Registering without points would
+    // persist a "free gift card" row — exactly the semantic garbage
+    // migration 024's cross-field rules exist to prevent.
+    throw new ValidationError('passHolder.errors.giftCardPointsRequired', {
+      reason: 'Gift card registration requires purchasedPoints',
+    });
+  }
+  const validation = validateGiftCardPurchase(points, giftConfig);
+  if (!validation.ok) {
+    throw new ValidationError(validation.message, {
+      reason: `Gift card purchase rejected: ${validation.code}`,
+      code: validation.code,
+      points,
+    });
+  }
+  const snapshot = buildGiftCardSnapshot(points, giftConfig, currency);
+  // Defence-in-depth: parse the snapshot before it reaches SQL so a
+  // future refactor of the builder can't persist a self-inconsistent
+  // JSONB blob (Rule 032 § 1).
+  return {
+    purchasedPoints: points,
+    paidAmount: snapshot.amount,
+    currency,
+    giftCardSnapshot: giftCardSnapshotSchema.parse(snapshot),
+  };
+}
 
 /**
  * Register a pass holder against a template.
@@ -70,6 +149,15 @@ import { issuePass, getPassByIdentifier, listPasses } from '@/shared/lib/passcre
  * @param templateId - template UUID from URL path
  * @param payload    - validated PassHolderRegisterPayload
  * @returns          - PassHolderRegisterResponseDto
+ * @throws           - `NotFoundError` when the template does not exist
+ *   - `ValidationError` (400) when a gift-card purchase is missing its
+ *     points, out of range, not priceable by the tenant's rate, or the
+ *     template has no usable rate configured
+ *
+ * 2026-10-23 — gift-card registration. A gift card is ALWAYS paid, so
+ * the service derives the amount from the template's own `giftCard*`
+ * settings rather than trusting anything in the payload. See
+ * `runs/decisions/2026-10-23-gift-card-paid-registration.md`.
  */
 export async function registerService(
   sql: Sql,
@@ -90,6 +178,22 @@ export async function registerService(
   // normalizes missing values via migration 023 defaults (NULL for
   // most, 'pending' for `payment_status`, TWD for `currency` via the
   // backfill).
+  //
+  // 2026-10-23 — gift-card branch. When the template is a gift card we
+  // RE-DERIVE the amount from the template's own settings before the
+  // write; the client's `purchasedPoints` is the only purchase input we
+  // trust. `paidAmount` + `currency` had never been written by any code
+  // path (both columns exist since migration 023) — this is where they
+  // finally become reachable.
+  const isGiftCard = template.card_type === 'gift_card';
+  const giftPurchase: DerivedGiftCardPurchase | null = isGiftCard
+    ? deriveGiftCardPurchase(
+        payload,
+        normalizeGiftCardConfig(template.gift_card_config),
+        template.currency ?? 'TWD',
+      )
+    : null;
+
   const { row, created } = await upsertPassHolder(sql, {
     templateId,
     name: payload.name,
@@ -103,6 +207,13 @@ export async function registerService(
     membershipTierSnapshot: payload.membershipTierSnapshot,
     paymentProvider: payload.paymentProvider,
     paymentStatus: payload.paymentStatus,
+    // 2026-10-23 — gift-card purchase fields. Only populated on the
+    // gift branch, so every other card type writes NULL exactly as
+    // before (regression guard in `register.test.ts`).
+    purchasedPoints: giftPurchase?.purchasedPoints,
+    paidAmount: giftPurchase?.paidAmount,
+    currency: giftPurchase?.currency,
+    giftCardSnapshot: giftPurchase?.giftCardSnapshot,
   });
 
   // 3. (2026-10-19) V3 issuance — only attempt for NEW rows OR for
