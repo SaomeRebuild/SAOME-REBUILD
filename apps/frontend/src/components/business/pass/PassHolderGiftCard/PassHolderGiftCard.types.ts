@@ -2,7 +2,7 @@
  * PassHolderGiftCard.types — local prop interfaces for the
  * `PassHolderGiftCard` L2 folder.
  *
- * Three-component split (Rule 000 § A.1):
+ * Four-component split (Rule 000 § A.1):
  *   1. `PassHolderGiftCard`           — main assembly (≤ 100 lines)
  *   2. `PassHolderGiftCardExplanation` — rate + fences + usage copy
  *   3. `PassHolderGiftCardPurchase`   — points input + derived amount
@@ -10,7 +10,9 @@
  *
  * Presentation only: the points→amount math lives in
  * `packages/shared/logic/giftCardPurchase.ts` so the page preview and
- * the backend's charge can never disagree.
+ * the backend's charge can never disagree, and money formatting lives in
+ * `packages/shared/logic/currency.ts` so every figure on screen speaks
+ * one format.
  */
 
 import type { PublicGiftCardConfig } from '@saome/shared/types/passHolder';
@@ -54,6 +56,13 @@ export interface PassHolderGiftCardExplanationProps {
     rateValue: string;
     rangeLabel: string;
     rangeValue: string;
+    /**
+     * Currency-side view of the SAME fence as `rangeValue`, rendered as
+     * a third row. The merchant configures both dimensions in
+     * CardBuilder Step 6, so the customer sees both.
+     */
+    amountRangeLabel: string;
+    amountRangeValue: string;
     usageHint: string;
   };
 }

@@ -59,6 +59,21 @@ export function PassHolderGiftCardExplanation({
             {labels.rangeValue}
           </dd>
         </div>
+        {/* The amount fences are the currency-side view of the SAME
+            per-checkout fence the points range above expresses. Showing
+            only points leaves the customer unable to predict what their
+            input will cost — which is the entire point of this block. */}
+        <div className="flex flex-wrap items-baseline gap-2">
+          <dt style={{ color: 'var(--color-muted-foreground)' }}>
+            {labels.amountRangeLabel}
+          </dt>
+          <dd
+            data-testid="pass-holder-gift-card-amount-range-value"
+            style={{ color: 'var(--color-foreground)' }}
+          >
+            {labels.amountRangeValue}
+          </dd>
+        </div>
       </dl>
       <p
         className="text-sm"

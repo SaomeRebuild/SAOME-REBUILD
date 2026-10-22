@@ -44,6 +44,11 @@ const alias = [
   // charge can never disagree. Must come BEFORE generic
   // `@saome/shared/logic` per Rule 016 § Vite 8.x alias 順序.
   { find: /^@saome\/shared\/logic\/giftCardPurchase$/, replacement: path.resolve(sharedRoot, 'logic/giftCardPurchase.ts') },
+  // 2026-10-23 — money formatting for the gift-card purchase section
+  // (rate unit, amount fences, derived price, CTA). ONE formatter so
+  // these figures cannot drift into different formats. Must come
+  // BEFORE generic `@saome/shared/logic` per Rule 016 § Vite 8.x alias 順序.
+  { find: /^@saome\/shared\/logic\/currency$/, replacement: path.resolve(sharedRoot, 'logic/currency.ts') },
   { find: /^@saome\/shared\/logic$/, replacement: path.resolve(sharedRoot, 'logic/index.ts') },
   { find: /^@saome\/shared\/types\/member$/, replacement: path.resolve(sharedRoot, 'types/member.ts') },
   { find: /^@saome\/shared\/types\/order$/, replacement: path.resolve(sharedRoot, 'types/order.ts') },

@@ -32,6 +32,11 @@ const aliasArray: { find: string | RegExp; replacement: string }[] = [
   // vitest alias is prefix-matching, first match wins).
   { find: '@saome/shared/schemas/passHolder', replacement: resolve(sharedRoot, 'schemas/passHolder.ts') },
   { find: '@saome/shared/logic/giftCardPurchase', replacement: resolve(sharedRoot, 'logic/giftCardPurchase.ts') },
+  // 2026-10-23 — money formatting for the gift-card purchase section
+  // (rate unit, amount fences, derived price, CTA). ONE formatter so
+  // these figures cannot drift into different formats. Must come
+  // BEFORE generic `@saome/shared/logic` per Rule 016 § vitest alias 順序.
+  { find: '@saome/shared/logic/currency', replacement: resolve(sharedRoot, 'logic/currency.ts') },
   { find: '@saome/shared/schemas', replacement: resolve(sharedRoot, 'schemas/index.ts') },
   { find: '@saome/shared/logic/member', replacement: resolve(sharedRoot, 'logic/member.ts') },
   { find: '@saome/shared/logic/order', replacement: resolve(sharedRoot, 'logic/order.ts') },

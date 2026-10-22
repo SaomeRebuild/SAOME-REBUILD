@@ -188,6 +188,12 @@ export default {
     rateValue: '{{points}} points for every {{amount}}',
     rangeLabel: 'Per-purchase range',
     rangePoints: '{{min}} – {{max}} points',
+    // The amount fences come from CardBuilder Step 6 (checkoutMinAmount /
+    // checkoutMaxAmount) and are the currency-side view of the SAME
+    // fence the points range above expresses. Both are shown so the
+    // customer can predict what 100 points will cost.
+    amountRangeLabel: 'Per-purchase amount',
+    amountRangeValue: '{{min}} – {{max}}',
     usageHint:
       'Show the pass in your mobile wallet at checkout and the cashier will scan it to deduct your points.',
     tipsTitle: 'Buying this for someone else?',

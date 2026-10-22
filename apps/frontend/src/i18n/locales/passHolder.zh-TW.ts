@@ -198,6 +198,11 @@ export default {
     rateValue: '每 {{amount}} 可獲得 {{points}} 點',
     rangeLabel: '單次購買範圍',
     rangePoints: '{{min}} 點 ~ {{max}} 點',
+    // 金額上下限由商家在 CardBuilder Step 6 設定（checkoutMinAmount /
+    // checkoutMaxAmount），與上面的點數上下限是同一組 fence 的兩個維度。
+    // 兩者並列顯示,顧客才知道輸入 100 點要付多少。
+    amountRangeLabel: '單筆付款金額',
+    amountRangeValue: '{{min}} ~ {{max}}',
     usageHint: '結帳時出示手機錢包中的卡片,店員掃描條碼即可扣抵點數',
     tipsTitle: '要送人嗎?',
     tipsBody: '直接填寫對方的姓名、電話、生日與信箱即可,Pass 會寄給對方。',

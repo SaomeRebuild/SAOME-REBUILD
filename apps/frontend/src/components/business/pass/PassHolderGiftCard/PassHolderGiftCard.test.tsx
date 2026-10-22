@@ -32,6 +32,9 @@ const CONFIG: PublicGiftCardConfig = {
 
 const pointsInput = () => screen.getByTestId('pass-holder-gift-card-points-input');
 const amountOutput = () => screen.getByTestId('pass-holder-gift-card-amount');
+const rateValue = () => screen.getByTestId('pass-holder-gift-card-rate-value');
+const amountRangeValue = () =>
+  screen.getByTestId('pass-holder-gift-card-amount-range-value');
 const cta = () => screen.getByTestId('pass-holder-payment-button');
 
 const renderComponent = (props: Partial<React.ComponentProps<typeof PassHolderGiftCard>> = {}) => {
@@ -122,6 +125,95 @@ describe('PassHolderGiftCard — section rendering', () => {
   });
 });
 
+/**
+ * The exchange rate is a money figure. Passing `config.unitAmount`
+ * (a bare number) straight into the copy rendered 「每 1 可獲得 1 點」,
+ * which reads as "every 1 of what?". These pin the currency symbol.
+ */
+describe('PassHolderGiftCard — exchange rate currency symbol', () => {
+  it('labels the rate unit with NT$ for a TWD template', () => {
+    renderComponent({ currency: 'TWD' });
+    expect(rateValue()).toHaveTextContent('NT$100');
+    expect(rateValue()).toHaveTextContent('10');
+  });
+
+  it('labels the rate unit with R for a ZAR template', () => {
+    renderComponent({ currency: 'ZAR' });
+    expect(rateValue()).toHaveTextContent('R100');
+    expect(rateValue()).toHaveTextContent('10');
+  });
+});
+
+/**
+ * The merchant configures BOTH fences in CardBuilder Step 6
+ * (checkoutMin/MaxPoints AND checkoutMin/MaxAmount). Showing only the
+ * points range left the customer unable to predict what 100 points
+ * costs, so both dimensions are stated.
+ */
+describe('PassHolderGiftCard — per-checkout amount fences', () => {
+  it('states the amount range from the template settings (TWD)', () => {
+    renderComponent({ currency: 'TWD' });
+    expect(amountRangeValue()).toHaveTextContent('NT$100');
+    expect(amountRangeValue()).toHaveTextContent('NT$10,000');
+  });
+
+  it('states the amount range from the template settings (ZAR)', () => {
+    renderComponent({ currency: 'ZAR' });
+    expect(amountRangeValue()).toHaveTextContent('R100');
+    expect(amountRangeValue()).toHaveTextContent('R10,000');
+  });
+
+  it('tracks the template rather than hardcoding a default range', () => {
+    renderComponent({
+      config: { ...CONFIG, checkoutMinAmount: 250, checkoutMaxAmount: 2_500 },
+    });
+    expect(amountRangeValue()).toHaveTextContent('NT$250');
+    expect(amountRangeValue()).toHaveTextContent('NT$2,500');
+  });
+});
+
+/**
+ * `validateGiftCardPurchase` returns an i18n KEY in `message`, never
+ * prose. `PassHolderGiftCardPurchase` is a pure view with no `t()`,
+ * so it used to render that key verbatim and the customer saw
+ * `passHolder.validation.pointsBelowMin` on the page. The parent now
+ * resolves it. These pin the translated result AND the absence of the
+ * key.
+ */
+describe('PassHolderGiftCard — validation messages are translated, not raw keys', () => {
+  const RAW_KEY_PATTERN = /passHolder\.validation\./;
+
+  it('renders the translated reason when points are below the minimum', () => {
+    renderComponent({ purchasedPoints: 50 });
+    expect(amountOutput()).not.toHaveTextContent(RAW_KEY_PATTERN);
+    expect(amountOutput()).toHaveTextContent('點數低於最低購買量');
+  });
+
+  it('renders the translated reason when points exceed the maximum', () => {
+    renderComponent({ purchasedPoints: 20_000 });
+    expect(amountOutput()).not.toHaveTextContent(RAW_KEY_PATTERN);
+    expect(amountOutput()).toHaveTextContent('點數高於單次購買上限');
+  });
+
+  it('renders the translated reason for an unpriceable points value', () => {
+    renderComponent({ purchasedPoints: 505 });
+    expect(amountOutput()).not.toHaveTextContent(RAW_KEY_PATTERN);
+    expect(amountOutput()).toHaveTextContent('點數必須是兌換單位的倍數');
+  });
+
+  it('never leaks a raw key anywhere in the section', () => {
+    renderComponent({ purchasedPoints: 50 });
+    expect(screen.getByTestId('pass-holder-gift-card')).not.toHaveTextContent(
+      RAW_KEY_PATTERN,
+    );
+  });
+
+  it('marks the rejected input for assistive tech', () => {
+    renderComponent({ purchasedPoints: 50 });
+    expect(pointsInput()).toHaveAttribute('aria-invalid', 'true');
+  });
+});
+
 describe('PassHolderGiftCard — payment provider', () => {
   it('offers 綠界 (ecpay) for a TWD template', () => {
     renderComponent({ currency: 'TWD' });
@@ -135,12 +227,12 @@ describe('PassHolderGiftCard — payment provider', () => {
 
   it('renders the ZAR amount with the R symbol', () => {
     renderComponent({ currency: 'ZAR', purchasedPoints: 500 });
-    expect(amountOutput()).toHaveTextContent('R 5,000');
+    expect(amountOutput()).toHaveTextContent('R5,000');
   });
 
   it('renders the TWD amount with the NT$ prefix', () => {
     renderComponent({ currency: 'TWD', purchasedPoints: 500 });
-    expect(amountOutput()).toHaveTextContent('NT$ 5,000');
+    expect(amountOutput()).toHaveTextContent('NT$5,000');
   });
 });
 

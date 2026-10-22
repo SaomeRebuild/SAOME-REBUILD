@@ -7,14 +7,16 @@
  * amount input: a price the customer can edit is a price the backend
  * would have to distrust.
  *
- * Client-side validation runs on every keystroke via
- * `validateGiftCardPurchase` (the SAME function the backend runs), so
- * the customer sees the fence message inline instead of round-tripping
- * for a 400 (Rule 032 § 2).
+ * This is a pure view: it runs no validator and holds no `t()`. The
+ * parent calls `validateGiftCardPurchase` (the SAME function the backend
+ * runs), resolves the rejection copy, and passes it down as
+ * `validationMessage` — so the customer sees the fence message inline
+ * instead of round-tripping for a 400 (Rule 032 § 2), and no i18n key
+ * can leak into the DOM.
  *
  * The derived amount shows three states:
  *   - no input            → "—" placeholder, CTA blocked
- *   - input but unpriceable (not a multiple of the rate) → the reason
+ *   - rejected input      → the parent's translated reason
  *   - valid               → the exact amount, CTA enabled
  *
  * `font-size: 16px` on the input satisfies the mobile iOS no-zoom rule
@@ -23,10 +25,8 @@
  */
 
 import { useId } from 'react';
-import {
-  pointsToAmount,
-  validateGiftCardPurchase,
-} from '@saome/shared/logic/giftCardPurchase';
+import { pointsToAmount } from '@saome/shared/logic/giftCardPurchase';
+import { formatCurrencyOrFallback } from '@saome/shared/logic/currency';
 import type { Currency } from '@saome/shared/schemas/card';
 import type { PublicGiftCardConfig } from '@saome/shared/types/passHolder';
 
@@ -36,6 +36,17 @@ export interface PassHolderGiftCardPurchaseProps {
   /** Current parsed points, or null when the input is empty/unparseable. */
   purchasedPoints: number | null;
   onPurchasedPointsChange: (points: number | null) => void;
+  /**
+   * ALREADY-TRANSLATED rejection copy from the parent, or null when the
+   * input is empty or valid.
+   *
+   * This component has no `t()` on purpose (it stays a pure view), so
+   * it must never receive an i18n KEY. `validateGiftCardPurchase`
+   * returns `passHolder.validation.pointsBelowMin` as `message` — that
+   * is a key, not prose. Rendering it here leaked the raw key onto the
+   * page. The parent resolves it and hands over finished copy.
+   */
+  validationMessage: string | null;
   /** Pre-formatted copy resolved by the parent. */
   labels: {
     pointsLabel: string;
@@ -48,17 +59,12 @@ export interface PassHolderGiftCardPurchaseProps {
   disabled?: boolean;
 }
 
-/** `NT$ 5,000` / `R 5,000` — locale-aware grouping. */
-function formatAmount(amount: number, currency: Currency): string {
-  const grouped = amount.toLocaleString('en-US');
-  return currency === 'ZAR' ? `R ${grouped}` : `NT$ ${grouped}`;
-}
-
 export function PassHolderGiftCardPurchase({
   config,
   currency,
   purchasedPoints,
   onPurchasedPointsChange,
+  validationMessage,
   labels,
   disabled,
 }: PassHolderGiftCardPurchaseProps) {
@@ -66,27 +72,21 @@ export function PassHolderGiftCardPurchase({
   const amountId = useId();
   const hintId = useId();
 
-  const validation =
-    purchasedPoints === null
-      ? null
-      : validateGiftCardPurchase(purchasedPoints, config);
   const derivedAmount =
     purchasedPoints === null ? null : pointsToAmount(purchasedPoints, config);
 
-  // The message shown under the input: the validator's i18n key when
-  // the value is invalid, otherwise the derived amount. An unpriceable
-  // value (not a multiple of the rate) has no amount to show, so it
-  // falls through to the reason.
+  // The message shown under the input: the parent's already-translated
+  // rejection reason when the value is invalid, otherwise the derived
+  // amount. An unpriceable value (not a multiple of the rate) has no
+  // amount to show, but it DOES have a `validationMessage` — the reason
+  // — so it reads as an explanation rather than "no points entered".
   const statusText =
-    purchasedPoints === null
-      ? labels.amountEmpty
-      : validation && !validation.ok
-        ? validation.message
-        : derivedAmount !== null
-          ? formatAmount(derivedAmount, currency)
-          : labels.amountEmpty;
+    validationMessage ??
+    (derivedAmount !== null
+      ? formatCurrencyOrFallback(derivedAmount, currency)
+      : labels.amountEmpty);
 
-  const isInvalid = validation !== null && !validation.ok;
+  const isInvalid = validationMessage !== null;
 
   return (
     <div
