@@ -1,8 +1,9 @@
 /**
  * CardBuilderEditor — Vitest + RTL Tests
  *
- * 使用 vi.mock 模擬 react-i18next，讓 t() 返回 key 作為文本。
- * 測試使用翻譯 key（如 'pageTitle'）而非翻譯後的中文字。
+ * Mocks react-i18next via vi.mock so that t() returns the key as text.
+ * Assertions therefore target translation keys (e.g. 'pageTitle') rather
+ * than the translated Chinese strings.
  */
 
 import { render, screen, cleanup } from '@testing-library/react';
@@ -45,12 +46,13 @@ vi.mock('react-i18next', () => {
   return { useTranslation: vi.fn(() => ({ t: vi.fn((key: string) => key) })) };
 });
 
-// 測試包裝：提供 Router context（editor 自己監聽 URL ?id=）
+// Test wrapper: provides the Router context (the editor listens to the
+// URL ?id= parameter itself)
 function renderWithRouter(ui: React.ReactElement) {
   return render(<MemoryRouter initialEntries={['/app/dashboard/card-builder']}>{ui}</MemoryRouter>);
 }
 
-// 每個測試後清理 store 狀態
+// Reset the store state after every test
 afterEach(() => {
   useCardBuilderStore.getState().reset();
   cleanup();
@@ -82,7 +84,10 @@ describe('CardBuilderEditor', () => {
     expect(screen.getByTitle('steps.geolocation')).toBeInTheDocument();
     expect(screen.getByTitle('steps.cardLogic')).toBeInTheDocument();
     expect(screen.getByTitle('steps.customizePlaceCard')).toBeInTheDocument();
-    expect(screen.getByTitle('steps.save')).toBeInTheDocument();
+    // 2026-10-26 — step 8 labelKey is 'steps.save.title'. The old
+    // 'steps.save' path resolves to an object (the namespace restructure on
+    // 2026-10-06), which i18next renders as its raw error string.
+    expect(screen.getByTitle('steps.save.title')).toBeInTheDocument();
     // Step progress label shows current step (single span now)
     expect(screen.getByText(/steps\.selectType.*1\/8/)).toBeInTheDocument();
   });
@@ -101,7 +106,8 @@ describe('CardBuilderEditor', () => {
 
   it('shows preview empty state when no card type selected', () => {
     renderWithRouter(<CardBuilderEditor />);
-    // 有兩個預覽區（Desktop + Mobile Bottom Sheet），用 getAllByText
+    // There are two preview areas (Desktop + Mobile Bottom Sheet), so the
+    // assertion uses getAllByText.
     expect(screen.getAllByText('preview.empty').length).toBeGreaterThan(0);
   });
 

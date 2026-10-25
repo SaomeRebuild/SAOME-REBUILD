@@ -19,6 +19,11 @@
  *     - en translations must not contain Han characters (CJK Unified
  *       Ideographs or Hangul or Hiragana etc.). HARD FAIL.
  *  5. Empty translations. HARD FAIL.
+ *  6. A translation key referenced from application code must resolve to a
+ *     leaf (string) value — never to an object. When a key is restructured
+ *     from a scalar into a nested object, every consumer of the old path
+ *     silently renders i18next's raw fallback string
+ *     ("key 'x (zh-TW)' returned an object instead of string."). HARD FAIL.
  *
  * The allowed-acronym whitelist covers exception words sanctioned by
  * .cursor/rules/frontend/023-shared-package.mdc § "翻譯書寫紀律"
@@ -687,6 +692,200 @@ for (const [ns, locales] of Object.entries(namespaces)) {
         if (HAN_CHAR.test(value)) {
           fail(`[${ns}/${locale}] ${path} — Han character in en translation`);
         }
+      }
+    }
+  }
+}
+
+// Check 6: a key referenced from application code must resolve to a leaf
+// (string) value — never to an object.
+//
+// Regression guard for the 2026-10-26 Card Builder step-8 incident:
+// `cardEditor.steps.save` was restructured from a scalar ('保存') into a
+// nested object on 2026-10-06, but the step indicator kept asking for
+// `steps.save`. i18next resolved it to an object and, with `returnObjects`
+// disabled, rendered the literal string
+// "key 'steps.save (zh-TW)' returned an object instead of string.".
+//
+// Scope: object-valued paths only. A *missing* key renders the key string
+// itself, which is loud and handled by the i18next fallback.
+//
+// Detection:
+//   1. Build the set of object-valued paths per namespace (parents of leaves).
+//   2. For each non-test source file, determine the namespaces it can
+//      translate against (`useTranslation('ns')`, `useTranslation([...])`,
+//      `i18n.getFixedT(lng, 'ns')`).
+//   3. Collect candidate key literals: arguments of translation calls plus
+//      values of `*Key` properties (the `labelKey: '...'` shape).
+//   4. Fail when a candidate resolves to an object-valued path.
+
+const SRC_DIR = join(__dirname, '..', 'src');
+const SKIP_SRC_DIRS = new Set(['node_modules', 'dist', 'coverage', 'locales', 'test']);
+
+/**
+ * Recursively list the source files that may reference translation keys.
+ * Test files are excluded — they assert on key strings, not on values.
+ */
+function collectSourceFiles(dir, out = []) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name.startsWith('.')) continue;
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (SKIP_SRC_DIRS.has(entry.name)) continue;
+      collectSourceFiles(full, out);
+    } else if (/\.(ts|tsx)$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name)) {
+      out.push(full);
+    }
+  }
+  return out;
+}
+
+/**
+ * Build the set of object-valued key paths for one namespace.
+ *
+ * `parseLocale` reports every path (leaves and their parents) plus the
+ * leaf string values, so the object-valued paths are the parents — the
+ * difference between the two sets.
+ */
+function objectPathsForNamespace(ns) {
+  const locales = namespaces[ns];
+  const out = new Set();
+  if (!locales) return out;
+  const file = locales['zh-TW'] || locales.en;
+  if (!file) return out;
+  const content = readFileSync(join(LOCALES_DIR, file), 'utf8');
+  const { keys, values } = parseLocale(content);
+  const leafPaths = new Set(values.map((v) => v.path));
+  for (const path of keys) {
+    if (!leafPaths.has(path)) out.add(path);
+  }
+  return out;
+}
+
+function escapeRegExp(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Namespaces a file can translate against, derived from its
+ * `useTranslation(...)` calls.
+ */
+function detectNamespaces(content) {
+  const found = new Set();
+  const re = /useTranslation\(\s*(\[[^\]]*\]|'[^']*'|"[^"]*")/g;
+  let m;
+  while ((m = re.exec(content)) !== null) {
+    const arg = m[1];
+    if (arg.startsWith('[')) {
+      for (const q of arg.matchAll(/'([^']*)'|"([^"]*)"/g)) {
+        const ns = q[1] !== undefined ? q[1] : q[2];
+        if (ns) found.add(ns);
+      }
+    } else {
+      found.add(arg.slice(1, -1));
+    }
+  }
+  return found;
+}
+
+/**
+ * Map translator aliases to their namespace, for the
+ * `const tCardEditor = useMemo(() => i18n.getFixedT(lng, 'cardEditor'), ...)`
+ * shape.
+ */
+function detectFixedTAliases(content) {
+  const aliases = new Map();
+  const re = /const\s+([A-Za-z0-9_$]+)\s*=\s*([^;]*?i18n\.getFixedT\([^)]*?'([^']+)'[^)]*\))/g;
+  let m;
+  while ((m = re.exec(content)) !== null) {
+    aliases.set(m[1], m[3]);
+  }
+  return aliases;
+}
+
+/**
+ * Collect the string literals that could be translation keys in this file.
+ *
+ * Each candidate carries the namespace it resolves against:
+ *   - `ns` set     → an explicit `{ ns: 'nav' }` option overrides the file's
+ *                    `useTranslation` namespaces.
+ *   - `ns` null    → resolve against every namespace the file can translate
+ *                    against (`useTranslation` list + `getFixedT` aliases).
+ *   - `ns` from a `ns:key` prefix → the prefixed namespace.
+ */
+function collectKeyCandidates(content, aliases) {
+  const candidates = [];
+
+  const callNames = ['t', 'i18n.t', ...aliases.keys()];
+  for (const name of callNames) {
+    const re = new RegExp(
+      `(?:^|[^A-Za-z0-9_$])${escapeRegExp(name)}\\(\\s*'([^']+)'\\s*(?:,\\s*\\{([^}]*)\\})?`,
+      'g',
+    );
+    let m;
+    while ((m = re.exec(content)) !== null) {
+      const options = m[2] ?? '';
+      const nsMatch = options.match(/\bns\s*:\s*'([^']+)'/);
+      candidates.push({ key: m[1], ns: nsMatch ? nsMatch[1] : null });
+    }
+  }
+
+  // `labelKey: 'steps.selectType'` — keys held in data structures. The
+  // namespace is not visible at the assignment site, so it stays null.
+  const propRe = /([A-Za-z0-9_$]*Key)\s*:\s*'([^']+)'/g;
+  let m;
+  while ((m = propRe.exec(content)) !== null) {
+    candidates.push({ key: m[2], ns: null });
+  }
+
+  return candidates;
+}
+
+const objectPathsByNamespace = {};
+for (const ns of Object.keys(namespaces)) {
+  objectPathsByNamespace[ns] = objectPathsForNamespace(ns);
+}
+
+for (const file of collectSourceFiles(SRC_DIR)) {
+  const content = readFileSync(file, 'utf8');
+  const fileNamespaces = detectNamespaces(content);
+  const aliases = detectFixedTAliases(content);
+  // A namespace used only through `i18n.t('ns:key')` is not visible to
+  // `detectNamespaces`, so pull those out of the candidates directly.
+  const fileCandidates = collectKeyCandidates(content, aliases);
+
+  for (const { key, ns } of fileCandidates) {
+    // Namespace-qualified form: `cardEditor:steps.save.publishError`.
+    const colon = key.indexOf(':');
+    if (colon > 0) {
+      const prefixedNs = key.slice(0, colon);
+      const subKey = key.slice(colon + 1);
+      if (objectPathsByNamespace[prefixedNs]?.has(subKey)) {
+        fail(
+          `[${prefixedNs}] ${file} — key '${key}' resolves to the object '${subKey}', not a string`,
+        );
+      }
+      continue;
+    }
+
+    // Explicit `{ ns: '...' }` option — only that namespace applies.
+    if (ns !== null) {
+      if (objectPathsByNamespace[ns]?.has(key)) {
+        fail(`[${ns}] ${file} — key '${key}' resolves to an object, not a string`);
+      }
+      continue;
+    }
+
+    for (const fileNs of fileNamespaces) {
+      if (objectPathsByNamespace[fileNs]?.has(key)) {
+        fail(`[${fileNs}] ${file} — key '${key}' resolves to an object, not a string`);
+      }
+    }
+    for (const [alias, aliasNs] of aliases) {
+      if (objectPathsByNamespace[aliasNs]?.has(key)) {
+        fail(
+          `[${aliasNs}] ${file} — key '${key}' (via '${alias}') resolves to an object, not a string`,
+        );
       }
     }
   }
