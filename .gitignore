@@ -93,6 +93,18 @@ Thumbs.db
 # lets agent scratch files show up as untracked in every `git status`.
 /.tmp*
 
+# One-off agent scripts must never enter the repo (Rule 040 file write tool
+# precedence). Throwaway repair/probe scripts belong in the OS temp directory
+# and are deleted after use. The permanent CI gate script is the sole
+# exception under scripts/.
+scripts/*.cjs
+!scripts/check-oneoff-scripts.cjs
+
+# Repo-root scratch scripts and Vite alias probe leftovers
+/*.tmp.mjs
+/*.tmp.cjs
+/vite-*-probe.*
+
 # Debug probe artifacts — ad-hoc one-off investigation scripts/outputs
 # (See runs/improvements/feedback/ for the trace that produced them)
 login.json

@@ -18,6 +18,7 @@ jobs:
       shared: ${{ steps.filter.outputs.shared }}
       docs_public: ${{ steps.filter.outputs.docs_public }}
       migrations: ${{ steps.filter.outputs.migrations }}
+      oneoff: ${{ steps.filter.outputs.oneoff }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v2
@@ -37,6 +38,12 @@ jobs:
               - 'docs/public/**'
             migrations:
               - 'supabase/migrations/**'
+            oneoff:
+              - 'scripts/**'
+              - '**/*.cjs'
+              - 'vite-*-probe.*'
+              - '*.tmp.mjs'
+              - '*.tmp.cjs'
 
   # ============================================================
   # 第二階段：CI（typecheck / lint / unit-test）
@@ -103,3 +110,20 @@ jobs:
       # Catches the 2026-08-22 production 500 incident where the agent
       # shipped a migration file but never applied it to the live DB.
       - run: npm run check:migrations --workspace=apps/backend
+
+  oneoff:
+    needs: changes
+    if: needs.changes.outputs.oneoff == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'package-lock.json'
+      - run: npm ci
+      # Rule 040 (file write tool precedence): keep one-off repair/probe
+      # scripts, src/ scratch files, and repo-root probe leftovers out of
+      # the repository. Cheap to run, prevents recurring technical debt.
+      - run: npm run check:oneoff

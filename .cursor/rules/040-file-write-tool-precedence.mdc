@@ -1,0 +1,131 @@
+---
+description: File write tool precedence — defines the authoritative order for authoring files (Cursor Write/StrReplace first, Node/Python scripts only as a tightly-gated fallback for mechanical repetition across 3+ files), and bans committing one-off repair/probe scripts
+alwaysApply: true
+---
+
+# 檔案寫入工具選擇優先序（MANDATORY）
+
+> Triggers: 建立新檔案、修改既有檔案、批量套用同一個轉換、重寫整個大檔、決定要用 shell script 還是 Cursor 工具寫檔。
+
+## 背景
+
+2026-10-26 盤點 34 個 `.cursor/rules/*.mdc` + 2 個 `AGENTS.md` 後確認：**agents 偏愛 Node 腳本不是自由意志，而是規則文字的副作用**。四個疊加原因：
+
+1. **Rule 039 把 Node 腳本寫成「第三種合法選項」** —— §1「Required instead」是三個平級 bullet（`Write` / `StrReplace` / Node script），沒有優先序；§6 更直接說「prefer bash / Git Bash **or a Node script** over PowerShell」。
+2. **Rule 038 指向 shell** —— §1 的解方範例全是 `Grep` → `Read` → `Shell` 腳本，agent 每個 session 都建立「跑腳本」的肌肉記憶。
+3. **一份舊 decision doc 直接說 Write tool 會腐化中文** —— `runs/decisions/2026-08-12-i18n-test-fix-prompt.md` 寫「不要用 Write tool 直接寫中文（會腐化）」，跟 Rule 039 §2「Cursor Write / StrReplace（these write UTF-8）」直接矛盾。
+4. **DEV LOG / feedback 把因果寫錯** —— 把「Shell 管道傳遞」誤寫成「StrReplace 本身不適合 CJK」。
+
+實際損害：`scripts/fix-*.cjs` 三支一次性修復腳本進了版本庫；`scripts/.repair-hyperdrive/` 單次 session 產出 1,001 個檔案 / 1.4 MB；`vite-alias-probe.tmp.mjs` 留在 repo 根；`apps/backend/src/__probe_sql.ts` orphan 留在 `src/` 內導致 backend build 失敗。
+
+**本 rule 的目的**：把工具選擇從「agent 自由判斷」變成「有明確優先序的決策樹」，讓 Cursor 工具重新成為預設，Node 腳本降級為明載條件的 fallback。
+
+---
+
+## 決策樹（agent 每次寫檔前走一次）
+
+```
+需要寫入 repo 內的檔案
+   │
+   ├─ 1. 建立新檔案 → Cursor `Write` tool（無例外）
+   │
+   ├─ 2. 修改既有檔案 → Cursor `Read` + `StrReplace`
+   │      （先 Read 取上下文，再替換單一段落/區塊）
+   │
+   ├─ 3. 同一段 pattern 要套用到 ≥ 3 個檔案（機械式重複）
+   │      → 才可用 Node 腳本，且必須滿足全部三條件（見下）
+   │
+   └─ 4. 全檔重寫（> 300 行且改動 > 50%）
+          → 仍用 `Read` + 分段 `StrReplace`
+          → 若分段 StrReplace 已連續 2 次失敗，才升級到
+            「先寫新檔 → 人工確認 → `StrReplace` 替換」流程
+```
+
+### 條件 3 的三個硬性要求（缺一即不可用腳本）
+
+| # | 要求 | 理由 |
+|---|---|---|
+| 1 | 腳本放在 **OS temp 目錄**（Windows: `%TEMP%` / `$env:TEMP`；macOS/Linux: `$TMPDIR`），**不得**寫進 repo | repo 內的腳本會被 commit 進版本庫，成為技術債 |
+| 2 | 用完即刪，不得 commit | 同上 |
+| 3 | 必須在 commit 訊息或 session 結尾說明「為何 Cursor 工具不適用」 | 讓 reviewer 能判斷門檻是否真的達到 |
+
+### 「機械式重複」的量化門檻
+
+同一段 pattern 套用到 **≥ 3 個檔案** 才啟用腳本路徑。
+
+- **1–2 個檔案** → 一律 `Read` + `StrReplace`。沒有例外。
+- **≥ 3 個檔案** → 仍優先考慮 `StrReplace`（3 次呼叫的成本低於寫腳本的風險）；只有在 pattern 高度重複、且 `StrReplace` 確實不合適（例如同一個 200 行區塊要搬 10 個地方）時才用腳本。
+
+> 為什麼要量化：沒有門檻時 agent 會自我合理化（「這個檔案很大，StrReplace 不好用」）。`≥ 3 檔 + temp 目錄 + 用完即刪 + 說明原因` 四條件同時成立，才算過關。
+
+---
+
+## 明載條件的 fallback：Node / Python 腳本
+
+只有決策樹第 3 條成立時才可使用，且必須：
+
+```js
+// OS temp 目錄下的腳本範例（路徑由 $TMPDIR / %TEMP% 提供）
+import { writeFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
+
+const text = readFileSync(targetPath, 'utf8');
+const updated = text.replaceAll(pattern, replacement);
+writeFileSync(targetPath, updated, 'utf8');
+```
+
+- 編碼必須顯式指定 `'utf8'`（`fs.writeFileSync` / Python `open(..., encoding='utf-8')`）。
+- Python 等價寫法：`open(path, 'w', encoding='utf-8')`。
+- 腳本本身放在 temp 目錄，執行完刪除。
+
+**禁止**：把腳本寫在 repo 內（`scripts/`、`apps/*/scripts/`、`src/`、repo 根），或把腳本 commit 進版本庫。
+
+---
+
+## 禁止清單
+
+| ❌ 禁止 | 原因 |
+|---|---|
+| 建立 `scripts/fix-*.cjs` / `scripts/probe-*.cjs` 當一次性工具 | 一次性產物進版本庫，成為長期技術債（已發生 3 次） |
+| 在 `src/` 內留任何 probe / scratch 檔 | 會被 TypeScript build 掃到，導致 build 失敗（已發生：`apps/backend/src/__probe_sql.ts` TS2345） |
+| 一次性腳本 commit 進版本庫 | 同上 |
+| 用「先 `Read` 再 `Write` 整檔覆蓋」繞過 `StrReplace` | `Write` 會無聲覆蓋未讀到的區段；既有檔案的覆蓋一律用 `Read` + `StrReplace` |
+| 在 repo 根留 `*.tmp.mjs` / `*.tmp.cjs` / `vite-*-probe.*` | 未追蹤檔案污染 `git status`（已發生：`vite-alias-probe.tmp.mjs`） |
+| 為了「繞過編碼問題」而改用腳本 | Cursor `Write` / `StrReplace` 本身寫 UTF-8，**不會**腐化中文。腐化只發生在 shell 管道 |
+| 在 repo 內建 `.repair-*` / `.probe-*` 之類的暫存目錄 | 單次 session 可產出上千檔案（已發生 1,001 檔 / 1.4 MB） |
+
+---
+
+## CI Gate
+
+本 rule 有自動化守門：`scripts/check-oneoff-scripts.cjs`（npm script `check:oneoff`）。
+
+檢查三件事：
+
+1. `scripts/` 下除白名單（`dev-restart.ps1` / `dev-restart.cmd` / `health-check.ps1`）外，不得有 `.cjs` / `.mjs` / `.ts`
+2. `apps/backend/src/`、`apps/frontend/src/`、`packages/shared/` 內不得有檔名符合 `__probe_*` / `*probe*.ts` 的檔案
+3. repo 根不得有 `*.tmp.mjs` / `*.tmp.cjs` / `vite-*-probe.*`
+
+CI job：`oneoff`（`.github/workflows/deploy.yml`），`changes` filter 以 `scripts/**` + `**/*.cjs` 觸發。
+
+---
+
+## 與其他 rule 的關係
+
+- `.cursor/rules/039-powershell-free-code-authoring.mdc` —— 本 rule 是它的**工具選擇優先序**補充；039 負責「PowerShell 禁用清單」與「註解用英文」，040 負責「選哪個工具寫檔」
+- `.cursor/rules/038-context-budget-discipline.mdc` —— 038 管「讀多少」，本 rule 管「怎麼寫」。038 §「子 agent prompt 禁止貼大段檔案內容」不受本 rule 影響
+- `.cursor/rules/000-modular-design.mdc` Part C —— 第三方 API 包裝（`services/external/`）是**常態**程式碼，不受本 rule 的「一次性腳本」禁令影響
+- `.cursor/rules/006-verification.mdc` —— 既有檔案的覆蓋一律用 `Read` + `StrReplace`
+
+## 觸發關鍵字
+
+「寫檔」「改檔」「新增元件」「建立 script」「跑腳本改檔」「一次性格式修正」「bulk edit」「批量修改」「probe 腳本」「fix script」**必須**引用本 rule。
+
+「工具選擇」「優先序」「什麼工具寫檔」「腳本可以用嗎」→ 必引 § 決策樹。
+
+## 參照
+
+- `runs/improvements/feedback/20261026-node-script-bias-root-cause.md` —— 4 個根因 + 實際損害清單 + 修法
+- `runs/decisions/2026-10-26-file-write-tool-precedence.md` —— 三段式決策紀錄
+- `.cursor/rules/039-powershell-free-code-authoring.mdc` —— PowerShell 禁用清單（不變）
+- `scripts/check-oneoff-scripts.cjs` —— CI gate 實作

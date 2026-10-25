@@ -22,7 +22,7 @@ The failure is symmetric and nasty: the agent believes the write succeeded, the 
 
 This rule has two halves:
 
-- **Half A — never author files through PowerShell.** Use the Cursor `Write` / `StrReplace` tools, or a Node.js script that specifies UTF-8 explicitly.
+- **Half A — never author files through PowerShell.** Use the Cursor `Write` / `StrReplace` tools as the default. A Node.js script is a tightly-gated fallback, not a peer option — see `.cursor/rules/040-file-write-tool-precedence.mdc` for the authoritative precedence.
 - **Half B — source-code comments are always English.** Chinese belongs in translation files and user-facing copy, not in `.ts` / `.tsx` / `.js` / `.sql` / `.yml` comments.
 
 ---
@@ -36,38 +36,40 @@ This rule has two halves:
 | Prohibited pattern | Why it breaks |
 |---|---|
 | `Set-Content`, `Out-File`, `Add-File`, `Add-Content`, `Set-Item`, `New-Item -ItemType File` | Writes with the console code page |
-| `[IO.File]::WriteAllText(...)`, `[IO.File]::WriteAllLines(...)`, `StreamWriter` | Same, unless an explicit UTF-8 encoding object is passed (still not allowed — use Node instead) |
+| `[IO.File]::WriteAllText(...)`, `[IO.File]::WriteAllLines(...)`, `StreamWriter` | Same, unless an explicit UTF-8 encoding object is passed (still not allowed — use the Cursor tools) |
 | `>` / `>>` redirection from any command | Same |
 | `@' ... '@` / `@" ... "@` here-strings piped into a writer | Same; the here-string content is already bound to the console encoding |
 | `Copy-Item` / `Move-Item` / `Rename-Item` of a file that was authored elsewhere in PowerShell | Propagates the corruption |
 | `Invoke-WebRequest` / `curl` writing directly to a repo file | Same |
 
-**Required instead**:
+**Required instead** (authoritative precedence lives in `.cursor/rules/040-file-write-tool-precedence.mdc`):
 
-- Cursor's `Write` tool for new files.
-- Cursor's `StrReplace` tool for edits to existing files (read the surrounding context first with `Read`, then replace a single paragraph or block).
-- A Node.js script for programmatic or bulk edits, always with an explicit UTF-8 encoding:
+- **新建檔案 → Cursor's `Write` tool.** No exceptions.
+- **修改既有檔案 → Cursor's `Read` + `StrReplace`** (read the surrounding context first with `Read`, then replace a single paragraph or block).
+- **同一段 pattern 套用到 ≥ 3 個檔案（機械式重複）→ 才可用 Node 腳本**, and only when all three conditions hold: the script lives in the OS temp directory (not in the repo), it is deleted right after use, and the session explains why the Cursor tools do not apply.
 
 ```js
-// scripts/example-write.mjs
+// OS temp directory script — explicitly UTF-8
 import { writeFileSync } from 'node:fs';
 writeFileSync(path, text, 'utf8');
 ```
 
-- A Python equivalent is acceptable: `open(path, 'w', encoding='utf-8')`.
+- A Python equivalent is acceptable: `open(path, 'w', encoding='utf-8')` — same three conditions apply.
 
-If a task genuinely requires a shell-side file mutation, it must be expressed as a Node/Python script that names the encoding, never as a PowerShell cmdlet.
+If a task genuinely requires a shell-side file mutation, it must be expressed as a Node/Python script that names the encoding, never as a PowerShell cmdlet — and it must satisfy the three conditions above before the tool choice is valid.
 
 ### 2. No Chinese (or any non-ASCII) content produced through PowerShell
+
+**Fact worth stating plainly: Cursor's `Write` and `StrReplace` tools write UTF-8 correctly. They do not corrupt Chinese.** The corruption observed in this repo came from the **shell pipeline** (PowerShell console code page), not from the editor tooling. Any historical note claiming otherwise is superseded by this rule and `.cursor/rules/040-file-write-tool-precedence.mdc`.
 
 Chinese text may only reach a file through:
 
 - The Cursor `Write` / `StrReplace` tools (these write UTF-8), or
-- A Node/Python script that passes `'utf8'` explicitly.
+- A Node/Python script that passes `'utf8'` explicitly — and only under the gated fallback conditions in `.cursor/rules/040-file-write-tool-precedence.mdc` (§ 決策樹 step 3).
 
 Producing Chinese inside a PowerShell here-string and then handing it to `Set-Content` is the exact failure mode that corrupted this repo. It is banned outright, not just discouraged.
 
-The same reasoning extends to **commit messages**. `git commit -m "..."` invoked from PowerShell can hit the same console encoding path for the argument, and the message ends up mangled in git history where it is much harder to repair. Use `git commit -F <file>` with a UTF-8 file authored by `Write` / Node, or use a Node `child_process` call with an explicit `encoding`.
+The same reasoning extends to **commit messages**. `git commit -m "..."` invoked from PowerShell can hit the same console encoding path for the argument, and the message ends up mangled in git history where it is much harder to repair. Use `git commit -F <file>` with a UTF-8 file authored by `Write`, or a Node `child_process` call with an explicit `encoding`.
 
 ### 3. Source-code comments are always English
 
@@ -98,7 +100,7 @@ This rule governs **tracked source files in the repo**. Markdown / `.mdc` docume
 
 ### 4. Exception whitelist — where Chinese IS allowed
 
-Chinese (or other non-English text) is permitted only in these places, and only when written by `Write` / `StrReplace` / a UTF-8 Node or Python script — never through PowerShell:
+Chinese (or other non-English text) is permitted only in these places, and only when written by `Write` / `StrReplace` (or, under the gated fallback in `.cursor/rules/040-file-write-tool-precedence.mdc`, a UTF-8 Node or Python script) — never through PowerShell:
 
 1. **i18n translation files**
    - `apps/frontend/src/i18n/locales/*.zh-TW.ts`
@@ -136,7 +138,7 @@ Rule of thumb: use `rg` (which handles UTF-8 correctly) to *locate* content, and
 
 ### 6. Shell choice recommendation
 
-When an interactive shell is needed, prefer **bash / Git Bash** or a **Node script** over PowerShell. If PowerShell is unavoidable for read-only work, set the console encoding first and keep it read-only:
+When an interactive shell is needed, prefer **bash / Git Bash** over PowerShell. Shell use is for **read-only work and execution** (git status, rg, npm test) — any file write goes back to the Cursor `Write` / `StrReplace` tools (see `.cursor/rules/040-file-write-tool-precedence.mdc`). If PowerShell is unavoidable for read-only work, set the console encoding first and keep it read-only:
 
 ```powershell
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -191,6 +193,7 @@ The detection script's scope is deliberately limited to **comments**. A separate
 
 ## 與其他 rule 的關係
 
+- `.cursor/rules/040-file-write-tool-precedence.mdc` — **權威的工具選擇優先序**（本 rule 負責「PowerShell 禁用 + 註解英文」，040 負責「用哪個工具寫檔」）
 - `.cursor/rules/011-dev.mdc` — commit message discipline; commit messages follow the same English + no-PowerShell-write rule
 - `.cursor/rules/006-verification.mdc` — verification output pasted into records must be encoding-clean
 - `.cursor/rules/038-context-budget-discipline.mdc` — slicing reads also reduces the blast radius of a corrupted file
@@ -199,8 +202,11 @@ The detection script's scope is deliberately limited to **comments**. A separate
 
 ## 參照
 
+- `.cursor/rules/040-file-write-tool-precedence.mdc` — 檔案寫入工具選擇優先序（決策樹 + fallback 門檻）
 - `.cursor/rules/011-dev.mdc` — commit message formatting and the English-only rule
 - `.cursor/rules/006-verification.mdc` — verification output recording
 - `.cursor/rules/038-context-budget-discipline.mdc` — context budget discipline
+- `runs/improvements/feedback/20261026-node-script-bias-root-cause.md` — 為何需要明確的工具優先序（Node script bias 根因）
 - `apps/backend/scripts/check-migrations-applied.cjs` — pattern reference for a repo-scoped `.mjs`/`.cjs` check script
 - `apps/frontend/scripts/audit-bundle-urls.cjs` — pattern reference for a post-build audit script
+- `scripts/check-oneoff-scripts.cjs` — Rule 040 的 CI gate

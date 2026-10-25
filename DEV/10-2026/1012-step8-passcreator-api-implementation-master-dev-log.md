@@ -394,6 +394,8 @@ $ node apps/backend/scripts/capture-passcreator-errors.cjs
 ## 操作教訓 1 條（本 session 學到的）
 
 > **大規模 test rewrite 走 StrReplace 拼 CJK 字串容易把檔案弄壞**。v12-followup 把 `passTemplateMapping.test.ts` 從 37 條 v1/v2 pre-v6 baseline 整個重寫成 42 條 v12-followup contract，途中 git restore 救回一次（Shell StrReplace 拼中文字串時編碼不一致）。**下次改 test file 整個文件時用 Python script 一次寫完整 utf-8 編碼，不要走 Shell StrReplace 拼字串**。
+>
+> **更正（2026-10-26）**：本段的因果診斷有誤 —— 腐化的根因是 **Shell 傳遞**（把字串經 PowerShell 管道送進寫入指令時被 console code page 重新編碼），**不是 Cursor `StrReplace` 工具本身**。Cursor `StrReplace` 寫 UTF-8 正常。原文保留作為 raw data，工具選擇以 `.cursor/rules/040-file-write-tool-precedence.mdc` 為準：改 test file 仍走 `Read` + 分段 `StrReplace`；只有同一 pattern 套用到 ≥ 3 檔時才用腳本（放 OS temp 目錄、用完即刪）。
 
 ---
 

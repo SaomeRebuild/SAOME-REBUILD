@@ -126,13 +126,18 @@ npx vitest run 2>&1
 ## 技術約束
 
 - **Node 24 ESM**：所有 locale 檔案必須是 `.ts`（不能用 `.json`）
-- **UTF-8 編碼**：寫入中文時用 `node -e "..."` 或 `.mjs` 腳本，**不要**用 Write tool 直接寫中文（會腐化）
+- **UTF-8 編碼**：寫入中文時用 Cursor `Write` / `StrReplace` 工具（這兩個工具本身寫 UTF-8，不會腐化中文）；若真的需要腳本批量改寫，用 Node `node -e "..."` 或 `.mjs` 腳本並顯式指定編碼
+
+> **Superseded (2026-10-26)**：本條原文寫「**不要**用 Write tool 直接寫中文（會腐化）」—— **該敘述錯誤**。
+> Cursor 的 `Write` / `StrReplace` 工具寫入 UTF-8 正常；當時觀察到的腐化來自 **shell 管道**（PowerShell console code page 把字串重新編碼），不是編輯器工具本身。
+> 工具選擇的權威優先序見 `.cursor/rules/040-file-write-tool-precedence.mdc`；PowerShell 禁用清單見 `.cursor/rules/039-powershell-free-code-authoring.mdc`。
 - **Namespace 命名**：camelCase（`passNotification` 不是 `pass-notification`）
 - **Feature namespace vs translation namespace**：`Footer` 等跨多個 namespace 的元件要用 `useTranslation(['landing', 'nav'])`
 
 ## 禁止事項
 
-- ❌ 用 Write tool 直接寫入大量中文（會腐化）
+- ❌ 用 PowerShell 寫檔（`Set-Content` / `Out-File` / pipeline 重導）—— 腐化根因在此，不在 Cursor 工具
+- ❌ 用「先 Read 再 Write 整檔覆蓋」繞過 StrReplace（見 `.cursor/rules/040-file-write-tool-precedence.mdc`）
 - ❌ 修改 `vitest.config.ts` 的 alias（除非確認 vitest 和 vite 需要不同的 alias）
 - ❌ 把 shared package 的 i18n 邏輯刪除
 - ❌ 修改 `apps/frontend/src/i18n/index.ts` 的初始化結構（除非明確知道為什麼要改）

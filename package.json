@@ -12,6 +12,7 @@
     "lint": "npm --workspace=apps/frontend run lint",
     "test": "npm --workspace=apps/frontend run test",
     "typecheck": "npm --workspace=apps/frontend run typecheck",
+    "check:oneoff": "node scripts/check-oneoff-scripts.cjs",
     "pages:build": "npm --workspace=apps/frontend ci && cd apps/frontend && export PATH=\"$PWD/../node_modules/.bin:$PATH\" && tsc -b && vite build",
     "pages:deploy": "npm --workspace=apps/frontend run pages:deploy",
     "test:smoke": "playwright test"

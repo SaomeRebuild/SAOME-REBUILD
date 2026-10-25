@@ -164,6 +164,7 @@ export function buildAdditionalProperties(args: {
 
 1. **第三層 drift guard 必備**：v12 data-driven 防的是 build-time drift（型別、enum、字串），runtime wire-format contract 需要真的 end-to-end push probe 才能 catch（例如 `apps/backend/scripts/probe-real-payload.cjs` 那類工具）。Typecheck + unit test 通過 ≠ 跟 Passcreator 實際 wire format 一致。
 2. **本機大規模 test rewrite 風險**：這次更新 `passTemplateMapping.test.ts` 走了 5+ 輪 StrReplace 才修乾淨；中間 StrReplace 編碼錯誤（CJK 字串、em-dash）讓 file 損壞過一次（git restore 救回）。下次考慮：**用 Python script 寫整個 file（utf-8 編碼一次確定），不要用 PowerShell StrReplace 拼 CJK**。
+   > **更正（2026-10-26）**：根因是 **Shell 傳遞**（字串經 PowerShell 管道送出時被 console code page 重新編碼），不是 Cursor `StrReplace` 工具本身 —— 後者寫 UTF-8 正常。工具選擇以 `.cursor/rules/040-file-write-tool-precedence.mdc` 為準：`Read` + 分段 `StrReplace` 為預設，腳本僅在「同一 pattern 套用 ≥ 3 檔 + 放 OS temp 目錄 + 用完即刪」時才可用。
 3. **git HEAD 的 test file 可能遠落後 source**：遇到 test file 在 git HEAD 只有 37 tests、source code 卻有 165 tests 時，**先 checkout git 的 baseline 再 surgical 改**，不要相信「之前的 working state 還在」。v12 的 128 條 test 增量已經 commit leak 過了。
 
 ---
