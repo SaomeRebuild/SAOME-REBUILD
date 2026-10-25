@@ -43,6 +43,9 @@ import {
 } from '@saome/shared/logic/giftCardPurchase';
 import { giftCardSnapshotSchema } from '@saome/shared/schemas/passHolder';
 import type { PublicGiftCardConfig } from '@saome/shared/types/passHolder';
+import type { PasscreatorPassValues } from '@saome/shared/logic/passFieldFormatter';
+import { membershipDurationTypeFromSnapshot } from '@saome/shared/logic/passExpiry';
+import { ensureRegistrationRuntimeState } from './passRegistrationService';
 
 /**
  * Gift-card purchase fields derived server-side from the template.
@@ -216,13 +219,63 @@ export async function registerService(
     giftCardSnapshot: giftPurchase?.giftCardSnapshot,
   });
 
-  // 3. (2026-10-19) V3 issuance — only attempt for NEW rows OR for
+  // 3. (2026-10-24) Runtime values — the holder's `registered` event
+  //    + the derived snapshot.
+  //
+  //    This runs BEFORE the Passcreator call so the FIRST issuance can
+  //    carry the opening values (a gift card's purchased points, the
+  //    card's expiry). The Wallet therefore never shows an empty
+  //    balance on first install, and we never have to create an empty
+  //    pass and PATCH it afterwards.
+  //
+  //    The step is idempotent: the event carries the key
+  //    `registered:{holderId}`, so a re-registration (or a retry after
+  //    a failed issuance) does NOT create a second opening event.
+  //
+  //    It is also durable: if the Passcreator call then fails, the
+  //    ledger + snapshot stay committed and a later retry re-pushes
+  //    the SAME values — it never adds them twice.
+  const runtime = await ensureRegistrationRuntimeState(sql, {
+    passHolderId: row.id,
+    cardType: template.card_type,
+    settings: template.settings,
+    // Gift card only — the prepaid points ARE the opening balance.
+    // `buildInitialMetrics` ignores this for every other card type.
+    purchasedPoints: row.purchased_points ?? null,
+    // Paid membership only — the tier duration the holder bought,
+    // read from their PERSISTED frozen tier snapshot (never from the
+    // request payload, and never recomputed from the template — a
+    // template can offer monthly AND yearly tiers at once).
+    membershipDurationType: membershipDurationTypeFromSnapshot(
+      row.membership_tier_snapshot,
+    ),
+    // The event's timestamp AND its expiry anchor both come from the
+    // holder row's `created_at`, not from "now" — so a holder who
+    // registers again after this feature shipped keeps the expiry they
+    // would have received originally.
+    registeredAt:
+      row.created_at instanceof Date
+        ? row.created_at.toISOString()
+        : String(row.created_at),
+  });
+
+  // 4. (2026-10-19) V3 issuance — only attempt for NEW rows OR for
   // existing rows whose `pass_identifier` was never populated (e.g.
   // the row was created during a Passcreator outage and we left it
   // un-issued). Already-issued rows short-circuit and return the
   // existing issuance data verbatim — Decision Log § "Issue pass
   // relation" prevents duplicate passes for the same (template, email).
-  const issuance = await attemptIssuance(sql, env, row, template.passcreator_template_id);
+  //
+  // `runtime.values` is the SAME formatter output the later PATCH
+  // consumes (Decision Log § 決定三) — the value written at creation
+  // and the value written at update time are formatted identically.
+  const issuance = await attemptIssuance(
+    sql,
+    env,
+    row,
+    template.passcreator_template_id,
+    runtime.values,
+  );
 
   return {
     ok: true,
@@ -262,6 +315,7 @@ async function attemptIssuance(
   env: HonoEnv['Bindings'],
   row: PassHolderRow,
   passcreatorTemplateId: string | null | undefined,
+  values?: PasscreatorPassValues,
 ): Promise<PassHolderIssuanceDto | undefined> {
   // Short-circuit: already issued. Return whatever runtime fields
   // are present on the row (idempotent re-register path).
@@ -290,12 +344,20 @@ async function attemptIssuance(
   // V3 call — wrapped in try/catch so BadGatewayError doesn't
   // propagate (we want to preserve 200 + `issuanceError`).
   try {
-    const issued = await issuePass(env, passcreatorTemplateId, {
-      name: row.name,
-      phone: `${row.phone_country_code}${row.phone_number}`,
-      birthday: row.birthday,
-      email: row.email,
-    });
+    const issued = await issuePass(
+      env,
+      passcreatorTemplateId,
+      {
+        name: row.name,
+        phone: `${row.phone_country_code}${row.phone_number}`,
+        birthday: row.birthday,
+        email: row.email,
+      },
+      // The holder's OPENING runtime values (points / balance /
+      // expiry). Same wire shape the later PATCH consumes — one
+      // contract for create + update.
+      values,
+    );
     const issuedAt = new Date();
     // 2026-10-19 — Persist ALL 3 URIs that V3 returns. Migration 026
     // adds `iphone_uri` + `android_uri` columns; even Apple/Passwallet-

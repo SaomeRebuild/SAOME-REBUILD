@@ -20,7 +20,10 @@
  */
 
 import type { Sql } from '@/shared/db/client';
-import type { CardLanguage, CardType } from '@saome/shared/schemas/card';
+import type {
+  CardType,
+  TemplateSettings,
+} from '@saome/shared/schemas/card';
 import type { Currency } from '@saome/shared/schemas/card';
 import type {
   PublicGiftCardConfig,
@@ -47,16 +50,24 @@ export interface PublicTemplateRow {
   id: string;
   name: string;
   card_type: CardType | null;
-  /** Logo text lives in `settings.logoText` (per migration 018, 2026-09-13).
-   *  `language` added 2026-10-01 for the public page i18n. */
-  settings: {
-    logoText?: string;
-    issuerName?: string;
-    issuerLogo?: string;
-    backgroundColor?: string;
-    textColor?: string;
-    language?: CardLanguage;
-  };
+  /**
+   * The full `templates.settings` JSONB.
+   *
+   * 2026-10-24 — this used to be a hand-written six-field interface
+   * (`logoText` / `issuerName` / `issuerLogo` / `backgroundColor` /
+   * `textColor` / `language`). The SQL has always returned the WHOLE
+   * JSONB object, so the narrow type was a lie that hid real fields
+   * from every consumer. The runtime-value issuance path needs
+   * `leftField` / `rightField` (bound face slots) and the expiry
+   * settings; the template mapper needs the card-specific settings.
+   *
+   * It now mirrors the shared Zod schema (`TemplateSettings`), which
+   * is the single source of truth (Rule 019 § 2).
+   *
+   * The DTO projection is unchanged — `getPublicService` still emits
+   * only the public-safe subset.
+   */
+  settings: TemplateSettings;
   /**
    * 2026-10-16 — projected from `settings->>'isPaid'`. true when the
    * template is a paid-membership card (renders the tier picker +
@@ -298,14 +309,9 @@ export interface PublicTemplateRowWithTenant {
   tenant_id: string;
   name: string;
   card_type: CardType | null;
-  settings: {
-    logoText?: string;
-    issuerName?: string;
-    issuerLogo?: string;
-    backgroundColor?: string;
-    textColor?: string;
-    language?: CardLanguage;
-  };
+  /** Full `templates.settings` JSONB — mirrors the shared schema (see
+   *  `PublicTemplateRow::settings` for the rationale). */
+  settings: TemplateSettings;
   /**
    * 2026-10-16 — projected from `settings->>'isPaid'` (see
    * `PublicTemplateRow::is_paid` for full rationale).

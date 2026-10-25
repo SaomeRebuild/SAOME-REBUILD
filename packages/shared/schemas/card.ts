@@ -45,7 +45,7 @@ export const cardTypeSchema = z.enum([
 
 export type CardType = z.infer<typeof cardTypeSchema>;
 
-// ===== Card Display Fields (Step 3 ??"?????" selector) =====
+// ===== Card Display Fields (Step 3 — "顯示欄位" selector) =====
 
 /**
  * Card face fields that can be assigned to the left/right slots.
@@ -58,7 +58,7 @@ export type CardType = z.infer<typeof cardTypeSchema>;
  * Stamp-card-specific keys (`availableRewards`, `totalStamps`,
  * `stampsRemaining`) are valid values for every card type at the schema
  * level (the enum is global), but the editor UI hides them when the user
- * picks a non-stamp card type ??see `CardFieldGroup` in card-fields.ts and
+ * picks a non-stamp card type — see `CardFieldGroup` in card-fields.ts and
  * the filter logic in `Step3CardFields/index.tsx`. Stored values are not
  * cleared on card-type churn (the conditional filter only affects the
  * dropdown options, not the store roundtrip).
@@ -96,10 +96,10 @@ export type TemplateStatus = z.infer<typeof templateStatusSchema>;
 
 /**
  * Template settings stored in JSONB.
- * Flat structure ??NOT nested.
+ * Flat structure — NOT nested.
  *
  * Step 1 fields: cardType (also held in SQL column `templates.card_type`),
- *                logoText (the text shown on the pass header ??visually
+ *                logoText (the text shown on the pass header — visually
  *                rendered in PassCardPreviewHeader next to the issuer logo).
  *                Card Name itself lives in the SQL column `templates.name`,
  *                NOT in this JSONB blob.
@@ -316,7 +316,7 @@ export const templateSettingsSchema = z.object({
   // Step 2
   barcodeType: barcodeTypeSchema.optional(),
   /**
-   * Logo Text ??the text shown on the pass header (next to the issuer
+   * Logo Text — the text shown on the pass header (next to the issuer
    * logo). Semantic swap 2026-09-13: previously stored in the SQL column
    * `templates.name` under the misleading key `name`; migration 018
    * swapped it into `settings.logoText`. The Card Name (pass record name,
@@ -329,7 +329,7 @@ export const templateSettingsSchema = z.object({
   currency: currencySchema.optional(),
   /**
    * Card display language. Controls which language the card fields are
-   * translated into when sent to Passcreator (deferred ??not implemented
+   * translated into when sent to Passcreator (deferred — not implemented
    * yet). Per-card property (not per-tenant) so different cards in the
    * same tenant can serve different language audiences.
    * 2026-09-18 Step 2: added for Passcreator future integration.
@@ -338,13 +338,13 @@ export const templateSettingsSchema = z.object({
   // Step 3-4 (TBD)
   issuerLogo: z.string().optional(),
   /**
-   * Push-notification icon (R2 key, per shared/constants/card-images.ts ? 5.7 contract).
-   * Stored as a string like `{tenantId}/{templateId}/icon.png` ??see CARD_IMAGE_KEYS.icon.
+   * Push-notification icon (R2 key, per shared/constants/card-images.ts § 5.7 contract).
+   * Stored as a string like `{tenantId}/{templateId}/icon.png` — see CARD_IMAGE_KEYS.icon.
    * Phase 5 of IconUploader plan (2026-08-31): added to support MediaAssetUploader variant="icon".
    */
   iconImage: z.string().optional(),
   /**
-   * Background image (R2 key) ??reserved for next BackgroundUploader plan.
+   * Background image (R2 key) — reserved for next BackgroundUploader plan.
    * Schema entry added now so future BackgroundUploader does not need a schema migration.
    */
   backgroundImage: z.string().optional(),
@@ -352,7 +352,7 @@ export const templateSettingsSchema = z.object({
   textColor: z.string().optional(),
   holderName: z.string().optional(),
   cardSide: z.enum(['front', 'back']).optional(),
-  // ===== Step 3 ??????? (left/right slot fields) =====
+  // ===== Step 3 — 顯示欄位 (left/right slot fields) =====
   // Step 3 plan 2026-09-04: two side-by-side native <select> dropdowns for
   // the card face. The user picks one field per slot (left/right). Card-type-
   // dependent additions/removals are deferred; current values are the six
@@ -362,16 +362,16 @@ export const templateSettingsSchema = z.object({
   rightField: cardFieldKeySchema.optional(),
   // Membership card extension
   isPaid: z.boolean().optional(),
-  // ===== Step 3 ??Stamp grid (????????) =====
+  // ===== Step 3 — Stamp grid (集點印章) =====
   // Stamp grid feature (2026-09-04): rendered on `stamp_card` and `multipass`
-  // card types only. The grid is rows ? 5 columns; `stampGridRows` constrains
+  // card types only. The grid is rows × 5 columns; `stampGridRows` constrains
   // rows to 1..4. `stampIconId` references the icon manifest's id field
   // (see apps/frontend/src/assets/icons/stamps/manifest.ts).
   stampGridRows: z
     .union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)])
     .optional(),
   stampIconId: z.string().optional(),
-  // ===== Step 4 ????????? (2026-09-04) =====
+  // ===== Step 4 — 卡片資訊 (2026-09-04) =====
   // Description shown in PassCardPreviewBack Section 1. Required by UI but
   // left optional here so zod doesn't reject empty drafts mid-edit; the UI
   // enforces DESCRIPTION_MAX_LENGTH + non-empty via isStep4Valid().
@@ -379,7 +379,7 @@ export const templateSettingsSchema = z.object({
   // Back fields shown in PassCardPreviewBack Section 4. Flat array of
   // { label, value } pairs; PassKit convention is one Label + Value per row.
   // Length min/max is enforced by UI store (BACK_FIELDS_MIN/MAX), not zod,
-  // to keep schema focused on per-field validity (Rule 019 ? 4.1).
+  // to keep schema focused on per-field validity (Rule 019 § 4.1).
   backFields: z
     .array(
       z.object({
@@ -392,7 +392,7 @@ export const templateSettingsSchema = z.object({
   // a separate dedicated render area distinct from `backFields`; they are
   // not interchangeable. URL validation is performed by shared/logic/links.ts
   // in the UI layer; zod only enforces max length per field (URLs can be
-  // long ??2048 is the PassKit limit per pass field).
+  // long — 2048 is the PassKit limit per pass field).
   links: z
     .array(
       z.object({
@@ -401,7 +401,7 @@ export const templateSettingsSchema = z.object({
       }),
     )
     .optional(),
-  // ===== Step 5 ???????? + ????? (2026-09-05, refactored 2026-09-06) =====
+  // ===== Step 5 — 地理位置 + 推播訊息 (2026-09-05, refactored 2026-09-06) =====
   // Passcreator API-aligned fields:
   //   - `locationsDisabled`: boolean toggle. Passcreator uses this to
   //     decide whether geolocation is enabled at all. When `true` the
@@ -437,13 +437,13 @@ export const templateSettingsSchema = z.object({
         longitude: z.number().min(-180).max(180),
         // relevantText is the lock-screen message shown when the user
         // arrives at this location (Apple Wallet pkpass `relevantText`).
-        // Optional, ??100 chars, null when not set.
+        // Optional, ≤ 100 chars, null when not set.
         relevantText: z.string().max(100).nullable().optional(),
       }),
     )
     .max(10)
     .optional(),
-  // ===== Step 5 ??Locations max distance (2026-09-06 rename) =====
+  // ===== Step 5 — Locations max distance (2026-09-06 rename) =====
   // DEPRECATED 2026-09-06: kept as `.optional()` for backward-compat reads
   // (Migration 017 renames DB rows from `notificationRadius` ??  // `locationsMaxDistance`). New writes should use `locationsMaxDistance`.
   // The backend silently accepts incoming `notificationRadius` but does
@@ -456,9 +456,9 @@ export const templateSettingsSchema = z.object({
     .max(1000)
     .nullable()
     .optional(),
-  // ===== Step 6 ????????? (2026-09-07, stamp_card / multipass only) =====
+  // ===== Step 6 — 卡片邏輯 (2026-09-07, stamp_card / multipass only) =====
   // Mirrors mu-plugins `_stamp_accrual_type` + `_stamp_reward_tiers_json`
-  // (collapsed into a single tier ??the active reward; mu-plugins stores
+  // (collapsed into a single tier — the active reward; mu-plugins stores
   // an array, but SAOME-REBUILD stores a single tier to keep the editor
   // simple and match the single-reward user spec 2026-09-07).
   //
@@ -466,8 +466,8 @@ export const templateSettingsSchema = z.object({
   //   - ACCRUAL_MODES / REWARD_TYPES: the enum values
   //   - REWARD_NAME_MAX_LENGTH = 40: matches PassCreator `title` cap
   //   - REWARD_VALUE bounds differ by `rewardType`:
-  //       amount_off ??> 0 (currency-agnostic number)
-  //       percent_off ??[1, 100] integer percentage
+  //       amount_off → > 0 (currency-agnostic number)
+  //       percent_off → [1, 100] integer percentage
   //   - MAX_DISCOUNT_AMOUNT_MIN = 0; null means "??????
   //
   // Cross-references:
@@ -476,9 +476,9 @@ export const templateSettingsSchema = z.object({
   //   - apps/backend/src/modules/cards/schemas/request.ts (mirror)
   //   - apps/backend/src/modules/cards/db/templates.ts (TemplateSettings interface)
   /**
-   * ???????: per_stamp (????????) / per_visit (??????) / per_spend (??????).
+   * 蓋章模式: per_stamp (手動蓋章) / per_visit (來訪蓋章) / per_spend (消費蓋章).
    * Mirrors mu-plugins `_stamp_accrual_type` (camelCased to align with TS convention).
-   * `.nullable().optional()` ??null = not set (frontend store uses null for "unselected").
+   * `.nullable().optional()` — null = not set (frontend store uses null for "unselected").
    */
   stampAccrualMode: z.enum(['per_stamp', 'per_visit', 'per_spend']).nullable().optional(),
   /**
@@ -487,14 +487,14 @@ export const templateSettingsSchema = z.object({
    */
   rewardName: z.string().max(40).optional(),
   /**
-   * ??????: ????????? (amount_off) / ???????????(percent_off).
+   * 獎勵類型: 訂單折抵現金 (amount_off) / 訂單折抵百分比 (percent_off).
    * Mirrors mu-plugins `_stamp_reward_tiers_json[0].reward_type`.
-   * `.nullable().optional()` ??null = not set (frontend store uses null for "unselected").
+   * `.nullable().optional()` — null = not set (frontend store uses null for "unselected").
    */
   rewardType: z.enum(['amount_off', 'percent_off']).nullable().optional(),
   /**
-   * ??????? (amount_off) ?????????? (percent_off).
-   * Bound check is performed by `setRewardValue` setter (???? ??0);
+   * 折抵金額 (amount_off) 或百分比整數 (percent_off).
+   * Bound check is performed by `setRewardValue` setter (拒絕 ≤ 0);
    * zod uses `.positive()` as a backend double-check.
    * Mirrors mu-plugins `_stamp_reward_tiers_json[0].reward_value`.
    */
@@ -502,7 +502,7 @@ export const templateSettingsSchema = z.object({
   /**
    * ???????????(??percent_off ????????? null = ??????.
    * zod `.nullable()` matches store's `number | null` shape (null = no ceiling).
-   * Always validated as ??MAX_DISCOUNT_AMOUNT_MIN=0 by `setMaxDiscountAmount`.
+   * Always validated as ≥ MAX_DISCOUNT_AMOUNT_MIN=0 by `setMaxDiscountAmount`.
    * Mirrors mu-plugins `_stamp_reward_tiers_json[0].max_discount_amount`.
    */
   maxDiscountAmount: z.number().min(0).nullable().optional(),
@@ -514,10 +514,10 @@ export const templateSettingsSchema = z.object({
    * ?????????per_spend ?????????????????N ??????? M ???????   * stampsPerSpendAmount = N??????????stampsPerSpendStamps = M??????????   * 2026-09-07 ??????   */
   stampsPerSpendAmount: z.number().positive().nullable().optional(),
   stampsPerSpendStamps: z.number().int().min(1).nullable().optional(),
-  // ===== Step 6 ??Gift Card ??(2026-09-27, gift_card only) =====
+  // ===== Step 6 — Gift Card 卡 (2026-09-27, gift_card only) =====
   // Prepaid model: customers pay X currency units to receive Y points;
   // points are then redeemed for in-store products at a tenant-defined
-  // exchange rate. Simpler than stamp/reward cards ??single flat rule,
+  // exchange rate. Simpler than stamp/reward cards — single flat rule,
   // no tier list, no point accrual over time.
   //
   //   - giftCardAmount: positive integer (currency units the customer pays)
@@ -525,7 +525,7 @@ export const templateSettingsSchema = z.object({
   //
   // Default 1:1 (1 ??= 1 ?? per user decision 2026-09-27.
   // Store setter enforces `> 0` and integer; backend zod is the
-  // authoritative gate on save (Rule 032 ? 1).
+  // authoritative gate on save (Rule 032 § 1).
   giftCardAmount: z.number().int().positive().optional(),
   giftCardPoints: z.number().int().positive().optional(),
   // ===== Step 6 — Gift Card 雙層 fence: 方案發行點數範圍 (2026-10-20, gift_card only, PR 1 of 2) =====
@@ -564,7 +564,7 @@ export const templateSettingsSchema = z.object({
   giftCardCheckoutMaxPoints: z.number().int().positive().optional(),
   giftCardCheckoutMinAmount: z.number().int().positive().optional(),
   giftCardCheckoutMaxAmount: z.number().int().positive().optional(),
-  // ===== Step 6 ??REWARD ??(2026-09-09, reward_card only) =====
+  // ===== Step 6 — REWARD 卡 (2026-09-09, reward_card only) =====
   // Mirrors mu-plugins `SAOME-Points-Engine/modules/cards/reward-card.php` earning mode
   // and `SAOME-Passcreator-Engine/modules/passcreator-reward-card.php` tier structure.
   //
@@ -574,7 +574,7 @@ export const templateSettingsSchema = z.object({
   // mode (visits vs spend) is a card-level policy; the earn rate (e.g.
   // 1 visit = 1 point vs 1 visit = 2 points) can differ per tier.
   //
-  // rewardTiers: ????5 ???????????name / threshold / rewardType / rewardValue /
+  // rewardTiers: 最多 5 組級距（每組含 name / threshold / rewardType / rewardValue /
   // maxDiscountAmount / pointsPerVisit / pointsPerSpendAmount / pointsPerSpendPoints??  //
   // Cross-references:
   //   - packages/shared/constants/reward-card.ts (single source of truth)
@@ -582,9 +582,9 @@ export const templateSettingsSchema = z.object({
   //   - apps/backend/src/modules/cards/schemas/request.ts (mirror)
   //   - apps/backend/src/modules/cards/db/templates.ts (TemplateSettings interface)
   /**
-   * ??????????????????(2026-09-09, top-level).
-   * one mode per card: based_on_points (??????) / based_on_visits (???) /
-   * based_on_spending (??). null = ???.
+   * 整張卡片的點數累積方式 (2026-09-09, top-level).
+   * one mode per card: based_on_points (自訂條件) / based_on_visits (拜訪) /
+   * based_on_spending (消費). null = 未選.
    * Drives which of `pointsPerVisit` / `pointsPerSpend*` per-tier fields are
    * meaningful; switching modes via `setEarningMode` clears all per-tier
    * earn fields so no stale data leaks across modes.
@@ -594,9 +594,9 @@ export const templateSettingsSchema = z.object({
     .nullable()
     .optional(),
   /**
-   * ??????????????5 ???.
-   * ???tier ??? reward rule (name + threshold + rewardType + rewardValue +
-   * maxDiscountAmount) + ??? earning mode ??earn rate fields
+   * 獎勵級距陣列（最多 5 組）.
+   * 每個 tier 包含 reward rule (name + threshold + rewardType + rewardValue +
+   * maxDiscountAmount) + 對應 earning mode 的 earn rate fields
    * (pointsPerVisit / pointsPerSpendAmount / pointsPerSpendPoints).
    *
    * 2026-09-09: `earningMode` ??per-tier ??? top-level??   * Per-tier fields now only carry the earn rate (not the mode itself).
@@ -615,31 +615,31 @@ export const templateSettingsSchema = z.object({
         /** ???????????(??percent_off ?????? null = ??????. */
         maxDiscountAmount: z.number().min(0).nullable().optional(),
         /**
-         * ?????????????card-wide earningMode === 'based_on_visits' ???????:
-         * ??tier ??N ??????????. null = ???.
+         * 基於拜訪門檻（僅 card-wide earningMode === 'based_on_visits' 時使用）:
+         * 此 tier 每 N 次拜訪獲得的點數. null = 未填.
          * 2026-09-09: ??? per-tier?????tier ??????? earn rate???         */
         pointsPerVisit: z.number().int().min(1).nullable().optional(),
         /**
-         * ????????????card-wide earningMode === 'based_on_spending' ???????:
+         * 基於消費門檻（僅 card-wide earningMode === 'based_on_spending' 時使用）:
          * ??tier ?????N ?????M ?? null = ???.
-         * 2026-09-09: ??? per-tier.
+         * 2026-09-09: 保留 per-tier.
          */
         pointsPerSpendAmount: z.number().positive().nullable().optional(),
         /**
-         * ????????????card-wide earningMode === 'based_on_spending' ???????:
+         * 基於消費門檻（僅 card-wide earningMode === 'based_on_spending' 時使用）:
          * ??tier ??????????? null = ???.
-         * 2026-09-09: ??? per-tier.
+         * 2026-09-09: 保留 per-tier.
          */
         pointsPerSpendPoints: z.number().int().min(1).nullable().optional(),
       }),
     )
     .max(5)
     .optional(),
-  // ===== Step 6 ??Membership ??(2026-09-13, membership_card only) =====
+  // ===== Step 6 — Membership 卡 (2026-09-13, membership_card only) =====
   // Mirrors mu-plugins membership-tier structure (see SAOME-Email-Engine
   // membership-tier handling). The simplest Step 6 sub-module after cashback:
   // each tier is a paid/free membership level with optional duration +
-  // cost + per-tier ?????? sub-rows.
+  // cost + per-tier 會員獎勵 sub-rows.
   //
   // Card-wide `hasExpiry` toggle (added 2026-09-13): all tiers share the
   // same expiry setting. When false, durationType / monthlyCost / yearlyCost
@@ -647,14 +647,14 @@ export const templateSettingsSchema = z.object({
   // (they're optional). When true, each tier must have a non-null
   // durationType + a corresponding non-negative cost.
   //
-  // Per-tier ?????? sub-rows: up to MAX_REWARDS_PER_TIER=5 per tier. Each
+  // Per-tier 會員獎勵 sub-rows: up to MAX_REWARDS_PER_TIER=5 per tier. Each
   // row is a {label, value} pair (same shape as Step 4 back fields / links).
   //
   // Differs structurally from stamp_card / reward_card / cashback_card:
-  //   - NO earningMode switch (membership has no point accrual ??the
+  //   - NO earningMode switch (membership has no point accrual — the
   //     member either pays or doesn't).
   //   - NO rewardType / rewardValue (the "reward" of a membership tier
-  //     IS the per-tier ?????? sub-rows, not a flat value).
+  //     IS the per-tier 會員獎勵 sub-rows, not a flat value).
   //   - NO threshold field (membership tiers are independent levels,
   //     not cumulative thresholds).
   //
@@ -674,11 +674,11 @@ export const templateSettingsSchema = z.object({
   /**
    * Membership tier array (????5 ??per MAX_MEMBERSHIP_TIERS).
    * Each tier carries name + durationType + monthlyCost + yearlyCost +
-   * lifetimeCost + rewards (per-tier ?????? sub-rows, up to MAX_REWARDS_PER_TIER=5).
+   * lifetimeCost + rewards (per-tier 會員獎勵 sub-rows, up to MAX_REWARDS_PER_TIER=5).
    *
    * Cost fields are mutually exclusive based on the card-wide `hasExpiry` toggle:
-   *   - hasExpiry=true  ??monthlyCost / yearlyCost are meaningful (lifetimeCost ignored).
-   *   - hasExpiry=false ??lifetimeCost is meaningful (monthlyCost / yearlyCost ignored).
+   *   - hasExpiry=true  → monthlyCost / yearlyCost are meaningful (lifetimeCost ignored).
+   *   - hasExpiry=false → lifetimeCost is meaningful (monthlyCost / yearlyCost ignored).
    * The store's `setHasExpiry(false)` clears durationType but PRESERVES costs;
    * `setHasExpiry(true)` keeps the existing lifetimeCost value but it will be hidden
    * by the editor (defensive: never silently drops user-entered data).
@@ -693,24 +693,24 @@ export const templateSettingsSchema = z.object({
           .enum(['monthly', 'yearly'])
           .nullable()
           .optional(),
-        /** ???. 0 = ??????. null = ???. Ignored in lifetime mode (hasExpiry=false). */
+        /** 月費. 0 = 免費. null = 未填. Ignored in lifetime mode (hasExpiry=false). */
         monthlyCost: z.number().min(COST_MIN).nullable().optional(),
-        /** ??. 0 = ??????. null = ???. Ignored in lifetime mode (hasExpiry=false). */
+        /** 月費. 0 = 免費. null = 未填. Ignored in lifetime mode (hasExpiry=false). */
         yearlyCost: z.number().min(COST_MIN).nullable().optional(),
         /**
          * ??????? (??? card-wide hasExpiry=false ??????.
-         * 0 = ????????. null = ???.
+         * 0 = 免費. null = 未填.
          * Tenants use this field to sell the right to a lifetime tier
          * (one-time purchase). Hidden by the editor when hasExpiry=true.
-         * 2026-09-13 ????: ??monthlyCost / yearlyCost ?? ????card-wide
-         * `hasExpiry` ??????????????.
+         * 2026-09-13 新增: 與 monthlyCost / yearlyCost 互斥 — 由 card-wide
+         * `hasExpiry` 決定哪組欄位生效.
          */
         lifetimeCost: z.number().min(COST_MIN).nullable().optional(),
         /** ?????? sub-rows (????5 ??per MAX_REWARDS_PER_TIER). */
         rewards: z
           .array(
             z.object({
-              /** Sub-row label (e.g. "??????"). 1-20 chars. */
+              /** Sub-row label (e.g. "專屬優惠"). 1-20 chars. */
               label: z.string().min(1).max(REWARD_LABEL_MAX_LENGTH),
               /** Sub-row value (e.g. URL or text). 1-80 chars. */
               value: z.string().min(1).max(REWARD_VALUE_MAX_LENGTH),
@@ -722,8 +722,8 @@ export const templateSettingsSchema = z.object({
     )
     .max(MAX_MEMBERSHIP_TIERS)
     .optional(),
-  // ===== Step 6 ??Free Membership Card expiry (2026-09-14) =====
-  // ??????????isPaid=false??????????????????????????????
+  // ===== Step 6 — Free Membership Card expiry (2026-09-14) =====
+  // 免費會員卡（isPaid=false）專用的卡片級期限欄位。付費會員卡使用
   // `durationType` + `monthlyCost` / `yearlyCost` ??????????????????????  //
   // ???????
   // - ???? durationType (monthly/yearly) + ??? cost = ???????????????
@@ -749,9 +749,9 @@ export const templateSettingsSchema = z.object({
   /**
    * ????????????????membershipExpiryMode === 'specific_date' ?????????   * ISO YYYY-MM-DD ????null = ?????   * ??????min=today????? setter ???zod ?????????   */
   membershipSpecificExpiryDate: z.string().nullable().optional(),
-  // ===== Step 6 ??Cashback ??(2026-09-11, cashback_card only) =====
+  // ===== Step 6 — Cashback 卡 (2026-09-11, cashback_card only) =====
   // Mirrors mu-plugins cashback-tier structure. The simplest of the Step 6
-  // sub-modules: each tier is a flat rule of "cumulative spend ??cashback %",
+  // sub-modules: each tier is a flat rule of "cumulative spend → cashback %",
   // with NO earning-mode switch and NO point accrual (the result IS a
   // percentage discount).
   //
@@ -771,16 +771,16 @@ export const templateSettingsSchema = z.object({
   //   - apps/backend/src/modules/cards/db/templates.ts (TemplateSettings interface)
   /**
    * ?????????????? (????5 ??.
-   * ???tier ??? name + thresholdSpend + cashbackPercent.
+   * 每個 tier 包含 name + thresholdSpend + cashbackPercent.
    *
-   * ??????????store ???thresholdSpend ASC?threshold=0 ????????;
+   * 排序由前端 store 負責（thresholdSpend ASC，threshold=0 在最前）;
    * ??????????????????????????   */
   cashbackTiers: z
     .array(
       z.object({
         /** ?????????? (?? "VIP", "??????"). Required. */
         name: z.string().min(1).max(40),
-        /** ?????????(in store currency units). 0 = ??? tier, ?????. */
+        /** 累積消費門檻 (in store currency units). 0 = 預設 tier, 人人享有. */
         thresholdSpend: z.number().min(0),
         /** ????%?? ??? [1, 100]. */
         cashbackPercent: z.number().int().min(1).max(100),
@@ -788,7 +788,7 @@ export const templateSettingsSchema = z.object({
     )
     .max(5)
     .optional(),
-  // ===== Step 6 ??Discount ??(2026-09-18, discount_card only) =====
+  // ===== Step 6 — Discount 卡 (2026-09-18, discount_card only) =====
   // Mirrors mu-plugins cashback-tier structure but semantically
   // represents a DISCOUNT (reduces purchase price) rather than
   // CASHBACK (refund after purchase). Same shape as cashbackTiers;
@@ -800,16 +800,16 @@ export const templateSettingsSchema = z.object({
   //   - apps/backend/src/modules/cards/db/templates.ts (TemplateSettings interface)
   /**
    * ????????? (????5 ??.
-   * ???tier ??? name + thresholdSpend + discountPercent.
+   * 每個 tier 包含 name + thresholdSpend + discountPercent.
    *
-   * ??????????store ???thresholdSpend ASC?threshold=0 ????????;
+   * 排序由前端 store 負責（thresholdSpend ASC，threshold=0 在最前）;
    * ??????????????????????????   */
   discountTiers: z
     .array(
       z.object({
         /** ????????? (?? "????", "VIP"). Required. */
         name: z.string().min(1).max(40),
-        /** ?????????(in store currency units). 0 = ??? tier, ?????. */
+        /** 累積消費門檻 (in store currency units). 0 = 預設 tier, 人人享有. */
         thresholdSpend: z.number().min(0),
         /** ???%?? ??? [1, 100]. */
         discountPercent: z.number().int().min(1).max(100),
@@ -817,7 +817,7 @@ export const templateSettingsSchema = z.object({
     )
     .max(5)
     .optional(),
-  // ===== Step 6 ??Discount ??expiry (2026-09-18, discount_card only) =====
+  // ===== Step 6 — Discount 卡 expiry (2026-09-18, discount_card only) =====
   // Optional card-level expiry. Mirrors membership expiry pattern:
   // two nullable fields, mutually exclusive at the field handler level,
   // no card-wide toggle (no `hasDiscountExpiry` field).
@@ -840,18 +840,18 @@ export const templateSettingsSchema = z.object({
     .nullable()
     .optional(),
   /**
-   * ????????????. ISO YYYY-MM-DD ??.
+   * 折扣卡指定到期日. ISO YYYY-MM-DD 字串.
    * ??discountCustomExpiryDays ???field handler ???????
    * null = ??? = ?????
    */
   discountSpecificExpiryDate: z.string().nullable().optional(),
-  // ===== Step 6 ??Coupon ??(2026-09-19, coupon_card only) =====
+  // ===== Step 6 — Coupon 卡 (2026-09-19, coupon_card only) =====
   // Single flat rule (one coupon = one discount value). Unlike discount_card
-  // which is tiered-cumulative-spend ??percentage, coupon card has NO tier
-  // list ??just one discount type + value + issue count.
+  // which is tiered-cumulative-spend → percentage, coupon card has NO tier
+  // list — just one discount type + value + issue count.
   //
   // The user picks BETWEEN amount_off and percent_off via a radio group
-  // (mutually exclusive ??switching type clears the other value field).
+  // (mutually exclusive — switching type clears the other value field).
   // `couponIssueCount` is card-level: how many coupons to issue per
   // redemption transaction (??1, no upper cap per user decision).
   //
@@ -869,13 +869,13 @@ export const templateSettingsSchema = z.object({
    * ??????????????? ??? couponDiscountType === 'amount_off' ??????
    * ???/???????? rewardType=amount_off ??rewardValue ?????
    * ????COUPON_AMOUNT_MIN=1. ????????user decision 2026-09-19??
-   * null = ???.
+   * null = 未填.
    */
   couponDiscountAmount: z.number().min(COUPON_AMOUNT_MIN).nullable().optional(),
   /**
    * ?????% ?????? ??? couponDiscountType === 'percent_off' ??????
-   * ??? ??[COUPON_PERCENT_MIN, COUPON_PERCENT_MAX].
-   * null = ???.
+   * 整數 ∈ [COUPON_PERCENT_MIN, COUPON_PERCENT_MAX].
+   * null = 未填.
    */
   couponDiscountPercent: z
     .number()
@@ -890,24 +890,24 @@ export const templateSettingsSchema = z.object({
    * Default = 1.
    */
   couponIssueCount: z.number().int().min(COUPON_ISSUE_COUNT_MIN).optional(),
-  // ===== Step 6 ??Multipass ??(2026-09-19, Rule 019 ? 4.1, multipass only) =====
+  // ===== Step 6 — Multipass 卡 (2026-09-19, Rule 019 § 4.1, multipass only) =====
   // Mirrors `shared/templateSettingsSchema.multipassTiers`.
   // Multipass card has UP TO 5 tiers; each tier carries name +
   // stampsNeeded + rewardType + rewardValue. Differs structurally from
   // stamp_card's single reward: stampsNeeded = 0 represents "?????  // ?????? (immediate reward on download). stampsNeeded is
-  // COMPLETELY DECOUPLED from the Step 3 stamp grid (stampGridRows ? 5)
-  // ??multipass cards may stack stamps across multiple physical
+  // COMPLETELY DECOUPLED from the Step 3 stamp grid (stampGridRows × 5)
+  // — multipass cards may stack stamps across multiple physical
   // cards. Backend zod caps stampsNeeded at 999 purely as a safety
   // valve against typos (e.g. user types 99999).
   //
   // Cross-references:
-  //   - packages/shared/constants/multipass-card.ts (single source of truth ??bounds)
+  //   - packages/shared/constants/multipass-card.ts (single source of truth — bounds)
   //   - packages/shared/schemas/cardBuilder.ts (cardTypeExtensions.multipass)
   //   - apps/backend/src/modules/cards/schemas/request.ts (mirror)
   //   - apps/backend/src/modules/cards/db/templates.ts (TemplateSettings interface)
   /**
    * Multipass ??tier ??? (????MAX_MULTIPASS_TIERS=5 ??.
-   * ???tier ??? name + stampsNeeded + rewardType + rewardValue.
+   * 每個 tier 自帶 name + stampsNeeded + rewardType + rewardValue.
    *
    * stampsNeeded:
    *   - 0 = ???????????????immediate reward on download)
@@ -924,33 +924,33 @@ export const templateSettingsSchema = z.object({
         rewardType: z.enum(['amount_off', 'percent_off']).nullable().optional(),
         /** Discount amount (amount_off) or percentage integer 1-100 (percent_off). null when unselected. */
         rewardValue: z.number().positive().nullable().optional(),
-        // ??PR-6 (2026-09-20) per-tier ???????????????? stamp_card.maxDiscountAmount.
+        // ★ PR-6 (2026-09-20) per-tier 最高折抵金額 — 對齊 stamp_card.maxDiscountAmount.
         // 0 = ?????? 1..MAX_DISCOUNT_AMOUNT_MAX = ??????. null = ??? (= ??????.
         // ???? rewardType === 'percent_off' ???????,amount_off ????????????
         maxDiscountAmount: z.number().min(0).nullable().optional(),
-        // ??PR-5 ???? per-tier ???????????? stamp_card ??card-wide
-        // stampsPerVisitCount / stampsPerSpendAmount ?????? per-tier ???.
+        // ★ PR-5 新增 per-tier 門檻欄位 — 對齊 stamp_card card-wide
+        // stampsPerVisitCount / stampsPerSpendAmount 等欄位的 per-tier 變體.
         // ??: stamp_card ??4 ????????? card-wide ???,Multipass ??        // ??? per-tier (??????? ?????????????tier ?????        // ????????????.
         /**
-         * ???????????(multipassAccrualMode === 'per_visit').
-         * integer ??1. null = ???.
+         * 來訪門檻拜訪次數 (multipassAccrualMode === 'per_visit').
+         * integer ≥ 1. null = 未填.
          */
         perVisitCount: z.number().int().min(1).nullable().optional(),
-        /** ???????????. integer ??1. null = ???. */
+        /** 來訪門檻獲得蓋章數. integer ≥ 1. null = 未填. */
         perVisitStamps: z.number().int().min(1).nullable().optional(),
         /** ???????????? positive number ??0.01. null = ???. */
         perSpendAmount: z.number().positive().nullable().optional(),
-        /** ???????????. integer ??1. null = ???. */
+        /** 來訪門檻獲得蓋章數. integer ≥ 1. null = 未填. */
         perSpendStamps: z.number().int().min(1).nullable().optional(),
       }),
     )
     .max(5)
     .optional(),
   /**
-   * ??????? multipass ???????? (2026-09-20 PR-5, multipass only).
+   * 卡片層級 multipass 蓋章方式 (2026-09-20 PR-5, multipass only).
    * ??? stamp_card.stampAccrualMode (??settings ??card-wide).
-   * Mirrors `shared/templateSettingsSchema.stampAccrualMode` (Rule 019 ? 4.1).
-   * null = ???.
+   * Mirrors `shared/templateSettingsSchema.stampAccrualMode` (Rule 019 § 4.1).
+   * null = 未填.
    *
    * Cross-references:
    *   - packages/shared/constants/multipass-card.ts (MULTIPASS_ACCRUAL_MODES)
@@ -964,6 +964,19 @@ export const templateSettingsSchema = z.object({
   // use it standalone for client-side validation (Rule 032 ? 2).
   tableCard: tableCardSettingsSchema.optional(),
 });
+
+/**
+ * The canonical TypeScript shape of the `templates.settings` JSONB.
+ *
+ * Derived from `templateSettingsSchema` (the Zod source of truth) so
+ * the backend DB row, the service layer, and the shared schema can
+ * never drift. Before this export, every backend consumer hand-wrote
+ * a narrow `settings` interface — the pass-templates module's version
+ * listed only six fields, so a service that needed `leftField` /
+ * `rightField` / expiry settings had nowhere to read them from
+ * (Rule 019 § 2 — the DB row must mirror the schema).
+ */
+export type TemplateSettings = z.infer<typeof templateSettingsSchema>;
 
 // ===== Step 7 ??????????(2026-09-27) =====
 //
@@ -1012,7 +1025,7 @@ export const createTemplateSchema = z.object({
 export type CreateTemplatePayload = z.infer<typeof createTemplateSchema>;
 
 /**
- * PUT /api/cards/:id ??Update a template
+ * PUT /api/cards/:id — Update a template
  */
 export const updateTemplateSchema = z.object({
   name: z.string().optional(),
@@ -1066,7 +1079,7 @@ export type TableCardSettings = z.infer<typeof tableCardSettingsSchema>;
 // also defines a structurally-identical interface but for cross-package
 // consumption we re-export the canonical zod-inferred shape here.
 //
-// Per Rule 019 � 4.1 (single source of truth): the canonical fields
+// Per Rule 019 § 4.1 (single source of truth): the canonical fields
 // (id, name, status, cardType, settings, timestamps) live in shared scope.
 // Backend response.ts keeps a structural interface alias for its local
 // callers (avoid breaking changes there); frontend consumers should

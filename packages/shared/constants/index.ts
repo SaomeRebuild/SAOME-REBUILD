@@ -26,3 +26,4 @@ export * from './discountPreviewAmounts';
 export * from './couponPreviewAmounts';
 export * from './gift-card';
 export * from './table-card';
+export * from './headerSlots';

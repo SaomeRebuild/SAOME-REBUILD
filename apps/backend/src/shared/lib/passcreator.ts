@@ -82,8 +82,15 @@ export {
   type PassIssueHolderData,
   type PassIssueResponse,
   type PassBackfillResponse,
+  type PasscreatorPassValues,
+  type PassUpdateResult,
   BARCODE_VALUE_PLACEHOLDERS,
 } from './passcreator/v3-pass-types';
 
 // Re-export V3 per-pass functions (from v3-pass.ts)
-export { issuePass, getPassByIdentifier, listPasses } from './passcreator/v3-pass';
+export {
+  issuePass,
+  getPassByIdentifier,
+  listPasses,
+  updatePassValues,
+} from './passcreator/v3-pass';

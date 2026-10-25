@@ -49,6 +49,9 @@
  */
 import type { CardFieldKey } from '@saome/shared/constants/card-fields';
 import type { CardType, Currency } from '@saome/shared/schemas/card';
+import {
+  getHeaderSlot,
+} from '@saome/shared/constants/headerSlots';
 import type { CouponDiscountType } from '@saome/shared/constants/coupon-card';
 import type { MultipassRewardType } from '@saome/shared/constants/multipass-card';
 import { CASHBACK_PREVIEW_AMOUNTS } from '@saome/shared/constants/cashbackPreviewAmounts';
@@ -586,15 +589,6 @@ import { GIFT_POINTS_PREVIEW_VALUE } from '@saome/shared/constants/gift-card';
  *  same constant in `PassCardPreviewHeader.tsx`. */
 const DEFAULT_EXPIRY_DATE = '2027-10-23';
 
-/** Card types whose right-slot is replaced by the balance preview block.
- *  Mirrors `BALANCE_PREVIEW_CARD_TYPES` in `PassCardPreviewHeader.tsx`. */
-const BALANCE_HEADER_CARD_TYPES: ReadonlySet<CardType> = new Set<CardType>([
-  'stamp_card',
-  'reward_card',
-  'cashback_card',
-  'multipass',
-]);
-
 /**
  * Discriminated union: either a default pill OR a 2-line preview block.
  * Callers branch on `kind` to render the appropriate JSX.
@@ -709,18 +703,26 @@ function computeCouponExpiryValue(
 }
 
 /**
- * Resolve the right-slot of the card header. The branch order mirrors
- * `PassCardPreviewHeader.tsx` so the editor + library preview are
- * visually consistent.
+ * Resolve the right-slot of the card header.
  *
- * Branch order (regression-pinned — DO NOT REORDER):
- *   1. `membership_card`        → member expiry preview
- *   2. `discount_card`          → discount expiry preview
- *   3. `coupon_card`            → coupon expiry preview
- *   4. `stamp_card / reward_card / cashback_card / multipass`
- *                                → balance preview (currency-driven)
- *   5. `gift_card`              → gift points preview (hardcoded value)
- *   6. `null` / `undefined`     → default pill (`t('defaultCardType')`)
+ * 2026-10-24 — the branch tree is now DRIVEN BY THE SHARED SPEC
+ * (`packages/shared/constants/headerSlots.ts`) instead of a hand-written
+ * `if (cardType === '...')` chain.
+ *
+ * The cardType → header kind mapping lives in exactly one place
+ * (`HEADER_SLOTS`); this resolver dispatches on the KIND, and the
+ * Passcreator key + `data-testid` come from the same spec. Previously
+ * this file, `PassCardPreviewHeader.tsx`, and the two locale files each
+ * carried their own copy of the mapping — four copies that had to be
+ * edited together.
+ *
+ * Kind → preview mapping (unchanged behavior):
+ *   1. `member_expiry`              → member expiry preview
+ *   2. `discount_expiry`            → discount expiry preview
+ *   3. `coupon_expiry`              → coupon expiry preview
+ *   4. `balance`                    → balance preview (currency-driven)
+ *   5. `gift_points`                → gift points preview (hardcoded value)
+ *   6. `null` / `undefined` cardType → default pill (`t('defaultCardType')`)
  *
  * Returns a discriminated union (`{kind: 'pill'} | {kind: 'preview'}`)
  * so the caller can branch on `kind` cleanly.
@@ -729,68 +731,79 @@ export function resolveHeaderRightSlot(
   t: PassCardSlotTranslator,
   inputs: HeaderRightSlotInputs,
 ): HeaderRightSlot {
-  const { cardType, hasExpiry, expiryDate, currency, locale = '' } = inputs;
+  const { cardType, currency } = inputs;
 
-  // 1. membership_card → member expiry
-  if (cardType === 'membership_card') {
-    const value = hasExpiry
-      ? formatExpiryDateForHeader(expiryDate || DEFAULT_EXPIRY_DATE, locale)
-      : '∞';
+  const slot = getHeaderSlot(cardType);
+  // No card type (or an unknown one) → default pill.
+  if (!slot) {
     return {
-      kind: 'preview',
-      label: t('memberExpiry.label'),
-      value,
-      testId: 'member-expiry-preview',
+      kind: 'pill',
+      label: t('defaultCardType'),
     };
   }
 
-  // 2. discount_card → discount expiry
-  if (cardType === 'discount_card') {
-    return {
-      kind: 'preview',
-      label: t('discountExpiry.label'),
-      value: computeDiscountExpiryValue(inputs),
-      testId: 'discount-expiry-preview',
-    };
-  }
+  const { kind, spec } = slot;
 
-  // 3. coupon_card → coupon expiry
-  if (cardType === 'coupon_card') {
-    return {
-      kind: 'preview',
-      label: t('couponExpiry.label'),
-      value: computeCouponExpiryValue(inputs),
-      testId: 'coupon-expiry-preview',
-    };
-  }
+  switch (kind) {
+    // 1. member_expiry → member expiry
+    case 'member_expiry': {
+      const { hasExpiry, expiryDate, locale = '' } = inputs;
+      const value = hasExpiry
+        ? formatExpiryDateForHeader(expiryDate || DEFAULT_EXPIRY_DATE, locale)
+        : '∞';
+      return {
+        kind: 'preview',
+        label: t(spec.labelKey),
+        value,
+        testId: spec.testId,
+      };
+    }
 
-  // 4. balance cards → balance preview (currency-driven)
-  if (
-    cardType !== null &&
-    cardType !== undefined &&
-    BALANCE_HEADER_CARD_TYPES.has(cardType)
-  ) {
-    return {
-      kind: 'preview',
-      label: t('balancePreview.label'),
-      value: BALANCE_PREVIEW_AMOUNTS[currency],
-      testId: 'balance-preview',
-    };
-  }
+    // 2. discount_expiry → discount expiry
+    case 'discount_expiry':
+      return {
+        kind: 'preview',
+        label: t(spec.labelKey),
+        value: computeDiscountExpiryValue(inputs),
+        testId: spec.testId,
+      };
 
-  // 5. gift_card → gift points preview (hardcoded)
-  if (cardType === 'gift_card') {
-    return {
-      kind: 'preview',
-      label: t('giftPointsPreview.label'),
-      value: GIFT_POINTS_PREVIEW_VALUE,
-      testId: 'gift-points-preview',
-    };
-  }
+    // 3. coupon_expiry → coupon expiry
+    case 'coupon_expiry':
+      return {
+        kind: 'preview',
+        label: t(spec.labelKey),
+        value: computeCouponExpiryValue(inputs),
+        testId: spec.testId,
+      };
 
-  // 6. null / undefined → default pill
-  return {
-    kind: 'pill',
-    label: t('defaultCardType'),
-  };
+    // 4. balance → balance preview (currency-driven)
+    case 'balance':
+      return {
+        kind: 'preview',
+        label: t(spec.labelKey),
+        value: BALANCE_PREVIEW_AMOUNTS[currency],
+        testId: spec.testId,
+      };
+
+    // 5. gift_points → gift points preview (hardcoded)
+    case 'gift_points':
+      return {
+        kind: 'preview',
+        label: t(spec.labelKey),
+        value: GIFT_POINTS_PREVIEW_VALUE,
+        testId: spec.testId,
+      };
+
+    default: {
+      // Exhaustiveness guard: a new kind added to the spec without a
+      // matching branch here is a compile error.
+      const _exhaustive: never = kind as never;
+      void _exhaustive;
+      return {
+        kind: 'pill',
+        label: t('defaultCardType'),
+      };
+    }
+  }
 }

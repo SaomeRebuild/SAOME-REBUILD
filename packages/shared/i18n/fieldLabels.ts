@@ -40,6 +40,11 @@
  */
 
 import { CARD_FIELD_KEYS, type CardFieldKey, type FieldSemanticType } from '../constants/card-fields';
+import {
+  HEADER_SLOT_KIND_SPECS,
+  getHeaderSlot,
+  type HeaderSlotKind,
+} from '../constants/headerSlots';
 import type { CardType } from '../schemas/card';
 import { zhTW } from './fieldLabels.zh-TW';
 import { en } from './fieldLabels.en';
@@ -231,12 +236,17 @@ export function getDefaults(language: PassLanguage): {
  * preview values (餘額 / Balance, 會員到期日 / Member Expiry, etc.).
  * Editor-only, NOT in Passcreator output.
  *
- * 2026-10-11 — note: the Apple Wallet `headerField` label (the small
- * label at the top of the deployed pass) is sourced from a SEPARATE
- * `headerField` block (see `getHeaderField` below). Both blocks MUST
- * share the same label strings; the conformance test
- * `fieldLabels.test.ts::previewPill-vs-headerField` enforces parity
- * to prevent the editor preview and the deployed pass from diverging.
+ * 2026-10-24 — DERIVED from the per-kind `headerLabels` block instead of
+ * being a separate hand-maintained map. The two blocks had identical
+ * content (a drift test enforced it), so keeping both was pure
+ * duplication: editing one and forgetting the other was a latent bug.
+ * Now the preview pill label IS the header label for the corresponding
+ * kind, by construction.
+ *
+ * The returned keys stay the legacy Passcreator-key-shaped names
+ * (`balance` / `memberExpiry` / …) because that is the public API
+ * consumers already depend on; the mapping kind → key comes from
+ * `HEADER_SLOT_KIND_SPECS`.
  */
 export function getPreviewPillLabels(language: PassLanguage): {
   balance: string;
@@ -246,11 +256,17 @@ export function getPreviewPillLabels(language: PassLanguage): {
   giftPoints: string;
 } {
   const dict = selectLabels(language);
-  return { ...dict.previewPill };
+  return {
+    balance: dict.headerLabels.balance,
+    memberExpiry: dict.headerLabels.member_expiry,
+    discountExpiry: dict.headerLabels.discount_expiry,
+    couponExpiry: dict.headerLabels.coupon_expiry,
+    giftPoints: dict.headerLabels.gift_points,
+  };
 }
 
 /**
- * Passcreator `headerFields[0]` per-cardType mapping (2026-10-11).
+ * Passcreator `headerFields[0]` per-cardType mapping.
  *
  * Returns the `{key, label}` pair for the Apple Wallet `headerField`
  * slot, fixed per cardType. The tenant sees this label in the Step 1
@@ -280,11 +296,12 @@ export function getPreviewPillLabels(language: PassLanguage): {
  * pushing template updates / reading back per-pass values); the
  * `label` is the user-visible string at the top of the pass.
  *
- * Branch order MUST mirror
- * `apps/frontend/src/components/business/dashboard/CardBuilderEditor/CardPreview/passCardPreviewSlot.ts::resolveHeaderRightSlot`
- * — if you add a new cardType, add a row to BOTH places (or refactor
- * `resolveHeaderRightSlot` to read from `getHeaderField` so there is
- * only one source of truth).
+ * 2026-10-24 — the cardType → key mapping now comes from the shared
+ * `HEADER_SLOTS` spec (`packages/shared/constants/headerSlots.ts`)
+ * rather than from a per-cardType map duplicated in each locale file.
+ * The frontend preview resolvers read the SAME spec, so the editor
+ * preview and the deployed pass can no longer disagree about which
+ * slot a card type uses.
  *
  * @example
  *   getHeaderField('membership_card', 'zh-TW');   // {key: 'memberExpiry', label: '會員到期日'}
@@ -295,10 +312,31 @@ export function getHeaderField(
   cardType: CardType | null | undefined,
   language: PassLanguage,
 ): { key: string; label: string } | null {
-  if (!cardType) return null;
+  const slot = getHeaderSlot(cardType);
+  if (!slot) return null;
   const dict = selectLabels(language);
-  const entry = dict.headerField[cardType];
-  return entry ?? null;
+  return {
+    key: slot.spec.passcreatorKey,
+    label: dict.headerLabels[slot.kind],
+  };
+}
+
+/**
+ * The header kind for a card type — e.g. `membership_card` →
+ * `member_expiry`. Returns `null` for an unset / unknown card type.
+ *
+ * This is the bridge the runtime value model uses: the header KIND
+ * determines which runtime metric the formatter reads (a balance slot
+ * reads a currency-ish balance, a gift-points slot reads a point
+ * count, an expiry slot reads a date).
+ *
+ * @see packages/shared/constants/headerSlots.ts
+ */
+export function getHeaderSlotKind(
+  cardType: CardType | null | undefined,
+): HeaderSlotKind | null {
+  const slot = getHeaderSlot(cardType);
+  return slot ? slot.kind : null;
 }
 
 /**
@@ -309,12 +347,8 @@ export function getHeaderField(
  * They need their own metadata map so `mapFieldType()` can resolve the
  * Passcreator type for `headerFields[0].type`.
  *
- * Keys here MUST stay in lockstep with the table inside `getHeaderField()`:
- *   - membership_card    → memberExpiry  (date)
- *   - discount_card      → discountExpiry (date)
- *   - coupon_card        → couponExpiry  (date)
- *   - stamp/reward/cashback/multipass → balance (number)
- *   - gift_card          → giftPoints    (number)
+ * 2026-10-24 — DERIVED from `HEADER_SLOT_KIND_SPECS` so the semantic
+ * type lives next to the key it describes (one place, not two).
  *
  * `passValidDays` is also 'number' for completeness — it's the only
  * header key that is NOT yet produced by `getHeaderField()` (no current
@@ -324,11 +358,12 @@ export function getHeaderField(
  * @see runs/improvements/feedback/20261012-step8-passcreator-v11-cross-reference-fields.md § 教訓 4
  */
 export const HEADER_FIELD_TYPES: Readonly<Record<string, FieldSemanticType>> = {
-  memberExpiry: 'date',
-  discountExpiry: 'date',
-  couponExpiry: 'date',
-  balance: 'number',
-  giftPoints: 'number',
+  ...Object.fromEntries(
+    Object.values(HEADER_SLOT_KIND_SPECS).map((spec) => [
+      spec.passcreatorKey,
+      spec.valueType,
+    ]),
+  ),
   passValidDays: 'number',
 };
 

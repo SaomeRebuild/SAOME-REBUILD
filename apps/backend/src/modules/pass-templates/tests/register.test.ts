@@ -28,7 +28,6 @@ import type { Sql } from '@/shared/db/client';
 import type { PublicTemplateRow } from '../db/templates';
 import type { PassHolderRow } from '../db/passHolders';
 import type { HonoEnv } from '@/shared/types/bindings';
-
 const TEMPLATE_ID = '716c4244-6c63-496d-a967-6c87cdac605d';
 const TEMPLATE_ROW: PublicTemplateRow = {
   id: TEMPLATE_ID,
@@ -49,8 +48,32 @@ const EXISTING_HOLDER: PassHolderRow = {
   updated_at: new Date('2026-09-01T00:00:00Z'),
 };
 
+/**
+ * A shared, STABLE transaction handle for every mock sql.
+ *
+ * `makeMockSql()` returns a NEW object on each call, and several
+ * assertions compare it with `toHaveBeenCalledWith(makeMockSql(), …)`
+ * — deep equality. Two distinct `vi.fn()` instances are NOT deeply
+ * equal, so the `begin` implementation must be the SAME function
+ * reference every time.
+ *
+ * It is declared through `vi.hoisted` so the `vi.mock('@/shared/db/
+ * client')` factory below can reference it too (the route layer gets
+ * its sql instance from `getDbForRequest`).
+ */
+const { mockBegin } = vi.hoisted(() => {
+  const tx = {} as unknown as Sql;
+  return {
+    mockBegin: async (
+      callback: (tx: Sql) => Promise<unknown>,
+    ): Promise<unknown> => callback(tx),
+  };
+});
+
 function makeMockSql() {
-  return {} as Parameters<typeof registerService>[0];
+  return {
+    begin: mockBegin,
+  } as unknown as Parameters<typeof registerService>[0];
 }
 
 /**
@@ -77,7 +100,67 @@ vi.mock('@/shared/db/client', async () => {
   );
   return {
     ...actual,
-    getDbForRequest: vi.fn().mockResolvedValue({} as Sql),
+    // 2026-10-24 — the register flow opens a transaction for the
+    // runtime-value ledger, so the mocked instance needs `begin`.
+    getDbForRequest: vi.fn().mockResolvedValue({ begin: mockBegin } as Sql),
+  };
+});
+
+// =====================================================================
+// 2026-10-24 — Runtime-value ledger mocks (migration 028).
+//
+// The register flow now writes a `registered` event + a derived
+// snapshot BEFORE it issues the wallet pass, so the ledger's DB layer
+// has to be mocked like the rest of this module.
+//
+// The ledger's OWN contract is pinned elsewhere:
+//   - `passValueService.test.ts` — transaction boundary, idempotency.
+//   - `register.runtimeValues.test.ts` — the registration wiring.
+//
+// This suite cares about the pre-existing register behaviour
+// (validation / idempotency / V3 issuance), so the ledger is stubbed
+// at the lowest possible level.
+// =====================================================================
+const ledgerState = vi.hoisted(() => ({
+  events: [] as Array<Record<string, unknown>>,
+}));
+
+vi.mock('../db/passEvents', () => ({
+  appendPassEvent: vi.fn(
+    async (
+      _sql: unknown,
+      passHolderId: string,
+      event: { type: string; at: string; payload: unknown },
+      idempotencyKey: string | null,
+    ) => {
+      const row = {
+        id: `event-${ledgerState.events.length + 1}`,
+        pass_holder_id: passHolderId,
+        event_type: event.type,
+        payload: event.payload,
+        occurred_at: event.at,
+        created_at: event.at,
+        idempotency_key: idempotencyKey ?? null,
+      };
+      ledgerState.events.push(row);
+      return { row, inserted: true };
+    },
+  ),
+  listPassEvents: vi.fn(async () => ledgerState.events),
+  findPassEventByIdempotencyKey: vi.fn(async () => null),
+  countPassEvents: vi.fn(async () => ledgerState.events.length),
+}));
+
+// `updatePassHolderPassValuesSnapshot` writes the derived snapshot
+// cache. It is the only passHolders function the ledger path needs,
+// so only that one is replaced — the rest of the module stays real
+// (and stays spy-able by the tests below).
+vi.mock('../db/passHolders', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../db/passHolders')>();
+  return {
+    ...actual,
+    updatePassHolderPassValuesSnapshot: vi.fn(async () => undefined),
   };
 });
 
@@ -408,12 +491,23 @@ describe('registerService', () => {
     );
 
     expect(issueSpy).toHaveBeenCalledTimes(1);
-    expect(issueSpy).toHaveBeenCalledWith(MOCK_ENV, 'pc-tpl-1', expect.objectContaining({
-      name: validPayload.name,
-      phone: '+886' + validPayload.phoneNumber,
-      birthday: validPayload.birthday,
-      email: validPayload.email,
-    }));
+    expect(issueSpy).toHaveBeenCalledWith(
+      MOCK_ENV,
+      'pc-tpl-1',
+      expect.objectContaining({
+        name: validPayload.name,
+        phone: '+886' + validPayload.phoneNumber,
+        birthday: validPayload.birthday,
+        email: validPayload.email,
+      }),
+      // 2026-10-24 — the 4th argument carries the holder's OPENING
+      // runtime values. Same wire shape the later PATCH consumes
+      // (one contract for create + update). A `reward_card` opens at
+      // zero, so the header balance is 0.
+      expect.objectContaining({
+        properties: expect.objectContaining({ balance: 0 }),
+      }),
+    );
     expect(updateSpy).toHaveBeenCalledWith(
       makeMockSql(),
       expect.objectContaining({

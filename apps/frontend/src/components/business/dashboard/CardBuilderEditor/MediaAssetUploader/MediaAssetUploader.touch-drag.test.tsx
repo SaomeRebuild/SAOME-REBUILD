@@ -1,7 +1,7 @@
 /**
  * Test: When user drags, does the <img> element's transform actually change?
  *
- * This verifies the user's concern: "?��?不能?��??��??��??��??��?�?.
+ * This verifies the user's concern: 「圖片不能拖曳」.
  * The momentum tests verify the rAF logic. This test verifies that during
  * touch drag, the image element's CSS transform is updated ??what the user
  * SEES on screen.

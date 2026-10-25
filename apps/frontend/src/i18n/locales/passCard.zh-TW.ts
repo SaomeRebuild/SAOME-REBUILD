@@ -180,8 +180,8 @@ export default {
   //       - 兩者皆 null → "—" (理論上不會發生,因為 Step 6 expiry 為必填)
   //   與 memberExpiry 不同:discount card 的到期日是 *card-level* 必填欄位
   //   (Step 6 DiscountExpiryFields 必填),不是 membership 式的"是否啟用"切換。
-  //   沿用既有 `formatExpiryDate(isoDate, locale)` helper
-  //   (zh-TW YYYY.MM.DD / en MM.DD.YYYY)。
+  //   沿用 shared `formatExpiryDateForHeader(isoDate, locale)` helper
+  //   (passCardPreviewSlot.ts;zh-TW YYYY.MM.DD / en MM.DD.YYYY)。
   discountExpiry: {
     label: '有效期限',
   },
@@ -197,8 +197,8 @@ export default {
   //       - expiryDate 設定 → 直接 formatted per locale
   //       - 兩者皆 null / '' → "∞" (無限符號,跟 membership_card 的
   //         hasExpiry=false 行為對齊 — 折價券預設無限期)
-  //   沿用既有 `formatExpiryDate(isoDate, locale)` helper
-  //   (zh-TW YYYY.MM.DD / en MM.DD.YYYY)。
+  //   沿用 shared `formatExpiryDateForHeader(isoDate, locale)` helper
+  //   (passCardPreviewSlot.ts;zh-TW YYYY.MM.DD / en MM.DD.YYYY)。
   //   Label 沿用 "有效期限" — 跟 discountExpiry 同一個詞,語意也一致
   //   (都是「卡片層級的有效期限結束日」)。
   couponExpiry: {

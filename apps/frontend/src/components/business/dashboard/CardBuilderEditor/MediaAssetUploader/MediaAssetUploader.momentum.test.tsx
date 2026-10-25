@@ -6,7 +6,7 @@
  *   image onward (iOS / Android photo crop standard). Without this:
  *     - User drags 50px, releases ??image stops immediately.
  *     - To reach the desired position, user must re-grab and drag again
- *       (often many times for a large image) ??"一次只?�移?��?點�?要�?好幾�?.
+ *       (often many times for a large image) —「一次只移一點點，需要放開好幾次」。
  *
  * Event model (20260830 refactor):
  *   - Touch: onTouchStart / onTouchMove / onTouchEnd ??handles momentum

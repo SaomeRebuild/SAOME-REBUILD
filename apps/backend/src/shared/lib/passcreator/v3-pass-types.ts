@@ -48,10 +48,16 @@ export const BARCODE_VALUE_PLACEHOLDERS: ReadonlySet<string> = new Set([
 /**
  * Per-pass issuance holder payload.
  *
- * Mirrors `packages/shared/types/passHolder.ts::PassHolderPayload`
- * (the source of truth — Rule 019 § 4.1 Layer 1). Only the four
- * fields V3 needs are typed here; tier / payment metadata is
- * persisted on the SAOME side but never sent upstream.
+ * The first four fields mirror `packages/shared/types/passHolder.ts::PassHolderPayload`
+ * (the CLIENT-FACING source of truth — Rule 019 § 4.1 Layer 1). They
+ * are the holder identity fields a client submits.
+ *
+ * The holder's runtime values (opening points / balance / expiry) are
+ * NOT part of this payload: they are SERVER-DERIVED, and a client
+ * must never be able to choose its own opening balance. They travel
+ * as a separate argument to `issuePass` — the 4th parameter, which
+ * carries the SAME `PasscreatorPassValues` shape the later PATCH
+ * consumes (one wire contract for create + update).
  */
 export interface PassIssueHolderData {
   /**
@@ -77,6 +83,54 @@ export interface PassIssueHolderData {
   birthday: string;
   /** Email used by Apple/Google Wallet to deliver the pass link. */
   email: string;
+}
+
+/**
+ * The per-pass runtime value payload sent to Passcreator.
+ *
+ * Mirrors `packages/shared/logic/passFieldFormatter.ts::PasscreatorPassValues`
+ * (Layer 1 of the contract sync, per Rule 019 § 4.1). Both the
+ * initial issuance (`issuePass`) and every later update
+ * (`updatePassValues`) consume the SAME shape — so a value can never
+ * be formatted one way at creation and another way at update time.
+ *
+ * Field semantics (Passcreator V3 contract — verified against
+ * https://developer.passcreator.com/en/api/v3/pass):
+ *   - `storedValue` — the pass-level stored balance (a float).
+ *   - `expirationDate` — the pass expiry, formatted `Y-m-d H:i`.
+ *   - `properties` — per-field values, keyed by the TEMPLATE's field
+ *     keys (the same `{KeyName}` cross-reference names the template
+ *     push declared). Only keys the template actually binds appear.
+ */
+export interface PasscreatorPassValues {
+  /** The pass-level stored balance (a float upstream). */
+  storedValue?: number;
+  /** The pass expiry, Passcreator-formatted (`Y-m-d H:i`). */
+  expirationDate?: string;
+  /** Per-field values, keyed by the template's field keys. */
+  properties: Record<string, string | number>;
+}
+
+/**
+ * The result of a per-pass value update.
+ *
+ * `verified` is the READ-BACK confirmation: after the PATCH, we GET
+ * the pass and check that the values we sent are actually present
+ * upstream. A PATCH that returns 200 but silently does not apply (a
+ * Passcreator-side quirk, a field the template does not bind) would
+ * otherwise look like a success while the Wallet still shows the old
+ * value.
+ */
+export interface PassUpdateResult {
+  /** The per-pass identifier that was updated. */
+  identifier: string;
+  /** Whether the upstream read-back matched what we sent. */
+  verified: boolean;
+  /**
+   * The fields whose read-back value did NOT match what we sent.
+   * Empty when `verified` is true.
+   */
+  mismatchedFields: string[];
 }
 
 /**

@@ -16,24 +16,26 @@
 
 import type { CardFieldKey } from '../constants/card-fields';
 import type { CardType } from '../schemas/card';
+import type { HeaderSlotKind } from '../constants/headerSlots';
 
 export const en = {
   slotNames: {
     left: 'Left Field',
     right: 'Right Field',
   },
-  // ===== Passcreator `headerFields[0]` per-cardType mapping (2026-10-11) =====
-  // English mirror of `fieldLabels.zh-TW.ts::headerField`. See that file
-  // for the full architecture doc (why `headerField` is FIXED per
-  // cardType, why it lives here vs `previewPill`, drift guard details).
+  // ===== Passcreator `headerFields[0]` per-cardType label (2026-10-24 refactor) =====
+  // English mirror of `fieldLabels.zh-TW.ts::headerLabels`. See that file
+  // for the full architecture doc (why the label is FIXED per cardType,
+  // why the cardType→kind mapping now lives in
+  // `packages/shared/constants/headerSlots.ts`, drift guard details).
   //
-  // Per-cardType rules (must mirror `passCardPreviewSlot.ts::resolveHeaderRightSlot`):
-  //   - membership_card                  → {key: 'memberExpiry',    label: 'Member Expiry'}
-  //   - discount_card                    → {key: 'discountExpiry',  label: 'Expiry Date'}
-  //   - coupon_card                      → {key: 'couponExpiry',    label: 'Expiry Date'}
-  //   - stamp_card / reward_card /
-  //     cashback_card / multipass        → {key: 'balance',         label: 'Balance'}
-  //   - gift_card                        → {key: 'giftPoints',      label: 'Points'}
+  // Per-kind rules (the cardType → kind mapping lives in
+  // `packages/shared/constants/headerSlots.ts::HEADER_SLOTS`):
+  //   - member_expiry    (membership_card)  → 'Member Expiry'
+  //   - discount_expiry  (discount_card)    → 'Expiry Date'
+  //   - coupon_expiry    (coupon_card)      → 'Expiry Date'
+  //   - balance          (stamp / reward / cashback / multipass) → 'Balance'
+  //   - gift_points      (gift_card)        → 'Points'
   //
   // Drift guard: the `label` values here MUST equal the editor's
   // `passCard.en.ts::{memberExpiry,discountExpiry,couponExpiry,
@@ -41,18 +43,15 @@ export const en = {
   // `fieldLabels.test.ts::locale-vs-passCard headerField` enforces
   // this. (Rule 023 § 翻譯書寫紀律 — en labels are pure ASCII.)
   //
-  // Typing: same as zh-TW — `Partial<Record<CardType, …>>` keeps
+  // Typing: same as zh-TW — `Record<HeaderSlotKind, string>` keeps
   // the two locales shape-compatible.
-  headerField: {
-    membership_card: { key: 'memberExpiry',   label: 'Member Expiry' },
-    discount_card:   { key: 'discountExpiry', label: 'Expiry Date' },
-    coupon_card:     { key: 'couponExpiry',   label: 'Expiry Date' },
-    stamp_card:      { key: 'balance',        label: 'Balance' },
-    reward_card:     { key: 'balance',        label: 'Balance' },
-    cashback_card:   { key: 'balance',        label: 'Balance' },
-    multipass:       { key: 'balance',        label: 'Balance' },
-    gift_card:       { key: 'giftPoints',     label: 'Points' },
-  } as Partial<Record<CardType, { key: string; label: string }>>,
+  headerLabels: {
+    member_expiry:   'Member Expiry',
+    discount_expiry: 'Expiry Date',
+    coupon_expiry:   'Expiry Date',
+    balance:         'Balance',
+    gift_points:     'Points',
+  } satisfies Record<HeaderSlotKind, string>,
   fieldLabels: {
     phone: 'Phone',
     email: 'Email',
@@ -110,22 +109,16 @@ export const en = {
     issuerName: 'Untitled Card',
     cardName: 'Untitled Card',
   },
-  // 2026-10-11 — drift fix.
-  //   Previously `discountExpiry` was `'Valid Until'` and `couponExpiry`
-  //   was `'Valid Until'`, which drifted from `passCard.en.ts` (the
-  //   editor's source of truth: `'Expiry Date'`). The drift was
-  //   invisible because `getPreviewPillLabels` had no callers in the
-  //   frontend code (the editor reads `passCard.en.ts` directly via
-  //   `t('discountExpiry.label')`). Now corrected: the strings here
-  //   must equal the corresponding `passCard.en.ts` blocks so the
-  //   `previewPill-vs-headerField` drift guard stays green.
-  previewPill: {
-    balance: 'Balance',
-    memberExpiry: 'Member Expiry',
-    discountExpiry: 'Expiry Date',
-    couponExpiry: 'Expiry Date',
-    giftPoints: 'Points',
-  },
+  // 2026-10-24 — the `previewPill` block was REMOVED. It duplicated the
+  // `headerLabels` content verbatim (a drift test enforced they stayed
+  // equal), so it was a second copy of the same 5 strings waiting to
+  // drift. `getPreviewPillLabels()` now derives the pill labels from
+  // `headerLabels` — see `packages/shared/i18n/fieldLabels.ts`.
+  //
+  // (Historical note: the 2026-10-11 drift fix that corrected
+  // `discountExpiry` / `couponExpiry` from 'Valid Until' to
+  // 'Expiry Date' is now structurally impossible — there is only one
+  // copy of these strings left, in `headerLabels`.)
 };
 
 export type FieldLabelsEn = typeof en;

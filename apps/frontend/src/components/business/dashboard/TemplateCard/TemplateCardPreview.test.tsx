@@ -1,17 +1,17 @@
 /**
- * TemplateCardPreview.test.tsx � 4 conformance tests for UI alignment
+ * TemplateCardPreview.test.tsx — 4 conformance tests for UI alignment
  * with CardBuilder's right-pane PassCardPreview.
  *
- * 2026-10-05 PR � TemplateCardPreview UI ?? CardBuilder?
- *   - outer aspect ratio ? 375/600????? 375/503?
- *   - outer border ? transparent???? 200 ?????
- *   - footer divider ? transparent?????????
- *   - footer QR ??????camera readability?
+ * 2026-10-05 PR — TemplateCardPreview UI parity with CardBuilder:
+ *   - outer aspect ratio: 375/600 (was 375/503)
+ *   - outer border: transparent (was a visible neutral-200 outline)
+ *   - footer divider: transparent (no visible white horizontal line)
+ *   - footer QR code: wrapped in a white background for camera readability
  *
- * ? 4 ??? visual regression???? DOM shape???? data path?
- * ???? regress????????
+ * The 4 tests cover visual regression, DOM shape, and the data path, so a
+ * future change cannot silently regress the alignment.
  *
- * @see .cursor/plans/templatecardpreview_??_cardbuilder_*.plan.md
+ * @see .cursor/plans/templatecardpreview_*_cardbuilder_*.plan.md
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -46,7 +46,7 @@ beforeEach(() => {
   i18n.changeLanguage('zh-TW');
 });
 
-describe('TemplateCardPreview � UI alignment with CardBuilder right pane (2026-10-05)', () => {
+describe('TemplateCardPreview — UI alignment with CardBuilder right pane (2026-10-05)', () => {
   /** Helper: get the outer card preview element. */
   function outerEl(): HTMLElement {
     return screen.getByTestId('template-card-preview');
@@ -55,7 +55,7 @@ describe('TemplateCardPreview � UI alignment with CardBuilder right pane (2026
   it('outer aspect ratio = 375 / 600 (matches CardBuilder PassCardPreview) (regression 2026-10-05)', () => {
     // The legacy 375/503 ratio made the template thumbnail look squashed
     // and not like a real Apple Wallet pass. CardBuilder's right-pane
-    // PassCardPreview uses 375/600 � same ratio must apply here so the
+    // PassCardPreview uses 375/600 — same ratio must apply here so the
     // two previews have the same proportional height.
     renderPreview();
     expect(outerEl().style.aspectRatio).toBe('375 / 600');
@@ -64,7 +64,7 @@ describe('TemplateCardPreview � UI alignment with CardBuilder right pane (2026
   it('outer border is `border-transparent` (no visible card outline) (regression 2026-10-05)', () => {
     // Legacy `border-neutral-200` added a visible card outline that
     // diverged from CardBuilder's `border-transparent` look. Must NOT
-    // come back � defensive scan to keep the alignment locked in.
+    // come back — defensive scan to keep the alignment locked in.
     renderPreview();
     const cls = outerEl().className;
     expect(cls).toMatch(/\bborder-transparent\b/);
@@ -74,13 +74,13 @@ describe('TemplateCardPreview � UI alignment with CardBuilder right pane (2026
   it('footer divider is `border-transparent` (no white horizontal line) (regression 2026-10-05)', () => {
     // Real Apple Wallet passes don't have a horizontal line between the
     // body and the barcode. Legacy `border-neutral-200` rendered exactly
-    // that � a visible white divider � and made the thumbnail look
+    // that — a visible white divider — and made the thumbnail look
     // non-physical. The fix mirrors CardBuilder's PassCardPreviewFooter
-    // 2026-09-10 ?????.
+    // 2026-09-10 PassCardPreviewFooter update.
     renderPreview();
     // The footer is the only direct child of the inner surface that
     // carries `border-t` (the inner surface is the `:scope > div`
-    // without data-testid � same selector as innerSurfaceStyle helper).
+    // without data-testid — same selector as innerSurfaceStyle helper).
     const root = outerEl();
     const innerSurface = root.querySelector(':scope > div:not([data-testid])') as HTMLElement | null;
     expect(innerSurface).toBeInTheDocument();

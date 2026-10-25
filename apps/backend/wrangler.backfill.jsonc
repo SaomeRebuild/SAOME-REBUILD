@@ -1,0 +1,31 @@
+// Cloudflare Workers configuration for the ONE-OFF Pass runtime value
+// backfill Worker.
+//
+// This config exists ONLY to run
+// `scripts/pass-runtime-values-backfill-worker.ts` against the
+// production database through the REAL Hyperdrive binding. It is NOT
+// the production worker config (`wrangler.jsonc` stays untouched) and
+// both files are deleted after the one-off run.
+//
+// Run with:
+//   npx wrangler dev --remote --config wrangler.backfill.jsonc --port 8799
+// then:
+//   curl "http://localhost:8799/?mode=dry-run"
+//   curl "http://localhost:8799/?mode=apply"
+//
+// The `mode` parameter defaults to `dry-run` (NO writes).
+
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "saome-backfill-oneoff",
+  "main": "scripts/pass-runtime-values-backfill-worker.ts",
+  "compatibility_date": "2025-09-06",
+  "account_id": "b37054989122d58d65ad27681882b470",
+  "compatibility_flags": ["nodejs_compat"],
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "7abd3a2056314db294ce3a54d2555d68"
+    }
+  ]
+}

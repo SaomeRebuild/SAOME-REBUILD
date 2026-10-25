@@ -367,6 +367,258 @@ describe('formatExpiryDateForHeader — locale-driven date formatting', () => {
   });
 });
 
+/**
+ * The `∞` / `—` sentinel values.
+ *
+ * These two literals are the "no value" markers of the header right slot:
+ *   - `∞` (infinity) — "this card never expires". Used by
+ *     `membership_card` when `hasExpiry` is false, and by `coupon_card`
+ *     when BOTH `passValidDays` and `expiryDate` are empty.
+ *   - `—` (em dash) — "no expiry configured". Used by `discount_card`
+ *     when BOTH `discountCustomExpiryDays` and `discountSpecificExpiryDate`
+ *     are null (theoretical — Step 6 requires one of them).
+ *
+ * They are pinned HERE (the resolver layer) as well as at the component
+ * layer, because the resolver is now the single owner of the value
+ * computation: the editor preview (`PassCardPreviewHeader.tsx`) and the
+ * template library preview (`TemplateCardPreview.tsx`) both obtain them
+ * from `resolveHeaderRightSlot`, so a sentinel that drifted in the
+ * resolver would silently change BOTH surfaces at once.
+ */
+describe('resolveHeaderRightSlot — the "no value" sentinel values', () => {
+  it('membership_card + hasExpiry=false → "∞" (never expires)', () => {
+    const slot = resolveHeaderRightSlot(tKey, {
+      cardType: 'membership_card',
+      hasExpiry: false,
+      currency: 'TWD',
+      locale: 'en',
+    });
+    expect(slot.kind).toBe('preview');
+    if (slot.kind === 'preview') {
+      expect(slot.value).toBe('∞');
+      expect(slot.testId).toBe('member-expiry-preview');
+    }
+  });
+
+  it('membership_card + hasExpiry=true + expiryDate → a real date, never "∞"', () => {
+    // The sentinel must NOT leak into the "has an expiry" branch.
+    const slot = resolveHeaderRightSlot(tKey, {
+      cardType: 'membership_card',
+      hasExpiry: true,
+      expiryDate: '2027-10-23',
+      currency: 'TWD',
+      locale: 'en',
+    });
+    expect(slot.kind).toBe('preview');
+    if (slot.kind === 'preview') {
+      expect(slot.value).toBe('10.23.2027');
+      expect(slot.value).not.toBe('∞');
+    }
+  });
+
+  it('coupon_card + both passValidDays null AND expiryDate empty → "∞" (no implied expiry)', () => {
+    const slot = resolveHeaderRightSlot(tKey, {
+      cardType: 'coupon_card',
+      passValidDays: null,
+      expiryDate: '',
+      currency: 'TWD',
+      locale: 'en',
+    });
+    expect(slot.kind).toBe('preview');
+    if (slot.kind === 'preview') {
+      expect(slot.value).toBe('∞');
+      expect(slot.testId).toBe('coupon-expiry-preview');
+    }
+  });
+
+  it('coupon_card + passValidDays set → a real date, never "∞"', () => {
+    const slot = resolveHeaderRightSlot(tKey, {
+      cardType: 'coupon_card',
+      passValidDays: 7,
+      expiryDate: '',
+      currency: 'TWD',
+      locale: 'en',
+    });
+    expect(slot.kind).toBe('preview');
+    if (slot.kind === 'preview') {
+      expect(slot.value).not.toBe('∞');
+      expect(slot.value).not.toBe('—');
+    }
+  });
+
+  it('discount_card + both discount fields null → "—" (em dash, NOT "∞")', () => {
+    // The two sentinels are NOT interchangeable: `discount_card` has a
+    // mandatory expiry, so "not configured" is an em dash; only the
+    // "never expires" contracts use the infinity sign.
+    const slot = resolveHeaderRightSlot(tKey, {
+      cardType: 'discount_card',
+      discountCustomExpiryDays: null,
+      discountSpecificExpiryDate: null,
+      currency: 'TWD',
+      locale: 'en',
+    });
+    expect(slot.kind).toBe('preview');
+    if (slot.kind === 'preview') {
+      expect(slot.value).toBe('—');
+      expect(slot.value).not.toBe('∞');
+      expect(slot.testId).toBe('discount-expiry-preview');
+    }
+  });
+
+  it('discount_card + a real date → never "—"', () => {
+    const slot = resolveHeaderRightSlot(tKey, {
+      cardType: 'discount_card',
+      discountCustomExpiryDays: null,
+      discountSpecificExpiryDate: '2026-10-30',
+      currency: 'TWD',
+      locale: 'en',
+    });
+    expect(slot.kind).toBe('preview');
+    if (slot.kind === 'preview') {
+      expect(slot.value).toBe('10.30.2026');
+      expect(slot.value).not.toBe('—');
+    }
+  });
+
+  it('the sentinels are locale-INVARIANT (no "∞" / "—" formatting drift)', () => {
+    // The sentinels are universal across locales — the zh-TW surface must
+    // show the same characters, not a localized variant.
+    for (const locale of ['en', 'zh-TW', 'zh-CN']) {
+      const membership = resolveHeaderRightSlot(tKey, {
+        cardType: 'membership_card',
+        hasExpiry: false,
+        currency: 'TWD',
+        locale,
+      });
+      const discount = resolveHeaderRightSlot(tKey, {
+        cardType: 'discount_card',
+        discountCustomExpiryDays: null,
+        discountSpecificExpiryDate: null,
+        currency: 'TWD',
+        locale,
+      });
+      if (membership.kind === 'preview') expect(membership.value).toBe('∞');
+      if (discount.kind === 'preview') expect(discount.value).toBe('—');
+    }
+  });
+});
+
+/**
+ * The `data-testid` each card type renders under.
+ *
+ * These selectors are the regression-test contract: the preview tests
+ * query them to assert WHICH block rendered. They are declared in the
+ * shared spec (`packages/shared/constants/headerSlots.ts`), so a drift
+ * between the spec and the resolver would make a selector-based test
+ * silently pass against the wrong element (or fail for the wrong
+ * reason). The spec-side values are pinned in
+ * `packages/shared/constants/headerSlots.test.ts`; here we pin that the
+ * RESOLVER hands back exactly those spec values.
+ */
+describe('resolveHeaderRightSlot — test ids come from the shared spec', () => {
+  it.each([
+    ['membership_card', 'member-expiry-preview'],
+    ['discount_card', 'discount-expiry-preview'],
+    ['coupon_card', 'coupon-expiry-preview'],
+    ['stamp_card', 'balance-preview'],
+    ['reward_card', 'balance-preview'],
+    ['cashback_card', 'balance-preview'],
+    ['multipass', 'balance-preview'],
+    ['gift_card', 'gift-points-preview'],
+  ] as const)('cardType="%s" resolves to testId="%s"', (cardType, expectedTestId) => {
+    const slot = resolveHeaderRightSlot(tKey, {
+      cardType,
+      currency: 'TWD',
+      locale: 'en',
+    });
+    expect(slot.kind).toBe('preview');
+    if (slot.kind === 'preview') {
+      expect(slot.testId).toBe(expectedTestId);
+    }
+  });
+
+  it.each([
+    ['membership_card', 'memberExpiry.label'],
+    ['discount_card', 'discountExpiry.label'],
+    ['coupon_card', 'couponExpiry.label'],
+    ['stamp_card', 'balancePreview.label'],
+    ['reward_card', 'balancePreview.label'],
+    ['cashback_card', 'balancePreview.label'],
+    ['multipass', 'balancePreview.label'],
+    ['gift_card', 'giftPointsPreview.label'],
+  ] as const)('cardType="%s" resolves to label="%s"', (cardType, expectedLabel) => {
+    // The label is the spec's `labelKey` passed through the translator —
+    // the translator mock returns the key itself, so the resolved label
+    // IS the spec's labelKey.
+    const slot = resolveHeaderRightSlot(tKey, {
+      cardType,
+      currency: 'TWD',
+      locale: 'en',
+    });
+    expect(slot.kind).toBe('preview');
+    if (slot.kind === 'preview') {
+      expect(slot.label).toBe(expectedLabel);
+    }
+  });
+
+  it('every card type resolves to a DISTINCT test id per header kind', () => {
+    // Guards against two kinds accidentally sharing a selector (which
+    // would make a selector-based test match the wrong element).
+    const testIds = (
+      ['membership_card', 'discount_card', 'coupon_card', 'stamp_card', 'gift_card'] as const
+    ).map((cardType) => {
+      const slot = resolveHeaderRightSlot(tKey, {
+        cardType,
+        currency: 'TWD',
+        locale: 'en',
+      });
+      return slot.kind === 'preview' ? slot.testId : `pill:${cardType}`;
+    });
+    // The 4 balance card types share ONE id; the other 4 kinds have
+    // their own. So there are exactly 5 distinct ids across the 5 kinds.
+    expect(new Set(testIds).size).toBe(5);
+  });
+});
+
+/**
+ * An unknown (non-schema) card type string.
+ *
+ * The retired `shouldShowXxxPreview()` guards were typed
+ * `(cardType: string | null | undefined)` and returned `false` for ANY
+ * string outside their Sets — including strings that are not card types
+ * at all. The shared lookup must keep that property: an unknown card
+ * type must fall through to the default pill branch, never to a
+ * half-resolved preview (and never to a thrown TypeError).
+ */
+describe('resolveHeaderRightSlot — unknown card type strings fall back to the pill', () => {
+  it.each([
+    ['not_a_card_type'],
+    ['toString'],
+    ['constructor'],
+    ['__proto__'],
+    ['hasOwnProperty'],
+  ])('cardType="%s" → default pill (no preview, no throw)', (cardType) => {
+    const slot = resolveHeaderRightSlot(tKey, {
+      cardType: cardType as never,
+      currency: 'TWD',
+      locale: 'en',
+    });
+    expect(slot.kind).toBe('pill');
+    if (slot.kind === 'pill') {
+      expect(slot.label).toBe('defaultCardType');
+    }
+  });
+
+  it('cardType="" (empty string) → default pill', () => {
+    const slot = resolveHeaderRightSlot(tKey, {
+      cardType: '' as never,
+      currency: 'TWD',
+      locale: 'en',
+    });
+    expect(slot.kind).toBe('pill');
+  });
+});
+
 describe('resolveHeaderRightSlot — pure exhaustive cardType coverage', () => {
   // Every CardType has exactly one dedicated right-slot variant. Pin the
   // exhaustive mapping so a future CardType addition triggers a test update.

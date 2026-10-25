@@ -50,6 +50,13 @@ const alias = [
   // BEFORE generic `@saome/shared/logic` per Rule 016 § Vite 8.x alias 順序.
   { find: /^@saome\/shared\/logic\/currency$/, replacement: path.resolve(sharedRoot, 'logic/currency.ts') },
   { find: /^@saome\/shared\/logic$/, replacement: path.resolve(sharedRoot, 'logic/index.ts') },
+  // 2026-10-24 - Pass runtime value domain (event ledger / snapshot /
+  // formatter). Must come BEFORE generic `@saome/shared/logic` and
+  // `@saome/shared/schemas` per Rule 016 § Vite 8.x alias 順序.
+  { find: /^@saome\/shared\/logic\/passValueCalculator$/, replacement: path.resolve(sharedRoot, 'logic/passValueCalculator.ts') },
+  { find: /^@saome\/shared\/logic\/passFieldFormatter$/, replacement: path.resolve(sharedRoot, 'logic/passFieldFormatter.ts') },
+  { find: /^@saome\/shared\/logic\/passExpiry$/, replacement: path.resolve(sharedRoot, 'logic/passExpiry.ts') },
+  { find: /^@saome\/shared\/schemas\/passValues$/, replacement: path.resolve(sharedRoot, 'schemas/passValues.ts') },
   { find: /^@saome\/shared\/types\/member$/, replacement: path.resolve(sharedRoot, 'types/member.ts') },
   { find: /^@saome\/shared\/types\/order$/, replacement: path.resolve(sharedRoot, 'types/order.ts') },
   { find: /^@saome\/shared\/types\/pass$/, replacement: path.resolve(sharedRoot, 'types/pass.ts') },
@@ -68,6 +75,10 @@ const alias = [
   { find: /^@saome\/shared\/constants\/discountPreviewAmounts$/, replacement: path.resolve(sharedRoot, 'constants/discountPreviewAmounts.ts') },
   { find: /^@saome\/shared\/constants\/couponPreviewAmounts$/, replacement: path.resolve(sharedRoot, 'constants/couponPreviewAmounts.ts') },
   { find: /^@saome\/shared\/constants\/gift-card$/, replacement: path.resolve(sharedRoot, 'constants/gift-card.ts') },
+  // 2026-10-24 — header slot single source (cardType → kind → key/testId).
+  // Must come BEFORE generic `@saome/shared/constants` per Rule 016 §
+  // Vite 8.x alias 順序.
+  { find: /^@saome\/shared\/constants\/headerSlots$/, replacement: path.resolve(sharedRoot, 'constants/headerSlots.ts') },
   { find: /^@saome\/shared\/constants\/table-card$/, replacement: path.resolve(sharedRoot, 'constants/table-card.ts') },
   { find: /^@saome\/shared\/constants\/membership-card$/, replacement: path.resolve(sharedRoot, 'constants/membership-card.ts') },
   { find: /^@saome\/shared\/constants\/coupon-card$/, replacement: path.resolve(sharedRoot, 'constants/coupon-card.ts') },

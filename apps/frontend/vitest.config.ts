@@ -37,6 +37,13 @@ const aliasArray: { find: string | RegExp; replacement: string }[] = [
   // these figures cannot drift into different formats. Must come
   // BEFORE generic `@saome/shared/logic` per Rule 016 § vitest alias 順序.
   { find: '@saome/shared/logic/currency', replacement: resolve(sharedRoot, 'logic/currency.ts') },
+  // 2026-10-24 - Pass runtime value domain (event ledger / snapshot /
+  // formatter). Must come BEFORE generic `@saome/shared/logic` and
+  // `@saome/shared/schemas` per Rule 016 § vitest alias 順序.
+  { find: '@saome/shared/logic/passValueCalculator', replacement: resolve(sharedRoot, 'logic/passValueCalculator.ts') },
+  { find: '@saome/shared/logic/passFieldFormatter', replacement: resolve(sharedRoot, 'logic/passFieldFormatter.ts') },
+  { find: '@saome/shared/logic/passExpiry', replacement: resolve(sharedRoot, 'logic/passExpiry.ts') },
+  { find: '@saome/shared/schemas/passValues', replacement: resolve(sharedRoot, 'schemas/passValues.ts') },
   { find: '@saome/shared/schemas', replacement: resolve(sharedRoot, 'schemas/index.ts') },
   { find: '@saome/shared/logic/member', replacement: resolve(sharedRoot, 'logic/member.ts') },
   { find: '@saome/shared/logic/order', replacement: resolve(sharedRoot, 'logic/order.ts') },
@@ -69,6 +76,10 @@ const aliasArray: { find: string | RegExp; replacement: string }[] = [
   { find: '@saome/shared/constants/discountPreviewAmounts', replacement: resolve(sharedRoot, 'constants/discountPreviewAmounts.ts') },
   { find: '@saome/shared/constants/couponPreviewAmounts', replacement: resolve(sharedRoot, 'constants/couponPreviewAmounts.ts') },
   { find: '@saome/shared/constants/gift-card', replacement: resolve(sharedRoot, 'constants/gift-card.ts') },
+  // 2026-10-24 — header slot single source (cardType → kind → key/testId).
+  // Must come BEFORE generic `@saome/shared/constants` per Rule 016 §
+  // vitest alias 順序.
+  { find: '@saome/shared/constants/headerSlots', replacement: resolve(sharedRoot, 'constants/headerSlots.ts') },
   { find: '@saome/shared/constants/table-card', replacement: resolve(sharedRoot, 'constants/table-card.ts') },
   { find: '@saome/shared/constants/stamp-card', replacement: resolve(sharedRoot, 'constants/stamp-card.ts') },
   { find: '@saome/shared/constants/reward-card', replacement: resolve(sharedRoot, 'constants/reward-card.ts') },

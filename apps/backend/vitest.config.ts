@@ -75,6 +75,13 @@ export default defineWorkersConfig({
       // 2026-10-14 — stamp card image composition (Phase 3). Specific
       // entries MUST come before the generic ones per Rule 016.
       '@saome/shared/schemas/stampCard': path.resolve(__dirname, '../../packages/shared/schemas/stampCard.ts'),
+      // 2026-10-24 - Pass runtime value domain (event ledger / snapshot /
+      // formatter). Specific entries MUST come BEFORE the generic
+      // trailing-slash entries per Rule 016 § vitest alias 順序.
+      '@saome/shared/logic/passValueCalculator': path.resolve(__dirname, '../../packages/shared/logic/passValueCalculator.ts'),
+      '@saome/shared/logic/passFieldFormatter': path.resolve(__dirname, '../../packages/shared/logic/passFieldFormatter.ts'),
+      '@saome/shared/logic/passExpiry': path.resolve(__dirname, '../../packages/shared/logic/passExpiry.ts'),
+      '@saome/shared/schemas/passValues': path.resolve(__dirname, '../../packages/shared/schemas/passValues.ts'),
       '@saome/shared/schemas/': path.resolve(__dirname, '../../packages/shared/schemas/'),
       '@saome/shared/schemas': path.resolve(__dirname, '../../packages/shared/schemas/index.ts'),
       '@saome/shared/types/': path.resolve(__dirname, '../../packages/shared/types/'),
@@ -94,6 +101,10 @@ export default defineWorkersConfig({
       // 2026-10-14 — stamp card image composition (Phase 3). Specific
       // entries MUST come before the generic ones per Rule 016.
       '@saome/shared/constants/stampCard': path.resolve(__dirname, '../../packages/shared/constants/stampCard.ts'),
+      // 2026-10-24 — header slot single source (cardType → kind →
+      // key/testId). Must come BEFORE the generic trailing-slash entry
+      // per Rule 016 § vitest alias 順序.
+      '@saome/shared/constants/headerSlots': path.resolve(__dirname, '../../packages/shared/constants/headerSlots.ts'),
       '@saome/shared/constants/': path.resolve(__dirname, '../../packages/shared/constants/'),
       '@saome/shared/constants': path.resolve(__dirname, '../../packages/shared/constants/index.ts'),
       // Specific entries (with subpath) MUST come BEFORE the generic ones

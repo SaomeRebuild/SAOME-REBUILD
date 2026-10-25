@@ -33,6 +33,7 @@
 import type { Sql } from '@/shared/db/client';
 import type { PassHolderPhoneCountryCodeDto } from '@/shared/contracts/passTemplates';
 import type { Currency } from '@saome/shared/schemas/card';
+import type { PassValuesSnapshot } from '@saome/shared/schemas/passValues';
 
 /**
  * Minimal row shape returned by INSERT ... ON CONFLICT DO NOTHING + RETURNING.
@@ -132,6 +133,14 @@ export interface PassHolderRow {
    * every non-gift card type.
    */
   gift_card_snapshot?: unknown;
+  /**
+   * 2026-10-24 — derived runtime-value cache (migration 028).
+   *
+   * The event ledger (`public.pass_events`) is the source of truth;
+   * this JSONB snapshot is a rebuildable cache of the folded state.
+   * `null` means the holder has not entered the runtime-value flow.
+   */
+  pass_values_snapshot?: PassValuesSnapshot | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -215,6 +224,7 @@ export async function findPassHolderByTemplateAndEmail(
            issued_at, issuance_error,
            iphone_uri, android_uri,
            purchased_points, gift_card_snapshot,
+           pass_values_snapshot,
            created_at, updated_at
       FROM public.pass_holders
      WHERE template_id = ${templateId}
@@ -319,6 +329,7 @@ export async function upsertPassHolder(
               issued_at, issuance_error,
               iphone_uri, android_uri,
               purchased_points, gift_card_snapshot,
+              pass_values_snapshot,
               created_at, updated_at
   `;
 
@@ -333,6 +344,75 @@ export async function upsertPassHolder(
   }
 
   return { row: inserted[0], created: true };
+}
+
+/**
+ * Write the derived runtime-value snapshot for a holder.
+ *
+ * The snapshot is a cache of the event-ledger fold. It is validated in
+ * the service layer before this function is called and is written with
+ * `sql.json()` so the workerd runtime preserves non-ASCII values.
+ */
+export async function updatePassHolderPassValuesSnapshot(
+  sql: Sql,
+  passHolderId: string,
+  snapshot: PassValuesSnapshot,
+): Promise<void> {
+  await sql`
+    UPDATE public.pass_holders
+       SET pass_values_snapshot = ${sql.json(snapshot as Parameters<typeof sql.json>[0])},
+           updated_at = now()
+     WHERE id = ${passHolderId}
+  `;
+}
+
+/**
+ * List the holders that still need a runtime-value backfill.
+ *
+ * A holder "needs a backfill" when BOTH of the following hold:
+ *
+ *   - there is NO `registered` event in their ledger, AND
+ *   - `pass_values_snapshot` IS NULL on their row
+ *
+ * The second condition is what makes the query safe to re-run: a
+ * holder whose snapshot was already written is never re-processed,
+ * even if their ledger row was somehow pruned. The two conditions
+ * together mean "this holder has never entered the runtime-value
+ * flow".
+ *
+ * The anti-join is a `NOT EXISTS` rather than a `LEFT JOIN ... IS
+ * NULL` because the ledger's `idempotency_key` is NULLABLE — a
+ * `LEFT JOIN` on the key would need to compare NULLs, which never
+ * match. `NOT EXISTS` with an explicit `event_type = 'registered'`
+ * predicate is unambiguous.
+ *
+ * @param sql - postgres.js instance.
+ * @returns   - The holder rows that need a backfill, oldest first.
+ */
+export async function listPassHoldersMissingRuntimeValues(
+  sql: Sql,
+): Promise<PassHolderRow[]> {
+  return await sql<PassHolderRow[]>`
+    SELECT h.id, h.template_id, h.name, h.phone_country_code, h.phone_number,
+           h.birthday::text AS birthday, h.email,
+           h.selected_tier_index, h.membership_tier_snapshot,
+           h.payment_provider, h.payment_status, h.paid_amount, h.currency,
+           h.pass_identifier, h.download_url, h.barcode_value,
+           h.issued_at, h.issuance_error,
+           h.iphone_uri, h.android_uri,
+           h.purchased_points, h.gift_card_snapshot,
+           h.pass_values_snapshot,
+           h.created_at, h.updated_at
+      FROM public.pass_holders h
+     WHERE h.pass_values_snapshot IS NULL
+       AND NOT EXISTS (
+             SELECT 1
+               FROM public.pass_events e
+              WHERE e.pass_holder_id = h.id
+                AND e.event_type = 'registered'
+           )
+     ORDER BY h.created_at ASC
+  `;
 }
 
 /**
@@ -429,6 +509,7 @@ export async function updatePassHolderIssuance(
                issued_at, issuance_error,
                iphone_uri, android_uri,
                purchased_points, gift_card_snapshot,
+               pass_values_snapshot,
                created_at, updated_at
   `;
   if (!rows[0]) {

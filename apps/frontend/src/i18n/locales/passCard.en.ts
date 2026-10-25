@@ -194,8 +194,9 @@ export default {
   //       - both null → "—" (theoretical only, since expiry is required)
   //   Unlike the member expiry preview, the discount card expiry is a
   //   *required card-level* field (Step 6 DiscountExpiryFields is mandatory),
-  //   not a toggle. Reuses the existing `formatExpiryDate(isoDate, locale)`
-  //   helper from PassCardPreviewHeader (zh-TW YYYY.MM.DD / en MM.DD.YYYY).
+  //   not a toggle. Reuses the shared `formatExpiryDateForHeader(isoDate,
+  //   locale)` helper from passCardPreviewSlot.ts
+  //   (zh-TW YYYY.MM.DD / en MM.DD.YYYY).
   discountExpiry: {
     label: 'Expiry Date',
   },

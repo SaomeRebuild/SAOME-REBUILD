@@ -19,6 +19,7 @@ export {
   getFieldLabel,
   getFieldLabelMap,
   getHeaderField,
+  getHeaderSlotKind,
   getSlotNames,
   getBackSideLabels,
   getDefaults,

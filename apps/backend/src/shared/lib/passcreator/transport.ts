@@ -24,7 +24,7 @@ import { normalizePasscreatorErrorEntries } from './errors';
 export async function passcreatorFetch(
   env: PasscreatorEnv,
   path: string,
-  init: { method: 'GET' | 'POST' | 'PUT'; body?: unknown; signal?: AbortSignal },
+  init: { method: 'GET' | 'POST' | 'PUT' | 'PATCH'; body?: unknown; signal?: AbortSignal },
 ): Promise<unknown> {
   const url = `${env.PASSCREATOR_API_URL.replace(/\/$/, '')}${path}`;
   const headers: Record<string, string> = {

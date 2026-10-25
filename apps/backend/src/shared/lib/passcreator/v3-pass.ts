@@ -11,6 +11,8 @@ import {
   type PassIssueHolderData,
   type PassIssueResponse,
   type PassBackfillResponse,
+  type PasscreatorPassValues,
+  type PassUpdateResult,
   BARCODE_VALUE_PLACEHOLDERS,
 } from './v3-pass-types';
 
@@ -172,15 +174,41 @@ function extractPassIssueData(parsed: unknown): PassIssueResponse | null {
  *         carries per-field reasons when the upstream envelope is
  *         parsed successfully (frontend banner can render "field N: reason M").
  *
+ * @param env        - Worker bindings (Passcreator credentials).
+ * @param passcreatorTemplateId - The upstream template UUID.
+ * @param holder     - The holder identity fields.
+ * @param values     - OPTIONAL opening runtime values (the holder's
+ *                     points / balance / expiry). When present they
+ *                     ride along with the CREATE call, so the Wallet
+ *                     never shows an empty balance on first install.
+ *                     The shape is the SAME `PasscreatorPassValues`
+ *                     the later PATCH consumes — one wire contract
+ *                     for create + update.
+ *
  * @see runs/decisions/2026-10-19-pass-holder-v3-issuance.md
+ * @see runs/decisions/2026-10-24-pass-runtime-value-model.md § 決定三
  * @see runs/improvements/feedback/20261019-pass-holder-v3-issuance-v3-contract-fix.md
  */
 export async function issuePass(
   env: unknown,
   passcreatorTemplateId: string,
   holder: PassIssueHolderData,
+  values?: PasscreatorPassValues,
 ): Promise<PassIssueResponse> {
   const e = requireEnv(env);
+
+  // The runtime values are spread INTO `data` — exactly like the
+  // PATCH body does. Passcreator matches them by NAME (the
+  // `{KeyName}` cross-reference placeholders the template declared),
+  // so nesting them under a `properties` key would send a field
+  // named "properties" that no template binds.
+  const runtimeData: Record<string, string | number> = { ...(values?.properties ?? {}) };
+  if (values?.storedValue !== undefined) {
+    runtimeData.storedValue = values.storedValue;
+  }
+  if (values?.expirationDate !== undefined) {
+    runtimeData.expirationDate = values.expirationDate;
+  }
 
   const result = await passcreatorFetch(e, '/api/v3/pass?async=false', {
     method: 'POST',
@@ -213,6 +241,11 @@ export async function issuePass(
         phone: holder.phone,
         birthday: holder.birthday,
         email: holder.email,
+        // The holder's OPENING runtime values (points / balance /
+        // expiry) — same names the template binds. Omitted entirely
+        // when the caller has no runtime state to send, so a legacy
+        // call site produces exactly the pre-2026-10-24 body.
+        ...runtimeData,
       },
     },
   });
@@ -451,5 +484,202 @@ export async function listPasses(
       barcodeValue: extractBackfillBarcodeValue(item.barcodeValue, autoGenId),
     });
   }
+  return out;
+}
+
+/**
+ * Normalize a Passcreator value into a comparable string.
+ *
+ * Passcreator echoes values back with its own type coercion: a number
+ * we sent as `500` can come back as the string `"500"`, and a date
+ * we sent as `"2027-10-23 00:00"` can come back as a Date-ish
+ * string. The read-back comparison therefore normalizes BOTH sides
+ * before comparing, so a representation difference is not reported as
+ * a value mismatch (which would trigger a pointless retry loop).
+ */
+function normalizeComparableValue(value: unknown): string | null {
+  if (typeof value === 'number') return String(value);
+  if (typeof value === 'string') return value;
+  if (value === null || value === undefined) return null;
+  return String(value);
+}
+
+/**
+ * Update the runtime values of an existing per-pass wallet pass.
+ *
+ * Passcreator V3 contract (verified against
+ * https://developer.passcreator.com/en/api/v3/pass § "Update a Pass",
+ * captured 2026-10-24):
+ *
+ *   - URL:  `PATCH https://app.passcreator.com/api/v3/pass/{identifier}`
+ *   - Body: `{ data: { ...values } }` — the same `data` wrapper the
+ *     create endpoint uses.
+ *
+ * WHY PATCH AND NOT POST
+ *
+ * This is the single most important detail in this function. The V3
+ * docs state that POST on an EXISTING pass **deletes the fields you
+ * do not supply**. Using POST to "update" a holder's pass would
+ * therefore wipe the holder's name, phone, barcode and every other
+ * field that was set at creation. Only PATCH has the
+ * update-only-the-provided-fields semantics.
+ *
+ * The payload is the SAME `PasscreatorPassValues` shape that the
+ * shared formatter produces for the initial issuance — so the value
+ * that was written at creation and the value written at update time
+ * are formatted identically (see
+ * `packages/shared/logic/passFieldFormatter.ts`).
+ *
+ * READ-BACK VERIFICATION
+ *
+ * After the PATCH, we GET the pass and compare what came back with
+ * what we sent. A 200 response alone does not prove the value landed
+ * — Passcreator can accept a field the template does not bind and
+ * silently drop it. The verification result is returned to the caller
+ * so the sync service can decide whether to retry.
+ *
+ * A failed GET does NOT fail the update: the PATCH itself succeeded,
+ * and the caller can retry the verification separately. Only the
+ * PATCH's own failure throws.
+ *
+ * @param env        - Passcreator credentials.
+ * @param identifier - The per-pass identifier (`data.identifier`).
+ * @param values     - The values to write.
+ * @returns           - The update result (including the read-back verdict).
+ * @throws {BadGatewayError} when the PATCH fails (network / upstream
+ *         rejection / invalid response).
+ *
+ * @see runs/decisions/2026-10-24-pass-runtime-value-model.md § 決定三
+ */
+export async function updatePassValues(
+  env: unknown,
+  identifier: string,
+  values: PasscreatorPassValues,
+): Promise<PassUpdateResult> {
+  const e = requireEnv(env);
+
+  // The PATCH body mirrors the create body's `data` wrapper.
+  //
+  // `properties` is spread INTO `data` (not nested under a
+  // `properties` key) because each entry is a named cross-reference
+  // variable the template declared — Passcreator matches them by
+  // NAME, exactly like it does for `memberName` / `phone` at create
+  // time. Nesting them would send a field named "properties" that no
+  // template binds.
+  const data: Record<string, string | number> = { ...values.properties };
+  if (values.storedValue !== undefined) {
+    data.storedValue = values.storedValue;
+  }
+  if (values.expirationDate !== undefined) {
+    data.expirationDate = values.expirationDate;
+  }
+
+  await passcreatorFetch(
+    e,
+    `/api/v3/pass/${encodeURIComponent(identifier)}?async=false`,
+    {
+      method: 'PATCH',
+      body: { data },
+    },
+  );
+
+  // Read-back verification. A failure here does NOT undo the update —
+  // the PATCH already landed — so we degrade to "not verified" rather
+  // than throwing.
+  const mismatchedFields: string[] = [];
+  try {
+    const readBack = await passcreatorFetch(
+      e,
+      `/api/v3/pass/${encodeURIComponent(identifier)}`,
+      { method: 'GET' },
+    );
+    const upstream = extractUpdateReadBack(readBack);
+
+    for (const [key, sent] of Object.entries(values.properties)) {
+      const got = upstream.properties[key];
+      const sentNormalized = normalizeComparableValue(sent);
+      const gotNormalized = normalizeComparableValue(got);
+      if (gotNormalized === null) {
+        // The field is not present upstream at all — Passcreator
+        // dropped it (almost always: the template does not bind it).
+        mismatchedFields.push(key);
+        continue;
+      }
+      if (sentNormalized !== gotNormalized) {
+        mismatchedFields.push(key);
+      }
+    }
+
+    if (values.storedValue !== undefined) {
+      const got = normalizeComparableValue(upstream.storedValue);
+      if (got === null || got !== normalizeComparableValue(values.storedValue)) {
+        mismatchedFields.push('storedValue');
+      }
+    }
+
+    if (values.expirationDate !== undefined) {
+      const got = normalizeComparableValue(upstream.expirationDate);
+      if (got === null || got !== normalizeComparableValue(values.expirationDate)) {
+        mismatchedFields.push('expirationDate');
+      }
+    }
+  } catch {
+    // The verification GET failed. The PATCH succeeded, so we report
+    // "not verified" (the caller may retry) rather than pretending the
+    // update failed.
+    return {
+      identifier,
+      verified: false,
+      mismatchedFields: Object.keys(values.properties),
+    };
+  }
+
+  return {
+    identifier,
+    verified: mismatchedFields.length === 0,
+    mismatchedFields,
+  };
+}
+
+/**
+ * Extract the updatable fields from a Passcreator single-pass GET
+ * envelope.
+ *
+ * The GET response nests the pass under `data`, and the field values
+ * live under `data.genericProperties` (per the V3 "Returned values"
+ * shape captured 2026-10-19: `genericProperties: { ... }` holds the
+ * per-field values the template bound).
+ *
+ * Returns an empty shape when the envelope is unrecognised — the
+ * caller then reports every field as mismatched (i.e. "could not
+ * confirm"), which is the safe answer.
+ */
+function extractUpdateReadBack(parsed: unknown): {
+  properties: Record<string, unknown>;
+  storedValue?: unknown;
+  expirationDate?: unknown;
+} {
+  const empty = { properties: {} as Record<string, unknown> };
+  if (typeof parsed !== 'object' || parsed === null) return empty;
+  const obj = parsed as Record<string, unknown>;
+  const data = obj.data;
+  if (typeof data !== 'object' || data === null) return empty;
+  const d = data as Record<string, unknown>;
+
+  const generic = d.genericProperties;
+  const properties =
+    typeof generic === 'object' && generic !== null
+      ? (generic as Record<string, unknown>)
+      : {};
+
+  const out: {
+    properties: Record<string, unknown>;
+    storedValue?: unknown;
+    expirationDate?: unknown;
+  } = { properties };
+
+  if (d.storedValue !== undefined) out.storedValue = d.storedValue;
+  if (d.expirationDate !== undefined) out.expirationDate = d.expirationDate;
+
   return out;
 }

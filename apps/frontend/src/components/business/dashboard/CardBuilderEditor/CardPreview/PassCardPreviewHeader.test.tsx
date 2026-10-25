@@ -14,6 +14,14 @@
  *   7. DOM order: label is above value, both inside same parent <div>
  *   8. Reactive store update: setCurrency re-renders the value
  *
+ * 2026-10-24 — the per-cardType header contract (which Sets / type
+ * guards / date helpers this component used to own) moved to the
+ * shared spec `packages/shared/constants/headerSlots.ts`. The
+ * contract-style describes that used to live here are replaced by
+ * `packages/shared/constants/headerSlots.test.ts` (partition / key /
+ * test-id coverage). What stays here is the RENDER BEHAVIOR: what the
+ * DOM actually looks like for each card type.
+ *
  * Conventions follow PassCardPreviewBody.test.tsx:
  *   - vi.mock('react-i18next') returns `t: key => key`
  *   - Store state seeded via `useCardBuilderStore.setState(...)`
@@ -23,23 +31,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act, cleanup } from '@testing-library/react';
 import { useTranslation } from 'react-i18next';
-import {
-  PassCardPreviewHeader,
-  BALANCE_PREVIEW_CARD_TYPES,
-  shouldShowBalancePreview,
-  shouldShowMemberExpiryPreview,
-  MEMBER_EXPIRY_PREVIEW_CARD_TYPES,
-  shouldShowDiscountExpiryPreview,
-  DISCOUNT_EXPIRY_PREVIEW_CARD_TYPES,
-  shouldShowCouponExpiryPreview,
-  COUPON_EXPIRY_PREVIEW_CARD_TYPES,
-  shouldShowGiftPointsPreview,
-  GIFT_POINTS_PREVIEW_CARD_TYPES,
-  formatExpiryDate,
-} from './PassCardPreviewHeader';
+import { PassCardPreviewHeader } from './PassCardPreviewHeader';
 import { useCardBuilderStore } from '../CardBuilderEditor.store';
 import { BALANCE_PREVIEW_AMOUNTS } from '@saome/shared/constants/balancePreview';
 import { GIFT_POINTS_PREVIEW_VALUE } from '@saome/shared/constants/gift-card';
+import {
+  HEADER_SLOTS,
+  HEADER_SLOT_KIND_SPECS,
+} from '@saome/shared/constants/headerSlots';
+
+/** Every card type the shared header-slot spec declares — the input domain
+ *  of the header right slot. Derived from the spec itself (rather than
+ *  re-listing the card types) so this test cannot drift from the spec. */
+const ALL_CARD_TYPES = Object.keys(HEADER_SLOTS) as (keyof typeof HEADER_SLOTS)[];
 
 // Mock i18n — vi.fn(key => key) makes t() return the key as text.
 // This lets us assert against key paths directly without depending on the
@@ -254,37 +258,30 @@ describe('PassCardPreviewHeader — balance block layout', () => {
   });
 });
 
-// ─── Pure helper exports ───────────────────────────────────────────────────
-// The exported BALANCE_PREVIEW_CARD_TYPES and shouldShowBalancePreview are
-// the contract for "which card types get the balance preview". Pin them.
-describe('BALANCE_PREVIEW_CARD_TYPES / shouldShowBalancePreview — contract', () => {
-  it('BALANCE_PREVIEW_CARD_TYPES has exactly {stamp_card, reward_card, cashback_card, multipass}', () => {
-    expect(BALANCE_PREVIEW_CARD_TYPES.size).toBe(4);
-    expect(BALANCE_PREVIEW_CARD_TYPES.has('stamp_card')).toBe(true);
-    expect(BALANCE_PREVIEW_CARD_TYPES.has('reward_card')).toBe(true);
-    expect(BALANCE_PREVIEW_CARD_TYPES.has('cashback_card')).toBe(true);
-    expect(BALANCE_PREVIEW_CARD_TYPES.has('multipass')).toBe(true);
-  });
+// ─── Balance preview card-type partition (render-level) ───────────────────
+// 2026-10-24 — the "which card types get the balance preview" contract
+// now lives in the shared spec
+// (`packages/shared/constants/headerSlots.ts::HEADER_SLOTS`) and is
+// covered by `packages/shared/constants/headerSlots.test.ts`.
+// What's asserted HERE is the render consequence: which card types
+// produce a balance block vs. some other block.
+describe('PassCardPreviewHeader — balance preview applies to exactly the balance card types', () => {
+  it.each(['stamp_card', 'reward_card', 'cashback_card', 'multipass'] as const)(
+    'cardType="%s" renders the balance block (not the pill)',
+    (cardType) => {
+      const { container } = render(<PassCardPreviewHeader cardType={cardType} />);
+      expect(container.querySelector('span.rounded-full')).toBeNull();
+      expect(screen.getByText('balancePreview.label')).toBeInTheDocument();
+    },
+  );
 
-  it('BALANCE_PREVIEW_CARD_TYPES excludes the other 4 card types', () => {
-    expect(BALANCE_PREVIEW_CARD_TYPES.has('membership_card')).toBe(false);
-    expect(BALANCE_PREVIEW_CARD_TYPES.has('discount_card')).toBe(false);
-    expect(BALANCE_PREVIEW_CARD_TYPES.has('coupon_card')).toBe(false);
-    expect(BALANCE_PREVIEW_CARD_TYPES.has('gift_card')).toBe(false);
-  });
-
-  it('shouldShowBalancePreview returns true for target card types', () => {
-    expect(shouldShowBalancePreview('stamp_card')).toBe(true);
-    expect(shouldShowBalancePreview('reward_card')).toBe(true);
-    expect(shouldShowBalancePreview('cashback_card')).toBe(true);
-    expect(shouldShowBalancePreview('multipass')).toBe(true);
-  });
-
-  it('shouldShowBalancePreview returns false for non-target / null / undefined', () => {
-    expect(shouldShowBalancePreview('membership_card')).toBe(false);
-    expect(shouldShowBalancePreview(null)).toBe(false);
-    expect(shouldShowBalancePreview(undefined)).toBe(false);
-  });
+  it.each(['membership_card', 'discount_card', 'coupon_card', 'gift_card'] as const)(
+    'cardType="%s" does NOT render the balance block',
+    (cardType) => {
+      render(<PassCardPreviewHeader cardType={cardType} />);
+      expect(screen.queryByText('balancePreview.label')).toBeNull();
+    },
+  );
 });
 
 // ─── Member expiry preview (2026-09-13) ───────────────────────────────────
@@ -304,8 +301,8 @@ describe('PassCardPreviewHeader — member expiry preview for membership_card', 
   });
 
   it('membership_card + hasExpiry=true + expiryDate="2027-10-23" renders formatted date', () => {
-    // The test mock returns no i18n.language, so formatExpiryDate falls back
-    // to en (MM.DD.YYYY) formatting. To test zh-TW (YYYY.MM.DD), the mock
+    // The shared mock uses English, so formatExpiryDateForHeader renders
+    // the en (MM.DD.YYYY) format. To test zh-TW (YYYY.MM.DD), the mock
     // needs to be configured per-test (see "zh-TW date format" test below).
     useCardBuilderStore.setState({
       hasExpiry: true,
@@ -385,61 +382,24 @@ describe('PassCardPreviewHeader — member expiry preview for membership_card', 
   });
 });
 
-// ─── MEMBER_EXPIRY_PREVIEW_CARD_TYPES / shouldShowMemberExpiryPreview ───────
-// Contract for which card types get the member expiry preview.
-describe('MEMBER_EXPIRY_PREVIEW_CARD_TYPES / shouldShowMemberExpiryPreview — contract', () => {
-  it('MEMBER_EXPIRY_PREVIEW_CARD_TYPES has exactly {membership_card}', () => {
-    expect(MEMBER_EXPIRY_PREVIEW_CARD_TYPES.size).toBe(1);
-    expect(MEMBER_EXPIRY_PREVIEW_CARD_TYPES.has('membership_card')).toBe(true);
+// ─── MEMBER_EXPIRY_PREVIEW card-type partition (render-level) ─────────────
+// 2026-10-24 — the contract moved to the shared spec
+// (`packages/shared/constants/headerSlots.ts`). What's asserted here is
+// the render consequence.
+describe('PassCardPreviewHeader — member expiry preview applies to membership_card only', () => {
+  it('membership_card renders the member expiry block', () => {
+    useCardBuilderStore.setState({ hasExpiry: false });
+    render(<PassCardPreviewHeader cardType="membership_card" />);
+    expect(screen.getByText('memberExpiry.label')).toBeInTheDocument();
   });
 
-  it('MEMBER_EXPIRY_PREVIEW_CARD_TYPES excludes all other card types', () => {
-    expect(MEMBER_EXPIRY_PREVIEW_CARD_TYPES.has('stamp_card')).toBe(false);
-    expect(MEMBER_EXPIRY_PREVIEW_CARD_TYPES.has('reward_card')).toBe(false);
-    expect(MEMBER_EXPIRY_PREVIEW_CARD_TYPES.has('cashback_card')).toBe(false);
-    expect(MEMBER_EXPIRY_PREVIEW_CARD_TYPES.has('discount_card')).toBe(false);
-    expect(MEMBER_EXPIRY_PREVIEW_CARD_TYPES.has('coupon_card')).toBe(false);
-    expect(MEMBER_EXPIRY_PREVIEW_CARD_TYPES.has('multipass')).toBe(false);
-    expect(MEMBER_EXPIRY_PREVIEW_CARD_TYPES.has('gift_card')).toBe(false);
-  });
-
-  it('shouldShowMemberExpiryPreview returns true for membership_card', () => {
-    expect(shouldShowMemberExpiryPreview('membership_card')).toBe(true);
-  });
-
-  it('shouldShowMemberExpiryPreview returns false for non-membership / null / undefined', () => {
-    expect(shouldShowMemberExpiryPreview('stamp_card')).toBe(false);
-    expect(shouldShowMemberExpiryPreview('discount_card')).toBe(false);
-    expect(shouldShowMemberExpiryPreview(null)).toBe(false);
-    expect(shouldShowMemberExpiryPreview(undefined)).toBe(false);
-  });
-});
-
-// ─── formatExpiryDate helper — pure function ──────────────────────────────
-// Locale-driven date formatting (zh-TW: YYYY.MM.DD, en: MM.DD.YYYY).
-// Tested directly to avoid i18n mock coupling.
-describe('formatExpiryDate — locale-driven YYYY-MM-DD → display format', () => {
-  it('zh-TW locale: YYYY-MM-DD → YYYY.MM.DD (e.g. "2027-10-23" → "2027.10.23")', () => {
-    expect(formatExpiryDate('2027-10-23', 'zh-TW')).toBe('2027.10.23');
-  });
-
-  it('en locale: YYYY-MM-DD → MM.DD.YYYY (e.g. "2027-10-23" → "10.23.2027")', () => {
-    expect(formatExpiryDate('2027-10-23', 'en')).toBe('10.23.2027');
-  });
-
-  it('zh-CN locale: YYYY.MM.DD (same as zh-TW per "zh" prefix rule)', () => {
-    expect(formatExpiryDate('2027-10-23', 'zh-CN')).toBe('2027.10.23');
-  });
-
-  it('empty string input → empty string output', () => {
-    expect(formatExpiryDate('', 'en')).toBe('');
-    expect(formatExpiryDate('', 'zh-TW')).toBe('');
-  });
-
-  it('malformed input (not YYYY-MM-DD) → returns input verbatim (defensive)', () => {
-    expect(formatExpiryDate('not-a-date', 'en')).toBe('not-a-date');
-    expect(formatExpiryDate('2027/10/23', 'en')).toBe('2027/10/23');
-  });
+  it.each(['stamp_card', 'reward_card', 'cashback_card', 'discount_card', 'coupon_card', 'multipass', 'gift_card'] as const)(
+    'cardType="%s" does NOT render the member expiry block',
+    (cardType) => {
+      render(<PassCardPreviewHeader cardType={cardType} />);
+      expect(screen.queryByText('memberExpiry.label')).toBeNull();
+    },
+  );
 });
 
 // ─── Discount expiry preview (2026-09-18) ───────────────────────────────
@@ -563,39 +523,33 @@ describe('PassCardPreviewHeader — discount expiry preview for discount_card', 
   });
 });
 
-describe('DISCOUNT_EXPIRY_PREVIEW_CARD_TYPES / shouldShowDiscountExpiryPreview — contract', () => {
+describe('PassCardPreviewHeader - discount expiry preview applies to discount_card only', () => {
   /**
-   * 2026-09-18 — contract for which card types get the discount expiry
-   * preview. Mirrors the MEMBER_EXPIRY_PREVIEW_CARD_TYPES test block but
-   * scopes to `discount_card` only.
+   * 2026-10-24 - the contract moved to the shared spec
+   * (`packages/shared/constants/headerSlots.ts`). What is asserted here
+   * is the render consequence.
    */
-  it('DISCOUNT_EXPIRY_PREVIEW_CARD_TYPES has exactly {discount_card}', () => {
-    expect(DISCOUNT_EXPIRY_PREVIEW_CARD_TYPES.size).toBe(1);
-    expect(DISCOUNT_EXPIRY_PREVIEW_CARD_TYPES.has('discount_card')).toBe(true);
+  it('discount_card renders the discount expiry block', () => {
+    useCardBuilderStore.setState({
+      discountCustomExpiryDays: 30,
+      discountSpecificExpiryDate: null,
+    });
+    render(<PassCardPreviewHeader cardType="discount_card" />);
+    expect(screen.getByText('discountExpiry.label')).toBeInTheDocument();
   });
 
-  it('DISCOUNT_EXPIRY_PREVIEW_CARD_TYPES excludes all other card types', () => {
-    expect(DISCOUNT_EXPIRY_PREVIEW_CARD_TYPES.has('stamp_card')).toBe(false);
-    expect(DISCOUNT_EXPIRY_PREVIEW_CARD_TYPES.has('reward_card')).toBe(false);
-    expect(DISCOUNT_EXPIRY_PREVIEW_CARD_TYPES.has('cashback_card')).toBe(false);
-    expect(DISCOUNT_EXPIRY_PREVIEW_CARD_TYPES.has('membership_card')).toBe(false);
-    expect(DISCOUNT_EXPIRY_PREVIEW_CARD_TYPES.has('coupon_card')).toBe(false);
-    expect(DISCOUNT_EXPIRY_PREVIEW_CARD_TYPES.has('multipass')).toBe(false);
-    expect(DISCOUNT_EXPIRY_PREVIEW_CARD_TYPES.has('gift_card')).toBe(false);
-  });
-
-  it('shouldShowDiscountExpiryPreview returns true for discount_card', () => {
-    expect(shouldShowDiscountExpiryPreview('discount_card')).toBe(true);
-  });
-
-  it('shouldShowDiscountExpiryPreview returns false for non-discount / null / undefined', () => {
-    expect(shouldShowDiscountExpiryPreview('stamp_card')).toBe(false);
-    expect(shouldShowDiscountExpiryPreview('membership_card')).toBe(false);
-    expect(shouldShowDiscountExpiryPreview(null)).toBe(false);
-    expect(shouldShowDiscountExpiryPreview(undefined)).toBe(false);
-  });
+  it.each(['stamp_card', 'reward_card', 'cashback_card', 'membership_card', 'coupon_card', 'multipass', 'gift_card'] as const)(
+    'cardType="%s" does NOT render the discount expiry block',
+    (cardType) => {
+      useCardBuilderStore.setState({
+        discountCustomExpiryDays: 30,
+        discountSpecificExpiryDate: '2026-10-30',
+      });
+      render(<PassCardPreviewHeader cardType={cardType} />);
+      expect(screen.queryByText('discountExpiry.label')).toBeNull();
+    },
+  );
 });
-
 describe('PassCardPreviewHeader — non-target card types render the default pill (regression)', () => {
   /**
    * 2026-09-18 — discount_card is the only card type that gets the
@@ -751,41 +705,27 @@ describe('PassCardPreviewHeader — coupon expiry preview for coupon_card', () =
   });
 });
 
-describe('COUPON_EXPIRY_PREVIEW_CARD_TYPES / shouldShowCouponExpiryPreview — contract', () => {
+describe('PassCardPreviewHeader - coupon expiry preview applies to coupon_card only', () => {
   /**
-   * 2026-09-19 — contract for which card types get the coupon expiry
-   * preview. Mirrors the DISCOUNT_EXPIRY_PREVIEW_CARD_TYPES test block
-   * but scopes to `coupon_card` only. The set MUST be single-element
-   * to preserve the "exactly one preview variant per card type" guarantee.
+   * 2026-10-24 - the contract moved to the shared spec
+   * (`packages/shared/constants/headerSlots.ts`). What is asserted here
+   * is the render consequence.
    */
-  it('COUPON_EXPIRY_PREVIEW_CARD_TYPES has exactly {coupon_card}', () => {
-    expect(COUPON_EXPIRY_PREVIEW_CARD_TYPES.size).toBe(1);
-    expect(COUPON_EXPIRY_PREVIEW_CARD_TYPES.has('coupon_card')).toBe(true);
+  it('coupon_card renders the coupon expiry block', () => {
+    useCardBuilderStore.setState({ passValidDays: 7, expiryDate: '' });
+    render(<PassCardPreviewHeader cardType="coupon_card" />);
+    expect(screen.getByText('couponExpiry.label')).toBeInTheDocument();
   });
 
-  it('COUPON_EXPIRY_PREVIEW_CARD_TYPES excludes all other card types', () => {
-    expect(COUPON_EXPIRY_PREVIEW_CARD_TYPES.has('stamp_card')).toBe(false);
-    expect(COUPON_EXPIRY_PREVIEW_CARD_TYPES.has('reward_card')).toBe(false);
-    expect(COUPON_EXPIRY_PREVIEW_CARD_TYPES.has('cashback_card')).toBe(false);
-    expect(COUPON_EXPIRY_PREVIEW_CARD_TYPES.has('membership_card')).toBe(false);
-    expect(COUPON_EXPIRY_PREVIEW_CARD_TYPES.has('discount_card')).toBe(false);
-    expect(COUPON_EXPIRY_PREVIEW_CARD_TYPES.has('multipass')).toBe(false);
-    expect(COUPON_EXPIRY_PREVIEW_CARD_TYPES.has('gift_card')).toBe(false);
-  });
-
-  it('shouldShowCouponExpiryPreview returns true for coupon_card', () => {
-    expect(shouldShowCouponExpiryPreview('coupon_card')).toBe(true);
-  });
-
-  it('shouldShowCouponExpiryPreview returns false for non-coupon / null / undefined', () => {
-    expect(shouldShowCouponExpiryPreview('stamp_card')).toBe(false);
-    expect(shouldShowCouponExpiryPreview('discount_card')).toBe(false);
-    expect(shouldShowCouponExpiryPreview('membership_card')).toBe(false);
-    expect(shouldShowCouponExpiryPreview(null)).toBe(false);
-    expect(shouldShowCouponExpiryPreview(undefined)).toBe(false);
-  });
+  it.each(['stamp_card', 'reward_card', 'cashback_card', 'membership_card', 'discount_card', 'multipass', 'gift_card'] as const)(
+    'cardType="%s" does NOT render the coupon expiry block',
+    (cardType) => {
+      useCardBuilderStore.setState({ passValidDays: 7, expiryDate: '2026-10-30' });
+      render(<PassCardPreviewHeader cardType={cardType} />);
+      expect(screen.queryByText('couponExpiry.label')).toBeNull();
+    },
+  );
 });
-
 describe('PassCardPreviewHeader — coupon expiry preview is coupon_card-only (regression)', () => {
   /**
    * 2026-09-19 — coupon_card is the ONLY card type that gets the coupon
@@ -845,8 +785,7 @@ describe('PassCardPreviewHeader — coupon expiry preview is coupon_card-only (r
 //   1. Renders the 2-line block (no pill, label + value visible)
 //   2. Value is GIFT_POINTS_PREVIEW_VALUE ("2363點"), not store-derived
 //   3. Currency invariant: switching store.currency does NOT change value
-//   4. shouldShowGiftPointsPreview type guard: true for 'gift_card',
-//      false for everything else
+//   4. gift_card is the only card type that renders the gift-points block
 describe('PassCardPreviewHeader — gift points preview for gift_card (2026-09-27)', () => {
   it('gift_card renders the 2-line gift-points block (no pill)', () => {
     const { container } = render(<PassCardPreviewHeader cardType="gift_card" />);
@@ -876,15 +815,91 @@ describe('PassCardPreviewHeader — gift points preview for gift_card (2026-09-2
     expect(screen.queryByText(BALANCE_PREVIEW_AMOUNTS.ZAR)).toBeNull();
   });
 
-  it('shouldShowGiftPointsPreview type guard: true for gift_card, false elsewhere', () => {
-    expect(shouldShowGiftPointsPreview('gift_card')).toBe(true);
-    expect(shouldShowGiftPointsPreview(null)).toBe(false);
-    expect(shouldShowGiftPointsPreview(undefined)).toBe(false);
-    expect(shouldShowGiftPointsPreview('stamp_card')).toBe(false);
-    expect(shouldShowGiftPointsPreview('membership_card')).toBe(false);
-    expect(shouldShowGiftPointsPreview('coupon_card')).toBe(false);
-    // GIFT_POINTS_PREVIEW_CARD_TYPES contains only gift_card
-    expect(GIFT_POINTS_PREVIEW_CARD_TYPES.has('gift_card')).toBe(true);
-    expect(GIFT_POINTS_PREVIEW_CARD_TYPES.has('stamp_card')).toBe(false);
+  it('gift_card is the ONLY card type that renders the gift-points block', () => {
+    // 2026-10-24 - the type-guard contract moved to the shared spec
+    // (packages/shared/constants/headerSlots.ts); this asserts the
+    // render consequence instead.
+    render(<PassCardPreviewHeader cardType="gift_card" />);
+    expect(screen.getByText('giftPointsPreview.label')).toBeInTheDocument();
+
+    for (const cardType of ['stamp_card', 'membership_card', 'coupon_card'] as const) {
+      cleanup();
+      render(<PassCardPreviewHeader cardType={cardType} />);
+      expect(screen.queryByText('giftPointsPreview.label')).toBeNull();
+    }
   });
+});
+
+// ─── Header right slot test id — DOM must match the shared spec ───────────
+// 2026-10-25 — the shared spec
+// (`packages/shared/constants/headerSlots.ts::HEADER_SLOT_KIND_SPECS`)
+// declares a `data-testid` per header kind, and the component renders it
+// via `resolveHeaderRightSlot(...).testId`.
+//
+// The spec's own docblock spells out why this DOM-level check matters:
+// "a mismatch would make the selector-based regression tests silently pass
+// against the wrong element". The balance block in particular was MISSING
+// its test id before the shared-spec refactor (the other four blocks had
+// one), so both `balance-preview` and `gift-points-preview` are asserted
+// here for the first time.
+describe('PassCardPreviewHeader — the rendered test id matches the shared spec', () => {
+  it.each([
+    ['stamp_card', 'balance-preview'],
+    ['reward_card', 'balance-preview'],
+    ['cashback_card', 'balance-preview'],
+    ['multipass', 'balance-preview'],
+    ['membership_card', 'member-expiry-preview'],
+    ['discount_card', 'discount-expiry-preview'],
+    ['coupon_card', 'coupon-expiry-preview'],
+    ['gift_card', 'gift-points-preview'],
+  ] as const)('cardType="%s" renders under data-testid="%s"', (cardType, expectedTestId) => {
+    const { container } = render(<PassCardPreviewHeader cardType={cardType} />);
+    expect(
+      container.querySelector(`[data-testid="${expectedTestId}"]`),
+      `cardType="${cardType}" must render the "${expectedTestId}" block`,
+    ).toBeInTheDocument();
+  });
+
+  it('every card type renders under the test id the shared spec declares', () => {
+    // Derive the expectation from the SPEC itself, so a drift between the
+    // spec table and the component's DOM is what fails — not a hardcoded
+    // copy of the same table.
+    for (const cardType of ALL_CARD_TYPES) {
+      const kind = HEADER_SLOTS[cardType];
+      const expectedTestId = HEADER_SLOT_KIND_SPECS[kind].testId;
+      cleanup();
+      const { container } = render(<PassCardPreviewHeader cardType={cardType} />);
+      expect(
+        container.querySelector(`[data-testid="${expectedTestId}"]`),
+        `cardType="${cardType}" must render the spec's "${expectedTestId}"`,
+      ).toBeInTheDocument();
+    }
+  });
+
+  it('the default pill branch renders NO preview test id', () => {
+    const { container } = render(<PassCardPreviewHeader cardType={null} />);
+    expect(container.querySelector('span.rounded-full')).toBeInTheDocument();
+    // No preview block → no preview test id.
+    expect(container.querySelector('[data-testid$="-preview"]')).toBeNull();
+  });
+});
+
+// ─── Unknown card type string — the retired guards' "false" branch ───────
+// The retired `shouldShowXxxPreview()` guards were typed
+// `(cardType: string | null | undefined)` and returned FALSE for every
+// string outside their Sets, so the component fell through to the default
+// pill. The component prop is still `cardType?: string | null`, so an
+// arbitrary string is still reachable — it must render the pill, not throw.
+describe('PassCardPreviewHeader — an unknown card type string renders the pill', () => {
+  it.each(['not_a_card_type', 'toString', 'constructor', '__proto__'])(
+    'cardType="%s" renders the default pill (no throw)',
+    (cardType) => {
+      const { container } = render(<PassCardPreviewHeader cardType={cardType} />);
+      expect(container.querySelector('span.rounded-full')).toBeInTheDocument();
+      // No preview block → no preview label.
+      expect(screen.queryByText('balancePreview.label')).toBeNull();
+      expect(screen.queryByText('memberExpiry.label')).toBeNull();
+      expect(container.querySelector('[data-testid$="-preview"]')).toBeNull();
+    },
+  );
 });
