@@ -18,6 +18,7 @@ import {
   isIsoDate,
   membershipExpiryRule,
   resolveExpiryDate,
+  resolveExpirySlotGuaranteesDate,
 } from './passExpiry';
 
 describe('isIsoDate', () => {
@@ -199,5 +200,165 @@ describe('discountExpiryRule', () => {
   it('never expires when neither is set', () => {
     expect(discountExpiryRule({ customExpiryDays: null, specificExpiryDate: null }).mode).toBe('never');
     expect(discountExpiryRule({}).mode).toBe('never');
+  });
+});
+
+/**
+ * `resolveExpirySlotGuaranteesDate` — "does EVERY holder of this
+ * template have an expiry date?"
+ *
+ * The answer drives the Passcreator field type of the expiry slot:
+ * `date` when guaranteed, `text` when not (so the runtime's `∞`
+ * sentinel is accepted).
+ */
+describe('resolveExpirySlotGuaranteesDate — membership', () => {
+  it('is FALSE when the card-wide hasExpiry toggle is off (lifetime member)', () => {
+    expect(
+      resolveExpirySlotGuaranteesDate('membership_card', { hasExpiry: false }),
+    ).toBe(false);
+  });
+
+  it('is FALSE when the settings are missing entirely', () => {
+    expect(resolveExpirySlotGuaranteesDate('membership_card', null)).toBe(false);
+    expect(resolveExpirySlotGuaranteesDate('membership_card', undefined)).toBe(false);
+  });
+
+  it('is TRUE for a free membership with a custom day count', () => {
+    expect(
+      resolveExpirySlotGuaranteesDate('membership_card', {
+        hasExpiry: true,
+        membershipExpiryMode: 'custom_days',
+        membershipCustomExpiryDays: 30,
+      }),
+    ).toBe(true);
+  });
+
+  it('is TRUE for a free membership with a valid specific date', () => {
+    expect(
+      resolveExpirySlotGuaranteesDate('membership_card', {
+        hasExpiry: true,
+        membershipExpiryMode: 'specific_date',
+        membershipSpecificExpiryDate: '2027-10-23',
+      }),
+    ).toBe(true);
+  });
+
+  it('is FALSE for a free membership with a MALFORMED specific date', () => {
+    expect(
+      resolveExpirySlotGuaranteesDate('membership_card', {
+        hasExpiry: true,
+        membershipExpiryMode: 'specific_date',
+        membershipSpecificExpiryDate: 'not-a-date',
+      }),
+    ).toBe(false);
+  });
+
+  it('is FALSE for a free membership with a non-positive custom day count', () => {
+    expect(
+      resolveExpirySlotGuaranteesDate('membership_card', {
+        hasExpiry: true,
+        membershipExpiryMode: 'custom_days',
+        membershipCustomExpiryDays: 0,
+      }),
+    ).toBe(false);
+  });
+
+  it('is FALSE for a PAID membership with no expiry mode (the tier duration is holder-level)', () => {
+    // A paid membership resolves its expiry from the HOLDER's frozen
+    // tier snapshot (monthly / yearly). A free holder has no tier, so
+    // the template can NOT guarantee a date for every holder.
+    expect(
+      resolveExpirySlotGuaranteesDate('membership_card', { hasExpiry: true }),
+    ).toBe(false);
+  });
+
+  it('is TRUE for a PAID membership WITH an expiry mode (the mode wins for every holder)', () => {
+    expect(
+      resolveExpirySlotGuaranteesDate('membership_card', {
+        hasExpiry: true,
+        membershipExpiryMode: 'custom_days',
+        membershipCustomExpiryDays: 365,
+      }),
+    ).toBe(true);
+  });
+});
+
+describe('resolveExpirySlotGuaranteesDate — coupon', () => {
+  it('is TRUE when passValidDays is set', () => {
+    expect(
+      resolveExpirySlotGuaranteesDate('coupon_card', { passValidDays: 30 }),
+    ).toBe(true);
+  });
+
+  it('is TRUE when a valid fixed expiryDate is set', () => {
+    expect(
+      resolveExpirySlotGuaranteesDate('coupon_card', { expiryDate: '2027-10-23' }),
+    ).toBe(true);
+  });
+
+  it('is FALSE when neither is set', () => {
+    expect(resolveExpirySlotGuaranteesDate('coupon_card', {})).toBe(false);
+    expect(
+      resolveExpirySlotGuaranteesDate('coupon_card', {
+        passValidDays: null,
+        expiryDate: '',
+      }),
+    ).toBe(false);
+  });
+
+  it('is FALSE when the fixed expiryDate is malformed', () => {
+    expect(
+      resolveExpirySlotGuaranteesDate('coupon_card', { expiryDate: 'not-a-date' }),
+    ).toBe(false);
+  });
+
+  it('is FALSE when passValidDays is not a positive integer', () => {
+    expect(
+      resolveExpirySlotGuaranteesDate('coupon_card', { passValidDays: 0 }),
+    ).toBe(false);
+  });
+});
+
+describe('resolveExpirySlotGuaranteesDate — discount', () => {
+  it('is TRUE when discountCustomExpiryDays is set', () => {
+    expect(
+      resolveExpirySlotGuaranteesDate('discount_card', {
+        discountCustomExpiryDays: 30,
+      }),
+    ).toBe(true);
+  });
+
+  it('is TRUE when a valid discountSpecificExpiryDate is set', () => {
+    expect(
+      resolveExpirySlotGuaranteesDate('discount_card', {
+        discountSpecificExpiryDate: '2027-10-23',
+      }),
+    ).toBe(true);
+  });
+
+  it('is FALSE when neither is set', () => {
+    expect(resolveExpirySlotGuaranteesDate('discount_card', {})).toBe(false);
+  });
+
+  it('is FALSE when the specific date is malformed', () => {
+    expect(
+      resolveExpirySlotGuaranteesDate('discount_card', {
+        discountSpecificExpiryDate: 'not-a-date',
+      }),
+    ).toBe(false);
+  });
+});
+
+describe('resolveExpirySlotGuaranteesDate — other card types', () => {
+  it('is FALSE for a card type with no expiry concept (balance / points slots)', () => {
+    expect(resolveExpirySlotGuaranteesDate('stamp_card', {})).toBe(false);
+    expect(resolveExpirySlotGuaranteesDate('gift_card', {})).toBe(false);
+    expect(resolveExpirySlotGuaranteesDate('reward_card', {})).toBe(false);
+  });
+
+  it('is FALSE for an unknown / missing card type', () => {
+    expect(resolveExpirySlotGuaranteesDate(null, {})).toBe(false);
+    expect(resolveExpirySlotGuaranteesDate(undefined, {})).toBe(false);
+    expect(resolveExpirySlotGuaranteesDate('not_a_card_type', {})).toBe(false);
   });
 });

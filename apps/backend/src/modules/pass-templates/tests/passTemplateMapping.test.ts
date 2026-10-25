@@ -840,3 +840,110 @@ describe('mapTemplateToPasscreator — membership_card backFields from tiers (v1
     ]);
   });
 });
+
+/**
+ * The expiry slot's Passcreator field TYPE (2026-10-26).
+ *
+ * Passcreator's `date` field type rejects a non-date string. A card
+ * that never expires has no date to send — the runtime writes the
+ * `∞` sentinel instead. So the template must declare the expiry slot
+ * as `text` when SOME holder could have no expiry date, and as `date`
+ * when EVERY holder is guaranteed one.
+ */
+describe('mapTemplateToPasscreator — expiry slot field type (2026-10-26)', () => {
+  /** A row of the given card type with the given expiry settings. */
+  function rowWithExpiry(
+    cardType: TemplatesRow['card_type'],
+    settings: Partial<TemplatesRow['settings']>,
+  ): TemplatesRow {
+    const row = makeRow({ card_type: cardType });
+    row.settings = { ...row.settings, ...settings };
+    return row;
+  }
+
+  it('membership_card with hasExpiry=false → the expiry slot is "text" (never expires)', () => {
+    const body = mapTemplateToPasscreator({
+      template: rowWithExpiry('membership_card', { hasExpiry: false }),
+      language: 'en',
+      r2PublicUrl: R2_URL,
+    });
+    expect(body.fields.headerFields[0]?.key).toBe('memberExpiry');
+    expect(body.fields.headerFields[0]?.type).toBe('text');
+  });
+
+  it('membership_card with a guaranteed free-membership expiry → the expiry slot stays "date"', () => {
+    const body = mapTemplateToPasscreator({
+      template: rowWithExpiry('membership_card', {
+        hasExpiry: true,
+        membershipExpiryMode: 'custom_days',
+        membershipCustomExpiryDays: 30,
+      }),
+      language: 'en',
+      r2PublicUrl: R2_URL,
+    });
+    expect(body.fields.headerFields[0]?.key).toBe('memberExpiry');
+    expect(body.fields.headerFields[0]?.type).toBe('date');
+  });
+
+  it('membership_card with NO expiry mode → the expiry slot is "text" (the paid tier duration is holder-level)', () => {
+    const body = mapTemplateToPasscreator({
+      template: rowWithExpiry('membership_card', { hasExpiry: true }),
+      language: 'en',
+      r2PublicUrl: R2_URL,
+    });
+    expect(body.fields.headerFields[0]?.type).toBe('text');
+  });
+
+  it('coupon_card without a validity period → the expiry slot is "text"', () => {
+    const body = mapTemplateToPasscreator({
+      template: rowWithExpiry('coupon_card', { passValidDays: null, expiryDate: '' }),
+      language: 'en',
+      r2PublicUrl: R2_URL,
+    });
+    expect(body.fields.headerFields[0]?.key).toBe('couponExpiry');
+    expect(body.fields.headerFields[0]?.type).toBe('text');
+  });
+
+  it('coupon_card WITH passValidDays → the expiry slot stays "date"', () => {
+    const body = mapTemplateToPasscreator({
+      template: rowWithExpiry('coupon_card', { passValidDays: 30 }),
+      language: 'en',
+      r2PublicUrl: R2_URL,
+    });
+    expect(body.fields.headerFields[0]?.key).toBe('couponExpiry');
+    expect(body.fields.headerFields[0]?.type).toBe('date');
+  });
+
+  it('discount_card without an expiry setting → the expiry slot is "text"', () => {
+    const body = mapTemplateToPasscreator({
+      template: rowWithExpiry('discount_card', {
+        discountCustomExpiryDays: null,
+        discountSpecificExpiryDate: null,
+      }),
+      language: 'en',
+      r2PublicUrl: R2_URL,
+    });
+    expect(body.fields.headerFields[0]?.key).toBe('discountExpiry');
+    expect(body.fields.headerFields[0]?.type).toBe('text');
+  });
+
+  it('discount_card WITH a custom day count → the expiry slot stays "date"', () => {
+    const body = mapTemplateToPasscreator({
+      template: rowWithExpiry('discount_card', { discountCustomExpiryDays: 60 }),
+      language: 'en',
+      r2PublicUrl: R2_URL,
+    });
+    expect(body.fields.headerFields[0]?.key).toBe('discountExpiry');
+    expect(body.fields.headerFields[0]?.type).toBe('date');
+  });
+
+  it('balance-kind card types are UNCHANGED (the slot is a number, never an expiry slot)', () => {
+    const body = mapTemplateToPasscreator({
+      template: makeRow({ card_type: 'reward_card' }),
+      language: 'en',
+      r2PublicUrl: R2_URL,
+    });
+    expect(body.fields.headerFields[0]?.key).toBe('balance');
+    expect(body.fields.headerFields[0]?.type).toBe('number');
+  });
+});

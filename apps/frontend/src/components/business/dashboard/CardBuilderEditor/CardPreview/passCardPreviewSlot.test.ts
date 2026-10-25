@@ -166,8 +166,9 @@ describe('resolveHeaderRightSlot — branch order (regression — 2026-10-05)', 
     }
   });
 
-  it('2. discount_card + both discount fields null → "—" fallback', () => {
-    // Theoretical — Step 6 requires one. The helper renders "—" defensively.
+  it('2. discount_card + both discount fields null → "∞" fallback', () => {
+    // Theoretical — Step 6 requires one. The helper renders "∞"
+    // defensively, matching the runtime sentinel (2026-10-26).
     const slot = resolveHeaderRightSlot(tKey, {
       cardType: 'discount_card',
       discountCustomExpiryDays: null,
@@ -177,7 +178,7 @@ describe('resolveHeaderRightSlot — branch order (regression — 2026-10-05)', 
     });
     expect(slot.kind).toBe('preview');
     if (slot.kind === 'preview') {
-      expect(slot.value).toBe('—');
+      expect(slot.value).toBe('∞');
     }
   });
 
@@ -368,22 +369,29 @@ describe('formatExpiryDateForHeader — locale-driven date formatting', () => {
 });
 
 /**
- * The `∞` / `—` sentinel values.
+ * The `∞` sentinel value.
  *
- * These two literals are the "no value" markers of the header right slot:
- *   - `∞` (infinity) — "this card never expires". Used by
- *     `membership_card` when `hasExpiry` is false, and by `coupon_card`
- *     when BOTH `passValidDays` and `expiryDate` are empty.
- *   - `—` (em dash) — "no expiry configured". Used by `discount_card`
- *     when BOTH `discountCustomExpiryDays` and `discountSpecificExpiryDate`
- *     are null (theoretical — Step 6 requires one of them).
+ * `∞` (infinity) is the "never expires" marker of the header right
+ * slot. It is used by:
+ *   - `membership_card` when `hasExpiry` is false,
+ *   - `coupon_card` when BOTH `passValidDays` and `expiryDate` are
+ *     empty,
+ *   - `discount_card` when BOTH `discountCustomExpiryDays` and
+ *     `discountSpecificExpiryDate` are null.
  *
- * They are pinned HERE (the resolver layer) as well as at the component
- * layer, because the resolver is now the single owner of the value
- * computation: the editor preview (`PassCardPreviewHeader.tsx`) and the
- * template library preview (`TemplateCardPreview.tsx`) both obtain them
- * from `resolveHeaderRightSlot`, so a sentinel that drifted in the
- * resolver would silently change BOTH surfaces at once.
+ * 2026-10-26: the discount card's "no expiry configured" fallback
+ * changed from the em dash `—` to `∞`, so the editor preview and the
+ * Wallet (which receives the very same sentinel from the runtime
+ * formatter) can never disagree. The literal now lives in ONE place —
+ * `packages/shared/constants/headerSlots.ts::UNLIMITED_EXPIRY_VALUE` —
+ * and both surfaces read it from there.
+ *
+ * The sentinel is pinned HERE (the resolver layer) as well as at the
+ * component layer, because the resolver is now the single owner of the
+ * value computation: the editor preview (`PassCardPreviewHeader.tsx`)
+ * and the template library preview (`TemplateCardPreview.tsx`) both
+ * obtain them from `resolveHeaderRightSlot`, so a sentinel that
+ * drifted in the resolver would silently change BOTH surfaces at once.
  */
 describe('resolveHeaderRightSlot — the "no value" sentinel values', () => {
   it('membership_card + hasExpiry=false → "∞" (never expires)', () => {
@@ -446,10 +454,11 @@ describe('resolveHeaderRightSlot — the "no value" sentinel values', () => {
     }
   });
 
-  it('discount_card + both discount fields null → "—" (em dash, NOT "∞")', () => {
-    // The two sentinels are NOT interchangeable: `discount_card` has a
-    // mandatory expiry, so "not configured" is an em dash; only the
-    // "never expires" contracts use the infinity sign.
+  it('discount_card + both discount fields null → "∞" (never expires)', () => {
+    // 2026-10-26: the discount card now uses the SAME `∞` sentinel as
+    // membership / coupon — and as the Wallet runtime — so the editor
+    // and the deployed pass can never show different "no expiry"
+    // markers.
     const slot = resolveHeaderRightSlot(tKey, {
       cardType: 'discount_card',
       discountCustomExpiryDays: null,
@@ -459,13 +468,13 @@ describe('resolveHeaderRightSlot — the "no value" sentinel values', () => {
     });
     expect(slot.kind).toBe('preview');
     if (slot.kind === 'preview') {
-      expect(slot.value).toBe('—');
-      expect(slot.value).not.toBe('∞');
+      expect(slot.value).toBe('∞');
+      expect(slot.value).not.toBe('—');
       expect(slot.testId).toBe('discount-expiry-preview');
     }
   });
 
-  it('discount_card + a real date → never "—"', () => {
+  it('discount_card + a real date → never "∞"', () => {
     const slot = resolveHeaderRightSlot(tKey, {
       cardType: 'discount_card',
       discountCustomExpiryDays: null,
@@ -476,11 +485,11 @@ describe('resolveHeaderRightSlot — the "no value" sentinel values', () => {
     expect(slot.kind).toBe('preview');
     if (slot.kind === 'preview') {
       expect(slot.value).toBe('10.30.2026');
-      expect(slot.value).not.toBe('—');
+      expect(slot.value).not.toBe('∞');
     }
   });
 
-  it('the sentinels are locale-INVARIANT (no "∞" / "—" formatting drift)', () => {
+  it('the sentinels are locale-INVARIANT (no "∞" formatting drift)', () => {
     // The sentinels are universal across locales — the zh-TW surface must
     // show the same characters, not a localized variant.
     for (const locale of ['en', 'zh-TW', 'zh-CN']) {
@@ -498,7 +507,7 @@ describe('resolveHeaderRightSlot — the "no value" sentinel values', () => {
         locale,
       });
       if (membership.kind === 'preview') expect(membership.value).toBe('∞');
-      if (discount.kind === 'preview') expect(discount.value).toBe('—');
+      if (discount.kind === 'preview') expect(discount.value).toBe('∞');
     }
   });
 });

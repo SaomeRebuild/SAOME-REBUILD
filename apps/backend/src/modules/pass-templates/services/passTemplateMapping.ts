@@ -154,6 +154,8 @@ import {
   HEADER_FIELD_TYPES,
 } from '@saome/shared/i18n/fieldLabels';
 import { CARD_FIELDS, type FieldSemanticType } from '@saome/shared/constants/card-fields';
+import { getHeaderSlot } from '@saome/shared/constants/headerSlots';
+import { resolveExpirySlotGuaranteesDate } from '@saome/shared/logic/passExpiry';
 import type {
   PasscreatorAdditionalProperty,
   PasscreatorFieldType,
@@ -602,6 +604,29 @@ export function mapTemplateToPasscreator(args: MapTemplateToPasscreatorArgs): Pa
   // override is applied — see `fieldLabels.ts` for the rationale. The
   // bulk map is still re-exported below for downstream consumers.
   const headerEntry = getHeaderField(template.card_type, language);
+  // 2026-10-26 — the expiry slot's Passcreator field TYPE depends on
+  // whether the template GUARANTEES every holder an expiry date.
+  //
+  // Passcreator's `date` field type rejects a non-date string, but a
+  // card that never expires has no date to send — the runtime writes
+  // the `∞` sentinel instead (see
+  // `packages/shared/logic/passFieldFormatter.ts`). So:
+  //
+  //   - guaranteed expiry date → 'date' (unchanged behaviour)
+  //   - possibly NO expiry date → 'text' (so `∞` is accepted)
+  //
+  // The check is delegated to `resolveExpirySlotGuaranteesDate`, which
+  // holds for EVERY holder context (a membership template's paid-tier
+  // duration lives on the holder, not on the template).
+  const headerSlot = getHeaderSlot(template.card_type);
+  const isExpirySlot =
+    headerSlot !== null &&
+    (headerSlot.kind === 'member_expiry' ||
+      headerSlot.kind === 'discount_expiry' ||
+      headerSlot.kind === 'coupon_expiry');
+  const expirySlotGuaranteesDate = isExpirySlot
+    ? resolveExpirySlotGuaranteesDate(template.card_type, s)
+    : true;
   const headerFields = headerEntry
     ? [{
         key: headerEntry.key,
@@ -611,7 +636,12 @@ export function mapTemplateToPasscreator(args: MapTemplateToPasscreatorArgs): Pa
         //   - 'balance' / 'giftPoints' → 'number'
         //   - 'memberExpiry' / 'discountExpiry' / 'couponExpiry' → 'date'
         //   - other (future) → 'text'
-        type: mapFieldType(headerEntry.key),
+        // …except for an expiry slot whose template does not guarantee
+        // an expiry date — that one becomes 'text' so the runtime's
+        // `∞` sentinel is accepted upstream.
+        type: isExpirySlot && !expirySlotGuaranteesDate
+          ? 'text'
+          : mapFieldType(headerEntry.key),
         label: headerEntry.label,
         // v11: value uses `{KeyName}` cross-reference so Passcreator
         // designer shows the slot with its intended variable bound.

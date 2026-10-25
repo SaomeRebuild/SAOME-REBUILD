@@ -489,17 +489,18 @@ describe('PassCardPreviewHeader — discount expiry preview for discount_card', 
     expect(screen.getByText(expected)).toBeInTheDocument();
   });
 
-  it('discount_card + both discountCustomExpiryDays and discountSpecificExpiryDate = null → "—" placeholder', () => {
+  it('discount_card + both discountCustomExpiryDays and discountSpecificExpiryDate = null → "∞" placeholder', () => {
     // Theoretical fallback: Step 6 requires one or the other (the
     // "bothNullError" validation enforces this). If both happen to be
-    // null at preview time, the component renders "—" defensively.
+    // null at preview time, the component renders the shared "never
+    // expires" sentinel "∞" defensively (2026-10-26).
     useCardBuilderStore.setState({
       discountCustomExpiryDays: null,
       discountSpecificExpiryDate: null,
     });
     render(<PassCardPreviewHeader cardType="discount_card" />);
     expect(screen.getByText('discountExpiry.label')).toBeInTheDocument();
-    expect(screen.getByText('—')).toBeInTheDocument();
+    expect(screen.getByText('∞')).toBeInTheDocument();
   });
 
   it('discount_card — testid "discount-expiry-preview" is rendered for test selectors', () => {

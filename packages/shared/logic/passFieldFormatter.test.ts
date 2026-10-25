@@ -383,13 +383,46 @@ describe('formatPassValues — value types', () => {
     expect(result.expirationDate).toBe('2027-10-23 00:00');
   });
 
-  it('omits the expiry header property when there is no expiry', () => {
+  it('writes the "∞" sentinel into the expiry header property when there is no expiry', () => {
+    // 2026-10-26 (regression): the expiry property must NOT be
+    // omitted. A PATCH omits = "keep the upstream value", so
+    // omitting would leave a stale date on the holder's Wallet
+    // forever. The `∞` sentinel is the only way to clear it.
     const result = formatPassValues({
       cardType: 'membership_card',
       snapshot: snapshot({ expiryDate: null }),
       boundFieldKeys: [],
     });
-    expect(result.properties).not.toHaveProperty('memberExpiry');
+    expect(result.properties.memberExpiry).toBe('∞');
+    // The PASS-level expiry stays omitted — "no pass expiry" is a
+    // different concept from "no expiry in the header slot".
     expect(result.expirationDate).toBeUndefined();
+  });
+
+  it('writes the "∞" sentinel for the discount + coupon expiry slots too', () => {
+    const discount = formatPassValues({
+      cardType: 'discount_card',
+      snapshot: snapshot({ expiryDate: null }),
+      boundFieldKeys: [],
+    });
+    expect(discount.properties.discountExpiry).toBe('∞');
+    expect(discount.expirationDate).toBeUndefined();
+
+    const coupon = formatPassValues({
+      cardType: 'coupon_card',
+      snapshot: snapshot({ expiryDate: null }),
+      boundFieldKeys: [],
+    });
+    expect(coupon.properties.couponExpiry).toBe('∞');
+    expect(coupon.expirationDate).toBeUndefined();
+  });
+
+  it('still writes the formatted date (NOT the sentinel) when there IS an expiry', () => {
+    const result = formatPassValues({
+      cardType: 'membership_card',
+      snapshot: snapshot({ expiryDate: '2027-10-23' }),
+      boundFieldKeys: [],
+    });
+    expect(result.properties.memberExpiry).toBe('2027-10-23 00:00');
   });
 });

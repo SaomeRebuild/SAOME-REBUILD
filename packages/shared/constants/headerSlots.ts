@@ -87,6 +87,35 @@ export type HeaderSlotKind =
   | 'gift_points';
 
 /**
+ * The display value used when a card NEVER expires.
+ *
+ * WHY a shared constant (2026-10-26):
+ *
+ * The "no expiry" state is rendered by THREE independent surfaces:
+ *
+ *   1. The frontend editor preview
+ *      (`apps/frontend/.../CardPreview/passCardPreviewSlot.ts`) — shows
+ *      `∞` for membership / coupon expiry slots.
+ *   2. The runtime value formatter
+ *      (`packages/shared/logic/passFieldFormatter.ts`) — writes `∞`
+ *      into the Passcreator expiry property when the holder has no
+ *      expiry date (so a PATCH actually OVERWRITES a stale value
+ *      instead of leaving the old date in place).
+ *   3. The template push type decision
+ *      (`apps/backend/.../passTemplateMapping.ts`) — picks the
+ *      Passcreator field type (`date` vs `text`) for the expiry slot.
+ *
+ * When these three disagree on the literal, the editor shows `∞` while
+ * the Wallet shows a stale date — the exact symptom this constant
+ * exists to eliminate. One definition, three consumers.
+ *
+ * The character is U+221E INFINITY. `JSON.stringify` does NOT escape
+ * non-ASCII characters, so it survives the wire to Passcreator
+ * verbatim (unlike `\u221e`, which some HTTP layers rewrite).
+ */
+export const UNLIMITED_EXPIRY_VALUE = '∞';
+
+/**
  * The metadata for one header kind.
  *
  * Shared by every card type that maps to this kind — that is the whole

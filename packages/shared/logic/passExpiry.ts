@@ -498,3 +498,67 @@ export function resolveExpiryRuleForCardType(
       return { mode: 'never' };
   }
 }
+
+/**
+ * A fixed probe date used when checking whether an expiry slot is
+ * guaranteed to carry a date.
+ *
+ * The value is a CONSTANT (not `Date.now()`) so the function stays
+ * pure and deterministic: `duration_days` / `duration_months` rules
+ * always resolve to SOME date for a valid day/month count, so the
+ * probe date itself never changes the verdict — only the RULE's
+ * validity does. Using a fixed date also keeps the function testable
+ * without a fake clock.
+ */
+const PROBE_ISO_DATE: IsoDate = '2026-01-01';
+
+/**
+ * Does this template GUARANTEE that every holder of it has an expiry
+ * date?
+ *
+ * WHY THIS EXISTS (2026-10-26):
+ *
+ * The template push writes the Passcreator field type for the header
+ * expiry slot. Passcreator's `date` field type REJECTS a non-date
+ * string, but a card that never expires has no date to send — the
+ * runtime writes the `∞` sentinel instead. So the template must
+ * declare the expiry slot as `text` when SOME holder could have no
+ * expiry date, and as `date` when EVERY holder is guaranteed one.
+ *
+ * "Guaranteed" is a property of the TEMPLATE, not of one holder, so
+ * this function must hold for EVERY possible holder context:
+ *
+ *   - `membership_card` — the paid-tier duration (`monthly` /
+ *     `yearly`) lives on the HOLDER's frozen tier snapshot, not on the
+ *     template. A free member has `durationType: null`. So all three
+ *     contexts (free / monthly / yearly) must be checked; a paid-only
+ *     template would still leave free members without a date.
+ *   - every other card type — one context is enough (the expiry
+ *     settings are card-wide).
+ *
+ * The check is delegated to `resolveExpiryDate`, which already
+ * validates the rule's parameters (positive day counts, well-formed
+ * ISO dates, …). A malformed setting therefore degrades to "not
+ * guaranteed" — the SAFE direction, because it means the expiry slot
+ * is declared `text` and the `∞` sentinel is accepted.
+ *
+ * @param cardType - The template's card type.
+ * @param settings - The template's settings (the expiry-relevant subset).
+ * @returns `true` when every possible holder has an expiry date.
+ */
+export function resolveExpirySlotGuaranteesDate(
+  cardType: string | null | undefined,
+  settings: PassTemplateExpirySettings | null | undefined,
+): boolean {
+  // The paid-membership tier duration is holder-level, so a membership
+  // template must hold for a free holder AND for both paid durations.
+  const contexts: PassHolderExpiryContext[] =
+    cardType === 'membership_card'
+      ? [{ durationType: null }, { durationType: 'monthly' }, { durationType: 'yearly' }]
+      : [{}];
+
+  return contexts.every((context) => {
+    const rule = resolveExpiryRuleForCardType(cardType, settings, context);
+    return resolveExpiryDate(rule, PROBE_ISO_DATE) !== null;
+  });
+}

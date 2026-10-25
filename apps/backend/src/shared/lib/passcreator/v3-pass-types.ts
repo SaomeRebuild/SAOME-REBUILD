@@ -131,6 +131,18 @@ export interface PassUpdateResult {
    * Empty when `verified` is true.
    */
   mismatchedFields: string[];
+  /**
+   * Whether the update landed only PARTIALLY.
+   *
+   * Set when the payload carried the "never expires" sentinel (`∞`)
+   * and the upstream rejected it with a 400 (the template still
+   * declares the expiry slot as a `date` field). In that case the
+   * update was retried WITHOUT the sentinel: every other field
+   * landed, but the expiry slot kept its previous value.
+   *
+   * `false` for a normal (fully applied) update.
+   */
+  degraded?: boolean;
 }
 
 /**

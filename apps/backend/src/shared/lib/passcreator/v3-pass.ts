@@ -5,6 +5,7 @@
  */
 
 import { BadGatewayError } from '../saomeError';
+import { UNLIMITED_EXPIRY_VALUE } from '@saome/shared/constants/headerSlots';
 import { requireEnv } from './env';
 import { passcreatorFetch } from './transport';
 import {
@@ -574,14 +575,62 @@ export async function updatePassValues(
     data.expirationDate = values.expirationDate;
   }
 
-  await passcreatorFetch(
-    e,
-    `/api/v3/pass/${encodeURIComponent(identifier)}?async=false`,
-    {
-      method: 'PATCH',
-      body: { data },
-    },
+  // 2026-10-26 — the `∞` fallback.
+  //
+  // A holder with no expiry date writes the `∞` sentinel into the
+  // expiry property. Passcreator accepts that ONLY when the template
+  // declared the slot as a `text` field. A template that was pushed
+  // BEFORE the tenant switched the card to "never expires" still
+  // declares the slot as `date`, and Passcreator then rejects the
+  // whole PATCH with a 400 ("A provided field value is invalid") —
+  // which would also block the OTHER fields (balance / points) from
+  // syncing.
+  //
+  // So: when the payload carries the sentinel and the upstream
+  // rejects it with a 400, retry ONCE without the sentinel. The
+  // remaining fields land; the expiry slot keeps whatever it had.
+  // The result is flagged `degraded` so the caller knows the expiry
+  // value was NOT applied.
+  const sentinelKeys = Object.keys(data).filter(
+    (key) => data[key] === UNLIMITED_EXPIRY_VALUE,
   );
+  let degraded = false;
+
+  try {
+    await passcreatorFetch(
+      e,
+      `/api/v3/pass/${encodeURIComponent(identifier)}?async=false`,
+      {
+        method: 'PATCH',
+        body: { data },
+      },
+    );
+  } catch (err) {
+    const isUpstream400 =
+      err instanceof BadGatewayError && err.details?.upstreamStatus === 400;
+    if (!isUpstream400 || sentinelKeys.length === 0) throw err;
+
+    const retryData: Record<string, string | number> = { ...data };
+    for (const key of sentinelKeys) {
+      delete retryData[key];
+    }
+    try {
+      await passcreatorFetch(
+        e,
+        `/api/v3/pass/${encodeURIComponent(identifier)}?async=false`,
+        {
+          method: 'PATCH',
+          body: { data: retryData },
+        },
+      );
+      degraded = true;
+    } catch {
+      // The retry failed too ⇒ the sentinel was not the (only)
+      // problem. Surface the ORIGINAL error — it describes the real
+      // upstream rejection.
+      throw err;
+    }
+  }
 
   // Read-back verification. A failure here does NOT undo the update —
   // the PATCH already landed — so we degrade to "not verified" rather
@@ -631,6 +680,7 @@ export async function updatePassValues(
       identifier,
       verified: false,
       mismatchedFields: Object.keys(values.properties),
+      degraded,
     };
   }
 
@@ -638,6 +688,7 @@ export async function updatePassValues(
     identifier,
     verified: mismatchedFields.length === 0,
     mismatchedFields,
+    degraded,
   };
 }
 

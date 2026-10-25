@@ -51,6 +51,7 @@ import type { CardFieldKey } from '@saome/shared/constants/card-fields';
 import type { CardType, Currency } from '@saome/shared/schemas/card';
 import {
   getHeaderSlot,
+  UNLIMITED_EXPIRY_VALUE,
 } from '@saome/shared/constants/headerSlots';
 import type { CouponDiscountType } from '@saome/shared/constants/coupon-card';
 import type { MultipassRewardType } from '@saome/shared/constants/multipass-card';
@@ -649,8 +650,10 @@ export function formatExpiryDateForHeader(
 /**
  * Compute the discount-card expiry value: today + N days when
  * `discountCustomExpiryDays` is set; otherwise the absolute date.
- * Returns `—` (em-dash) when both are null (theoretical — Step 6
- * requires one of them).
+ * Returns `∞` (the shared "never expires" sentinel) when both are
+ * null — the discount card never expires in that case, and the
+ * Wallet shows the very same `∞` (see
+ * `packages/shared/constants/headerSlots.ts::UNLIMITED_EXPIRY_VALUE`).
  */
 function computeDiscountExpiryValue(
   inputs: HeaderRightSlotInputs,
@@ -673,7 +676,7 @@ function computeDiscountExpiryValue(
   if (discountSpecificExpiryDate) {
     return formatExpiryDateForHeader(discountSpecificExpiryDate, locale);
   }
-  return '—';
+  return UNLIMITED_EXPIRY_VALUE;
 }
 
 /**
@@ -699,7 +702,7 @@ function computeCouponExpiryValue(
   if (expiryDate) {
     return formatExpiryDateForHeader(expiryDate, locale);
   }
-  return '∞';
+  return UNLIMITED_EXPIRY_VALUE;
 }
 
 /**
@@ -750,7 +753,7 @@ export function resolveHeaderRightSlot(
       const { hasExpiry, expiryDate, locale = '' } = inputs;
       const value = hasExpiry
         ? formatExpiryDateForHeader(expiryDate || DEFAULT_EXPIRY_DATE, locale)
-        : '∞';
+        : UNLIMITED_EXPIRY_VALUE;
       return {
         kind: 'preview',
         label: t(spec.labelKey),

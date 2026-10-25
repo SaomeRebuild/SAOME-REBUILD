@@ -59,7 +59,7 @@
  */
 
 import type { CardFieldKey } from '../constants/card-fields';
-import { getHeaderSlot } from '../constants/headerSlots';
+import { getHeaderSlot, UNLIMITED_EXPIRY_VALUE } from '../constants/headerSlots';
 import type { CardType } from '../schemas/card';
 import type {
   PassValueMetric,
@@ -315,9 +315,17 @@ export function formatPassValues(input: FormatPassValuesInput): PasscreatorPassV
     case 'discount_expiry':
     case 'coupon_expiry': {
       const formatted = formatPasscreatorDateTime(snapshot.expiryDate);
-      if (formatted !== null) {
-        properties[spec.passcreatorKey] = formatted;
-      }
+      // No expiry date ⇒ the card NEVER expires ⇒ write the `∞`
+      // sentinel instead of OMITTING the property.
+      //
+      // WHY NOT OMIT (2026-10-26): the per-pass update is a PATCH,
+      // and Passcreator's PATCH semantics are "update ONLY the
+      // fields you provide". Omitting the expiry property therefore
+      // means "keep whatever the pass already had" — a holder whose
+      // card was re-pushed from "fixed expiry" to "never expires"
+      // would keep showing the OLD date on their Wallet forever.
+      // Writing `∞` is the only way to actually clear it.
+      properties[spec.passcreatorKey] = formatted ?? UNLIMITED_EXPIRY_VALUE;
       break;
     }
     default: {
