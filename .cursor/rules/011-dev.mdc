@@ -66,3 +66,5 @@ Sync: https://github.com/SaomeRebuild/SAOME-REBUILD commit abc1234
 - ❌ 沒填 body 就 commit（除 trivial chore）
 - ❌ 沒記 GitHub sync 狀態
 - ❌ 把 secrets 寫進 commit message
+- ❌ commit message 與程式碼註解寫中文（commit message 用英文；程式碼註解一律英文 — 詳見 `.cursor/rules/039-powershell-free-code-authoring.mdc` § 2 / § 3）
+- ❌ 在 PowerShell 裡用 `git commit -m "中文..."` 產生 commit message（console code page 會把中文寫成亂碼，且 git history 難以修復）；改用 `git commit -F <file>`（UTF-8 檔案，由 `Write` 或 Node 腳本產生）或 Node `child_process` 明確指定 encoding

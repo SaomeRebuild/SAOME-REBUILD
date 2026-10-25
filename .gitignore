@@ -43,12 +43,26 @@ pic/
 # Runtime data — exclude most runtime/ephemeral outputs, but KEEP
 # improvement feedback inside `runs/improvements/` as team knowledge,
 # KEEP decision logs inside `runs/decisions/` (per AGENTS.md "Decision
-# Log 規範 (L3 Heavy 必填)"), and KEEP public articles inside
-# `runs/articles/` (per skill article-writing).
+# Log 規範 (L3 Heavy 必填)"), KEEP public articles inside
+# `runs/articles/` (per skill article-writing), and KEEP the
+# implementation plans inside `runs/plans/`.
+#
+# `runs/plans/` matters: the Decision Logs reference the plans by
+# path (e.g. `runs/decisions/2026-10-24-pass-runtime-value-model.md`
+# → `runs/plans/2026-10-24-pass-runtime-values-roadmap.md` +
+# `runs/plans/2026-10-24-pass-scanner-event-semantics.md`). If the
+# plans were ignored, those references would dangle for anyone who
+# clones the repo — the plan is the record of WHY a decision was
+# made, and the follow-up work that is blocked on it.
 runs/*
 !runs/improvements/
 !runs/decisions/
 !runs/articles/
+!runs/plans/
+
+# Supabase CLI local state — never commit (the CLI writes its version
+# marker + project cache here; both are machine-local).
+supabase/.temp/
 
 # mu-plugins: read-only reference, never commit
 mu-plugins/
@@ -73,6 +87,11 @@ Thumbs.db
 .commit-msg-*.tmp
 .git-rebase-todo
 *.tmp
+# Repo-root agent scratch files (for example, .tmp_inventory.json)
+# NOTE: `*.tmp` above only matches names ENDING in `.tmp`, so it does NOT
+# cover `.tmp_inventory.json` / `.tmp_foo.mjs`. Keep this rule: dropping it
+# lets agent scratch files show up as untracked in every `git status`.
+/.tmp*
 
 # Debug probe artifacts — ad-hoc one-off investigation scripts/outputs
 # (See runs/improvements/feedback/ for the trace that produced them)

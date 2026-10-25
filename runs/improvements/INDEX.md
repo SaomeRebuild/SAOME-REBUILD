@@ -245,6 +245,7 @@
 | 2026-09-08 | **STAMP_CARD_TYPES drift 風險**：`Step3CardFields/filterCARD_FIELDS_BY_CARD_TYPE.ts` 與 `<Step3StampGrid />` conditional guard 各寫一份；等第三個 caller 出現時再 hoist 到 `shared/constants/card-types.ts` | ⏳ pending — drift 風險低但存在 |
 | 2026-09-08 | wrangler CPU limit crash 根因追蹤（哪個 endpoint 觸發？）| ⏳ pending |
 | 2026-09-08 | `dev-restart.ps1` script 納入正式 SOP | ⏳ pending |
+| 2026-10-25 | **Context budget 制度固化（Rule 038 + 派工模板目前全部 untracked）**：`.cursor/rules/038-context-budget-discipline.mdc`（256 行）、`.cursor/templates/subagent-task-prompt.md`（127 行）、`runs/improvements/feedback/20261025-context-overflow-crash-forensics.md`、`runs/decisions/2026-10-24-pass-runtime-value-model.md`、`runs/plans/`、`AGENTS.md` L146 的 Rule 038 條目、`AGENTS.md` 的 `!runs/plans/` — 全部 `git ls-files` 查無 = 只存在 working tree，fresh clone 拿不到。**修法**：一次 commit 收掉（照 commit `050d326` Rule 037 的 6 步格式寫 body）→ 新增 `scripts/check-context-budget.mjs`（照 `apps/backend/scripts/check-migrations-applied.cjs` 的 exit code 慣例，比對 Rule 038 高風險表 vs 實際行數漂移 + 漏網的 >300 行檔）→ 開 CI job（照 `.github/workflows/deploy.yml` 的 `migrations` job 形狀）→ 落地 `.git/hooks/pre-commit`（Rule 037 §6 範本至今 0 個 hook）→ 刪掉 `runs/investigations/2026-10-25-crash-root-cause.md`（與 feedback 版 SHA256 相同但被 `runs/*` gitignore，假備份）。**實測依據**：8 個崩潰 agent 的 Read 呼叫數 13/14/15/16/16/19/25/27 vs 存活 agent ≤12 時 21/21 零崩潰 | ⏳ pending — 制度只活在 working tree，下次 clone 等於沒發生；且 Rule 038 本身缺「單 agent Read 上限 12」硬預算（`ce1d2db0` 完全遵守 Rule 038 仍於 03:26 爆掉，Reads=14） |
 
 ## 使用方式
 

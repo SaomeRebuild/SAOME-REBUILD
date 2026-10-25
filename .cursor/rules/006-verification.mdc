@@ -88,3 +88,4 @@ Sync: https://github.com/SaomeRebuild/SAOME-REBUILD commit abc1234
 - ❌ 沒跑驗證就 commit（「看起來對」≠「驗證通過」）
 - ❌ 用 `Write` 覆蓋既有檔案（必須 `Read` + `StrReplace`）
 - ❌ commit 訊息沒列驗證輸出
+- ❌ 驗證輸出含非 ASCII 內容時，未確認編碼無損就貼回紀錄（中文輸出經 PowerShell 顯示可能已變成 U+FFFD；貼回前先確認，或改用 `node -e "console.log(require('fs').readFileSync(p,'utf8'))"` — 詳見 `.cursor/rules/039-powershell-free-code-authoring.mdc` § 5）

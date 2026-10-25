@@ -1,0 +1,256 @@
+---
+description: Context Budget 紀律 — 控制 agent 對話 context 消耗，避免單次讀入大檔案 / node_modules 型別 / git diff 整包 / Task prompt 貼全文造成「输入内容过长 (input too long)」。含本專案已知高風險檔案清單
+alwaysApply: true
+---
+
+# Context Budget 紀律（MANDATORY）
+
+> 觸發：準備 `Read` 一個檔案、準備跑 `git diff`、準備派 `Task` 給 subagent、或使用者回報「输入内容过长，请检查是否引入超大文件」。
+
+## 背景
+
+SAOME-REBUILD 的 Cursor 對話反覆出現「输入内容过长，请检查是否引入超大文件，请精简输入内容或新开对话 (input too long)」。
+
+根因不是使用者貼了什麼，而是**agent 自己**在對話裡累積了大量不必要的大型 tool result：
+
+| 來源 | 典型體量 |
+|---|---|
+| 整份 `Read` 一個大檔案（無 offset/limit）| 500–1200 行 |
+| `Read` node_modules 裡的 `.d.ts` 型別定義 | 700+ 行，且常是重複讀 |
+| `git diff` 整包輸出（無 `--` 路徑過濾、無 `--stat`）| 數千行 |
+| 把完整檔案內容貼進 `Task` prompt | 每個 subagent 都重複消耗一次 |
+
+這些內容一旦進入對話 history，就**永久佔住 context**，直到開新 chat。context 被撐爆後症狀是「輸入過長」，但根因在更早的幾個 tool call。
+
+本 rule 的目標：**在 tool call 發生前就攔截**，而不是事後清理。
+
+---
+
+## 鐵律
+
+### 1. 工具使用順序（Grep → 切片 Read → 才讀全文）
+
+```
+想了解一個檔案 / 找一個符號
+   │
+   ├─ 1. Grep（-n 帶行號）→ 定位行號
+   │     grep -n "export function calculateExpiry" packages/shared/logic/passExpiry.ts
+   │
+   ├─ 2. SembleSearch → 語意定位「誰做了這件事」
+   │     SembleSearch(query="pass expiry rule evaluation", repo="...")
+   │
+   ├─ 3. Read 帶 offset/limit 切片 → 只看需要的行
+   │     Read(path=".../passExpiry.ts", offset=120, limit=80)
+   │
+   └─ 4. 全文 Read → 只有在「該檔 ≤ 300 行」或「真的要改整份檔」時才做
+```
+
+| 情況 | 禁止 | 應該 |
+|---|---|---|
+| 不知道在哪 | `Read` 整份 1000 行檔 | `Grep -n` 先拿行號，再 `Read offset/limit` |
+| 找實作位置 | `Read` 猜的檔案 | `SembleSearch` / `Grep` |
+| 只想看某函式 | `Read` 全文 | `Grep -n` 拿範圍 → 切片讀 |
+| 真的要改整份檔 | — | 全文讀可以，但改完別再讀第二次 |
+
+**切片讀的標準做法**：
+
+```ts
+// ✅ 帶 offset/limit，只取需要的區段
+await Read({ path: 'packages/shared/logic/passExpiry.ts', offset: 120, limit: 90 });
+
+// ❌ 整份讀入
+await Read({ path: 'packages/shared/logic/passExpiry.ts' });
+```
+
+### 2. 大檔（> 300 行）必切片讀
+
+**N = 300 行**為本專案門檻。超過 300 行的檔案一律：
+
+- ❌ 單次 `Read` 全文
+- ✅ 先 `Grep -n` 定位 → `Read` 帶 `offset` / `limit` 切片
+- ✅ 引用該檔內容時用 `file_path:startLine-endLine` 格式，**不貼全文**
+
+引用格式範例：
+
+```12:15:app/components/Todo.tsx
+// ... existing code ...
+```
+
+也就是既有 rule（`<citing_code>` 規範）要求的格式 —— 引用 3 行就是 3 行，不貼整份檔。
+
+### 3. 明確列為 context 風險操作的輸入
+
+以下輸入**一律視為高風險**，必須先切片/過濾：
+
+| 類別 | 例子 | 處理方式 |
+|---|---|---|
+| 非 ASCII 輸出 | 終端印出中文、含中文的 log | 中文輸出會加速 context 消耗（每個 CJK 字元 token 成本高）；貼檔案內容前先切片，且貼前確認編碼無損（詳見 `.cursor/rules/039-powershell-free-code-authoring.mdc` § 5） |
+| node_modules / 型別定義 | `node_modules/postgres/types/index.d.ts`（736 行）| 改用 `Grep -n` 找需要的型別宣告，只讀該行 |
+| 產出目錄 | `dist/`、`build/`、`coverage/`、`node_modules/` | 不要 Read；要確認就 Grep 特定字串 |
+| lockfile | `package-lock.json`（9,939 行）| 永遠不要 Read；用 `npm ls` / `Grep -n` 查特定套件 |
+| SQL dump | 任何 `.sql` 全量 dump | `Grep -n "CREATE TABLE"` 定位後切片 |
+| git diff 整包 | `git diff`（無路徑過濾）| `git diff --stat` 先看範圍 → `git diff -- <path>` 指定檔案 |
+| 產生日誌 | `debug.log`、`*.log` | `Grep` 關鍵字 + `head`/`tail`，不要 Read 全文 |
+| 截圖 / base64 | 大圖轉 base64 | 不要貼進 context；描述圖片內容即可 |
+
+### 4. subagent 派工紀律
+
+派 `Task` 給 subagent 時：
+
+**Task prompt 禁止貼大段檔案內容。** 只給三樣東西：
+
+1. 檔案路徑
+2. 行號範圍
+3. 要回答的具體問題
+
+另外必須：
+
+- 每個 subagent 只負責**一個封閉任務**（一個檔案 / 一個函式 / 一個假設）
+- 明確寫「**不要讀整個 repo**」「不要 Read 沒有指定路徑的檔案」
+- 明確寫「不要修改檔案」或「只可修改 X 路徑」
+- 明確寫預期回傳格式（見 `.cursor/templates/subagent-task-prompt.md`）
+
+```ts
+// ❌ 禁止：把整份檔案內容貼進 Task prompt
+await Task({
+  subagent_type: 'code-reviewer',
+  prompt: `請審查這份程式碼：\n${整份 800 行檔案內容}`,
+});
+
+// ✅ 正確：路徑 + 行號 + 具體問題
+await Task({
+  subagent_type: 'code-reviewer',
+  prompt: `
+任務目標：審查 passExpiry 的付費會員到期邏輯是否有 off-by-one。
+背景：見 runs/decisions/2026-10-24-pass-runtime-value-model.md，付費會員到期日 = 購買日 + validDays。
+相關檔案：packages/shared/logic/passExpiry.ts:280-420
+明確不做：不要讀整個 repo、不要修改任何檔案。
+預期回傳：最多 5 條問題，每條格式「行號 → 問題 → 建議」。
+`,
+});
+```
+
+**為什麼這麼嚴**：subagent 的 tool result 會**回傳**到 parent 的 context。把檔案內容塞進 prompt，等於每個 subagent 都重複燒一份。派 5 個 subagent 就是燒 5 份。
+
+### 5. 自我檢查清單（Task 呼叫前 5 秒內可勾）
+
+在按下 `Task` / `Read` 之前，逐條確認：
+
+- [ ] 這個檔案超過 300 行了嗎？→ 超過就改成 `Grep -n` + `Read offset/limit`
+- [ ] 這個路徑是 `node_modules/`、`dist/`、`build/`、`coverage/`、`package-lock.json` 嗎？→ 是就不 Read
+- [ ] 我真的需要**每一行**嗎？→ 大部分時候只需要 50–150 行
+- [ ] 我是不是已經讀過這個檔案了？（重複讀同樣內容也是浪費）→ 記住行號就好
+- [ ] Task prompt 裡有貼檔案內容嗎？→ 有就改貼路徑 + 行號
+- [ ] 這個 subagent 的任務是封閉的嗎？（一個檔/一個函式/一個假設）
+- [ ] 有在 prompt 裡寫「不要讀整個 repo」嗎？
+- [ ] 這次的 `git diff` 有加路徑過濾嗎？→ 沒有的話先跑 `git diff --stat`
+
+### 6. 已經爆掉時的恢復步驟
+
+症狀：Cursor 回「输入内容过长，请检查是否引入超大文件，请精简输入内容或新开对话」。
+
+恢復步驟（依序）：
+
+1. **立刻停止在該 chat 繼續操作。** 已經超載的 chat 再發任何訊息都是無效重試。
+2. **開新 chat**（`Ctrl+L` 或新對話視窗）。不要試圖在同一個 chat 精簡。
+3. **寫交接摘要**（不超過 30 行）存成檔案，例如 `runs/decisions/` 或 `runs/handoff/`：
+
+   ```markdown
+   # Handoff：<任務主題>
+
+   ## 已完成
+   - <具體動作 + 檔案>
+
+   ## 關鍵決策
+   - <決定 + 理由 + 出處 Decision Log 路徑>
+
+   ## 下一步
+   - <具體待辦，含檔案路徑 + 行號>
+
+   ## 已知陷阱
+   - <踩過的坑>
+   ```
+
+4. **保留 Decision Log / DEV LOG 摘要作為交接依據**，不要把原始 log 全文貼進新 chat 的第一個訊息 —— 只貼摘要段落 + 檔案路徑。
+5. 新 chat 開頭先讀交接摘要檔，再照 Rule 037 / Rule 030 / Rule 031 的紀律重新開始。
+
+**反面教材**：在已經爆掉的 chat 裡「我只是貼個小檔案應該沒問題吧」—— 系統是在對**整個 history** 判定，不是只看新訊息。
+
+---
+
+## 本專案已知高風險檔案
+
+以下是本 repo 實測行數偏大、且在過往 session 中被反覆讀取過的檔案。**一律走 `Grep -n` + 切片讀**：
+
+| 檔案 | 行數 | 風險 |
+|---|---|---|
+| `apps/frontend/src/components/business/dashboard/CardBuilderEditor/CardBuilderEditor.tsx` | 1,348 | 前端最大檔；autosave 邏輯密集，幾乎每次改 CardBuilder 都要碰 |
+| `packages/shared/schemas/card.ts` | 1,085 | shared schema 契約檔，四層同步檢查必碰 |
+| `node_modules/postgres/types/index.d.ts` | 736 | **型別定義**；2026-10 已被當成 Read 目標讀過一次。postgres.js 的 SQL / Transaction 型別在這裡，幾乎不需要讀全文 |
+| `apps/backend/src/shared/lib/passcreator/v3-pass.ts` | 682 | v3 pass 產生器主邏輯 |
+| `apps/backend/src/modules/pass-templates/tests/register.runtimeValues.test.ts` | 558 | 測試檔，長但通常只需看單一 `it` |
+| `apps/backend/src/modules/pass-templates/services/registerService.ts` | 542 | 註冊服務主流程 |
+| `apps/backend/src/modules/pass-templates/db/passHolders.ts` | 517 | pass holder DB 層 |
+| `packages/shared/logic/passExpiry.ts` | 501 | 到期規則；2026-10 連續被讀過多次（IDE 記錄 501 行）|
+| `apps/backend/src/modules/pass-templates/tests/passValueBackfill.test.ts` | 420 | 測試檔，通常只需看單一 `it` |
+| `packages/shared/schemas/passValues.test.ts` | 413 | 測試檔，同上 |
+| `packages/shared/logic/passFieldFormatter.test.ts` | 395 | 測試檔，同上 |
+| `apps/backend/src/modules/pass-templates/services/passValueService.ts` | 383 | runtime value 服務 |
+| `apps/backend/src/modules/pass-templates/db/templates.ts` | 367 | template DB 層 |
+| `packages/shared/logic/passFieldFormatter.ts` | 349 | 欄位格式化 |
+| `apps/backend/src/modules/pass-templates/tests/passValueService.test.ts` | 325 | 測試檔，同上 |
+| `apps/backend/src/shared/lib/passcreator/v3-pass-update.test.ts` | 315 | 測試檔，同上 |
+| `packages/shared/logic/passExpiry.paidMembership.test.ts` | 218 | 測試檔，同上 |
+| `apps/backend/src/modules/pass-templates/services/passRegistrationService.ts` | 222 | 註冊事件服務 |
+| `packages/shared/constants/headerSlots.ts` | 224 | header slot 常數 |
+| `packages/shared/logic/passValueCalculator.ts` | 210 | runtime value 計算 |
+| `apps/backend/src/modules/pass-templates/db/passEvents.ts` | 205 | pass event DB 層 |
+| `packages/shared/logic/passExpiry.test.ts` | 204 | 測試檔，同上 |
+| `apps/backend/src/shared/lib/passcreator/transport.ts` | 134 | pass 傳輸層 |
+| `package-lock.json` | 9,939 | **永遠不要 Read**；用 `npm ls <pkg>` 查 |
+
+中大型測試檔（`*.test.ts`）也是常見爆點：多數情況只需要用 `Grep -n "it\\("` 找到目標 `it` 區塊再切片讀。
+
+### 上一輪爆掉的直接觸發點（2026-10 觀察）
+
+本 repo 最近一次 session 的「最近開啟檔案」紀錄顯示，最後被讀取的是：
+
+| 檔案 | 行數 | 性質 |
+|---|---|---|
+| `node_modules/postgres/types/index.d.ts` | 736 | **node_modules 型別定義** |
+| `packages/shared/logic/passExpiry.ts` | 501 | 業務邏輯 |
+| `packages/shared/logic/passFieldFormatter.ts` | 349 | 業務邏輯 |
+| `apps/backend/src/shared/lib/passcreator/transport.ts` | 134 | 業務邏輯 |
+| `packages/shared/logic/passValueCalculator.ts` | 210 | 業務邏輯 |
+| `packages/shared/logic/passExpiry.test.ts` | 204 | 測試 |
+| `packages/shared/logic/passExpiry.paidMembership.test.ts` | 218 | 測試 |
+
+**觸發點判讀**：
+
+1. **最大的單一 tool result 是 `node_modules/postgres/types/index.d.ts`（736 行）**。這是 postgres.js 的型別定義 —— 要查一個 `Sql` / `Transaction` / `PendingQuery` 的型別時，整份讀進來完全不必要，`Grep -n "interface Sql"` 幾行就夠。
+2. **同一個 `passExpiry` 主題被多輪重複讀取**（`passExpiry.ts` + `passExpiry.test.ts` + `passExpiry.paidMembership.test.ts` 合計 923 行），而且是在同一個 session 裡反覆來回 —— 典型的「讀了不夠 → 再讀一次 → 還是記不住 → 再讀」惡性循環。
+3. 這兩項疊加 —— 736 + 923 ≈ 1,659 行高價值訊號稀釋的內容 —— 再加上 `git diff` 整包與 Task prompt 貼全文，就是「输入内容过长」的成因。
+
+**結論**：本 repo 的爆掉觸發點**不是**單一超大檔，而是「node_modules 型別定義整份讀」＋「同一主題跨多檔重複讀」兩個模式疊加。兩者的修法都是本 rule § 1（先 Grep 再切片）＋ § 3（node_modules 不 Read）。
+
+---
+
+## 與其他 rule 的關係
+
+- `.cursor/rules/037-mcp-tool-call-pattern.mdc` — 同樣是「工具呼叫前的判斷紀律」，本檔管 context 消耗
+- `.cursor/rules/006-verification.mdc` — 完工驗證清單；驗證輸出一樣會吃 context，貼輸出時只貼必要段落
+- `.cursor/rules/011-dev.mdc` — commit message 應貼驗證摘要而非完整 log
+- `.cursor/rules/001-methodology.mdc` — L3 Heavy 的 Decision Log 產出，是 context 爆掉時的交接依據
+- `.cursor/templates/subagent-task-prompt.md` — 本 rule § 4 的可重用派工模板
+
+## 觸發關鍵字
+
+「输入内容过长」「input too long」「上下文太長」「context 爆掉」「新開對話」「開新 chat」
+「整份讀」「Read 全文」「貼全文」「node_modules」「package-lock」「git diff」
+「Task prompt」「派工」「subagent」「派 subagent」**必須**引用此 rule。
+
+## 參照
+
+- `.cursor/templates/subagent-task-prompt.md` — Task prompt 模板 + 2 個範例
+- `.cursor/rules/006-verification.mdc` — 驗證輸出貼片段的紀律
+- `.cursor/rules/037-mcp-tool-call-pattern.mdc` — 工具呼叫前的判斷紀律（姊妹篇）

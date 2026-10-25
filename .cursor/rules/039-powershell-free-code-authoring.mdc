@@ -1,0 +1,206 @@
+---
+description: PowerShell-free code authoring — prohibits using PowerShell cmdlets to create or modify any repo file (especially Chinese/non-ASCII content, which gets mangled by the default console code page), and requires all source-code comments to be English
+alwaysApply: true
+---
+
+# PowerShell-Free Code Authoring（MANDATORY）
+
+> Triggers: writing or editing any file in the repo with a shell command, generating Chinese/non-ASCII text through a shell, adding a comment to source code, or reporting mojibake / U+FFFD corruption in tracked files.
+
+## Background
+
+This repo has already paid for this the hard way. Multiple markdown files were written on a Windows PowerShell host and came back containing U+FFFD replacement characters and mojibake — a single file reached 1268 U+FFFD characters. The files were fine in the editor; they were destroyed on the way to disk.
+
+The mechanism is not mysterious:
+
+1. Windows PowerShell 5.x uses the system OEM console code page (typically Big5 / CP950 or GBK / CP936) as the default for its output and for the cmdlets that write files.
+2. `Set-Content`, `Out-File`, `Add-Content`, `[IO.File]::WriteAllText`, and pipeline redirection (`>` / `>>`) encode their payload with that code page.
+3. Chinese characters are not representable in that code page, so they are replaced with `U+FFFD` on write.
+4. Reading the file back with any UTF-8-aware tool shows garbage. The corruption is silent — no error, no warning, exit code 0.
+
+The failure is symmetric and nasty: the agent believes the write succeeded, the tooling reports success, and the damage only surfaces when a human reads the file (or when a build script chokes on it).
+
+This rule has two halves:
+
+- **Half A — never author files through PowerShell.** Use the Cursor `Write` / `StrReplace` tools, or a Node.js script that specifies UTF-8 explicitly.
+- **Half B — source-code comments are always English.** Chinese belongs in translation files and user-facing copy, not in `.ts` / `.tsx` / `.js` / `.sql` / `.yml` comments.
+
+---
+
+## The Hard Bans
+
+### 1. No PowerShell for any file write or edit
+
+**Prohibited** — any use of these to create or modify a file inside this repo (source code, markdown, JSON, YAML, SQL, lockfile, scripts — everything):
+
+| Prohibited pattern | Why it breaks |
+|---|---|
+| `Set-Content`, `Out-File`, `Add-File`, `Add-Content`, `Set-Item`, `New-Item -ItemType File` | Writes with the console code page |
+| `[IO.File]::WriteAllText(...)`, `[IO.File]::WriteAllLines(...)`, `StreamWriter` | Same, unless an explicit UTF-8 encoding object is passed (still not allowed — use Node instead) |
+| `>` / `>>` redirection from any command | Same |
+| `@' ... '@` / `@" ... "@` here-strings piped into a writer | Same; the here-string content is already bound to the console encoding |
+| `Copy-Item` / `Move-Item` / `Rename-Item` of a file that was authored elsewhere in PowerShell | Propagates the corruption |
+| `Invoke-WebRequest` / `curl` writing directly to a repo file | Same |
+
+**Required instead**:
+
+- Cursor's `Write` tool for new files.
+- Cursor's `StrReplace` tool for edits to existing files (read the surrounding context first with `Read`, then replace a single paragraph or block).
+- A Node.js script for programmatic or bulk edits, always with an explicit UTF-8 encoding:
+
+```js
+// scripts/example-write.mjs
+import { writeFileSync } from 'node:fs';
+writeFileSync(path, text, 'utf8');
+```
+
+- A Python equivalent is acceptable: `open(path, 'w', encoding='utf-8')`.
+
+If a task genuinely requires a shell-side file mutation, it must be expressed as a Node/Python script that names the encoding, never as a PowerShell cmdlet.
+
+### 2. No Chinese (or any non-ASCII) content produced through PowerShell
+
+Chinese text may only reach a file through:
+
+- The Cursor `Write` / `StrReplace` tools (these write UTF-8), or
+- A Node/Python script that passes `'utf8'` explicitly.
+
+Producing Chinese inside a PowerShell here-string and then handing it to `Set-Content` is the exact failure mode that corrupted this repo. It is banned outright, not just discouraged.
+
+The same reasoning extends to **commit messages**. `git commit -m "..."` invoked from PowerShell can hit the same console encoding path for the argument, and the message ends up mangled in git history where it is much harder to repair. Use `git commit -F <file>` with a UTF-8 file authored by `Write` / Node, or use a Node `child_process` call with an explicit `encoding`.
+
+### 3. Source-code comments are always English
+
+All comments in source files must be written in English. This covers every comment syntax:
+
+| File type | Comment syntax |
+|---|---|
+| `.ts` / `.tsx` / `.js` / `.cjs` / `.mjs` | `//` and `/* ... */` |
+| `.py` | `#` |
+| `.sql` | `--` and `/* ... */` |
+| `.yml` / `.yaml` | `#` |
+| `.sh` / `.bash` | `#` |
+| `.css` | `/* ... */` |
+
+Mixed-language comments (`// 產生 pass payload` or `// 產生 pass payload`) are a violation. Translate to English; keep identifiers, API names, and error codes in their original form.
+
+**Rationale** — three concrete reasons, not stylistic preference:
+
+1. **Encoding fragility.** Comment text passes through the same toolchain as code: editors, formatters, linters, Git's diff/pager, CI logs, and any PowerShell invocation that touches the file. A comment is the least-validated string in a source file, so it is the first thing to be silently corrupted. A mangled comment does not fail the build; it just misleads the next reader forever.
+2. **Review legibility.** Git diffs and code-review UIs are overwhelmingly English. Mixed-script comments make every diff harder to scan, and the mojibake case makes them unreadable exactly when they matter.
+3. **Mixed-script identifiers and comments read as inconsistency.** A codebase where some comments are English and some are Chinese has no convention, so no reader can tell which is intentional.
+
+The repo already works this way: `packages/shared/`, `apps/backend/`, and `apps/frontend/` source files carry English comments throughout.
+
+This rule governs **tracked source files in the repo**. Markdown / `.mdc` documentation is editorial prose and may be Chinese (see § 4.4); however, when a doc code block is meant to mirror real source code, write the comments in English so the example matches what the repo actually contains.
+
+**Scope: forward-looking.** The repo already carries a substantial amount of Chinese comments in existing source files. This rule governs **all new code and all code you touch** — do not introduce new Chinese comments, and convert the comments in any file you are already editing. It is not a mandate to bulk-rewrite untouched files; the detection check in § 7 is therefore advisory and reports existing debt rather than gating on it.
+
+### 4. Exception whitelist — where Chinese IS allowed
+
+Chinese (or other non-English text) is permitted only in these places, and only when written by `Write` / `StrReplace` / a UTF-8 Node or Python script — never through PowerShell:
+
+1. **i18n translation files**
+   - `apps/frontend/src/i18n/locales/*.zh-TW.ts`
+   - `packages/shared/i18n/*.zh-TW.ts`
+   - (and the `en` counterparts — those are English by definition)
+2. **Terminal-facing messages aimed at Traditional Chinese users** — a CLI script that prints `讀取失敗` to a human is fine, as long as the printing mechanism specifies UTF-8 (Node's `console.log` is UTF-8 by default; PowerShell's is not).
+3. **Product copy that is Chinese by nature** — user-facing text stored as data (test fixtures, seed content, marketing content in JSON/YAML data files). This is data, not source comment.
+4. **Documentation and prose** — `runs/`, `DEV/`, `runs/decisions/`, and this rule's sibling `.mdc` files are written in Chinese as a deliberate editorial choice for the team. They must still be authored via `Write` / `StrReplace`, never PowerShell.
+
+Note the pattern: the exception is about **what kind of artifact** the text is (translation data, user-facing copy, editorial prose), never about **which tool** writes it. The tool ban applies universally.
+
+### 5. Reading, searching, grep, and running tests in PowerShell is allowed
+
+Read-only and execution operations are fine in PowerShell — the encoding hazard is in the write path, not the read path:
+
+- `git status`, `git diff`, `git log` — fine.
+- `rg` / `grep` for finding files — fine.
+- `npm test`, `npm run typecheck`, `npm run build` — fine.
+- `Get-ChildItem`, `Test-Path` — fine.
+
+But when you need to **print non-ASCII file content** into the terminal, prefer a UTF-8-explicit reader, because PowerShell's console output will itself mangle the display:
+
+```js
+// ✅ Correct — explicit UTF-8 read, prints correctly
+node -e "console.log(require('fs').readFileSync(process.argv[1], 'utf8'))" path/to/file.md
+```
+
+```powershell
+# ❌ Wrong for non-ASCII content — output is re-encoded through the console code page
+Get-Content path/to/file.md
+Select-String -Path path/to/file.md -Pattern 'foo'
+```
+
+Rule of thumb: use `rg` (which handles UTF-8 correctly) to *locate* content, and `Read` (the Cursor tool) to *read* it. Use `node -e "..."` only when you specifically need the raw bytes as UTF-8.
+
+### 6. Shell choice recommendation
+
+When an interactive shell is needed, prefer **bash / Git Bash** or a **Node script** over PowerShell. If PowerShell is unavoidable for read-only work, set the console encoding first and keep it read-only:
+
+```powershell
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+```
+
+This improves *display* of non-ASCII output. It does **not** make `Set-Content` safe, and it does not authorize any write. The write ban stands regardless of console settings.
+
+### 7. Violation detection (advisory, not a hard gate)
+
+Concept of `scripts/check-shell-encoding.mjs` — a script that scans source files for non-ASCII characters inside comments:
+
+```js
+// scripts/check-shell-encoding.mjs (concept)
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+const SOURCE_EXT = /\.(ts|tsx|js|cjs|mjs|sql|yml|yaml|css|py|sh)$/;
+const EXEMPT = [
+  'locales/',        // i18n translation files
+  'packages/shared/i18n/',
+];
+
+// Walk the repo, skip node_modules / dist / coverage,
+// and report source files whose comments contain non-ASCII characters.
+```
+
+A cheaper grep-based approximation for a quick manual check:
+
+```bash
+rg -n --pcre2 '^\s*(//|\*|#|--).*[^\x00-\x7F]' \
+  --glob '!**/node_modules/**' \
+  --glob '!**/locales/**' \
+  --glob '*.{ts,tsx,js,cjs,mjs,sql,yml,yaml}' .
+```
+
+**Status: advisory.** This is a *suggested* gate, not a blocking one. It is not wired into CI, and adding it to CI is a decision the maintainer should make explicitly — the rule does not assume it. Until then, run the script manually before committing a change that touches many source files.
+
+The detection script's scope is deliberately limited to **comments**. A separate, higher-severity check is for actual corruption: scanning tracked files for `U+FFFD` (`\uFFFD`) characters. If that check finds hits, the file is already damaged and needs restoration from git, not a rule change.
+
+---
+
+## 觸發關鍵字
+
+「寫檔」「改檔」「產生中文」「中文亂碼」「U+FFFD」「編碼污染」「PowerShell」「Set-Content」「Out-File」「Add-Content」「here-string」
+「註解用英文」「comment in English」「English comments only」「PowerShell 寫檔」「編碼問題」「mojibake」
+「寫 commit message」「git commit -m 中文」「shell 寫檔」**必須**引用此 rule。
+
+「中文亂碼」「U+FFFD」「PowerShell 寫中文」「編碼」→ 必引 § 1 / § 2 / § 3。
+「註解」「comment」「加註解」→ 必引 § 3。
+「讀中文檔」「Get-Content」「Select-String 印中文」→ 必引 § 5。
+
+## 與其他 rule 的關係
+
+- `.cursor/rules/011-dev.mdc` — commit message discipline; commit messages follow the same English + no-PowerShell-write rule
+- `.cursor/rules/006-verification.mdc` — verification output pasted into records must be encoding-clean
+- `.cursor/rules/038-context-budget-discipline.mdc` — slicing reads also reduces the blast radius of a corrupted file
+- `.cursor/rules/027-postgres-dynamic-query-pattern.mdc` — workerd `JSON.stringify` non-ASCII pitfall; the same "non-ASCII is fragile in this toolchain" family of bugs
+- `.cursor/rules/037-mcp-tool-call-pattern.mdc` — sibling rule about *how* to call tools, including the tools that write to the repo
+
+## 參照
+
+- `.cursor/rules/011-dev.mdc` — commit message formatting and the English-only rule
+- `.cursor/rules/006-verification.mdc` — verification output recording
+- `.cursor/rules/038-context-budget-discipline.mdc` — context budget discipline
+- `apps/backend/scripts/check-migrations-applied.cjs` — pattern reference for a repo-scoped `.mjs`/`.cjs` check script
+- `apps/frontend/scripts/audit-bundle-urls.cjs` — pattern reference for a post-build audit script

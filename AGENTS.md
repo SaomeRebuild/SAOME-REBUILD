@@ -143,6 +143,9 @@ apps/frontend/ **只能放 Web 特定內容**。所有可共用的程式碼必�
 - ✅ 任何 migration 檔建立後，**必須**立即透過 `saome_supabase` MCP apply，commit footer 填 `Migration: <name> applied via saome_supabase MCP`
 - ✅ `templateSettingsSchema`（或任何 shared schema）新增 field 時，**必須**同步檢查四層：shared schema → backend request.ts → backend db interface → backend service（詳見 `.cursor/rules/019-schema-contract-drift.mdc` §4.1）
 - ✅ **任何 MCP 工具呼叫前必先確認 pre-listed 與否**：工具列在當前 session `<mcp_meta_tools>` → 直接呼叫獨立工具名（`user-<server>-<tool>({...})`）；runtime discover 才用 `CallMcpTool`。`CallMcpTool` 包 pre-listed 工具會回 `descriptor not found`（Rule 037 必引）
+- ✅ **任何 Read / Task 派工前必先確認 context 消耗**：檔案 > 300 行一律 `Grep -n` 定位 → `Read` 帶 offset/limit 切片；`node_modules/`、`dist/`、`coverage/`、`package-lock.json` 不整份 Read；引用大檔用 `file_path:startLine-endLine` 不貼全文；`Task` prompt 禁止貼檔案內容，只給「路徑 + 行號範圍 + 具體問題」並寫明「不要讀整個 repo」（Rule 038 必引，模板見 `.cursor/templates/subagent-task-prompt.md`）
+- ✅ **禁止用 PowerShell 寫檔／寫中文**：任何檔案（原始碼 / markdown / json / yml / sql）的建立與修改一律用 Cursor `Write` / `StrReplace` 工具，或用明確指定 UTF-8 的 Node/Python 腳本（`fs.writeFileSync(path, text, 'utf8')`）。禁止 `Set-Content` / `Out-File` / `Add-Content` / `[IO.File]::WriteAllText` / here-string / pipeline 重導來寫檔（PowerShell 預設 console code page 會把中文寫成 U+FFFD 亂碼，單檔最高觀察到 1268 個 U+FFFD）。讀檔 / grep / 跑測試可以用 PowerShell，但印非 ASCII 內容改用 `node -e "console.log(require('fs').readFileSync(p,'utf8'))"`（Rule 039 必引）
+- ✅ **程式碼註解一律使用英文**：`.ts` / `.tsx` / `.js` / `.cjs` / `.mjs` / `.sql` / `.yml` 等原始碼裡的註解（`//` `/* */` `#` `--`）一律英文，禁止中英文夾雜。中文只允許出現在 i18n 翻譯檔（`*.zh-TW.ts`）、繁中使用者看到的終端訊息、產品文案本身為中文的資料，且必須由 `Write` / `StrReplace` / UTF-8 Node 腳本寫入（Rule 039 必引）
 
 ## Task Router 入口（MANDATORY）
 
@@ -208,6 +211,8 @@ L3 Heavy 任務**必須**寫 `runs/decisions/YYYY-MM-DD-<topic>.md`，含三段�
 - ❌ 寫死任何顏色 / 字型 / 間距值
 - ❌ 跳過 ui-ux-pro-max 直接寫 UI 元件
 - ❌ 引用未實際寫成 .mdc 的 rule 路徑（引用前必須先產生對應檔案）
+- ❌ 用 PowerShell 寫檔或寫中文（`Set-Content` / `Out-File` / `Add-Content` / here-string / pipeline 重導）；一律用 Cursor `Write` / `StrReplace` 或 UTF-8 Node/Python 腳本
+- ❌ 在原始碼（`.ts` / `.tsx` / `.js` / `.cjs` / `.mjs` / `.sql` / `.yml`）裡寫中文註解
 - ❌ 在合併 / 替換 / 刪除任何目錄前，沒先跑 `git ls-tree` 對比
 
 ---

@@ -94,7 +94,7 @@ async function onSubmit() {
 
 ### 5. password manager 防禦
 
-針對 1Password / LastPass 等瀏覽�器擴充，除了上面的 raf+timeout sweep：
+針對 1Password / LastPass 等瀏覽器擴充，除了上面的 raf+timeout sweep：
 
 - `<input type="email">` 加 `data-1p-ignore` + `data-lpignore="true"`
 - `<input type="password">` 加 `data-1p-ignore`
