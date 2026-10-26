@@ -923,7 +923,7 @@ export default {
     //
     // 4-layer sync (Rule 019 § 4.1):
     //   - packages/shared/constants/gift-card.ts (single source of truth, layer 0)
-    //   - packages/shared/schemas/card.ts (layer 1)
+    //   - packages/shared/schemas/card/ (layer 1)
     //   - apps/backend/src/modules/cards/schemas/request.ts (layer 2 mirror)
     //   - apps/backend/src/modules/cards/db/templates.ts (layer 3 db interface)
     //

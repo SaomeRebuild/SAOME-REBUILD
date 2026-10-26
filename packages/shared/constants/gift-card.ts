@@ -67,7 +67,7 @@ export const GIFT_CARD_DEFAULT_POINTS = 1;
  * customer-facing per-transaction bound.
  *
  * Mirrors `templateSettingsSchema.giftCardDesignMinPoints / giftCardDesignMaxPoints`
- * in `packages/shared/schemas/card.ts` (Rule 019 § 4.1 single source of truth).
+ * in `packages/shared/schemas/card/` (Rule 019 § 4.1 single source of truth).
  * Both fields stay `.int().positive().optional()` in shared schema, so the
  * default initialState values are 1 and 999_999_999 respectively.
  */
@@ -93,7 +93,7 @@ export const GIFT_CARD_DESIGN_MAX_POINTS = 999_999_999;
  *     allows)
  *
  * Mirrors `templateSettingsSchema.giftCardCheckout*` in
- * `packages/shared/schemas/card.ts` (Rule 019 § 4.1 single source of truth).
+ * `packages/shared/schemas/card/` (Rule 019 § 4.1 single source of truth).
  */
 export const GIFT_CARD_CHECKOUT_MIN_POINTS = 100;
 export const GIFT_CARD_CHECKOUT_MAX_POINTS = 10_000;

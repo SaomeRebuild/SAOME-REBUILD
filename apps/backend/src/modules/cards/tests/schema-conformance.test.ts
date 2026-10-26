@@ -1,19 +1,37 @@
 /**
  * Schema conformance test — Rule 019 § Schema Contract Drift.
  *
- * Asserts that the backend's `templateSettingsSchema` (apps/backend/src/modules/cards/schemas/request.ts)
- * has the SAME field set as the shared `templateSettingsSchema` (packages/shared/schemas/card.ts).
+ * The backend card request schemas used to be a 579-line hand-maintained
+ * mirror of `packages/shared/schemas/card/`. That mirror is gone — the
+ * backend module now re-exports the shared schema verbatim, so there is a
+ * single source of truth and no second copy left to drift.
  *
- * If this fails, it means the local schema has drifted from the shared source of truth.
- * Fix: copy the missing fields from shared to backend request.ts (or vice versa, depending on
- * which side added the field).
+ * This file pins two things:
+ *
+ *   1. REFERENCE IDENTITY — the schemas the backend module exposes are the
+ *      very same objects the shared package defines. If a local copy is
+ *      ever re-introduced, the identity assertion fails immediately; no
+ *      field-by-field comparison is needed to catch it.
+ *   2. BEHAVIOUR — the real validation rules of the single source of
+ *      truth. These assertions used to be duplicated for the backend
+ *      mirror; the duplicates are removed because there is only one
+ *      schema left to test.
  *
  * Phase 5 of IconUploader plan (2026-08-31): added `iconImage` and `backgroundImage` fields.
  */
 
 import { describe, it, expect } from 'vitest';
-import { templateSettingsSchema as localTemplateSettingsSchema } from '../schemas/request';
-import { templateSettingsSchema as sharedTemplateSettingsSchema, cardFieldKeySchema } from '@saome/shared/schemas/card';
+import {
+  templateSettingsSchema as backendTemplateSettingsSchema,
+  createTemplateSchema as backendCreateTemplateSchema,
+  updateTemplateSchema as backendUpdateTemplateSchema,
+} from '../schemas/request';
+import {
+  templateSettingsSchema as sharedTemplateSettingsSchema,
+  createTemplateSchema as sharedCreateTemplateSchema,
+  updateTemplateSchema as sharedUpdateTemplateSchema,
+  cardFieldKeySchema,
+} from '@saome/shared/schemas/card';
 import {
   COUPON_AMOUNT_MIN,
   COUPON_PERCENT_MIN,
@@ -28,10 +46,17 @@ import {
 } from '@saome/shared/constants/multipass-card';
 
 describe('schema conformance (shared vs backend cards/templateSettingsSchema)', () => {
-  it('local schema has the same keys as the shared schema', () => {
-    const localKeys = Object.keys(localTemplateSettingsSchema.shape).sort();
-    const sharedKeys = Object.keys(sharedTemplateSettingsSchema.shape).sort();
-    expect(localKeys).toEqual(sharedKeys);
+  it('backend request.ts re-exports the very same schema object as shared (reference identity)', () => {
+    // The strongest possible anti-drift form: the backend module must not
+    // re-declare anything. If someone re-introduces a hand-written mirror
+    // here, this assertion fails on the spot — no field-by-field
+    // comparison needed to notice.
+    expect(backendTemplateSettingsSchema).toBe(sharedTemplateSettingsSchema);
+  });
+
+  it('backend request.ts re-exports the very same create/update payload schemas as shared', () => {
+    expect(backendCreateTemplateSchema).toBe(sharedCreateTemplateSchema);
+    expect(backendUpdateTemplateSchema).toBe(sharedUpdateTemplateSchema);
   });
 
   it('shared schema has the iconImage field (Rule 019 § 4.1 — Phase 5)', () => {
@@ -50,36 +75,12 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
     expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('rightField');
   });
 
-  it('local schema has the iconImage field (4-layer sync — Layer 2)', () => {
-    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('iconImage');
-  });
-
-  it('local schema has the backgroundImage field (4-layer sync — Layer 2)', () => {
-    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('backgroundImage');
-  });
-
-  it('local schema has the leftField field (4-layer sync — Layer 2)', () => {
-    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('leftField');
-  });
-
-  it('local schema has the rightField field (4-layer sync — Layer 2)', () => {
-    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('rightField');
-  });
-
   it('shared schema has the stampGridRows field (Rule 019 § 4.1 — Step 3 stamp grid 2026-09-04)', () => {
     expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('stampGridRows');
   });
 
   it('shared schema has the stampIconId field (Rule 019 § 4.1 — Step 3 stamp grid 2026-09-04)', () => {
     expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('stampIconId');
-  });
-
-  it('local schema has the stampGridRows field (4-layer sync — Layer 2)', () => {
-    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('stampGridRows');
-  });
-
-  it('local schema has the stampIconId field (4-layer sync — Layer 2)', () => {
-    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('stampIconId');
   });
 
   // ===== Step 5 — 地理位置 + 推播訊息 (Rule 019 § 4.1, plan 2026-09-05) =====
@@ -92,36 +93,16 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
     expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('initialMessage');
   });
 
-  it('local schema has the locations field (4-layer sync — Layer 2, Step 5)', () => {
-    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('locations');
-  });
-
-  it('local schema has the initialMessage field (4-layer sync — Layer 2, Step 5)', () => {
-    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('initialMessage');
-  });
-
   it('shared schema has the notificationRadius field (deprecated 2026-09-06, kept for backward-compat)', () => {
     expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('notificationRadius');
-  });
-
-  it('local schema has the notificationRadius field (4-layer sync — Layer 2, deprecated)', () => {
-    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('notificationRadius');
   });
 
   it('shared schema has the locationsMaxDistance field (Rule 019 § 4.1 — Step 5 rename 2026-09-06)', () => {
     expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('locationsMaxDistance');
   });
 
-  it('local schema has the locationsMaxDistance field (4-layer sync — Layer 2, Step 5 rename 2026-09-06)', () => {
-    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('locationsMaxDistance');
-  });
-
   it('shared schema has the locationsDisabled field (Rule 019 § 4.1 — Step 5 toggle 2026-09-06)', () => {
     expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('locationsDisabled');
-  });
-
-  it('local schema has the locationsDisabled field (4-layer sync — Layer 2, Step 5 toggle 2026-09-06)', () => {
-    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('locationsDisabled');
   });
 
   it('shared locations array caps at LOCATIONS_MAX=10', () => {
@@ -224,10 +205,6 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
     expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('stampAccrualMode');
   });
 
-  it('local schema has the stampAccrualMode field (4-layer sync — Layer 2, Step 6)', () => {
-    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('stampAccrualMode');
-  });
-
   it('shared stampAccrualMode accepts per_stamp | per_visit | per_spend', () => {
     const field = sharedTemplateSettingsSchema.shape.stampAccrualMode;
     expect(field.parse('per_stamp')).toBe('per_stamp');
@@ -248,10 +225,6 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
     expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('rewardName');
   });
 
-  it('local schema has the rewardName field (4-layer sync — Layer 2, Step 6)', () => {
-    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('rewardName');
-  });
-
   it('shared rewardName caps at 40 chars', () => {
     const field = sharedTemplateSettingsSchema.shape.rewardName;
     expect(() => field.parse('x'.repeat(41))).toThrow();
@@ -260,10 +233,6 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
 
   it('shared schema has the rewardType field (Rule 019 § 4.1 — Step 6 stamp card logic)', () => {
     expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('rewardType');
-  });
-
-  it('local schema has the rewardType field (4-layer sync — Layer 2, Step 6)', () => {
-    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('rewardType');
   });
 
   it('shared rewardType accepts amount_off | percent_off', () => {
@@ -284,10 +253,6 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
     expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('rewardValue');
   });
 
-  it('local schema has the rewardValue field (4-layer sync — Layer 2, Step 6)', () => {
-    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('rewardValue');
-  });
-
   it('shared rewardValue rejects zero and negative numbers', () => {
     const field = sharedTemplateSettingsSchema.shape.rewardValue;
     expect(() => field.parse(0)).toThrow();
@@ -303,10 +268,6 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
 
   it('shared schema has the maxDiscountAmount field (Rule 019 § 4.1 — Step 6 stamp card logic)', () => {
     expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('maxDiscountAmount');
-  });
-
-  it('local schema has the maxDiscountAmount field (4-layer sync — Layer 2, Step 6)', () => {
-    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('maxDiscountAmount');
   });
 
   it('shared maxDiscountAmount accepts null (no ceiling sentinel)', () => {
@@ -355,13 +316,6 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
     expect(rightField.parse('currentPoints')).toBe('currentPoints');
   });
 
-  it('local leftField/rightField accept the new reward_card keys (4-layer sync — Layer 2)', () => {
-    const leftField = localTemplateSettingsSchema.shape.leftField;
-    const rightField = localTemplateSettingsSchema.shape.rightField;
-    expect(leftField.parse('pointsToNextTier')).toBe('pointsToNextTier');
-    expect(rightField.parse('currentPoints')).toBe('currentPoints');
-  });
-
   it('cardFieldKeySchema rejects unknown keys (drift guard)', () => {
     // Pin that the enum is closed — new keys must be added explicitly via
     // CARD_FIELD_KEYS. A typo or accidental key in a payload should fail
@@ -380,7 +334,6 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
       rightField: 'currentPoints',
     };
     expect(sharedTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
-    expect(localTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
   });
 
   // ===== Step 6 — Membership Card: lifetimeCost field (2026-09-13, Rule 019 § 4.1) =====
@@ -392,7 +345,8 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
   //
   // This block pins the 4-layer sync for the new field:
   //   - shared `templateSettingsSchema.membershipTiers[*].lifetimeCost`
-  //   - backend local `templateSettingsSchema.membershipTiers[*].lifetimeCost`
+  //   - backend request schema (Layer 2 — a re-export of the shared schema,
+  //     so it is covered by the reference-identity assertion above)
   //   - backend db interface `TemplateSettings.membershipTiers[*].lifetimeCost`
   //     (validated via grep below — TypeScript type system enforces it).
   //   - frontend store `MembershipTierShape.lifetimeCost`
@@ -421,11 +375,8 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
       ],
     };
     const parsedShared = sharedTemplateSettingsSchema.parse(payload) as Record<string, unknown>;
-    const parsedLocal = localTemplateSettingsSchema.parse(payload) as Record<string, unknown>;
     const sharedTiers = parsedShared.membershipTiers as Array<Record<string, unknown>>;
-    const localTiers = parsedLocal.membershipTiers as Array<Record<string, unknown>>;
     expect(sharedTiers[0]!.lifetimeCost).toBe(3000);
-    expect(localTiers[0]!.lifetimeCost).toBe(3000);
   });
 
   it('shared lifetimeCost accepts null (not entered sentinel)', () => {
@@ -442,11 +393,8 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
       ],
     };
     const parsedShared = sharedTemplateSettingsSchema.parse(payload) as Record<string, unknown>;
-    const parsedLocal = localTemplateSettingsSchema.parse(payload) as Record<string, unknown>;
     const sharedTiers = parsedShared.membershipTiers as Array<Record<string, unknown>>;
-    const localTiers = parsedLocal.membershipTiers as Array<Record<string, unknown>>;
     expect(sharedTiers[0]!.lifetimeCost).toBeNull();
-    expect(localTiers[0]!.lifetimeCost).toBeNull();
   });
 
   it('shared lifetimeCost accepts 0 (free lifetime member)', () => {
@@ -503,7 +451,6 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
       ],
     };
     expect(sharedTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
-    expect(localTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
   });
 
   it('shared membership tier + monthlyCost + lifetimeCost (both cost fields coexist in schema)', () => {
@@ -540,15 +487,15 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
   //
   // The 4-layer sync check (Rule 019 § 4.1) pins that:
   //   1. shared `templateSettingsSchema` has `logoText` and NOT `storeName`
-  //   2. backend local `templateSettingsSchema` matches (Layer 2 mirror)
+  //   2. the backend request schema is that same object (Layer 2 re-export,
+  //      pinned by the reference-identity assertion above)
   //   3. The new key survives an end-to-end parse round-trip
-  it('shared + backend schemas both expose logoText and drop storeName (regression — 2026-09-13)', () => {
-    // Shared (Layer 1 of 4) — single source of truth.
+  it('shared schemas expose logoText and drop storeName (regression — 2026-09-13)', () => {
+    // Shared (Layer 1 of 4) — single source of truth. The backend module
+    // re-exports this very object (see the reference-identity assertion
+    // at the top of this file), so there is no second copy to check.
     expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('logoText');
     expect(Object.keys(sharedTemplateSettingsSchema.shape)).not.toContain('storeName');
-    // Backend local (Layer 2 of 4) — mirrors shared; see request.ts.
-    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('logoText');
-    expect(Object.keys(localTemplateSettingsSchema.shape)).not.toContain('storeName');
   });
 
   it('full templateSettings accepts logoText key (pass header text — JSONB)', () => {
@@ -557,7 +504,6 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
     // input's debounced autosave.
     const payload = { logoText: '超凡' };
     expect(sharedTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
-    expect(localTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
   });
 
   it('full templateSettings rejects unknown storeName key (drift guard — 2026-09-13)', () => {
@@ -580,24 +526,15 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
   });
 
   // top-level `name` is a SQL column (not part of templateSettingsSchema);
-  // it's defined on `createTemplateSchema` / `updateTemplateSchema` in both
-  // shared and backend layers. Confirm the top-level contracts agree.
-  it('shared + backend createTemplateSchema both expose optional name (Rule 019 § 4.1 layer 1/2)', async () => {
-    const { createTemplateSchema: sharedCreate, updateTemplateSchema: sharedUpdate } = await import(
-      '@saome/shared/schemas/card'
-    );
-    const { createTemplateSchema: localCreate, updateTemplateSchema: localUpdate } = await import(
-      '../schemas/request'
-    );
-    // Both layers must allow `name` at the top level (SQL column).
-    expect(Object.keys(sharedCreate.shape)).toContain('name');
-    expect(Object.keys(localCreate.shape)).toContain('name');
-    expect(Object.keys(sharedUpdate.shape)).toContain('name');
-    expect(Object.keys(localUpdate.shape)).toContain('name');
+  // it's defined on `createTemplateSchema` / `updateTemplateSchema`. The
+  // backend module re-exports the shared schemas, so the contract is
+  // identical by construction — verify the key is present on both.
+  it('createTemplateSchema / updateTemplateSchema expose optional name (Rule 019 § 4.1)', () => {
+    expect(Object.keys(sharedCreateTemplateSchema.shape)).toContain('name');
+    expect(Object.keys(sharedUpdateTemplateSchema.shape)).toContain('name');
     // And the top-level `name` should NOT be present in templateSettingsSchema
     // (it's NOT a JSONB key — the SQL column is the only carrier).
     expect(Object.keys(sharedTemplateSettingsSchema.shape)).not.toContain('name');
-    expect(Object.keys(localTemplateSettingsSchema.shape)).not.toContain('name');
   });
 
   // ===== Step 2 — language field (Rule 019 § 4.1, 2026-09-18) =====
@@ -605,10 +542,6 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
   // Deferred: Passcreator API integration not yet implemented.
   it('shared schema has the language field (Rule 019 § 4.1 — Step 2 card language 2026-09-18)', () => {
     expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('language');
-  });
-
-  it('local schema has the language field (4-layer sync — Layer 2)', () => {
-    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('language');
   });
 
   it('shared language accepts zh-TW | en', () => {
@@ -634,16 +567,13 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
   //
   // This block pins the 4-layer sync for the new fields:
   //   - shared `templateSettingsSchema.discountTiers` / `discountCustomExpiryDays` / `discountSpecificExpiryDate`
-  //   - backend local `templateSettingsSchema.discountTiers` / `discountCustomExpiryDays` / `discountSpecificExpiryDate`
+  //   - backend request schema (Layer 2 — re-export of the shared schema,
+  //     pinned by the reference-identity assertion above)
   //   - backend db interface `TemplateSettings` (validated via TypeScript type system)
   //   - frontend store (validated via TypeScript type system — see CardBuilderEditor.store.ts)
 
   it('shared schema has the discountTiers field (Rule 019 § 4.1 — Step 6 discount card 2026-09-18)', () => {
     expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('discountTiers');
-  });
-
-  it('local schema has the discountTiers field (4-layer sync — Layer 2, Step 6 discount card)', () => {
-    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('discountTiers');
   });
 
   it('shared discountTiers caps at MAX_DISCOUNT_TIERS=5', () => {
@@ -715,10 +645,6 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
     expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('discountCustomExpiryDays');
   });
 
-  it('local schema has the discountCustomExpiryDays field (4-layer sync — Layer 2)', () => {
-    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('discountCustomExpiryDays');
-  });
-
   it('shared discountCustomExpiryDays accepts integers in [1, 3650]', () => {
     const field = sharedTemplateSettingsSchema.shape.discountCustomExpiryDays;
     expect(field.parse(1)).toBe(1);
@@ -741,10 +667,6 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
 
   it('shared schema has the discountSpecificExpiryDate field (Rule 019 § 4.1 — Step 6 discount card expiry)', () => {
     expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('discountSpecificExpiryDate');
-  });
-
-  it('local schema has the discountSpecificExpiryDate field (4-layer sync — Layer 2)', () => {
-    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('discountSpecificExpiryDate');
   });
 
   it('shared discountSpecificExpiryDate accepts ISO YYYY-MM-DD string', () => {
@@ -772,18 +694,18 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
       discountSpecificExpiryDate: null,
     };
     expect(sharedTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
-    expect(localTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
   });
 
   // ===== Step 6 — Coupon 卡: 4 fields (Rule 019 § 4.1, 2026-09-19, coupon regression) =====
   // 2026-09-19 regression: the coupon fields were missing from the backend
-  // mirror (Layer 2 request.ts + Layer 3 db/templates.ts interface), so zod
+  // request schema (Layer 2 request.ts + Layer 3 db/templates.ts interface), so zod
   // silently stripped them on PUT (zod default `.object()` strips unknown
   // keys). This caused the user-reported bug "coupon Step 6 doesn't save,
   // no backfill on re-edit". This block pins the 4-layer sync so the same
   // drift cannot recur:
   //   - shared `templateSettingsSchema.couponDiscountType / couponDiscountAmount / couponDiscountPercent / couponIssueCount` (Layer 1)
-  //   - backend local `templateSettingsSchema.coupon*` (Layer 2, this file)
+  //   - backend request schema (Layer 2 — re-export of the shared schema,
+  //     pinned by the reference-identity assertion above)
   //   - backend db interface `TemplateSettings.coupon*` (Layer 3)
   //   - frontend store (Layer 4 — already present in CardBuilderEditor.store.ts)
   //
@@ -794,10 +716,6 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
   //   - couponIssueCount: integer ≥ 1 (no upper cap)
   it('shared schema has the couponDiscountType field (Rule 019 § 4.1 — Step 6 coupon card 2026-09-19)', () => {
     expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('couponDiscountType');
-  });
-
-  it('local schema has the couponDiscountType field (4-layer sync — Layer 2, coupon persistence regression)', () => {
-    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('couponDiscountType');
   });
 
   it('shared couponDiscountType accepts amount_off | percent_off | null', () => {
@@ -817,10 +735,6 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
 
   it('shared schema has the couponDiscountAmount field (Rule 019 § 4.1 — Step 6 coupon card)', () => {
     expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('couponDiscountAmount');
-  });
-
-  it('local schema has the couponDiscountAmount field (4-layer sync — Layer 2, coupon persistence regression)', () => {
-    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('couponDiscountAmount');
   });
 
   it('shared couponDiscountAmount accepts numbers >= 1 (no upper cap per user decision)', () => {
@@ -847,10 +761,6 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
     expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('couponDiscountPercent');
   });
 
-  it('local schema has the couponDiscountPercent field (4-layer sync — Layer 2, coupon persistence regression)', () => {
-    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('couponDiscountPercent');
-  });
-
   it('shared couponDiscountPercent accepts integers in [1, 100]', () => {
     const field = sharedTemplateSettingsSchema.shape.couponDiscountPercent;
     expect(field.parse(1)).toBe(1);
@@ -873,10 +783,6 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
 
   it('shared schema has the couponIssueCount field (Rule 019 § 4.1 — Step 6 coupon card)', () => {
     expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('couponIssueCount');
-  });
-
-  it('local schema has the couponIssueCount field (4-layer sync — Layer 2, coupon persistence regression)', () => {
-    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('couponIssueCount');
   });
 
   // ===== Step 8 — Passcreator push (2026-10-11, Rule 019 § 4.1) =====
@@ -939,7 +845,6 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
       couponIssueCount: 1,
     };
     expect(sharedTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
-    expect(localTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
   });
 
   it('full templateSettings accepts coupon_card with percent_off path (end-to-end)', () => {
@@ -951,7 +856,6 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
       couponIssueCount: 3,
     };
     expect(sharedTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
-    expect(localTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
   });
 
   it('full templateSettings rejects coupon_card with both amount and percent set (mutual exclusion)', () => {
@@ -968,7 +872,6 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
       couponIssueCount: 1,
     };
     expect(() => sharedTemplateSettingsSchema.parse(payload)).not.toThrow();
-    expect(() => localTemplateSettingsSchema.parse(payload)).not.toThrow();
   });
 
   // ===== Step 6 — Multipass 卡: multipassTiers (Rule 019 § 4.1, 2026-09-19) =====
@@ -983,15 +886,12 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
   //
   // This block pins the 4-layer sync (Rule 019 § 4.1):
   //   - shared `templateSettingsSchema.multipassTiers` (Layer 1)
-  //   - backend local `templateSettingsSchema.multipassTiers` (Layer 2)
+  //   - backend request schema (Layer 2 — re-export of the shared schema,
+  //     pinned by the reference-identity assertion above)
   //   - backend db interface `TemplateSettings.multipassTiers` (Layer 3 — TS type system)
   //   - frontend store (Layer 4 — deferred to PR-2)
   it('shared schema has the multipassTiers field (Rule 019 § 4.1 — Step 6 multipass card 2026-09-19)', () => {
     expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('multipassTiers');
-  });
-
-  it('local schema has the multipassTiers field (4-layer sync — Layer 2, Step 6 multipass card)', () => {
-    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('multipassTiers');
   });
 
   it('shared multipassTiers caps at MAX_MULTIPASS_TIERS=5', () => {
@@ -1020,20 +920,6 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
     ).not.toThrow();
   });
 
-  it('local multipassTiers caps at MAX_MULTIPASS_TIERS=5', () => {
-    const field = localTemplateSettingsSchema.shape.multipassTiers;
-    expect(() =>
-      field.parse(
-        Array.from({ length: 6 }, (_, i) => ({
-          name: `tier-${i}`,
-          stampsNeeded: i,
-          rewardType: 'amount_off' as const,
-          rewardValue: 10,
-        })),
-      ),
-    ).toThrow();
-  });
-
   it('shared multipassTiers requires name (1..40 chars)', () => {
     const field = sharedTemplateSettingsSchema.shape.multipassTiers;
     // empty name rejected
@@ -1056,32 +942,9 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
     ).not.toThrow();
   });
 
-  it('local multipassTiers requires name (1..40 chars)', () => {
-    const field = localTemplateSettingsSchema.shape.multipassTiers;
-    expect(() =>
-      field.parse([
-        { name: '', stampsNeeded: 0, rewardType: 'amount_off', rewardValue: 50 },
-      ]),
-    ).toThrow();
-    expect(() =>
-      field.parse([
-        { name: 'x'.repeat(41), stampsNeeded: 0, rewardType: 'amount_off', rewardValue: 50 },
-      ]),
-    ).toThrow();
-  });
-
   it('shared multipassTiers stampsNeeded accepts 0 (welcome gift 歡迎禮)', () => {
     // 0 is legitimate — 歡迎禮「辦卡立刻送」, reward triggers on card download.
     const field = sharedTemplateSettingsSchema.shape.multipassTiers;
-    expect(() =>
-      field.parse([
-        { name: '新戶禮', stampsNeeded: 0, rewardType: 'amount_off', rewardValue: 50 },
-      ]),
-    ).not.toThrow();
-  });
-
-  it('local multipassTiers stampsNeeded accepts 0 (welcome gift 歡迎禮)', () => {
-    const field = localTemplateSettingsSchema.shape.multipassTiers;
     expect(() =>
       field.parse([
         { name: '新戶禮', stampsNeeded: 0, rewardType: 'amount_off', rewardValue: 50 },
@@ -1127,19 +990,6 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
 
   it('shared multipassTiers rewardType accepts amount_off | percent_off | null', () => {
     const field = sharedTemplateSettingsSchema.shape.multipassTiers;
-    expect(() =>
-      field.parse([{ name: 'tier', stampsNeeded: 0, rewardType: 'amount_off', rewardValue: 50 }]),
-    ).not.toThrow();
-    expect(() =>
-      field.parse([{ name: 'tier', stampsNeeded: 0, rewardType: 'percent_off', rewardValue: 20 }]),
-    ).not.toThrow();
-    expect(() =>
-      field.parse([{ name: 'tier', stampsNeeded: 0, rewardType: null, rewardValue: null }]),
-    ).not.toThrow();
-  });
-
-  it('local multipassTiers rewardType accepts amount_off | percent_off | null', () => {
-    const field = localTemplateSettingsSchema.shape.multipassTiers;
     expect(() =>
       field.parse([{ name: 'tier', stampsNeeded: 0, rewardType: 'amount_off', rewardValue: 50 }]),
     ).not.toThrow();
@@ -1210,7 +1060,6 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
       ],
     };
     expect(sharedTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
-    expect(localTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
   });
 
   it('full templateSettings accepts multipass with empty tiers array (no tiers yet)', () => {
@@ -1221,7 +1070,6 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
       multipassTiers: [],
     };
     expect(sharedTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
-    expect(localTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
   });
 
   // ===== Step 6 — Multipass 卡 PR-5 (2026-09-20): card-wide mode + per-tier threshold fields =====
@@ -1232,17 +1080,13 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
   //       perSpendAmount / perSpendStamps (per_spend mode)
   //
   // 4-layer sync (Rule 019 § 4.1) pins that the contract layer (shared),
-  // backend Layer 2 mirror (request.ts), and `multipassTiers[*]` shape
+  // backend Layer 2 (a re-export of the shared schema), and `multipassTiers[*]` shape
   // are coherent across the new fields. Constants imported from
   // `@saome/shared/constants/multipass-card` enforce bounds:
   //   - MULTIPASS_STAMPS_PER_VISIT_MIN=1, MULTIPASS_STAMPS_PER_SPEND_MIN=0.01
 
   it('shared schema has the multipassAccrualMode field (Rule 019 § 4.1 — Step 6 multipass card PR-5)', () => {
     expect(Object.keys(sharedTemplateSettingsSchema.shape)).toContain('multipassAccrualMode');
-  });
-
-  it('local schema has the multipassAccrualMode field (4-layer sync — Layer 2, Step 6 multipass PR-5)', () => {
-    expect(Object.keys(localTemplateSettingsSchema.shape)).toContain('multipassAccrualMode');
   });
 
   it('shared multipassAccrualMode accepts per_stamp | per_visit | per_spend | null', () => {
@@ -1258,14 +1102,6 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
     const field = sharedTemplateSettingsSchema.shape.multipassAccrualMode;
     expect(() => field.parse('manual')).toThrow();
     expect(() => field.parse('auto')).toThrow();
-  });
-
-  it('local multipassAccrualMode accepts per_stamp | per_visit | per_spend | null', () => {
-    const field = localTemplateSettingsSchema.shape.multipassAccrualMode;
-    expect(field.parse('per_stamp')).toBe('per_stamp');
-    expect(field.parse('per_visit')).toBe('per_visit');
-    expect(field.parse('per_spend')).toBe('per_spend');
-    expect(field.parse(null)).toBe(null);
   });
 
   it('shared multipassTiers[*] perVisitCount / perVisitStamps accepted (PR-5 per-tier threshold)', () => {
@@ -1284,40 +1120,8 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
     ).not.toThrow();
   });
 
-  it('local multipassTiers[*] perVisitCount / perVisitStamps accepted (PR-5 per-tier threshold)', () => {
-    const f = localTemplateSettingsSchema.shape.multipassTiers;
-    expect(() =>
-      f.parse([
-        {
-          name: 'tier',
-          stampsNeeded: 5,
-          rewardType: null,
-          rewardValue: null,
-          perVisitCount: 2,
-          perVisitStamps: 1,
-        },
-      ]),
-    ).not.toThrow();
-  });
-
   it('shared multipassTiers[*] perSpendAmount / perSpendStamps accepted (PR-5 per-tier threshold)', () => {
     const f = sharedTemplateSettingsSchema.shape.multipassTiers;
-    expect(() =>
-      f.parse([
-        {
-          name: 'tier',
-          stampsNeeded: 5,
-          rewardType: null,
-          rewardValue: null,
-          perSpendAmount: 100,
-          perSpendStamps: 1,
-        },
-      ]),
-    ).not.toThrow();
-  });
-
-  it('local multipassTiers[*] perSpendAmount / perSpendStamps accepted (PR-5 per-tier threshold)', () => {
-    const f = localTemplateSettingsSchema.shape.multipassTiers;
     expect(() =>
       f.parse([
         {
@@ -1390,6 +1194,23 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
         },
       ]),
     ).toThrow();
+    // Regression (2026-10-26): the previous version of this assertion only
+    // checked `0` and `0.01`, which a bare `.positive()` also satisfies —
+    // it was a FALSE GREEN that hid the real constraint drift (the shared
+    // schema accepted values the backend rejected). A value strictly
+    // between 0 and the 0.01 floor must also be rejected.
+    expect(() =>
+      f.parse([
+        {
+          name: 'tier',
+          stampsNeeded: 5,
+          rewardType: null,
+          rewardValue: null,
+          perSpendAmount: 0.005,
+          perSpendStamps: 1,
+        },
+      ]),
+    ).toThrow();
     expect(() =>
       f.parse([
         {
@@ -1435,7 +1256,6 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
       ],
     };
     expect(sharedTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
-    expect(localTemplateSettingsSchema.parse(payload)).toMatchObject(payload);
   });
 
   // ===== Step 6 — Multipass 卡 PR-6 (2026-09-20): per-tier maxDiscountAmount =====
@@ -1451,27 +1271,13 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
   //
   // 4-layer sync pins:
   //   - shared `templateSettingsSchema.multipassTiers[*].maxDiscountAmount` (Layer 1)
-  //   - backend local `templateSettingsSchema.multipassTiers[*].maxDiscountAmount` (Layer 2)
+  //   - backend request schema (Layer 2 — re-export of the shared schema,
+  //     pinned by the reference-identity assertion above)
   //   - backend db `TemplateSettings.multipassTiers[*].maxDiscountAmount` (Layer 3 — TS type)
   //   - frontend store already had it via MultipassTierShape (Layer 4 — OK)
 
   it('shared multipassTiers[*].maxDiscountAmount accepts null (no cap sentinel)', () => {
     const f = sharedTemplateSettingsSchema.shape.multipassTiers;
-    expect(() =>
-      f.parse([
-        {
-          name: 'tier',
-          stampsNeeded: 10,
-          rewardType: 'percent_off',
-          rewardValue: 10,
-          maxDiscountAmount: null,
-        },
-      ]),
-    ).not.toThrow();
-  });
-
-  it('local multipassTiers[*].maxDiscountAmount accepts null (no cap sentinel)', () => {
-    const f = localTemplateSettingsSchema.shape.multipassTiers;
     expect(() =>
       f.parse([
         {
@@ -1526,21 +1332,6 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
     ).not.toThrow();
   });
 
-  it('local multipassTiers[*].maxDiscountAmount accepts positive numbers', () => {
-    const f = localTemplateSettingsSchema.shape.multipassTiers;
-    expect(() =>
-      f.parse([
-        {
-          name: 'tier',
-          stampsNeeded: 10,
-          rewardType: 'percent_off',
-          rewardValue: 10,
-          maxDiscountAmount: 50,
-        },
-      ]),
-    ).not.toThrow();
-  });
-
   it('shared multipassTiers[*].maxDiscountAmount rejects negative numbers', () => {
     const f = sharedTemplateSettingsSchema.shape.multipassTiers;
     expect(() =>
@@ -1571,7 +1362,7 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
     ).not.toThrow();
   });
 
-  it('full templateSettings round-trips multipass with maxDiscountAmount (shared)', () => {
+  it('full templateSettings round-trips multipass with maxDiscountAmount', () => {
     const payload = {
       cardType: 'multipass',
       multipassTiers: [
@@ -1595,23 +1386,6 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
     expect(parsed.multipassTiers?.[0].maxDiscountAmount).toBeNull();
     expect(parsed.multipassTiers?.[1].maxDiscountAmount).toBe(100);
   });
-
-  it('full templateSettings round-trips multipass with maxDiscountAmount (local/backend)', () => {
-    const payload = {
-      cardType: 'multipass',
-      multipassTiers: [
-        {
-          name: 'Gold',
-          stampsNeeded: 5,
-          rewardType: 'percent_off',
-          rewardValue: 20,
-          maxDiscountAmount: 500,
-        },
-      ],
-    };
-    const parsed = localTemplateSettingsSchema.parse(payload);
-    expect(parsed.multipassTiers?.[0].maxDiscountAmount).toBe(500);
-  });
 });
 
 /**
@@ -1624,43 +1398,29 @@ describe('schema conformance (shared vs backend cards/templateSettingsSchema)', 
  *      changes (`COUPON_AMOUNT_MIN = 5`) — the all-import test still
  *      passes since both sides read 1, but the boundary semantics
  *      would silently break.
- *   2. One side (shared OR local) drops the import and falls back to a
- *      different literal — the mirror schema conformance test (above)
- *      catches it because local vs shared parsing differs.
+ *   2. The schema drops the import and falls back to a different
+ *      literal — the boundary probes below catch it because the
+ *      accepted/rejected set no longer matches the constants.
  *
- * Required: every coupon numeric field's schema in BOTH shared and
- * local must reject `MIN - 0.01`, accept `MIN`, accept `MAX` where MAX
- * is defined (only `couponDiscountPercent` has a MAX), and accept very
- * large positives for fields declared "no upper cap" (amount, issue_count).
+ * Required: every coupon numeric field's schema must reject
+ * `MIN - 0.01`, accept `MIN`, accept `MAX` where MAX is defined (only
+ * `couponDiscountPercent` has a MAX), and accept very large positives
+ * for fields declared "no upper cap" (amount, issue_count).
  */
 describe('coupon schema values honor shared constants (Rule 019 § 4.1)', () => {
   // couponDiscountAmount — MIN only (no upper cap per user decision 2026-09-19)
 
-  it('shared couponDiscountAmount.min === COUPON_AMOUNT_MIN boundary', () => {
+  it('couponDiscountAmount.min === COUPON_AMOUNT_MIN boundary', () => {
     const f = sharedTemplateSettingsSchema.shape.couponDiscountAmount;
     expect(f.safeParse(COUPON_AMOUNT_MIN).success).toBe(true);
     expect(f.safeParse(COUPON_AMOUNT_MIN - 0.01).success).toBe(false);
     expect(f.safeParse(COUPON_AMOUNT_MIN - 1).success).toBe(false);
   });
 
-  it('local couponDiscountAmount.min === COUPON_AMOUNT_MIN boundary', () => {
-    const f = localTemplateSettingsSchema.shape.couponDiscountAmount;
-    expect(f.safeParse(COUPON_AMOUNT_MIN).success).toBe(true);
-    expect(f.safeParse(COUPON_AMOUNT_MIN - 0.01).success).toBe(false);
-  });
-
   // couponDiscountPercent — MIN and MAX (both required)
 
-  it('shared couponDiscountPercent bounded by COUPON_PERCENT_MIN..MAX', () => {
+  it('couponDiscountPercent bounded by COUPON_PERCENT_MIN..MAX', () => {
     const f = sharedTemplateSettingsSchema.shape.couponDiscountPercent;
-    expect(f.safeParse(COUPON_PERCENT_MIN).success).toBe(true);
-    expect(f.safeParse(COUPON_PERCENT_MAX).success).toBe(true);
-    expect(f.safeParse(COUPON_PERCENT_MIN - 1).success).toBe(false);
-    expect(f.safeParse(COUPON_PERCENT_MAX + 1).success).toBe(false);
-  });
-
-  it('local couponDiscountPercent bounded by COUPON_PERCENT_MIN..MAX', () => {
-    const f = localTemplateSettingsSchema.shape.couponDiscountPercent;
     expect(f.safeParse(COUPON_PERCENT_MIN).success).toBe(true);
     expect(f.safeParse(COUPON_PERCENT_MAX).success).toBe(true);
     expect(f.safeParse(COUPON_PERCENT_MIN - 1).success).toBe(false);
@@ -1669,18 +1429,11 @@ describe('coupon schema values honor shared constants (Rule 019 § 4.1)', () => 
 
   // couponIssueCount — MIN only (no upper cap per user decision 2026-09-19)
 
-  it('shared couponIssueCount.min === COUPON_ISSUE_COUNT_MIN (no upper cap)', () => {
+  it('couponIssueCount.min === COUPON_ISSUE_COUNT_MIN (no upper cap)', () => {
     const f = sharedTemplateSettingsSchema.shape.couponIssueCount;
     expect(f.safeParse(COUPON_ISSUE_COUNT_MIN).success).toBe(true);
     expect(f.safeParse(COUPON_ISSUE_COUNT_MIN - 1).success).toBe(false);
     expect(f.safeParse(999_999).success).toBe(true); // no upper cap
-  });
-
-  it('local couponIssueCount.min === COUPON_ISSUE_COUNT_MIN (no upper cap)', () => {
-    const f = localTemplateSettingsSchema.shape.couponIssueCount;
-    expect(f.safeParse(COUPON_ISSUE_COUNT_MIN).success).toBe(true);
-    expect(f.safeParse(COUPON_ISSUE_COUNT_MIN - 1).success).toBe(false);
-    expect(f.safeParse(999_999).success).toBe(true);
   });
 });
 
@@ -1701,22 +1454,8 @@ describe('coupon schema values honor shared constants (Rule 019 § 4.1)', () => 
 describe('multipass schema values honor shared constants (Rule 019 § 4.1)', () => {
   // tier name length cap
 
-  it('shared multipassTiers name.max === MULTIPASS_TIER_NAME_MAX_LENGTH boundary', () => {
+  it('multipassTiers name.max === MULTIPASS_TIER_NAME_MAX_LENGTH boundary', () => {
     const f = sharedTemplateSettingsSchema.shape.multipassTiers;
-    expect(
-      f.safeParse([
-        { name: 'x'.repeat(MULTIPASS_TIER_NAME_MAX_LENGTH), stampsNeeded: 0, rewardType: 'amount_off', rewardValue: 50 },
-      ]).success,
-    ).toBe(true);
-    expect(
-      f.safeParse([
-        { name: 'x'.repeat(MULTIPASS_TIER_NAME_MAX_LENGTH + 1), stampsNeeded: 0, rewardType: 'amount_off', rewardValue: 50 },
-      ]).success,
-    ).toBe(false);
-  });
-
-  it('local multipassTiers name.max === MULTIPASS_TIER_NAME_MAX_LENGTH boundary', () => {
-    const f = localTemplateSettingsSchema.shape.multipassTiers;
     expect(
       f.safeParse([
         { name: 'x'.repeat(MULTIPASS_TIER_NAME_MAX_LENGTH), stampsNeeded: 0, rewardType: 'amount_off', rewardValue: 50 },
@@ -1731,32 +1470,8 @@ describe('multipass schema values honor shared constants (Rule 019 § 4.1)', () 
 
   // stampsNeeded bounded by MULTIPASS_STAMPS_NEEDED_MIN..MAX (with safety-valve semantics)
 
-  it('shared multipassTiers stampsNeeded bounded by MULTIPASS_STAMPS_NEEDED_MIN..MAX', () => {
+  it('multipassTiers stampsNeeded bounded by MULTIPASS_STAMPS_NEEDED_MIN..MAX', () => {
     const f = sharedTemplateSettingsSchema.shape.multipassTiers;
-    expect(
-      f.safeParse([
-        { name: 'tier', stampsNeeded: MULTIPASS_STAMPS_NEEDED_MIN, rewardType: 'amount_off', rewardValue: 50 },
-      ]).success,
-    ).toBe(true);
-    expect(
-      f.safeParse([
-        { name: 'tier', stampsNeeded: MULTIPASS_STAMPS_NEEDED_MAX, rewardType: 'amount_off', rewardValue: 50 },
-      ]).success,
-    ).toBe(true);
-    expect(
-      f.safeParse([
-        { name: 'tier', stampsNeeded: MULTIPASS_STAMPS_NEEDED_MIN - 1, rewardType: 'amount_off', rewardValue: 50 },
-      ]).success,
-    ).toBe(false);
-    expect(
-      f.safeParse([
-        { name: 'tier', stampsNeeded: MULTIPASS_STAMPS_NEEDED_MAX + 1, rewardType: 'amount_off', rewardValue: 50 },
-      ]).success,
-    ).toBe(false);
-  });
-
-  it('local multipassTiers stampsNeeded bounded by MULTIPASS_STAMPS_NEEDED_MIN..MAX', () => {
-    const f = localTemplateSettingsSchema.shape.multipassTiers;
     expect(
       f.safeParse([
         { name: 'tier', stampsNeeded: MULTIPASS_STAMPS_NEEDED_MIN, rewardType: 'amount_off', rewardValue: 50 },
@@ -1781,7 +1496,7 @@ describe('multipass schema values honor shared constants (Rule 019 § 4.1)', () 
 
   // Array length cap (MAX_MULTIPASS_TIERS=5)
 
-  it('shared multipassTiers.max === MAX_MULTIPASS_TIERS boundary', () => {
+  it('multipassTiers.max === MAX_MULTIPASS_TIERS boundary', () => {
     const f = sharedTemplateSettingsSchema.shape.multipassTiers;
     // 5 tiers accepted
     expect(
@@ -1795,30 +1510,6 @@ describe('multipass schema values honor shared constants (Rule 019 § 4.1)', () 
       ).success,
     ).toBe(true);
     // 6 tiers rejected
-    expect(
-      f.safeParse(
-        Array.from({ length: MAX_MULTIPASS_TIERS + 1 }, (_, i) => ({
-          name: `tier-${i}`,
-          stampsNeeded: i,
-          rewardType: 'amount_off' as const,
-          rewardValue: 10,
-        })),
-      ).success,
-    ).toBe(false);
-  });
-
-  it('local multipassTiers.max === MAX_MULTIPASS_TIERS boundary', () => {
-    const f = localTemplateSettingsSchema.shape.multipassTiers;
-    expect(
-      f.safeParse(
-        Array.from({ length: MAX_MULTIPASS_TIERS }, (_, i) => ({
-          name: `tier-${i}`,
-          stampsNeeded: i,
-          rewardType: 'amount_off' as const,
-          rewardValue: 10,
-        })),
-      ).success,
-    ).toBe(true);
     expect(
       f.safeParse(
         Array.from({ length: MAX_MULTIPASS_TIERS + 1 }, (_, i) => ({

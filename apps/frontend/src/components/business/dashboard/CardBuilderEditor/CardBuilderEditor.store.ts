@@ -862,7 +862,7 @@ interface CardBuilderState {
   // Mirrors `shared/templateSettingsSchema.multipassAccrualMode` (Rule 019 § 4.1).
   // 4-layer sync (Rule 019 § 4.1):
   //   - packages/shared/constants/multipass-card.ts (MULTIPASS_ACCRUAL_MODES)
-  //   - packages/shared/schemas/card.ts (templateSettingsSchema.multipassAccrualMode)
+  //   - packages/shared/schemas/card/ (templateSettingsSchema.multipassAccrualMode)
   //   - apps/backend/src/modules/cards/schemas/request.ts (backend mirror)
   //   - apps/backend/src/modules/cards/db/templates.ts (TemplateSettings interface)
   //

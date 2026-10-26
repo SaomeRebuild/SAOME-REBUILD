@@ -12,7 +12,7 @@
  *   5. Field key exhaustiveness (record shape per-currency)
  *
  * @see packages/shared/constants/discountPreviewAmounts.ts
- * @see packages/shared/schemas/card.ts (Currency schema: 'TWD' | 'ZAR')
+ * @see packages/shared/schemas/card/ (Currency schema: 'TWD' | 'ZAR')
  */
 
 import { describe, expect, it } from 'vitest';

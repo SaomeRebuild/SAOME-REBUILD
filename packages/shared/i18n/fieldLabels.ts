@@ -51,7 +51,7 @@ import { en } from './fieldLabels.en';
 
 /**
  * Languages supported for the Passcreator push. Mirrors the
- * `languageSchema` in `packages/shared/schemas/card.ts` (Layer 1 of
+ * `languageSchema` in `packages/shared/schemas/card/` (Layer 1 of
  * Rule 019 § 4.1).
  *
  * Adding a new language requires:

@@ -59,7 +59,7 @@ export type CardType =
 /**
  * Card face field keys (Step 3 — 顯示欄位).
  *
- * Mirrors `cardFieldKeySchema` in packages/shared/schemas/card.ts and
+ * Mirrors `cardFieldKeySchema` in packages/shared/schemas/card/ and
  * `CARD_FIELD_KEYS` in packages/shared/constants/card-fields.ts. This is
  * the DB-layer interface (Rule 019 § 4.1, layer 3 of 4) so service param
  * types and JSONB column contracts pick up the same value set.
@@ -144,7 +144,7 @@ export interface TemplateSettings {
   stampIconId?: string;
   // ===== Step 4 — 卡片資訊 (Rule 019 § 4.1, layer 3 of 4) =====
   // Mirrors `shared/templateSettingsSchema.description / backFields / links`.
-  // Step 4 plan 2026-09-04: see packages/shared/schemas/card.ts for source.
+  // Step 4 plan 2026-09-04: see packages/shared/schemas/card/ for source.
   /**
    * Card description (PassCardPreviewBack Section 1). Max 200 chars per
    * shared schema.
@@ -163,7 +163,7 @@ export interface TemplateSettings {
   links?: Array<{ label: string; value: string }>;
   // ===== Step 5 — 地理位置 + 推播訊息 (Rule 019 § 4.1, layer 3 of 4) =====
   // Mirrors `shared/templateSettingsSchema.initialMessage / locations`.
-  // Step 5 plan 2026-09-05: see packages/shared/schemas/card.ts for source.
+  // Step 5 plan 2026-09-05: see packages/shared/schemas/card/ for source.
   /**
    * Push-notification body shown after the user downloads the pass
    * (Passcreator "Initial message"). Max 50 chars per INITIAL_MESSAGE_MAX_LENGTH.
@@ -590,7 +590,7 @@ export interface TemplateSettings {
   // 2026-09-19, stampsNeeded 強制遞增: 不強制).
   //
   // 4-layer sync:
-  //   - packages/shared/schemas/card.ts (Layer 1, single source of truth)
+  //   - packages/shared/schemas/card/ (Layer 1, single source of truth)
   //   - apps/backend/src/modules/cards/schemas/request.ts (Layer 2 mirror)
   //   - apps/backend/src/modules/cards/db/templates.ts (Layer 3 — this interface)
   //   - apps/backend/src/modules/cards/services/cardService.ts (Layer 4 — auto via Partial<TemplateSettings>)

@@ -203,7 +203,7 @@ export default {
 
   // ===== QR Code panel (2026-10-04, Step 7 桌牌設計) =====
   //
-  // Mirrors the schema variant in `packages/shared/schemas/card.ts`.
+  // Mirrors the schema variant in `packages/shared/schemas/card/`.
   // Inspector renders:
   //   - 「新增 QR 碼」按鈕 (無 QR 元素時顯示, 已達上限時 disabled)
   //   - URL preview (唯讀, 顯示實際編碼內容供使用者掃碼驗證)

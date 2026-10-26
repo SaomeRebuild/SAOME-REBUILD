@@ -17,7 +17,7 @@
     "./types": "./types/index.ts",
     "./schemas": "./schemas/index.ts",
     "./schemas/auth": "./schemas/auth.ts",
-    "./schemas/card": "./schemas/card.ts",
+    "./schemas/card": "./schemas/card/index.ts",
     "./schemas/member": "./schemas/member.ts",
     "./schemas/order": "./schemas/order.ts",
     "./schemas/pass": "./schemas/pass.ts",

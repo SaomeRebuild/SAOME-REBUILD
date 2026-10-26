@@ -21,7 +21,7 @@ const aliasArray: { find: string | RegExp; replacement: string }[] = [
   { find: '@saome/shared/schemas/order', replacement: resolve(sharedRoot, 'schemas/order.ts') },
   { find: '@saome/shared/schemas/pass', replacement: resolve(sharedRoot, 'schemas/pass.ts') },
   { find: '@saome/shared/schemas/cardBuilder', replacement: resolve(sharedRoot, 'schemas/cardBuilder.ts') },
-  { find: '@saome/shared/schemas/card', replacement: resolve(sharedRoot, 'schemas/card.ts') },
+  { find: '@saome/shared/schemas/card', replacement: resolve(sharedRoot, 'schemas/card/index.ts') },
   // 2026-10-14 — Option B: stamp card image composition. Required by
   // uploadStampCardImage.ts and the Step 8 publish hook (Decision
   // 2026-10-14). Must come BEFORE generic `@saome/shared/schemas` per

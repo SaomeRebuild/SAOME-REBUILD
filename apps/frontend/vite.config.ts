@@ -17,7 +17,7 @@ const alias = [
   { find: /^@saome\/shared\/schemas\/order$/, replacement: path.resolve(sharedRoot, 'schemas/order.ts') },
   { find: /^@saome\/shared\/schemas\/pass$/, replacement: path.resolve(sharedRoot, 'schemas/pass.ts') },
   { find: /^@saome\/shared\/schemas\/cardBuilder$/, replacement: path.resolve(sharedRoot, 'schemas/cardBuilder.ts') },
-  { find: /^@saome\/shared\/schemas\/card$/, replacement: path.resolve(sharedRoot, 'schemas/card.ts') },
+  { find: /^@saome\/shared\/schemas\/card$/, replacement: path.resolve(sharedRoot, 'schemas/card/index.ts') },
   // 2026-10-14 — Option B: stamp card image composition. Required by
   // uploadStampCardImage.ts and the Step 8 publish hook (Decision
   // 2026-10-14). Must come BEFORE generic `@saome/shared/schemas` per

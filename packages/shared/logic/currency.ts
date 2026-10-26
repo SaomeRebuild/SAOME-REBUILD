@@ -34,7 +34,7 @@
  *
  * SAOME currently ships TWD (Taiwan) and ZAR (South Africa) as the two
  * production regions. The schema is the source of truth (see
- * `shared/schemas/card.ts::currencySchema`); this list mirrors that.
+ * `shared/schemas/card/::currencySchema`); this list mirrors that.
  * If you add a code here, add it to the schema AND the i18n locale
  * exports in the same PR (Rule 019 § 4.1 quad-binding).
  */

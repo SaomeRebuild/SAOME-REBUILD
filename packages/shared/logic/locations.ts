@@ -40,7 +40,7 @@ import {
  *
  * 2026-09-06 refactor: `latitude` and `longitude` are REQUIRED fields
  * (no `.optional()`) when the row exists in the store. The schema layer
- * (`packages/shared/schemas/card.ts`) enforces non-null lat/lng; the UI
+ * (`packages/shared/schemas/card/`) enforces non-null lat/lng; the UI
  * layer surfaces red borders until the user pastes coordinates.
  */
 export interface LocationInput {
@@ -272,7 +272,7 @@ export function validateAllLocations(
 // card type).
 //
 // Renamed in shared/constants/card-back-fields.ts (NOTIFICATION_RADIUS_*
-// → LOCATIONS_MAX_DISTANCE_*) and shared/schemas/card.ts (templateSettings
+// → LOCATIONS_MAX_DISTANCE_*) and shared/schemas/card/ (templateSettings
 // key `notificationRadius` → `locationsMaxDistance`).
 
 /**

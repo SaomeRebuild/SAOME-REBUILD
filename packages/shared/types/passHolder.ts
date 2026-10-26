@@ -57,7 +57,7 @@ export interface PublicMembershipTier {
  * buying 500 點 pays `(500 / 10) * 100 = 5000` 元.
  *
  * All six fields are `.int().positive().optional()` in
- * `templateSettingsSchema` (packages/shared/schemas/card.ts) — a template
+ * `templateSettingsSchema` (packages/shared/schemas/card/) — a template
  * that never configured them projects `null` here and the frontend hides
  * the purchase section entirely.
  */
@@ -87,7 +87,7 @@ export interface PublicGiftCardConfig {
  * so the page renders in the template's chosen language regardless of
  * the visitor's browser locale or saved preferences. Source of truth is
  * `templates.settings->>'language'` (JSONB); mirrors `languageSchema`
- * in `packages/shared/schemas/card.ts`.
+ * in `packages/shared/schemas/card/`.
  *
  * Paid-membership fields (2026-10-16):
  *   - `currency` — 'TWD' | 'ZAR'; defaults to TWD for legacy rows
@@ -122,7 +122,7 @@ export interface PublicPassTemplate {
   /**
    * Page language ('zh-TW' | 'en') — read from DB on template load and
    * applied via `applyPageLanguage(template.language)`. Mirrors
-   * `languageSchema` in `packages/shared/schemas/card.ts`.
+   * `languageSchema` in `packages/shared/schemas/card/`.
    */
   language: CardLanguage;
   /** Optional absolute URL for the issuer logo (mock: Unsplash / placeholder). */

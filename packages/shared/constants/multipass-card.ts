@@ -69,7 +69,7 @@ export type MultipassRewardType = (typeof MULTIPASS_REWARD_TYPES)[number];
  * 4-layer sync (Rule 019 § 4.1):
  *   - packages/shared/constants/multipass-card.ts (本檔 — single source of truth)
  *   - packages/shared/schemas/cardBuilder.ts (cardTypeExtensions.multipass.multipassAccrualMode)
- *   - packages/shared/schemas/card.ts (templateSettingsSchema.multipassAccrualMode)
+ *   - packages/shared/schemas/card/ (templateSettingsSchema.multipassAccrualMode)
  *   - apps/backend/src/modules/cards/schemas/request.ts (backend mirror)
  */
 export const MULTIPASS_ACCRUAL_MODES = ['per_stamp', 'per_visit', 'per_spend'] as const;

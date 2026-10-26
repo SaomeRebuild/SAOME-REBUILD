@@ -118,7 +118,7 @@ export function TemplateCardPreview({
   const effectiveCardType = settings?.cardType ?? cardType ?? null;
   // 2026-10-05 fix ??header text now sourced from `logoText` (NOT issuerName).
   // Per the schema contract (`backgroundColor/Text/logoText` comment in
-  // shared/schemas/card.ts), logoText is "the text shown on the pass
+  // shared/schemas/card/), logoText is "the text shown on the pass
   // header (next to the issuer logo)". The editor-side header
   // (`PassCardPreviewHeader.tsx`) renders `name` (which IS logoText) in
   // its header. The library preview must mirror that contract ??using

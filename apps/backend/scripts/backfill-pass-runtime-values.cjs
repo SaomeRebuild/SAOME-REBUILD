@@ -202,7 +202,7 @@ async function loadBackfillModule() {
         },
         {
           find: '@saome/shared/schemas/card',
-          replacement: path.resolve(REPO_ROOT, 'packages/shared/schemas/card.ts'),
+          replacement: path.resolve(REPO_ROOT, 'packages/shared/schemas/card/index.ts'),
         },
         {
           find: '@saome/shared/constants/card-fields',

@@ -1745,7 +1745,7 @@ function renderElementInner(
     //
     // Round 18 (2026-09-27) — `points={pts}` was a unit bug. `pts`
     // is stored in **bbox-local mm** (per `buildPolygonElementFromVertices`
-    // and `packages/shared/schemas/card.ts`), but Konva.Line treats
+    // and `packages/shared/schemas/card/`), but Konva.Line treats
     // `points` as raw canvas-px offsets from `(x, y)`. Passing mm
     // directly caused the visible triangle to render ~2.83× smaller
     // than the bbox (`PREVIEW_SCALE` ≈ 595 px / 210 mm) while the

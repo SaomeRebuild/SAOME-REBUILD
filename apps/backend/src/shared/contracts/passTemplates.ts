@@ -59,7 +59,7 @@ export interface PublicPassTemplateDto {
    * `templates.settings->>'language'` (JSONB) and projected to the
    * frontend so it can `applyPageLanguage(language)` on template load.
    * Source of truth mirrors `languageSchema` in
-   * `packages/shared/schemas/card.ts`. Added 2026-10-01 per plan
+   * `packages/shared/schemas/card/enums.ts`. Added 2026-10-01 per plan
    * `runs/decisions/2026-10-01-pass-holder-language.md` (decision pending).
    */
   language: CardLanguage;
@@ -74,7 +74,7 @@ export interface PublicPassTemplateDto {
    * drives the simulated payment button (TWD → Ecpay, ZAR → Payfast).
    * Mirrors `settings->>'currency'` (JSONB) on the `public.templates`
    * row. Defaults to TWD when missing (legacy rows). Source of truth is
-   * `Currency` in `packages/shared/schemas/card.ts`.
+   * `Currency` in `packages/shared/schemas/card/enums.ts`.
    */
   currency?: Currency;
   /**

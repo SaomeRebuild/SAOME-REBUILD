@@ -48,7 +48,7 @@ export const COST_MAX = 9_999_999;
  * 付費會員卡使用既有 `durationType` (monthly / yearly) + `monthlyCost` /
  * `yearlyCost`,不使用此 enum。
  *
- * Mirrors `packages/shared/schemas/card.ts::membershipExpiryMode` zod schema.
+ * Mirrors `packages/shared/schemas/card/templateSettings/membership.ts::membershipExpiryMode` zod schema.
  */
 export const MEMBERSHIP_EXPIRY_MODES = ['custom_days', 'specific_date'] as const;
 export type MembershipExpiryMode = (typeof MEMBERSHIP_EXPIRY_MODES)[number];

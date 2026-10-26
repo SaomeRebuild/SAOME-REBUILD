@@ -10,7 +10,7 @@ import type { templateSettingsSchema } from '@saome/shared/schemas/card';
 /**
  * Type alias for the canonical TemplateSettings shape (zod-inferred).
  * Mirrors TemplateCard.types.ts — single source of truth lives in
- * shared/schemas/card.ts (Rule 019 § 4.1).
+ * shared/schemas/card/ (Rule 019 § 4.1).
  */
 export type TemplateSettings = z.infer<typeof templateSettingsSchema>;
 

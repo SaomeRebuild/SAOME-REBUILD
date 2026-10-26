@@ -194,7 +194,7 @@ export default {
 
   // ===== QR Code panel (2026-10-04, Step 7 桌牌設計) =====
   //
-  // Mirrors the schema variant in `packages/shared/schemas/card.ts`.
+  // Mirrors the schema variant in `packages/shared/schemas/card/`.
   // Inspector renders:
   //   - "Add QR Code" button (shown when no QR element; disabled at cap)
   //   - URL preview (read-only, lets users scan to verify)

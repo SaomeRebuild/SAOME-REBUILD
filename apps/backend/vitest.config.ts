@@ -63,7 +63,7 @@ export default defineWorkersConfig({
       // The trailing-slash generic entry already matches `…/card` etc. as
       // subpath lookups; the bare `@saome/shared/schemas` resolves to the
       // barrel `index.ts` for callers that import from the index only.
-      '@saome/shared/schemas/card': path.resolve(__dirname, '../../packages/shared/schemas/card.ts'),
+      '@saome/shared/schemas/card': path.resolve(__dirname, '../../packages/shared/schemas/card/index.ts'),
       // 2026-10-23 — gift-card purchase contract (Layer 1). Value
       // imports need an EXPLICIT `.ts` entry: the generic trailing-slash
       // alias below only resolves for `import type` (erased at compile

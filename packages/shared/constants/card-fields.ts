@@ -6,7 +6,7 @@
  * Shared by:
  *   - Frontend Step 3 "顯示欄位" selector:
  *     apps/frontend/src/components/business/dashboard/CardBuilderEditor/Step3CardFields/
- *   - Shared templateSettingsSchema: packages/shared/schemas/card.ts
+ *   - Shared templateSettingsSchema: packages/shared/schemas/card/
  *   - Backend mirror: apps/backend/src/modules/cards/schemas/request.ts
  *
  * Plan: step3_card_fields_selector_baffa936.plan.md
@@ -55,7 +55,7 @@ export type CardFieldGroup = 'common' | 'stamp' | 'multipass' | 'reward' | 'cash
  * are appended last (only shown when cardType === 'reward_card').
  *
  * IMPORTANT: Adding a new key requires syncing:
- *   1. cardFieldKeySchema in packages/shared/schemas/card.ts (auto-derived
+ *   1. cardFieldKeySchema in packages/shared/schemas/card/ (auto-derived
  *      from this array via `z.enum([...CARD_FIELD_KEYS])`)
  *   2. TemplateSettings.leftField/rightField interface (apps/backend/.../db/templates.ts)
  *   3. i18n step3.fieldsSection.fields.{key} in cardEditor.{zh-TW,en}.ts

@@ -44,7 +44,7 @@
  *
  * ## Why a separate file (not in `shared/logic/`)
  *
- * The `TableCardElement` schema in `packages/shared/schemas/card.ts`
+ * The `TableCardElement` schema in `packages/shared/schemas/card/`
  * could host this helper, but the function touches React/Konva-adjacent
  * knowledge (we want to test it next to its callers). Co-locating with
  * the web-only Step 7 components is the pragmatic choice. If the
