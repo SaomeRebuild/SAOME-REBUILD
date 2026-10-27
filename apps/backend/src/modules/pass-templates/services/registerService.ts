@@ -42,7 +42,12 @@ import {
   validateGiftCardPurchase,
 } from '@saome/shared/logic/giftCardPurchase';
 import { giftCardSnapshotSchema } from '@saome/shared/schemas/passHolder';
+import {
+  membershipTierNameFromSnapshot,
+  resolveMembershipTierSnapshot,
+} from '@saome/shared/logic/membershipTier';
 import type { PublicGiftCardConfig } from '@saome/shared/types/passHolder';
+import type { Currency, TemplateSettings } from '@saome/shared/schemas/card';
 import type { PasscreatorPassValues } from '@saome/shared/logic/passFieldFormatter';
 import { membershipDurationTypeFromSnapshot } from '@saome/shared/logic/passExpiry';
 import { ensureRegistrationRuntimeState } from './passRegistrationService';
@@ -61,6 +66,119 @@ interface DerivedGiftCardPurchase {
   paidAmount: number;
   currency: 'TWD' | 'ZAR';
   giftCardSnapshot: unknown;
+}
+
+/**
+ * Membership tier snapshot derived server-side from the TEMPLATE.
+ *
+ * `name` / `durationType` / `paidAmount` are NEVER read from the
+ * request body — they are recomputed from the template's own
+ * `settings.membershipTiers[]` by `resolveMembershipTierSnapshot`, so
+ * a client cannot name a tier the tenant never offered nor quote a
+ * price the tenant never set. The client only supplies the tier
+ * INDEX it picked.
+ *
+ * 2026-10-27 — the FREE membership card case. A free card
+ * (`isPaid === false`) still has exactly one tier WITH A NAME, so it
+ * still gets a snapshot; the cycle and the price are null because a
+ * free holder bought neither. Before this change the free path wrote
+ * NO snapshot at all, so a free member's tier name was lost.
+ */
+interface DerivedMembershipTier {
+  /** 0-based index of the tier the holder joined. */
+  index: number;
+  /**
+   * The frozen snapshot, or `undefined` when the template has no
+   * usable tier (a free card whose single tier was never named).
+   */
+  snapshot: unknown;
+  /**
+   * Forced payment status. Only set on the FREE path — a free card
+   * has no payment concept, so 'not_required' is the only truthful
+   * value regardless of what the client claimed.
+   */
+  paymentStatus?: 'not_required';
+  /** Forced payment provider. Only set on the FREE path (always none). */
+  paymentProvider?: undefined;
+}
+
+/**
+ * Derive the membership tier snapshot + payment status from the
+ * template's own state.
+ *
+ * @param template   - The template row (its `settings` carry the
+ *                     authoritative tier list).
+ * @param tierIndex  - The index the client picked, or `undefined`
+ *                     for a non-membership card.
+ * @throws `ValidationError` (400) when a PAID membership card is
+ *         registered without a valid tier index.
+ */
+function deriveMembershipTierSnapshot(
+  template: {
+    card_type: string | null;
+    is_paid?: boolean | null;
+    settings: TemplateSettings | null | undefined;
+    currency?: Currency | null;
+  },
+  tierIndex: number | undefined,
+): DerivedMembershipTier | null {
+  // Only membership cards have tiers. Every other card type (stamp /
+  // reward / cashback / coupon / gift / multipass / discount) has no
+  // tier list, so there is nothing to snapshot.
+  if (template.card_type !== 'membership_card') return null;
+
+  const tiers = template.settings?.membershipTiers;
+  const isPaid = template.is_paid === true;
+
+  // A PAID card: the client MUST have picked a tier, and that index
+  // MUST resolve against the template's own tier list. Anything else
+  // is a malformed request.
+  if (isPaid) {
+    if (tierIndex === undefined) {
+      throw new ValidationError('passHolder.errors.membershipTierRequired', {
+        reason: 'Paid membership registration requires selectedTierIndex',
+      });
+    }
+    const snapshot = resolveMembershipTierSnapshot({
+      tiers,
+      index: tierIndex,
+      currency: template.currency ?? 'TWD',
+      mode: 'paid',
+    });
+    if (!snapshot) {
+      throw new ValidationError('passHolder.errors.membershipTierInvalid', {
+        reason: 'selectedTierIndex does not resolve to a usable template tier',
+        tierIndex,
+      });
+    }
+    return { index: tierIndex, snapshot };
+  }
+
+  // A FREE membership card: exactly one tier, index 0. The template
+  // may have no tier at all (a draft that was never filled in) — in
+  // that case there is simply no snapshot to write, and the
+  // registration still succeeds.
+  //
+  // The payment status is FORCED to 'not_required' (migration 024
+  // widened the DB CHECK to allow it). A free card has no payment
+  // concept, so a client claiming 'completed' on it is server-side
+  // corrected rather than persisted — the same "server decides"
+  // posture the tier snapshot takes.
+  const snapshot = resolveMembershipTierSnapshot({
+    tiers,
+    index: 0,
+    currency: template.currency ?? 'TWD',
+    mode: 'free',
+  });
+  return {
+    index: 0,
+    // `undefined` (not `null`) so the DB layer writes SQL NULL rather
+    // than a JSONB `null` — the two are not the same to `IS NULL`
+    // checks, and an absent tier is genuinely absent.
+    snapshot: snapshot ?? undefined,
+    paymentStatus: 'not_required',
+    paymentProvider: undefined,
+  };
 }
 
 /**
@@ -197,6 +315,19 @@ export async function registerService(
       )
     : null;
 
+  // 2026-10-27 — membership tier snapshot. The snapshot is derived
+  // SERVER-SIDE from the template's own tier list; the client's
+  // `membershipTierSnapshot` is not trusted (it is ignored). The
+  // client only supplies the tier INDEX it picked.
+  //
+  // A FREE membership card gets a snapshot too — it has one tier with
+  // a NAME, so the tier name must not be lost. Its cycle and price
+  // are null (a free holder bought neither).
+  const tierPurchase = deriveMembershipTierSnapshot(
+    template,
+    payload.selectedTierIndex,
+  );
+
   const { row, created } = await upsertPassHolder(sql, {
     templateId,
     name: payload.name,
@@ -206,10 +337,27 @@ export async function registerService(
     email: payload.email,
     // Paid-membership extension — undefined flows through to the DB as
     // NULL or the migration 023 default. See `upsertPassHolder`.
-    selectedTierIndex: payload.selectedTierIndex,
-    membershipTierSnapshot: payload.membershipTierSnapshot,
-    paymentProvider: payload.paymentProvider,
-    paymentStatus: payload.paymentStatus,
+    //
+    // 2026-10-27 — `selectedTierIndex` and `membershipTierSnapshot`
+    // now come from the server-derived tier purchase, NOT from the
+    // payload. A free membership card writes index 0.
+    selectedTierIndex: tierPurchase?.index,
+    membershipTierSnapshot: tierPurchase?.snapshot,
+    // 2026-10-27 — a free membership card's payment status is forced
+    // to 'not_required' server-side (it has no payment concept). A
+    // paid card keeps whatever the client simulated.
+    //
+    // The check is on `paymentStatus` (not on the provider's
+    // `undefined`) — a `??` against the provider would fall through
+    // to the client's value exactly when we want to clear it.
+    paymentProvider:
+      tierPurchase?.paymentStatus === 'not_required'
+        ? undefined
+        : payload.paymentProvider,
+    paymentStatus:
+      tierPurchase?.paymentStatus === 'not_required'
+        ? 'not_required'
+        : payload.paymentStatus,
     // 2026-10-23 — gift-card purchase fields. Only populated on the
     // gift branch, so every other card type writes NULL exactly as
     // before (regression guard in `register.test.ts`).
@@ -259,6 +407,19 @@ export async function registerService(
         : String(row.created_at),
   });
 
+  // 2026-10-27 — the holder's membership tier NAME, for the
+  // `data.memberLevel` field on the Passcreator V3 create body.
+  //
+  // It is read from the holder's PERSISTED frozen tier snapshot
+  // (never recomputed from the template at issuance time — the
+  // snapshot is what froze at registration). Only membership cards
+  // have a tier, so every other card type omits the field entirely
+  // and produces exactly the pre-2026-10-27 body.
+  const memberLevel =
+    template.card_type === 'membership_card'
+      ? (membershipTierNameFromSnapshot(row.membership_tier_snapshot) ?? undefined)
+      : undefined;
+
   // 4. (2026-10-19) V3 issuance — only attempt for NEW rows OR for
   // existing rows whose `pass_identifier` was never populated (e.g.
   // the row was created during a Passcreator outage and we left it
@@ -275,6 +436,7 @@ export async function registerService(
     row,
     template.passcreator_template_id,
     runtime.values,
+    memberLevel,
   );
 
   return {
@@ -316,6 +478,7 @@ async function attemptIssuance(
   row: PassHolderRow,
   passcreatorTemplateId: string | null | undefined,
   values?: PasscreatorPassValues,
+  memberLevel?: string,
 ): Promise<PassHolderIssuanceDto | undefined> {
   // Short-circuit: already issued. Return whatever runtime fields
   // are present on the row (idempotent re-register path).
@@ -352,6 +515,10 @@ async function attemptIssuance(
         phone: `${row.phone_country_code}${row.phone_number}`,
         birthday: row.birthday,
         email: row.email,
+        // 2026-10-27 — the holder's membership tier name. The key is
+        // OMITTED (not set to undefined) for every non-membership
+        // card, so those produce exactly the pre-2026-10-27 body.
+        ...(memberLevel !== undefined ? { memberLevel } : {}),
       },
       // The holder's OPENING runtime values (points / balance /
       // expiry). Same wire shape the later PATCH consumes — one

@@ -167,6 +167,10 @@ describe('passHolderService.register (mock mode)', () => {
   });
 
   it('2026-10-16: register accepts paid-membership fields (selectedTierIndex / paymentProvider / status)', async () => {
+    // 2026-10-27 — `membershipTierSnapshot` is no longer SENT by the
+    // client (the backend derives it server-side), but the field is
+    // still part of the wire contract for older deployed clients, so
+    // the mock service must keep accepting it.
     const payload: PassHolderPayload = {
       name: '王小明',
       phoneCountryCode: '+886',

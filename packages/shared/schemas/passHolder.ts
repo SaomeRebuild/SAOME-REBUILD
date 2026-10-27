@@ -89,5 +89,61 @@ export const giftCardSnapshotSchema = z.object({
   checkoutMaxPoints: z.number().int().positive(),
 });
 
+/**
+ * Frozen membership tier snapshot — the persisted shape of
+ * `public.pass_holders.membership_tier_snapshot` (JSONB).
+ *
+ * 2026-10-27 — this schema was previously defined ONLY in the backend
+ * (`apps/backend/src/modules/pass-templates/schemas/request.ts`),
+ * which meant the shared package had the TypeScript interface
+ * (`types/passHolder.ts::MembershipTierSnapshot`) but no runtime
+ * validator. Rule 019 § 1 requires the shared package to own the
+ * contract; the backend now imports this instead of keeping a local
+ * duplicate.
+ *
+ * `durationType` is NULLABLE because a free membership card has a
+ * tier with a NAME but no billing cycle and no price. `null` is a
+ * real state there, not a missing value — so the schema must accept
+ * it (and the paid path must keep requiring a cycle for the tier the
+ * client actually bought — see `membershipTierSnapshotInputSchema`).
+ */
+export const membershipTierSnapshotSchema = z.object({
+  /** 0-based index into the template's `membershipTiers[]`. */
+  index: z.number().int().min(0),
+  /** Tier display name at registration time. */
+  name: z.string().min(1).max(80),
+  /** Billing cycle; null for a free membership card. */
+  durationType: z.enum(['monthly', 'yearly']).nullable(),
+  /** Amount paid; null for a free membership card. */
+  paidAmount: z.number().nonnegative().nullable(),
+  /** Currency of `paidAmount`. Mirrors `template.currency`. */
+  currency: currencySchema,
+});
+
+/**
+ * The membership tier snapshot as a CLIENT may present it.
+ *
+ * The client only ever picks the tier INDEX — the name, the cycle
+ * and the price are all re-derived server-side from the template
+ * (see `shared/logic/membershipTier.ts::resolveMembershipTierSnapshot`).
+ * This schema therefore exists only to keep the request payload
+ * shape-compatible with older clients that still send a snapshot; the
+ * values are NOT trusted.
+ *
+ * The `durationType` here stays REQUIRED and non-nullable: a client
+ * that claims a paid purchase must name a cycle. A free card never
+ * sends a snapshot at all (it has no purchase to describe).
+ */
+export const membershipTierSnapshotInputSchema = z.object({
+  index: z.number().int().min(0),
+  name: z.string().min(1).max(80),
+  durationType: z.enum(['monthly', 'yearly']),
+  paidAmount: z.number().nonnegative().nullable(),
+  currency: currencySchema,
+});
+
 export type GiftCardPurchaseInput = z.infer<typeof giftCardPurchaseInputSchema>;
 export type GiftCardSnapshotDto = z.infer<typeof giftCardSnapshotSchema>;
+export type MembershipTierSnapshotDto = z.infer<
+  typeof membershipTierSnapshotSchema
+>;

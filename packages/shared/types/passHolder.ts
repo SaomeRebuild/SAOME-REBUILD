@@ -164,14 +164,28 @@ export interface PublicPassTemplate {
  * receipt / dashboard can show the original price even if the
  * template's tier definition later changes. Index + name + cost
  * are all denormalized here to keep the snapshot self-contained.
+ *
+ * 2026-10-27 — `durationType` is NULLABLE. A free membership card
+ * (`isPaid === false`) still has exactly one tier WITH A NAME, but it
+ * has no billing cycle (its expiry is card-level, not per-tier) and no
+ * price. The snapshot therefore records `durationType: null` +
+ * `paidAmount: null` for that case — a null cycle is a real state,
+ * not a missing value.
+ *
+ * The snapshot is SERVER-derived (see
+ * `shared/logic/membershipTier.ts::resolveMembershipTierSnapshot`) —
+ * the client picks the tier INDEX, the server derives the rest.
  */
 export interface MembershipTierSnapshot {
   /** 0-based index into the source `template.membershipTiers[]`. */
   index: number;
   /** Tier display name at registration time. */
   name: string;
-  /** Duration type the holder subscribed to. */
-  durationType: 'monthly' | 'yearly';
+  /**
+   * Billing cycle the holder subscribed to. `null` when the tier has
+   * no cycle (free membership card) or was never configured.
+   */
+  durationType: 'monthly' | 'yearly' | null;
   /**
    * Currency amount actually paid. null when the tier is free
    * (e.g. promotional month, or monthlyCost/yearlyCost was null).
@@ -305,9 +319,16 @@ export interface PassHolderPayload {
    */
   selectedTierIndex?: number;
   /**
-   * Frozen snapshot of the selected tier. Required when isPaid — keeps
-   * the persisted receipt consistent even if the template's tier
-   * definition is later edited.
+   * Frozen snapshot of the selected tier.
+   *
+   * 2026-10-27 — NO LONGER SENT BY THE CLIENT. The snapshot is
+   * derived server-side from the template's own tier list (see
+   * `shared/logic/membershipTier.ts::resolveMembershipTierSnapshot`),
+   * so a client cannot name a tier the tenant never offered nor quote
+   * a price the tenant never set. The field is retained in the
+   * request contract (and accepted by the backend schema) only so
+   * older deployed clients keep working — the backend IGNORES its
+   * contents.
    */
   membershipTierSnapshot?: MembershipTierSnapshot;
   /**

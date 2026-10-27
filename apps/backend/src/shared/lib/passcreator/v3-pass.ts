@@ -242,6 +242,17 @@ export async function issuePass(
         phone: holder.phone,
         birthday: holder.birthday,
         email: holder.email,
+        // 2026-10-27 — the holder's membership tier name. Mapped to
+        // `data.memberLevel` for the same reason `memberName` maps to
+        // `data.memberName` (see above): the template's `{memberLevel}`
+        // placeholder resolves against THIS body field name.
+        //
+        // Omitted entirely when the holder has no tier (a
+        // non-membership card) — a legacy call site therefore produces
+        // exactly the pre-2026-10-27 body.
+        ...(holder.memberLevel !== undefined
+          ? { memberLevel: holder.memberLevel }
+          : {}),
         // The holder's OPENING runtime values (points / balance /
         // expiry) — same names the template binds. Omitted entirely
         // when the caller has no runtime state to send, so a legacy

@@ -1,59 +1,34 @@
 /**
  * PassHolderRegistration.helpers — small pure functions used by the
  * main L2 component. Lives next to `.tsx` per the L2 folder convention
- * (Rule 000 § A.1). Business logic stays out of the JSX; the
- * `buildMembershipTierSnapshot` helper is the only "domain" function
- * because the shared/ side of the contract is just the `PublicPassTemplate`
- * / `MembershipTierSnapshot` types — they don't dictate the snapshot
- * composition rules.
+ * (Rule 000 § A.1). Business logic stays out of the JSX;
+ * `resolvePaymentFields` is the only "domain" function because the
+ * shared/ side of the contract is just the `PublicPassTemplate` /
+ * `PassHolderPayload` types — they don't dictate the composition
+ * rules.
  *
  * 2026-10-16 — added `buildMembershipTierSnapshot` for the paid
  * membership flow. Pure function, fully unit-testable.
+ *
+ * 2026-10-27 — REMOVED `buildMembershipTierSnapshot`. The membership
+ * tier snapshot is now derived SERVER-SIDE from the template's own
+ * tier list (see
+ * `packages/shared/logic/membershipTier.ts::resolveMembershipTierSnapshot`),
+ * for the same reason the gift-card amount is: a client must not be
+ * able to name a tier the tenant never offered nor quote a price the
+ * tenant never set. The client now sends ONLY the tier INDEX it
+ * picked, and the backend re-derives the rest — which also means a
+ * FREE membership card gets a snapshot too (it has one tier with a
+ * name, even though the public DTO does not expose tiers for it).
  */
 
 import type {
-  MembershipTierSnapshot,
   PassHolderPayload,
   PublicPassTemplate,
 } from '@saome/shared/types/passHolder';
 import { PassHolderError } from '@/services/passHolderService';
 import type { PassHolderFormValues } from './PassHolderRegistration.hooks';
 import type { PaymentProvider, PaymentState } from './PassHolderMembershipTiers';
-
-/**
- * Build a frozen `MembershipTierSnapshot` for the selected tier.
- *
- * @param template  Public-safe template (must have `membershipTiers`)
- * @param index     0-based index into the tier list
- * @throws          Error if the index is out of range — this should be
- *                  unreachable because the picker UI only shows valid
- *                  indices, but we guard to keep the snapshot builder
- *                  defensive.
- */
-export function buildMembershipTierSnapshot(
-  template: PublicPassTemplate,
-  index: number,
-): MembershipTierSnapshot {
-  const tiers = template.membershipTiers ?? [];
-  const tier = tiers[index];
-  if (!tier) {
-    throw new Error(
-      `[buildMembershipTierSnapshot] index ${index} out of range (tiers.length=${tiers.length})`,
-    );
-  }
-  const currency = template.currency ?? 'TWD';
-  const cost =
-    tier.durationType === 'monthly' ? tier.monthlyCost : tier.yearlyCost;
-
-  return {
-    index,
-    name: tier.name,
-    durationType: tier.durationType,
-    // null is preserved as-is — UI surfaces it as "Free" / "Trial"
-    paidAmount: cost ?? null,
-    currency,
-  };
-}
 
 /**
  * Resolve the payment provider + status for the registration payload.
@@ -223,10 +198,14 @@ export function buildRegisterPayload(
     purchasedPoints: number | null;
   },
 ): PassHolderPayload {
-  const tierSnapshot =
-    opts.isPaidMembership && opts.selectedTierIndex !== null
-      ? buildMembershipTierSnapshot(template, opts.selectedTierIndex)
-      : undefined;
+  // 2026-10-27 — the membership tier snapshot is NO LONGER built
+  // here. It is derived server-side from the template's own tier list
+  // (see
+  // `packages/shared/logic/membershipTier.ts::resolveMembershipTierSnapshot`),
+  // so a client cannot name a tier the tenant never offered nor quote
+  // a price the tenant never set. The client sends only the tier
+  // INDEX it picked, which the backend resolves against the
+  // template.
   const { paymentProvider, paymentStatus } = resolvePaymentFields(
     opts.paymentState,
     template.currency,
@@ -234,7 +213,6 @@ export function buildRegisterPayload(
   return {
     ...values,
     selectedTierIndex: opts.selectedTierIndex ?? undefined,
-    membershipTierSnapshot: tierSnapshot,
     paymentProvider,
     paymentStatus,
     // 2026-10-23 — gift-card points. The backend RE-DERIVES the amount

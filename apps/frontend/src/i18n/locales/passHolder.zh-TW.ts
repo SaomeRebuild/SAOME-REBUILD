@@ -137,6 +137,11 @@ export default {
     pointsForbiddenForNotRequired: '購買點數不可標示為免費',
     giftCardPointsRequired: '請選擇要購買的點數',
     giftCardNotConfigured: '此贈品卡尚未設定兌換率,請聯絡商家',
+    // 2026-10-27 — 會員等級快照由後端從範本重算,前端只送 tier index。
+    // 這兩個 key 由 `apps/backend/src/modules/pass-templates/services/
+    // registerService.ts::deriveMembershipTierSnapshot` 產生。
+    membershipTierRequired: '請選擇會員等級方案',
+    membershipTierInvalid: '會員等級方案已變更,請重新整理頁面後再試',
   },
   validation: {
     nameRequired: '請輸入姓名',

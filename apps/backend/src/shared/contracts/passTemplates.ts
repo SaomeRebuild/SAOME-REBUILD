@@ -139,7 +139,14 @@ export interface PassHolderRegisterPayloadDto {
   // ================================================================
   /** 0-based index into the template's `membershipTiers[]`. */
   selectedTierIndex?: number;
-  /** Frozen snapshot of the selected tier (JSONB-safe). */
+  /**
+   * Frozen snapshot of the selected tier (JSONB-safe).
+   *
+   * 2026-10-27 — accepted for wire compatibility with older deployed
+   * clients, but the backend IGNORES its contents: the snapshot is
+   * derived server-side from the template's own tier list (see
+   * `packages/shared/logic/membershipTier.ts::resolveMembershipTierSnapshot`).
+   */
   membershipTierSnapshot?: unknown;
   /** 'payfast' (ZAR) | 'ecpay' (TWD). */
   paymentProvider?: 'payfast' | 'ecpay';

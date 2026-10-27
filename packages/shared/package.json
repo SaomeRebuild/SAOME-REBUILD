@@ -38,6 +38,7 @@
     "./logic/tableCard": "./logic/tableCard.ts",
     "./logic/stampCardImage": "./logic/stampCardImage.ts",
     "./logic/giftCardPurchase": "./logic/giftCardPurchase.ts",
+    "./logic/membershipTier": "./logic/membershipTier.ts",
     "./logic/passExpiry": "./logic/passExpiry.ts",
     "./logic/passValueCalculator": "./logic/passValueCalculator.ts",
     "./logic/passFieldFormatter": "./logic/passFieldFormatter.ts",

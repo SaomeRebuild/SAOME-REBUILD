@@ -83,6 +83,23 @@ export interface PassIssueHolderData {
   birthday: string;
   /** Email used by Apple/Google Wallet to deliver the pass link. */
   email: string;
+  /**
+   * The holder's membership tier NAME (e.g. `VIP`, `免費會員`).
+   *
+   * 2026-10-27 — read from the holder's PERSISTED tier snapshot
+   * (`pass_holders.membership_tier_snapshot`), which the backend
+   * derives server-side from the template's own tier list. It is
+   * omitted entirely when the holder has no tier (a non-membership
+   * card), so a legacy call site produces exactly the pre-2026-10-27
+   * body.
+   *
+   * Mapped to `data.memberLevel` on the V3 wire — the same path as
+   * `memberName`. The SAOME template mapping emits `memberLevel` as
+   * the Step 3 slot key, and Passcreator resolves the `{memberLevel}`
+   * placeholder against THIS body field name. Sending `name` here
+   * would leave `memberLevel:` empty in the rendered pass.
+   */
+  memberLevel?: string;
 }
 
 /**

@@ -426,6 +426,139 @@ describe('registerService — runtime value initialization', () => {
     );
   });
 
+  // =====================================================================
+  // 2026-10-27 — the membership tier NAME rides on `data.memberLevel`.
+  //
+  // It is read from the holder's PERSISTED frozen tier snapshot
+  // (which the backend derives server-side from the template), never
+  // recomputed from the template at issuance time.
+  // =====================================================================
+  describe('registerService — memberLevel at issuance', () => {
+    /** A FREE membership card whose single tier HAS a name. */
+    const FREE_MEMBERSHIP_TEMPLATE: PublicTemplateRow = {
+      id: TEMPLATE_ID,
+      name: '免費會員卡',
+      card_type: 'membership_card',
+      settings: {
+        logoText: '免費會員',
+        issuerName: 'Café Rewards Co.',
+        membershipTiers: [
+          {
+            name: '免費會員',
+            durationType: null,
+            monthlyCost: null,
+            yearlyCost: null,
+          },
+        ],
+      },
+      is_paid: false,
+      currency: 'TWD',
+      passcreator_template_id: 'pc-tpl-1',
+    };
+
+    /** The persisted snapshot the DB would return for the row. */
+    const FREE_SNAPSHOT = {
+      index: 0,
+      name: '免費會員',
+      durationType: null,
+      paidAmount: null,
+      currency: 'TWD',
+    };
+
+    function stubIssue() {
+      return vi.spyOn(passcreator, 'issuePass').mockResolvedValue({
+        identifier: 'pass-1',
+        downloadPage: 'https://app.passcreator.com/p/1',
+        iPhoneUri: 'https://app.passcreator.com/1.pkpass',
+        androidUri: 'https://passwallet.page.link/?link=1',
+        barcodeValue: null,
+      });
+    }
+
+    it('free membership card: sends the tier name as data.memberLevel', async () => {
+      vi.spyOn(templatesDb, 'findPublicTemplateById').mockResolvedValue(
+        FREE_MEMBERSHIP_TEMPLATE,
+      );
+      vi.spyOn(passHoldersDb, 'upsertPassHolder').mockResolvedValue({
+        row: { ...HOLDER, membership_tier_snapshot: FREE_SNAPSHOT },
+        created: true,
+      });
+      vi.spyOn(passEventsDb, 'appendPassEvent').mockResolvedValue({
+        row: {
+          id: 'event-1',
+          pass_holder_id: HOLDER.id,
+          event_type: 'registered',
+          payload: {
+            metrics: emptyPassValuesMetrics(),
+            expiryDate: null,
+          },
+          occurred_at: '2026-10-24T08:00:00.000Z',
+          created_at: '2026-10-24T08:00:00.000Z',
+          idempotency_key: 'registered:holder-new',
+        },
+        inserted: true,
+      });
+      vi.spyOn(passEventsDb, 'listPassEvents').mockResolvedValue([]);
+      vi.spyOn(
+        passHoldersDb,
+        'updatePassHolderPassValuesSnapshot',
+      ).mockResolvedValue(undefined);
+      vi.spyOn(passHoldersDb, 'updatePassHolderIssuance').mockResolvedValue(HOLDER);
+      const issueSpy = stubIssue();
+
+      const { sql } = makeMockSql();
+      await registerService(sql, MOCK_ENV as never, TEMPLATE_ID, validPayload as never);
+
+      expect(issueSpy).toHaveBeenCalledTimes(1);
+      // The tier name reaches the Wallet via `data.memberLevel` — the
+      // same path as `data.memberName`.
+      expect(issueSpy).toHaveBeenCalledWith(
+        MOCK_ENV,
+        'pc-tpl-1',
+        expect.objectContaining({ memberLevel: '免費會員' }),
+        expect.anything(),
+      );
+    });
+
+    it('non-membership card: does NOT send data.memberLevel', async () => {
+      vi.spyOn(templatesDb, 'findPublicTemplateById').mockResolvedValue(
+        TEMPLATE_ROW,
+      );
+      vi.spyOn(passHoldersDb, 'upsertPassHolder').mockResolvedValue({
+        row: HOLDER,
+        created: true,
+      });
+      vi.spyOn(passEventsDb, 'appendPassEvent').mockResolvedValue({
+        row: {
+          id: 'event-1',
+          pass_holder_id: HOLDER.id,
+          event_type: 'registered',
+          payload: {
+            metrics: emptyPassValuesMetrics(),
+            expiryDate: null,
+          },
+          occurred_at: '2026-10-24T08:00:00.000Z',
+          created_at: '2026-10-24T08:00:00.000Z',
+          idempotency_key: 'registered:holder-new',
+        },
+        inserted: true,
+      });
+      vi.spyOn(passEventsDb, 'listPassEvents').mockResolvedValue([]);
+      vi.spyOn(
+        passHoldersDb,
+        'updatePassHolderPassValuesSnapshot',
+      ).mockResolvedValue(undefined);
+      vi.spyOn(passHoldersDb, 'updatePassHolderIssuance').mockResolvedValue(HOLDER);
+      const issueSpy = stubIssue();
+
+      const { sql } = makeMockSql();
+      await registerService(sql, MOCK_ENV as never, TEMPLATE_ID, validPayload as never);
+
+      expect(issueSpy).toHaveBeenCalledTimes(1);
+      const holderArg = issueSpy.mock.calls[0]?.[2] as Record<string, unknown>;
+      expect(holderArg).not.toHaveProperty('memberLevel');
+    });
+  });
   it('uses the gift card purchased points as the opening balance', async () => {
     vi.spyOn(templatesDb, 'findPublicTemplateById').mockResolvedValue(
       GIFT_TEMPLATE_ROW,

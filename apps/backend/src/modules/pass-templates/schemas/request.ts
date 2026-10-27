@@ -18,6 +18,7 @@
  */
 
 import { z } from 'zod';
+import { membershipTierSnapshotInputSchema } from '@saome/shared/schemas/passHolder';
 
 export const passHolderPhoneCountryCodeSchema = z.enum(['+886', '+27']);
 export type PassHolderPhoneCountryCode = z.infer<typeof passHolderPhoneCountryCodeSchema>;
@@ -78,24 +79,28 @@ const passHolderPaymentStatusSchema = z.enum([
 ]);
 
 /**
- * Membership tier duration type. Mirrors the `durationType` field in
- * `PublicMembershipTier` (packages/shared/types/passHolder.ts).
+ * Frozen snapshot of the selected tier at registration time.
+ *
+ * 2026-10-27 — this schema now lives in the SHARED package
+ * (`packages/shared/schemas/passHolder.ts::membershipTierSnapshotInputSchema`),
+ * which is the single source of truth per Rule 019 § 1. The backend
+ * previously kept a LOCAL copy, so the shared package had the
+ * TypeScript interface but no runtime validator — and the two could
+ * drift.
+ *
+ * The shared input schema keeps `durationType` REQUIRED (a client
+ * that claims a paid purchase must name a cycle). The PERSISTED
+ * shape (`membershipTierSnapshotSchema` in the shared package) is
+ * looser — it allows a null cycle, because a FREE membership card
+ * has one tier with a name but no cycle and no price.
+ *
+ * NOTE: the values a client sends are NOT trusted. The backend
+ * re-derives the snapshot from the template's own tier list (see
+ * `registerService.ts`); this schema only keeps the request
+ * shape-compatible with older clients that still send a snapshot.
  */
-const passHolderTierDurationTypeSchema = z.enum(['monthly', 'yearly']);
-
-/**
- * Frozen snapshot of the selected tier at registration time. Mirrors
- * `packages/shared/types/passHolder.ts::MembershipTierSnapshot`. Stored
- * as JSONB so the receipt / dashboard can show the original price even
- * if the template's tier definition later changes.
- */
-export const membershipTierSnapshotSchema = z.object({
-  index: z.number().int().min(0),
-  name: z.string().min(1).max(80),
-  durationType: passHolderTierDurationTypeSchema,
-  paidAmount: z.number().nonnegative().nullable(),
-  currency: passHolderCurrencySchema,
-});
+export const membershipTierSnapshotSchema =
+  membershipTierSnapshotInputSchema;
 
 export const passHolderRegisterPayloadSchema = z.object({
   name: z.string().min(1).max(80),

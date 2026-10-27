@@ -1430,3 +1430,230 @@ describe('registerService — gift-card purchase (2026-10-23)', () => {
     expect(input?.currency).toBeUndefined();
   });
 });
+describe('registerService — membership tier snapshot (2026-10-27)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /**
+   * A FREE membership card: one tier WITH A NAME, but no billing
+   * cycle and no price (its expiry is card-level, not per-tier).
+   */
+  const FREE_MEMBERSHIP_TEMPLATE: PublicTemplateRow = {
+    id: TEMPLATE_ID,
+    name: '免費會員卡',
+    card_type: 'membership_card',
+    settings: {
+      logoText: '免費會員',
+      issuerName: 'Café Rewards Co.',
+      membershipTiers: [
+        {
+          name: '免費會員',
+          durationType: null,
+          monthlyCost: null,
+          yearlyCost: null,
+        },
+      ],
+    },
+    is_paid: false,
+    currency: 'TWD',
+  };
+
+  /** A PAID membership card with two tiers. */
+  const PAID_MEMBERSHIP_TEMPLATE: PublicTemplateRow = {
+    id: TEMPLATE_ID,
+    name: '付費會員卡',
+    card_type: 'membership_card',
+    settings: {
+      logoText: '付費會員',
+      issuerName: 'Café Rewards Co.',
+      membershipTiers: [
+        {
+          name: 'Basic',
+          durationType: 'monthly',
+          monthlyCost: 200,
+          yearlyCost: null,
+        },
+        {
+          name: 'VIP',
+          durationType: 'yearly',
+          monthlyCost: null,
+          yearlyCost: 2000,
+        },
+      ],
+    },
+    is_paid: true,
+    currency: 'TWD',
+  };
+
+  it('free membership card: writes a snapshot with the tier NAME', async () => {
+    // The regression this fixes: a free card used to write NO
+    // snapshot at all, so the holder's tier name was lost.
+    stubTemplateExists(FREE_MEMBERSHIP_TEMPLATE);
+    stubUpsert({ ...EXISTING_HOLDER, id: 'holder-free' }, true);
+
+    await registerService(
+      makeMockSql(),
+      MOCK_ENV as never,
+      TEMPLATE_ID,
+      validPayload as never,
+    );
+
+    expect(vi.mocked(passHoldersDb.upsertPassHolder).mock.calls[0]?.[1]).toMatchObject({
+      selectedTierIndex: 0,
+      membershipTierSnapshot: {
+        index: 0,
+        name: '免費會員',
+        // A free card has no cycle and no price.
+        durationType: null,
+        paidAmount: null,
+        currency: 'TWD',
+      },
+    });
+  });
+
+  it('free membership card: forces paymentStatus "not_required"', async () => {
+    // A free card has no payment concept, so 'not_required' is the
+    // only truthful value — a client claiming 'completed' is
+    // corrected server-side rather than persisted.
+    stubTemplateExists(FREE_MEMBERSHIP_TEMPLATE);
+    stubUpsert({ ...EXISTING_HOLDER, id: 'holder-free' }, true);
+
+    await registerService(
+      makeMockSql(),
+      MOCK_ENV as never,
+      TEMPLATE_ID,
+      { ...validPayload, paymentStatus: 'completed', paymentProvider: 'ecpay' } as never,
+    );
+
+    const input = vi.mocked(passHoldersDb.upsertPassHolder).mock.calls[0]?.[1];
+    expect(input?.paymentStatus).toBe('not_required');
+    expect(input?.paymentProvider).toBeUndefined();
+  });
+
+  it('free membership card: a template with NO tier still registers (no snapshot)', async () => {
+    // A draft whose single tier was never named. The registration
+    // must still succeed — there is simply no snapshot to write.
+    stubTemplateExists({
+      ...FREE_MEMBERSHIP_TEMPLATE,
+      settings: { ...FREE_MEMBERSHIP_TEMPLATE.settings, membershipTiers: [] },
+    });
+    stubUpsert({ ...EXISTING_HOLDER, id: 'holder-free' }, true);
+
+    await registerService(
+      makeMockSql(),
+      MOCK_ENV as never,
+      TEMPLATE_ID,
+      validPayload as never,
+    );
+
+    const input = vi.mocked(passHoldersDb.upsertPassHolder).mock.calls[0]?.[1];
+    expect(input?.membershipTierSnapshot).toBeUndefined();
+    expect(input?.selectedTierIndex).toBe(0);
+  });
+
+  it('paid membership card: derives the snapshot from the template tier at the picked index', async () => {
+    stubTemplateExists(PAID_MEMBERSHIP_TEMPLATE);
+    stubUpsert({ ...EXISTING_HOLDER, id: 'holder-paid' }, true);
+
+    await registerService(
+      makeMockSql(),
+      MOCK_ENV as never,
+      TEMPLATE_ID,
+      { ...validPayload, selectedTierIndex: 1 } as never,
+    );
+
+    expect(vi.mocked(passHoldersDb.upsertPassHolder).mock.calls[0]?.[1]).toMatchObject({
+      selectedTierIndex: 1,
+      membershipTierSnapshot: {
+        index: 1,
+        name: 'VIP',
+        durationType: 'yearly',
+        paidAmount: 2000,
+        currency: 'TWD',
+      },
+    });
+  });
+
+  it('paid membership card: IGNORES a client-supplied snapshot (server re-derives)', async () => {
+    // A client must not be able to name a tier the tenant never
+    // offered, nor quote a price the tenant never set. The persisted
+    // snapshot is provably the server's own derivation.
+    stubTemplateExists(PAID_MEMBERSHIP_TEMPLATE);
+    stubUpsert({ ...EXISTING_HOLDER, id: 'holder-paid' }, true);
+
+    await registerService(
+      makeMockSql(),
+      MOCK_ENV as never,
+      TEMPLATE_ID,
+      {
+        ...validPayload,
+        selectedTierIndex: 0,
+        membershipTierSnapshot: {
+          index: 0,
+          name: '免費尊爵',
+          durationType: 'yearly',
+          paidAmount: 1,
+          currency: 'TWD',
+        },
+      } as never,
+    );
+
+    const input = vi.mocked(passHoldersDb.upsertPassHolder).mock.calls[0]?.[1];
+    expect(input?.membershipTierSnapshot).toMatchObject({
+      name: 'Basic',
+      durationType: 'monthly',
+      paidAmount: 200,
+    });
+  });
+
+  it('paid membership card: REJECTS a missing selectedTierIndex (400)', async () => {
+    stubTemplateExists(PAID_MEMBERSHIP_TEMPLATE);
+    stubUpsert({ ...EXISTING_HOLDER, id: 'holder-paid' }, true);
+
+    await expect(
+      registerService(
+        makeMockSql(),
+        MOCK_ENV as never,
+        TEMPLATE_ID,
+        validPayload as never,
+      ),
+    ).rejects.toThrow();
+
+    expect(vi.mocked(passHoldersDb.upsertPassHolder)).not.toHaveBeenCalled();
+  });
+
+  it('paid membership card: REJECTS an out-of-range selectedTierIndex (400)', async () => {
+    stubTemplateExists(PAID_MEMBERSHIP_TEMPLATE);
+    stubUpsert({ ...EXISTING_HOLDER, id: 'holder-paid' }, true);
+
+    await expect(
+      registerService(
+        makeMockSql(),
+        MOCK_ENV as never,
+        TEMPLATE_ID,
+        { ...validPayload, selectedTierIndex: 99 } as never,
+      ),
+    ).rejects.toThrow();
+
+    expect(vi.mocked(passHoldersDb.upsertPassHolder)).not.toHaveBeenCalled();
+  });
+
+  it('non-membership card: writes NO tier snapshot (regression)', async () => {
+    // Stamp / reward / cashback / gift cards have no tier list, so
+    // there is nothing to snapshot — and the columns stay NULL.
+    stubTemplateExists(TEMPLATE_ROW);
+    stubUpsert({ ...EXISTING_HOLDER, id: 'holder-new' }, true);
+
+    await registerService(
+      makeMockSql(),
+      MOCK_ENV as never,
+      TEMPLATE_ID,
+      validPayload as never,
+    );
+
+    const input = vi.mocked(passHoldersDb.upsertPassHolder).mock.calls[0]?.[1];
+    expect(input?.membershipTierSnapshot).toBeUndefined();
+    expect(input?.selectedTierIndex).toBeUndefined();
+  });
+});

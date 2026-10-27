@@ -124,6 +124,14 @@ export default {
     giftCardPointsRequired: 'Please choose how many points to buy',
     giftCardNotConfigured:
       'This gift card has no exchange rate configured. Please contact the merchant.',
+    // 2026-10-27 — Membership tier snapshot errors. The backend
+    // re-derives the snapshot from the template's own tier list, so
+    // these come from
+    // `apps/backend/src/modules/pass-templates/services/registerService.ts::deriveMembershipTierSnapshot`.
+    // Mirror of zh-TW file; keep in sync with the backend.
+    membershipTierRequired: 'Please choose a membership tier',
+    membershipTierInvalid:
+      'The membership tiers have changed. Please refresh the page and try again.',
   },
   validation: {
     nameRequired: 'Please enter your name',

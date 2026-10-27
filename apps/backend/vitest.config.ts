@@ -81,6 +81,11 @@ export default defineWorkersConfig({
       '@saome/shared/logic/passValueCalculator': path.resolve(__dirname, '../../packages/shared/logic/passValueCalculator.ts'),
       '@saome/shared/logic/passFieldFormatter': path.resolve(__dirname, '../../packages/shared/logic/passFieldFormatter.ts'),
       '@saome/shared/logic/passExpiry': path.resolve(__dirname, '../../packages/shared/logic/passExpiry.ts'),
+      // 2026-10-27 — membership tier snapshot resolver. Value import
+      // needs an EXPLICIT `.ts` entry for the same reason as
+      // `spendTier` above: the generic trailing-slash alias only
+      // resolves `import type` (erased at compile time).
+      '@saome/shared/logic/membershipTier': path.resolve(__dirname, '../../packages/shared/logic/membershipTier.ts'),
       '@saome/shared/schemas/passValues': path.resolve(__dirname, '../../packages/shared/schemas/passValues.ts'),
       '@saome/shared/schemas/': path.resolve(__dirname, '../../packages/shared/schemas/'),
       '@saome/shared/schemas': path.resolve(__dirname, '../../packages/shared/schemas/index.ts'),

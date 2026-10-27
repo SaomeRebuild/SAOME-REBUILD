@@ -237,6 +237,59 @@ describe('issuePass — Passcreator V3 per-pass runtime endpoint', () => {
     expect(body.data.email).toBe('wang@example.com');
   });
 
+  // =====================================================================
+  // 2026-10-27 — the membership tier NAME rides on `data.memberLevel`.
+  //
+  // The template's `{memberLevel}` placeholder (the Step 3 slot key)
+  // resolves against THIS body field name — exactly like
+  // `{memberName}` resolves against `data.memberName`. Sending it
+  // under any other name leaves the slot empty on the Wallet.
+  // =====================================================================
+  it('sends data.memberLevel when the holder has a membership tier', async () => {
+    fetchSpy.mockResolvedValueOnce(
+      makeResponse({ status: 201, body: makeV3SuccessBody() }),
+    );
+
+    await issuePass(
+      VALID_ENV,
+      'pc-tpl-123',
+      makeHolder({ memberLevel: 'VIP' }),
+    );
+
+    const init = fetchSpy.mock.calls[0]?.[1] as RequestInit;
+    const body = JSON.parse(init.body as string);
+    expect(body.data.memberLevel).toBe('VIP');
+  });
+
+  it('sends data.memberLevel for a FREE membership tier (the tier still has a name)', async () => {
+    fetchSpy.mockResolvedValueOnce(
+      makeResponse({ status: 201, body: makeV3SuccessBody() }),
+    );
+
+    await issuePass(
+      VALID_ENV,
+      'pc-tpl-123',
+      makeHolder({ memberLevel: '免費會員' }),
+    );
+
+    const init = fetchSpy.mock.calls[0]?.[1] as RequestInit;
+    const body = JSON.parse(init.body as string);
+    expect(body.data.memberLevel).toBe('免費會員');
+  });
+
+  it('OMITS data.memberLevel when the holder has no tier (non-membership card)', async () => {
+    fetchSpy.mockResolvedValueOnce(
+      makeResponse({ status: 201, body: makeV3SuccessBody() }),
+    );
+
+    await issuePass(VALID_ENV, 'pc-tpl-123', makeHolder());
+
+    const init = fetchSpy.mock.calls[0]?.[1] as RequestInit;
+    const body = JSON.parse(init.body as string);
+    // Omitted entirely (not `undefined` / `null`) so a legacy call
+    // site produces exactly the pre-2026-10-27 body.
+    expect(body.data).not.toHaveProperty('memberLevel');
+  });
   it('v3-fix: capture fixture (v3-create-success.json) reflects the renamed memberName wire shape', async () => {
     const fixturePath = `${REPO_ROOT}/fixtures/passcreator/v3/v3-create-success.json`;
     if (!fs.existsSync(fixturePath)) {

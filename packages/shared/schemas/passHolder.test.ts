@@ -12,6 +12,8 @@ import { describe, it, expect } from 'vitest';
 import {
   giftCardPurchaseInputSchema,
   giftCardSnapshotSchema,
+  membershipTierSnapshotSchema,
+  membershipTierSnapshotInputSchema,
   withGiftCardFences,
 } from './passHolder';
 import type { PublicGiftCardConfig } from '../types/passHolder';
@@ -153,5 +155,119 @@ describe('giftCardSnapshotSchema', () => {
   it('rejects a missing field (the DB column must be self-contained)', () => {
     const { unitPoints: _dropped, ...partial } = VALID;
     expect(giftCardSnapshotSchema.safeParse(partial).success).toBe(false);
+  });
+});
+
+describe('membershipTierSnapshotSchema (2026-10-27)', () => {
+  const PAID = {
+    index: 0,
+    name: 'VIP',
+    durationType: 'yearly' as const,
+    paidAmount: 2000,
+    currency: 'TWD' as const,
+  };
+
+  it('accepts a paid tier snapshot', () => {
+    expect(membershipTierSnapshotSchema.parse(PAID)).toEqual(PAID);
+  });
+
+  it('accepts a FREE tier snapshot (null durationType + null paidAmount)', () => {
+    // A free membership card has one tier with a NAME but no cycle
+    // and no price — null is a real state, not a missing value.
+    const FREE = {
+      index: 0,
+      name: '免費會員',
+      durationType: null,
+      paidAmount: null,
+      currency: 'TWD' as const,
+    };
+    expect(membershipTierSnapshotSchema.parse(FREE)).toEqual(FREE);
+  });
+
+  it('accepts a zero paidAmount (a free PAID tier is still a paid tier)', () => {
+    expect(
+      membershipTierSnapshotSchema.safeParse({ ...PAID, paidAmount: 0 }).success,
+    ).toBe(true);
+  });
+
+  it('rejects a negative index', () => {
+    expect(
+      membershipTierSnapshotSchema.safeParse({ ...PAID, index: -1 }).success,
+    ).toBe(false);
+  });
+
+  it('rejects a negative paidAmount', () => {
+    expect(
+      membershipTierSnapshotSchema.safeParse({ ...PAID, paidAmount: -1 })
+        .success,
+    ).toBe(false);
+  });
+
+  it('rejects an empty tier name', () => {
+    expect(
+      membershipTierSnapshotSchema.safeParse({ ...PAID, name: '' }).success,
+    ).toBe(false);
+  });
+
+  it('rejects an over-long tier name (81 chars)', () => {
+    expect(
+      membershipTierSnapshotSchema.safeParse({ ...PAID, name: 'x'.repeat(81) })
+        .success,
+    ).toBe(false);
+  });
+
+  it('accepts a 80-char tier name (the boundary)', () => {
+    expect(
+      membershipTierSnapshotSchema.safeParse({ ...PAID, name: 'x'.repeat(80) })
+        .success,
+    ).toBe(true);
+  });
+
+  it('rejects an unknown currency', () => {
+    expect(
+      membershipTierSnapshotSchema.safeParse({ ...PAID, currency: 'USD' }).success,
+    ).toBe(false);
+  });
+
+  it('rejects an unknown durationType', () => {
+    expect(
+      membershipTierSnapshotSchema.safeParse({ ...PAID, durationType: 'weekly' })
+        .success,
+    ).toBe(false);
+  });
+});
+
+describe('membershipTierSnapshotInputSchema (2026-10-27)', () => {
+  const INPUT = {
+    index: 0,
+    name: 'VIP',
+    durationType: 'monthly' as const,
+    paidAmount: 200,
+    currency: 'TWD' as const,
+  };
+
+  it('accepts a client-presented paid snapshot', () => {
+    expect(membershipTierSnapshotInputSchema.parse(INPUT)).toEqual(INPUT);
+  });
+
+  it('REJECTS a null durationType (a paid purchase must name a cycle)', () => {
+    // The client-side input contract is stricter than the persisted
+    // one: a free card never sends a snapshot, so a snapshot with no
+    // cycle is a malformed PAID claim.
+    expect(
+      membershipTierSnapshotInputSchema.safeParse({
+        ...INPUT,
+        durationType: null,
+      }).success,
+    ).toBe(false);
+  });
+
+  it('accepts a null paidAmount (a free paid tier)', () => {
+    expect(
+      membershipTierSnapshotInputSchema.safeParse({
+        ...INPUT,
+        paidAmount: null,
+      }).success,
+    ).toBe(true);
   });
 });

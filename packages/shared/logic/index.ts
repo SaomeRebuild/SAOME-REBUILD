@@ -17,6 +17,7 @@ export * from './locations';
 export * from './currency';
 export * from './stampCardImage';
 export * from './giftCardPurchase';
+export * from './membershipTier';
 export * from './passExpiry';
 export * from './passValueCalculator';
 export * from './passFieldFormatter';

@@ -384,15 +384,29 @@ export const fixtureOrSkip = (scenario: string) => tryLoadFixture(scenario);
 /**
  * V3 minimal holder payload — matches the 4 fields pushed directly
  * into the `data` object (NOT into `additionalPropertyValues`).
+ *
+ * 2026-10-27 — `memberLevel` is a 5th OPTIONAL holder field: the
+ * membership tier NAME. It is omitted from the body entirely when
+ * the holder has no tier (a non-membership card), so a legacy call
+ * site produces exactly the pre-2026-10-27 body.
  */
 export function makeHolder(
-  overrides: Partial<{ name: string; phone: string; birthday: string; email: string }> = {},
+  overrides: Partial<{
+    name: string;
+    phone: string;
+    birthday: string;
+    email: string;
+    memberLevel: string;
+  }> = {},
 ) {
   return {
     name: overrides.name ?? '王小明',
     phone: overrides.phone ?? '+886912345678',
     birthday: overrides.birthday ?? '1990-01-15',
     email: overrides.email ?? 'wang@example.com',
+    ...(overrides.memberLevel !== undefined
+      ? { memberLevel: overrides.memberLevel }
+      : {}),
   };
 }
 

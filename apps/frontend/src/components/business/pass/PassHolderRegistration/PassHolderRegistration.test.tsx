@@ -704,15 +704,13 @@ describe('PassHolderRegistration', () => {
         selectedTierIndex: 1,
         paymentProvider: 'ecpay',
         paymentStatus: 'completed',
-        membershipTierSnapshot: expect.objectContaining({
-          index: 1,
-          name: 'VIP',
-          durationType: 'monthly',
-          paidAmount: 200,
-          currency: 'TWD',
-        }),
       }),
     );
+    // 2026-10-27 — the tier snapshot is derived SERVER-SIDE from the
+    // template's own tier list, so the client no longer sends it.
+    // The client sends only the tier INDEX it picked.
+    const paidPayload = vi.mocked(passHolderService.register).mock.calls[0]![1];
+    expect(paidPayload.membershipTierSnapshot).toBeUndefined();
   }, 8000);
 
   it('paid template: ZAR currency single click flow produces payfast provider', async () => {
@@ -776,12 +774,14 @@ describe('PassHolderRegistration', () => {
       expect.objectContaining({
         paymentProvider: 'ecpay',
         paymentStatus: 'completed',
-        membershipTierSnapshot: expect.objectContaining({
-          paidAmount: null,
-          currency: 'TWD',
-        }),
       }),
     );
+    // 2026-10-27 — the snapshot (including its price) is derived
+    // server-side, so a free PAID tier's `paidAmount: null` is no
+    // longer something the client decides.
+    const freeTierPayload = vi.mocked(passHolderService.register).mock
+      .calls[0]![1];
+    expect(freeTierPayload.membershipTierSnapshot).toBeUndefined();
   }, 8000);
 
   it('non-paid template: does NOT render the membership tiers section', () => {
