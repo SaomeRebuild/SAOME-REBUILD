@@ -12,7 +12,10 @@ agent-transcripts/
 projects/
 
 # Local plans (one-off plans during this session)
-plans/
+# Anchored to the repo-root .cursor/plans/ on purpose. An unanchored
+# "plans/" also matches runs/plans/, which is team-shared and tracked by
+# git; that shadowing hid tracked files from the Cursor file tools.
+/.cursor/plans/
 
 # MCP servers personal config
 mcps/
