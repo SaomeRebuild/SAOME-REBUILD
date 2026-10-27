@@ -56,6 +56,11 @@ const alias = [
   { find: /^@saome\/shared\/logic\/passValueCalculator$/, replacement: path.resolve(sharedRoot, 'logic/passValueCalculator.ts') },
   { find: /^@saome\/shared\/logic\/passFieldFormatter$/, replacement: path.resolve(sharedRoot, 'logic/passFieldFormatter.ts') },
   { find: /^@saome\/shared\/logic\/passExpiry$/, replacement: path.resolve(sharedRoot, 'logic/passExpiry.ts') },
+  // 2026-10-27 - Discount tier resolution + amount formatting (shared
+  // between the Wallet payload and the editor preview). Must come
+  // BEFORE generic `@saome/shared/logic` per Rule 016 § Vite 8.x alias
+  // ordering.
+  { find: /^@saome\/shared\/logic\/spendTier$/, replacement: path.resolve(sharedRoot, 'logic/spendTier.ts') },
   { find: /^@saome\/shared\/schemas\/passValues$/, replacement: path.resolve(sharedRoot, 'schemas/passValues.ts') },
   { find: /^@saome\/shared\/types\/member$/, replacement: path.resolve(sharedRoot, 'types/member.ts') },
   { find: /^@saome\/shared\/types\/order$/, replacement: path.resolve(sharedRoot, 'types/order.ts') },

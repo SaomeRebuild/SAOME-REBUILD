@@ -152,15 +152,22 @@ vi.mock('../db/passEvents', () => ({
 }));
 
 // `updatePassHolderPassValuesSnapshot` writes the derived snapshot
-// cache. It is the only passHolders function the ledger path needs,
-// so only that one is replaced — the rest of the module stays real
-// (and stays spy-able by the tests below).
+// cache, and `updatePassHolderCurrentTier` writes the resolved
+// discount tier. They are the only passHolders functions the ledger
+// path needs, so only those two are replaced — the rest of the module
+// stays real (and stays spy-able by the tests below).
 vi.mock('../db/passHolders', async (importOriginal) => {
   const actual =
     await importOriginal<typeof import('../db/passHolders')>();
   return {
     ...actual,
     updatePassHolderPassValuesSnapshot: vi.fn(async () => undefined),
+    // 2026-10-27 — the resolved discount tier is written by the
+    // registration service (it owns the template settings the tier
+    // is derived from). Stubbed here for the same reason as the
+    // snapshot write: the mocked `sql` is not a callable tagged
+    // template, so the real implementation cannot run.
+    updatePassHolderCurrentTier: vi.fn(async () => undefined),
   };
 });
 
@@ -1430,6 +1437,7 @@ describe('registerService — gift-card purchase (2026-10-23)', () => {
     expect(input?.currency).toBeUndefined();
   });
 });
+
 describe('registerService — membership tier snapshot (2026-10-27)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();

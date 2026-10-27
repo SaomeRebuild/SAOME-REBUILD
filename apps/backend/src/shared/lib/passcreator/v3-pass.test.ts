@@ -212,6 +212,123 @@ describe('issuePass — Passcreator V3 per-pass runtime endpoint', () => {
   });
 
   // =====================================================================
+  // 2026-10-27 — the discount-slot type fallback on the CREATE path.
+  //
+  // The discount card's `pointsToNextTierDiscount` /
+  // `discountTierBracket` / `accumulatedSpendDiscount` slots carry
+  // display strings (`10元` / `NT$ 10` / `2%`). A template pushed
+  // BEFORE the 2026-10-27 downgrade still declares them as `number`,
+  // so Passcreator rejects the string with a 400 — and NO pass is
+  // created at all.
+  //
+  // The client retries ONCE without the offending slots. On CREATE
+  // (unlike PATCH) there is no upstream value to preserve, so the
+  // pass is created WITHOUT those slots: the holder gets a working
+  // pass with the expiry / balance intact, and the tier slots stay
+  // empty until the tenant re-pushes Step 8.
+  //
+  // A missing tier slot is a far better outcome than no pass.
+  // =====================================================================
+  it('retries WITHOUT the discount slots when the upstream rejects them with a 400', async () => {
+    fetchSpy
+      // 1st POST → 400 (the template still declares the slot as `number`).
+      .mockResolvedValueOnce(
+        makeResponse({
+          status: 400,
+          body: {
+            success: false,
+            description: 'Invalid data.',
+            errors: [
+              {
+                property: 'data.pointsToNextTierDiscount',
+                message: 'A provided field value is invalid',
+              },
+            ],
+            data: [],
+            statusCode: 400,
+          },
+        }),
+      )
+      // 2nd POST (no discount slots) → 201.
+      .mockResolvedValueOnce(
+        makeResponse({ status: 201, body: makeV3SuccessBody() }),
+      );
+
+    const result = await issuePass(
+      VALID_ENV,
+      'pc-tpl-123',
+      makeHolder(),
+      {
+        properties: {
+          pointsToNextTierDiscount: '10元',
+          discountTierBracket: '1%',
+          discountExpiry: '2027-10-23 00:00',
+        },
+      },
+    );
+
+    // The pass WAS created — the holder is not left without one.
+    expect(result.identifier).toBe('a0f629e6-6533-40cb-90b8-ef9093bfbb26');
+
+    // The retry went out WITHOUT the discount slots, but WITH the
+    // other values.
+    const retryInit = fetchSpy.mock.calls[1]?.[1] as RequestInit;
+    const retryBody = JSON.parse(retryInit.body as string);
+    expect(retryBody.data).not.toHaveProperty('pointsToNextTierDiscount');
+    expect(retryBody.data).not.toHaveProperty('discountTierBracket');
+    expect(retryBody.data.discountExpiry).toBe('2027-10-23 00:00');
+    // The holder identity fields are never sacrificed.
+    expect(retryBody.data.memberName).toBeTruthy();
+    expect(retryBody.data.email).toBeTruthy();
+  });
+
+  it('does NOT retry when the payload has no discount slot (a plain 400 still throws)', async () => {
+    fetchSpy.mockResolvedValueOnce(
+      makeResponse({
+        status: 400,
+        body: {
+          success: false,
+          description: 'Invalid data.',
+          errors: [{ property: 'data.email', message: 'is invalid' }],
+          data: [],
+          statusCode: 400,
+        },
+      }),
+    );
+
+    await expect(
+      issuePass(VALID_ENV, 'pc-tpl-123', makeHolder(), {
+        properties: { discountExpiry: '2027-10-23 00:00' },
+      }),
+    ).rejects.toBeInstanceOf(BadGatewayError);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT retry on a non-400 upstream failure (500)', async () => {
+    fetchSpy.mockResolvedValueOnce(
+      makeResponse({
+        status: 500,
+        body: {
+          success: false,
+          description: 'boom',
+          errors: [{ property: 'data.pointsToNextTierDiscount', message: 'boom' }],
+          data: [],
+          statusCode: 500,
+        },
+      }),
+    );
+
+    await expect(
+      issuePass(VALID_ENV, 'pc-tpl-123', makeHolder(), {
+        properties: { pointsToNextTierDiscount: '10元' },
+      }),
+    ).rejects.toBeInstanceOf(BadGatewayError);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  // =====================================================================
   // 2026-10-19 — v3-fix conformance: holder name MUST be sent at
   // `data.memberName` (NOT `data.name`) so the per-pass `{memberName}`
   // placeholder configured by `passTemplateMapping.ts::primaryFields`
@@ -290,6 +407,7 @@ describe('issuePass — Passcreator V3 per-pass runtime endpoint', () => {
     // site produces exactly the pre-2026-10-27 body.
     expect(body.data).not.toHaveProperty('memberLevel');
   });
+
   it('v3-fix: capture fixture (v3-create-success.json) reflects the renamed memberName wire shape', async () => {
     const fixturePath = `${REPO_ROOT}/fixtures/passcreator/v3/v3-create-success.json`;
     if (!fs.existsSync(fixturePath)) {

@@ -331,9 +331,13 @@ describe('formatPassValues — template-derived stamp fields are NOT emitted', (
   it('the exact metric reads ARE still emitted', () => {
     // Guards against over-correcting: the four fields whose label IS
     // the metric keep working.
+    //
+    // 2026-10-27: `accumulatedSpendDiscount` moved OUT of this map —
+    // the discount card shows a unit-carrying display string for it,
+    // not a bare number. It is emitted by the discount branch of
+    // `formatPassValues` instead (see the discount-card suite below).
     expect(Object.keys(FACE_FIELD_METRIC).sort()).toEqual([
       'accumulatedSpendCashback',
-      'accumulatedSpendDiscount',
       'currentPoints',
       'visitCount',
     ]);
@@ -424,5 +428,159 @@ describe('formatPassValues — value types', () => {
       boundFieldKeys: [],
     });
     expect(result.properties.memberExpiry).toBe('2027-10-23 00:00');
+  });
+});
+
+/**
+ * Discount card face fields (2026-10-27).
+ *
+ * The discount card's four display slots show DERIVED values that
+ * carry a unit. Before this change they were never sent at all —
+ * `memberLevel`, `discountTierBracket` and `pointsToNextTierDiscount`
+ * were absent from `FACE_FIELD_METRIC`, and `accumulatedSpendDiscount`
+ * was sent as a bare number that no unit-bearing slot could display.
+ */
+describe('formatPassValues — discount card face fields', () => {
+  /** A resolved two-tier ladder: base tier now, premium tier at 10. */
+  const TIER = {
+    current: { name: '基本', thresholdSpend: 0, percent: 1 },
+    next: { name: '進階', thresholdSpend: 10, percent: 5 },
+    spendToNext: 10,
+  };
+
+  it('emits all four slots as display strings', () => {
+    const result = formatPassValues({
+      cardType: 'discount_card',
+      snapshot: snapshot({ metrics: { ...emptyPassValuesMetrics(), spendAccumulated: 0 } }),
+      boundFieldKeys: [
+        'memberLevel',
+        'discountTierBracket',
+        'pointsToNextTierDiscount',
+        'accumulatedSpendDiscount',
+      ],
+      discountTier: TIER,
+      currency: 'TWD',
+      language: 'zh-TW',
+    });
+
+    expect(result.properties.memberLevel).toBe('基本');
+    expect(result.properties.discountTierBracket).toBe('1%');
+    expect(result.properties.pointsToNextTierDiscount).toBe('10元');
+    expect(result.properties.accumulatedSpendDiscount).toBe('0元');
+  });
+
+  it('places the TWD unit by the template language', () => {
+    const zh = formatPassValues({
+      cardType: 'discount_card',
+      snapshot: snapshot(),
+      boundFieldKeys: ['pointsToNextTierDiscount'],
+      discountTier: TIER,
+      currency: 'TWD',
+      language: 'zh-TW',
+    });
+    expect(zh.properties.pointsToNextTierDiscount).toBe('10元');
+
+    const en = formatPassValues({
+      cardType: 'discount_card',
+      snapshot: snapshot(),
+      boundFieldKeys: ['pointsToNextTierDiscount'],
+      discountTier: TIER,
+      currency: 'TWD',
+      language: 'en',
+    });
+    expect(en.properties.pointsToNextTierDiscount).toBe('NT$ 10');
+  });
+
+  it('uses the R prefix for ZAR in both languages', () => {
+    for (const language of ['zh-TW', 'en'] as const) {
+      const result = formatPassValues({
+        cardType: 'discount_card',
+        snapshot: snapshot(),
+        boundFieldKeys: ['pointsToNextTierDiscount', 'accumulatedSpendDiscount'],
+        discountTier: TIER,
+        currency: 'ZAR',
+        language,
+      });
+      expect(result.properties.pointsToNextTierDiscount).toBe('R10');
+      expect(result.properties.accumulatedSpendDiscount).toBe('R0');
+    }
+  });
+
+  it('does NOT emit an unbound slot', () => {
+    const result = formatPassValues({
+      cardType: 'discount_card',
+      snapshot: snapshot(),
+      boundFieldKeys: ['memberLevel'],
+      discountTier: TIER,
+      currency: 'TWD',
+      language: 'zh-TW',
+    });
+    expect(result.properties.memberLevel).toBe('基本');
+    expect(result.properties).not.toHaveProperty('pointsToNextTierDiscount');
+    expect(result.properties).not.toHaveProperty('accumulatedSpendDiscount');
+  });
+
+  it('does NOT emit any discount slot when no tier was resolved', () => {
+    // A wrong number on a live Wallet card is worse than an unset
+    // slot — an unresolvable tier must leave the slots empty.
+    const result = formatPassValues({
+      cardType: 'discount_card',
+      snapshot: snapshot(),
+      boundFieldKeys: [
+        'memberLevel',
+        'discountTierBracket',
+        'pointsToNextTierDiscount',
+        'accumulatedSpendDiscount',
+      ],
+      discountTier: null,
+      currency: 'TWD',
+      language: 'zh-TW',
+    });
+    expect(result.properties).not.toHaveProperty('memberLevel');
+    expect(result.properties).not.toHaveProperty('discountTierBracket');
+    expect(result.properties).not.toHaveProperty('pointsToNextTierDiscount');
+    expect(result.properties).not.toHaveProperty('accumulatedSpendDiscount');
+  });
+
+  it('does NOT affect a non-discount card that binds memberLevel', () => {
+    // The membership card's memberLevel slot is a different concept
+    // (its tier name) and must stay untouched by the discount branch.
+    const result = formatPassValues({
+      cardType: 'membership_card',
+      snapshot: snapshot(),
+      boundFieldKeys: ['memberLevel', 'visitCount'],
+      discountTier: TIER,
+      currency: 'TWD',
+      language: 'zh-TW',
+    });
+    expect(result.properties).not.toHaveProperty('memberLevel');
+    expect(result.properties.visitCount).toBe(0);
+  });
+
+  it('keeps the cashback card\'s accumulatedSpendCashback a NUMBER', () => {
+    // The cashback slot is unchanged by this work — it still shows a
+    // bare spend number, not a unit-carrying string.
+    const result = formatPassValues({
+      cardType: 'cashback_card',
+      snapshot: snapshot({ metrics: { ...emptyPassValuesMetrics(), spendAccumulated: 199.99 } }),
+      boundFieldKeys: ['accumulatedSpendCashback'],
+      discountTier: TIER,
+      currency: 'TWD',
+      language: 'zh-TW',
+    });
+    expect(result.properties.accumulatedSpendCashback).toBe(199.99);
+  });
+
+  it('uses the tier gap for pointsToNextTierDiscount, not the raw spend', () => {
+    const result = formatPassValues({
+      cardType: 'discount_card',
+      snapshot: snapshot({ metrics: { ...emptyPassValuesMetrics(), spendAccumulated: 2 } }),
+      boundFieldKeys: ['pointsToNextTierDiscount', 'accumulatedSpendDiscount'],
+      discountTier: { ...TIER, spendToNext: 8 },
+      currency: 'TWD',
+      language: 'zh-TW',
+    });
+    expect(result.properties.pointsToNextTierDiscount).toBe('8元');
+    expect(result.properties.accumulatedSpendDiscount).toBe('2元');
   });
 });

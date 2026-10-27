@@ -429,6 +429,16 @@ export function PassCardPreviewBody({
   // every i18n-sourced value) has been removed.
   const currency = useCardBuilderStore((s) => s.currency);
 
+  // 2026-10-27 — the card's display language. It drives the UNIT
+  // PLACEMENT on the discount card's amount slots: the Wallet shows
+  // `10元` for a zh-TW card and `NT$ 10` for an English one, so the
+  // preview must place the unit the same way or the editor would
+  // promise a string the issued pass does not show.
+  //
+  // The store's `language` is the TEMPLATE's language (Step 2), which
+  // is exactly the language the backend formats the pass values with.
+  const language = useCardBuilderStore((s) => s.language);
+
   // Discount tier bracket value (2026-09-18): read the FIRST discount
   // tier's `discountPercent` from the store. The store seeds a default
   // tier with `discountPercent = 1`, so the preview will show "1%" when
@@ -482,6 +492,7 @@ export function PassCardPreviewBody({
     couponDiscountPercent: effectiveCouponDiscountPercent,
     firstCouponRemainingCount,
     currency,
+    language,
     firstMultipassRewardType,
     firstMultipassRewardValue,
   };

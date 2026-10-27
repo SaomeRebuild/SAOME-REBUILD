@@ -60,11 +60,17 @@
 
 import type { CardFieldKey } from '../constants/card-fields';
 import { getHeaderSlot, UNLIMITED_EXPIRY_VALUE } from '../constants/headerSlots';
-import type { CardType } from '../schemas/card';
+import type { CardType, Currency } from '../schemas/card';
 import type {
   PassValueMetric,
   PassValuesSnapshot,
 } from '../schemas/passValues';
+import type { PassLanguage } from '../i18n/fieldLabels';
+import {
+  formatTierAmount,
+  formatTierPercent,
+  type ResolvedSpendTier,
+} from './spendTier';
 
 /**
  * The Passcreator per-pass value payload.
@@ -113,6 +119,23 @@ export interface PasscreatorPassValues {
  *     `availableRewards`, `multipassCompleted`) — see the long note
  *     below.
  *
+ * 2026-10-27 — `accumulatedSpendDiscount` was REMOVED from this map.
+ *
+ * WHY: the discount card's amount slots do not show a bare number.
+ * They show a "number + unit" pack (`556元` / `NT$ 556` / `R556`)
+ * whose unit placement follows the TEMPLATE's language. A bare
+ * `spendAccumulated` number cannot carry a unit, and the value that
+ * DOES carry it is produced by the discount branch in
+ * `formatPassValues` below — not by a metric read.
+ *
+ * Leaving it here would mean the generic loop wrote the raw number
+ * and the discount branch then overwrote it with the formatted
+ * string. Removing it makes the discount branch the single source.
+ *
+ * `accumulatedSpendCashback` (the CASHBACK card's slot) stays in the
+ * map: the cashback card still shows a bare spend number there, and
+ * changing it is out of scope for this change.
+ *
  * WHY THE STAMP FAMILY IS EXCLUDED
  *
  * `totalStamps` (總印章數), `stampsRemaining` (還差幾個章),
@@ -156,8 +179,23 @@ export const FACE_FIELD_METRIC: Partial<Record<CardFieldKey, PassValueMetric>> =
   visitCount: 'visitCount',
   currentPoints: 'pointsBalance',
   accumulatedSpendCashback: 'spendAccumulated',
-  accumulatedSpendDiscount: 'spendAccumulated',
 };
+
+/**
+ * The discount card's four display face fields.
+ *
+ * These are handled by the discount branch of `formatPassValues`
+ * (they show derived, unit-carrying display strings) rather than by
+ * the generic `FACE_FIELD_METRIC` lookup. The set exists so the
+ * generic loop can skip them — otherwise it would overwrite the
+ * formatted string with a bare metric read.
+ */
+const DISCOUNT_FACE_FIELDS: ReadonlySet<CardFieldKey> = new Set([
+  'memberLevel',
+  'discountTierBracket',
+  'pointsToNextTierDiscount',
+  'accumulatedSpendDiscount',
+]);
 
 /**
  * The card types whose header slot is the `balance` slot.
@@ -252,6 +290,30 @@ export interface FormatPassValuesInput {
    * that map for why.
    */
   boundFieldKeys?: readonly (CardFieldKey | null | undefined)[];
+  /**
+   * The holder's resolved spend tier (discount card only).
+   *
+   * Produced by `resolveSpendTier` from the template's tier ladder and
+   * the holder's accumulated spend. `null` / `undefined` means "no
+   * tier could be resolved" — the discount slots then stay empty
+   * rather than showing a wrong number.
+   */
+  discountTier?: ResolvedSpendTier | null;
+  /**
+   * The template's currency. Drives the unit on the discount card's
+   * amount slots.
+   *
+   * Defaults to 'TWD' when omitted — the same default the rest of
+   * the codebase uses for an unset template currency.
+   */
+  currency?: Currency;
+  /**
+   * The template's display language. Drives the unit PLACEMENT on the
+   * discount card's amount slots (zh-TW suffix vs en prefix).
+   *
+   * Defaults to 'zh-TW' when omitted.
+   */
+  language?: PassLanguage;
 }
 
 /**
@@ -335,9 +397,70 @@ export function formatPassValues(input: FormatPassValuesInput): PasscreatorPassV
     }
   }
 
+  // ── Discount card face fields (2026-10-27) ─────────────────────────────
+  //
+  // The discount card's four display slots show DERIVED values, not
+  // raw metrics:
+  //
+  //   memberLevel             — the tier's display name
+  //   discountTierBracket     — the tier's discount percentage
+  //   pointsToNextTierDiscount— the spend gap to the next tier
+  //   accumulatedSpendDiscount— the holder's accumulated spend
+  //
+  // All four are emitted as DISPLAY STRINGS ("10元", "2%", "R10").
+  // That is deliberate: the unit placement follows the template's
+  // language, and a bare number cannot carry a unit.
+  //
+  // These slots are skipped entirely when no tier could be resolved —
+  // a wrong number on a live Wallet card is worse than an unset slot.
+  //
+  // The generic loop below MUST NOT also write these keys: it reads
+  // `FACE_FIELD_METRIC`, from which `accumulatedSpendDiscount` was
+  // removed on 2026-10-27 for exactly this reason.
+  if (cardType === 'discount_card' && input.discountTier) {
+    const tier = input.discountTier;
+    const currency = input.currency ?? 'TWD';
+    const language = input.language ?? 'zh-TW';
+
+    for (const fieldKey of boundFieldKeys ?? []) {
+      if (!fieldKey) continue;
+      switch (fieldKey) {
+        case 'memberLevel':
+          properties[fieldKey] = tier.current.name;
+          break;
+        case 'discountTierBracket':
+          properties[fieldKey] = formatTierPercent(tier.current.percent);
+          break;
+        case 'pointsToNextTierDiscount':
+          properties[fieldKey] = formatTierAmount(
+            tier.spendToNext,
+            currency,
+            language,
+          );
+          break;
+        case 'accumulatedSpendDiscount':
+          properties[fieldKey] = formatTierAmount(
+            snapshot.metrics.spendAccumulated,
+            currency,
+            language,
+          );
+          break;
+        default:
+          // Not a discount slot — the generic loop handles it.
+          break;
+      }
+    }
+  }
+
   // ── Bound face fields (the Step 3 left / right slots) ───────────────────
   for (const fieldKey of boundFieldKeys ?? []) {
     if (!fieldKey) continue;
+    // The discount branch above already wrote its slots; writing them
+    // again from `FACE_FIELD_METRIC` would replace the formatted
+    // string with a bare number.
+    if (cardType === 'discount_card' && DISCOUNT_FACE_FIELDS.has(fieldKey)) {
+      continue;
+    }
     const metric = FACE_FIELD_METRIC[fieldKey];
     // Not a runtime-valued field → not emitted (see FACE_FIELD_METRIC).
     if (!metric) continue;

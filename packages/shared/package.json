@@ -43,6 +43,7 @@
     "./logic/passValueCalculator": "./logic/passValueCalculator.ts",
     "./logic/passFieldFormatter": "./logic/passFieldFormatter.ts",
     "./logic/passValueErrors": "./logic/passValueErrors.ts",
+    "./logic/spendTier": "./logic/spendTier.ts",
     "./constants": "./constants/index.ts",
     "./constants/role": "./constants/role.ts",
     "./constants/card-back-fields": "./constants/card-back-fields.ts",

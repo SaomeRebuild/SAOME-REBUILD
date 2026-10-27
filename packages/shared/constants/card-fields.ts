@@ -280,11 +280,29 @@ export const CARD_FIELDS: readonly CardFieldDefinition[] = [
   // currency-driven `DISCOUNT_PREVIEW_AMOUNTS` constant (same pattern as
   // cashback); the `discountTierBracket` field renders the live
   // `discountTiers[0].discountPercent` directly from the store.
-  // Real values will be sourced from the member row once PassCreator is
-  // wired (same deferred path as phone / email / visitCount).
-  { key: 'pointsToNextTierDiscount',   group: 'discount', labelKey: 'step3.fieldsSection.fields.pointsToNextTierDiscount',   semanticType: 'number' },
-  { key: 'discountTierBracket',        group: 'discount', labelKey: 'step3.fieldsSection.fields.discountTierBracket',        semanticType: 'number' },
-  { key: 'accumulatedSpendDiscount',   group: 'discount', labelKey: 'step3.fieldsSection.fields.accumulatedSpendDiscount',   semanticType: 'number' },
+  //
+  // 2026-10-27 — all three are `semanticType: 'text'`, NOT 'number'.
+  //
+  // WHY: their runtime values are DISPLAY STRINGS, not bare numbers.
+  // The Wallet shows a "number + unit" pack (`10元` / `NT$ 10` / `R10`
+  // / `2%`) because the unit placement follows the template's language
+  // and a bare number cannot carry a unit. Passcreator validates a
+  // per-pass value against the field type its TEMPLATE declared, so a
+  // `number` slot rejects `"10元"` and takes the whole PATCH down with
+  // it — every other field in the same payload stops syncing too.
+  //
+  // This is the same failure the `∞` expiry sentinel hit on 2026-10-26
+  // (a `date` slot rejecting a non-date string); see
+  // `runs/decisions/2026-10-26-pass-unlimited-expiry-slot.md`.
+  //
+  // CONSEQUENCE: a template pushed BEFORE this change still declares
+  // these slots as `number`, and the runtime's string values are
+  // rejected by it until the tenant re-pushes Step 8. Until then the
+  // 400 fallback in `v3-pass.ts` drops the offending keys and syncs
+  // the rest (flagged `degraded`).
+  { key: 'pointsToNextTierDiscount',   group: 'discount', labelKey: 'step3.fieldsSection.fields.pointsToNextTierDiscount',   semanticType: 'text' },
+  { key: 'discountTierBracket',        group: 'discount', labelKey: 'step3.fieldsSection.fields.discountTierBracket',        semanticType: 'text' },
+  { key: 'accumulatedSpendDiscount',   group: 'discount', labelKey: 'step3.fieldsSection.fields.accumulatedSpendDiscount',   semanticType: 'text' },
   // ── coupon: only coupon_card (2026-09-19) ────────────────────────────────
   // Display-field extension for the Coupon Card editor.
   //   - couponRemainingCount: 剩餘張數 / Remaining Count — static demo
@@ -316,3 +334,39 @@ export const CARD_FIELDS: readonly CardFieldDefinition[] = [
   // `membership_card` pattern: label = default memberLevel label, value =
   // `firstMultipassTierName ?? ''`).
 ];
+
+/**
+ * The discount-card face fields whose upstream Passcreator field type
+ * was CHANGED on 2026-10-27.
+ *
+ * WHY THIS SET EXISTS
+ *
+ * These three slots were declared `semanticType: 'number'` until
+ * 2026-10-27, which made the template push them with
+ * `type: 'number'`. Their runtime values are display strings
+ * (`10元` / `NT$ 10` / `R10` / `2%`), because the unit placement
+ * follows the template's language.
+ *
+ * Passcreator validates a per-pass value against the field type its
+ * TEMPLATE declared, so a template pushed BEFORE the change rejects
+ * those strings with a 400 — and the rejection takes the WHOLE
+ * payload down: every other field in the same request stops syncing
+ * too.
+ *
+ * The runtime uses this set to decide which keys are safe to drop and
+ * retry without (see
+ * `apps/backend/src/shared/lib/passcreator/v3-pass.ts`). Until the
+ * tenant re-pushes Step 8, the drop-and-retry path keeps the other
+ * fields flowing.
+ *
+ * `memberLevel` is NOT in this set: it was already `text`, so a
+ * template declaring it as `number` never existed.
+ *
+ * @see runs/decisions/2026-10-27-pass-holder-spend-and-discount-tier.md
+ */
+export const DISCOUNT_TYPE_DOWNGRADED_FIELDS: ReadonlySet<CardFieldKey> =
+  new Set([
+    'pointsToNextTierDiscount',
+    'discountTierBracket',
+    'accumulatedSpendDiscount',
+  ]);

@@ -323,6 +323,9 @@ export function TemplateCardPreview({
     stampGridRows: effectiveStampGridRows,
     cardType: effectiveCardType,
     currency: effectiveCurrency,
+    // 2026-10-27 — the per-card language drives the unit placement on
+    // the discount amount slots, matching what the Wallet will show.
+    language: lng,
     ...overrides,
   });
   const rightPreview = resolveSlot(tPassCard, {
@@ -330,6 +333,7 @@ export function TemplateCardPreview({
     stampGridRows: effectiveStampGridRows,
     cardType: effectiveCardType,
     currency: effectiveCurrency,
+    language: lng,
     ...overrides,
   });
   const leftFieldLabel = leftPreview.label;

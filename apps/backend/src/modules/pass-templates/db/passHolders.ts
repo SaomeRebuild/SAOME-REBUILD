@@ -81,6 +81,27 @@ export interface PassHolderRow {
   /** 'TWD' | 'ZAR'. NULL for non-paid; defensive TWD backfill on apply. */
   currency?: Currency | null;
   // ================================================================
+  // 2026-10-27 — Spend + resolved discount tier (migration 030)
+  //
+  //   `spend_amount` is the holder's accumulated spend. It has the
+  //   SAME source as
+  //   `pass_values_snapshot->'metrics'->'spendAccumulated'` — the
+  //   application writes both in ONE UPDATE statement, so they
+  //   cannot drift apart. NUMERIC arrives as a string from
+  //   postgres.js (same as `paid_amount`).
+  //
+  //   `current_tier_*` record the tier the holder resolved to. They
+  //   are NOT part of the snapshot JSONB on purpose: that blob is the
+  //   fold of the `pass_events` ledger, and a tier depends on the
+  //   template's (mutable) tier ladder — not on the ledger alone.
+  // ================================================================
+  /** Accumulated spend in the card currency. NOT NULL, defaults to 0. */
+  spend_amount?: string | number | null;
+  /** Display name of the resolved tier. NULL for non-discount cards. */
+  current_tier_name?: string | null;
+  /** Discount percentage granted by the resolved tier. NULL for non-discount cards. */
+  current_tier_percent?: string | number | null;
+  // ================================================================
   // 2026-10-19 — Passcreator V3 issuance columns (migration 025)
   //   All five columns are NULLABLE on the row. `issued_at` is null
   //   when issuance has not yet completed; the four other columns are
@@ -225,6 +246,7 @@ export async function findPassHolderByTemplateAndEmail(
            iphone_uri, android_uri,
            purchased_points, gift_card_snapshot,
            pass_values_snapshot,
+           spend_amount, current_tier_name, current_tier_percent,
            created_at, updated_at
       FROM public.pass_holders
      WHERE template_id = ${templateId}
@@ -330,6 +352,7 @@ export async function upsertPassHolder(
               iphone_uri, android_uri,
               purchased_points, gift_card_snapshot,
               pass_values_snapshot,
+              spend_amount, current_tier_name, current_tier_percent,
               created_at, updated_at
   `;
 
@@ -358,9 +381,52 @@ export async function updatePassHolderPassValuesSnapshot(
   passHolderId: string,
   snapshot: PassValuesSnapshot,
 ): Promise<void> {
+  // 2026-10-27 — `spend_amount` is written in the SAME statement as
+  // the snapshot it is derived from.
+  //
+  // WHY SAME STATEMENT: `spend_amount` and
+  // `pass_values_snapshot->'metrics'->'spendAccumulated'` are the
+  // same fact. Two separate UPDATEs would leave a window where a
+  // crash between them desynchronizes the column from the blob — and
+  // a column that silently disagrees with its own source is worse
+  // than no column at all. One statement means they cannot drift.
   await sql`
     UPDATE public.pass_holders
        SET pass_values_snapshot = ${sql.json(snapshot as Parameters<typeof sql.json>[0])},
+           spend_amount = ${snapshot.metrics.spendAccumulated},
+           updated_at = now()
+     WHERE id = ${passHolderId}
+  `;
+}
+
+/**
+ * Record the discount tier a holder resolved to.
+ *
+ * 2026-10-27 (migration 030).
+ *
+ * WHY A SEPARATE WRITE: the tier is NOT part of the runtime snapshot
+ * JSONB. That blob is the fold of the `pass_events` ledger, and a
+ * tier depends on the template's (mutable) tier ladder — not on the
+ * ledger alone. Putting it in the blob would make the reducer need
+ * template configuration to reproduce it.
+ *
+ * The tier columns are therefore written from the SERVICE layer,
+ * which is the only place that has both the resolved tier and the
+ * holder id.
+ *
+ * @param tier - The resolved tier. `null` clears both columns (a
+ *               non-discount card, or a template whose ladder is
+ *               empty).
+ */
+export async function updatePassHolderCurrentTier(
+  sql: Sql,
+  passHolderId: string,
+  tier: { name: string; percent: number } | null,
+): Promise<void> {
+  await sql`
+    UPDATE public.pass_holders
+       SET current_tier_name = ${tier?.name ?? null},
+           current_tier_percent = ${tier?.percent ?? null},
            updated_at = now()
      WHERE id = ${passHolderId}
   `;
@@ -402,6 +468,7 @@ export async function listPassHoldersMissingRuntimeValues(
            h.iphone_uri, h.android_uri,
            h.purchased_points, h.gift_card_snapshot,
            h.pass_values_snapshot,
+           h.spend_amount, h.current_tier_name, h.current_tier_percent,
            h.created_at, h.updated_at
       FROM public.pass_holders h
      WHERE h.pass_values_snapshot IS NULL
@@ -510,6 +577,7 @@ export async function updatePassHolderIssuance(
                iphone_uri, android_uri,
                purchased_points, gift_card_snapshot,
                pass_values_snapshot,
+               spend_amount, current_tier_name, current_tier_percent,
                created_at, updated_at
   `;
   if (!rows[0]) {

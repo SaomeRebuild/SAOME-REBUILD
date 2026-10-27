@@ -1,93 +1,79 @@
 /**
  * Discount card preview amounts — Vitest conformance tests
  *
- * Pins the currency-driven display contract for discount-only display
- * fields. Mirrors `cashbackPreviewAmounts.test.ts` (2026-09-12).
+ * Pins the discount preview demo values contract. Mirrors
+ * `cashbackPreviewAmounts.test.ts` (2026-09-12).
  *
  * Coverage:
- *   1. Currency key exhaustiveness (record shape = Record<Currency, ...>)
- *   2. TWD values match expected demo strings (234元 / 556元)
- *   3. ZAR values are R-prefixed (no Han characters; en-locale-safe)
- *   4. No TWD Han-character ('元') leaks into ZAR (cross-currency isolation)
- *   5. Field key exhaustiveness (record shape per-currency)
+ *   1. The demo values are plain NUMBERS (not pre-formatted strings)
+ *   2. Field key exhaustiveness
+ *
+ * 2026-10-27: the values became NUMBERS. The display string is now
+ * produced by `formatTierAmount`
+ * (`packages/shared/logic/spendTier.ts`) — the SAME shared function the
+ * backend uses to build the Wallet payload. The currency / language
+ * exhaustiveness guards moved there, where the currency actually
+ * matters.
  *
  * @see packages/shared/constants/discountPreviewAmounts.ts
- * @see packages/shared/schemas/card/ (Currency schema: 'TWD' | 'ZAR')
+ * @see packages/shared/logic/spendTier.ts — formatTierAmount
  */
 
 import { describe, expect, it } from 'vitest';
 import { DISCOUNT_PREVIEW_AMOUNTS } from './discountPreviewAmounts';
+import { formatTierAmount } from '../logic/spendTier';
 
-describe('DISCOUNT_PREVIEW_AMOUNTS — currency key exhaustiveness', () => {
-  it('exports both TWD and ZAR keys', () => {
-    expect(Object.keys(DISCOUNT_PREVIEW_AMOUNTS).sort()).toEqual(['TWD', 'ZAR']);
-  });
-
-  it('does NOT export any unexpected currency keys (e.g. USD, EUR)', () => {
-    // If a new currency is added to the Currency schema, this test breaks
-    // UNTIL the constant is updated. Combined with the exhaustive
-    // `Record<Currency, ...>` type signature, TypeScript itself will
-    // reject an unhandled currency at compile time.
-    const keys = Object.keys(DISCOUNT_PREVIEW_AMOUNTS);
-    expect(keys.every((k) => k === 'TWD' || k === 'ZAR')).toBe(true);
-  });
-});
-
-describe('DISCOUNT_PREVIEW_AMOUNTS — TWD values', () => {
-  it('pointsToNextTierDiscount = "234元" (demo string for the TWD card type)', () => {
-    expect(DISCOUNT_PREVIEW_AMOUNTS.TWD.pointsToNextTierDiscount).toBe('234元');
-  });
-
-  it('accumulatedSpendDiscount = "556元" (demo string for the TWD card type)', () => {
-    expect(DISCOUNT_PREVIEW_AMOUNTS.TWD.accumulatedSpendDiscount).toBe('556元');
-  });
-
-  it('TWD values contain Han "元" suffix (locale-appropriate)', () => {
-    expect(DISCOUNT_PREVIEW_AMOUNTS.TWD.pointsToNextTierDiscount).toContain('元');
-    expect(DISCOUNT_PREVIEW_AMOUNTS.TWD.accumulatedSpendDiscount).toContain('元');
-  });
-});
-
-describe('DISCOUNT_PREVIEW_AMOUNTS — ZAR values', () => {
-  it('pointsToNextTierDiscount starts with "R" (en-locale-safe, no Han)', () => {
-    expect(DISCOUNT_PREVIEW_AMOUNTS.ZAR.pointsToNextTierDiscount).toBe('R234');
-  });
-
-  it('accumulatedSpendDiscount starts with "R" (en-locale-safe, no Han)', () => {
-    expect(DISCOUNT_PREVIEW_AMOUNTS.ZAR.accumulatedSpendDiscount).toBe('R556');
-  });
-
-  it('ZAR values contain NO Han characters (verify-i18n cross-check)', () => {
-    // Critical: en translations cannot contain Han characters per
-    // Rule 023 § 翻譯書寫紀律. If a future edit accidentally introduces
-    // a Han character into ZAR values, this test catches it before
-    // the i18n smoke test (which runs at a different layer).
-    const zars = [
-      DISCOUNT_PREVIEW_AMOUNTS.ZAR.pointsToNextTierDiscount,
-      DISCOUNT_PREVIEW_AMOUNTS.ZAR.accumulatedSpendDiscount,
-    ];
-    const hanRegex = /[\u4e00-\u9fff\u3400-\u4dbf]/;
-    zars.forEach((value) => {
-      expect(value).not.toMatch(hanRegex);
-    });
-  });
-});
-
-describe('DISCOUNT_PREVIEW_AMOUNTS — per-currency field key exhaustiveness', () => {
-  /**
-   * Both TWD and ZAR must expose exactly the same field keys. If a new
-   * discount field is added to the schema, both currency variants must
-   * be updated in lock-step — this test catches asymmetric additions.
-   */
-  it('TWD and ZAR expose identical field key sets', () => {
-    expect(Object.keys(DISCOUNT_PREVIEW_AMOUNTS.TWD).sort()).toEqual(
-      Object.keys(DISCOUNT_PREVIEW_AMOUNTS.ZAR).sort(),
-    );
+describe('DISCOUNT_PREVIEW_AMOUNTS — demo values are numbers', () => {
+  it('exposes the two discount amount fields as plain numbers', () => {
+    expect(typeof DISCOUNT_PREVIEW_AMOUNTS.pointsToNextTierDiscount).toBe('number');
+    expect(typeof DISCOUNT_PREVIEW_AMOUNTS.accumulatedSpendDiscount).toBe('number');
+    expect(DISCOUNT_PREVIEW_AMOUNTS.pointsToNextTierDiscount).toBe(234);
+    expect(DISCOUNT_PREVIEW_AMOUNTS.accumulatedSpendDiscount).toBe(556);
   });
 
   it('field key set is exactly {pointsToNextTierDiscount, accumulatedSpendDiscount}', () => {
-    const expectedKeys = ['accumulatedSpendDiscount', 'pointsToNextTierDiscount'];
-    expect(Object.keys(DISCOUNT_PREVIEW_AMOUNTS.TWD).sort()).toEqual(expectedKeys);
-    expect(Object.keys(DISCOUNT_PREVIEW_AMOUNTS.ZAR).sort()).toEqual(expectedKeys);
+    expect(Object.keys(DISCOUNT_PREVIEW_AMOUNTS).sort()).toEqual([
+      'accumulatedSpendDiscount',
+      'pointsToNextTierDiscount',
+    ]);
+  });
+});
+
+describe('DISCOUNT_PREVIEW_AMOUNTS — rendered through the shared tier formatter', () => {
+  /**
+   * The preview must show EXACTLY what the Wallet shows. The Wallet
+   * formats the same numbers with the same `formatTierAmount`, so
+   * these assertions pin the preview↔Wallet agreement.
+   */
+  it('renders the same strings the Wallet payload carries', () => {
+    const { pointsToNextTierDiscount, accumulatedSpendDiscount } =
+      DISCOUNT_PREVIEW_AMOUNTS;
+
+    // zh-TW + TWD → Han unit suffix.
+    expect(formatTierAmount(pointsToNextTierDiscount, 'TWD', 'zh-TW')).toBe('234元');
+    expect(formatTierAmount(accumulatedSpendDiscount, 'TWD', 'zh-TW')).toBe('556元');
+
+    // en + TWD → NT$ prefix.
+    expect(formatTierAmount(pointsToNextTierDiscount, 'TWD', 'en')).toBe('NT$ 234');
+    expect(formatTierAmount(accumulatedSpendDiscount, 'TWD', 'en')).toBe('NT$ 556');
+
+    // ZAR → R prefix in both languages.
+    expect(formatTierAmount(pointsToNextTierDiscount, 'ZAR', 'zh-TW')).toBe('R234');
+    expect(formatTierAmount(accumulatedSpendDiscount, 'ZAR', 'en')).toBe('R556');
+  });
+
+  it('carries NO Han characters for the ZAR rendering (verify-i18n cross-check)', () => {
+    // Critical: en translations cannot contain Han characters per
+    // Rule 023 § 翻譯書寫紀律. If a future edit accidentally introduces
+    // a Han character into a ZAR rendering, this test catches it
+    // before the i18n smoke test (which runs at a different layer).
+    const hanRegex = /[一-鿿㐀-䶿]/;
+    const zars = [
+      formatTierAmount(DISCOUNT_PREVIEW_AMOUNTS.pointsToNextTierDiscount, 'ZAR', 'zh-TW'),
+      formatTierAmount(DISCOUNT_PREVIEW_AMOUNTS.accumulatedSpendDiscount, 'ZAR', 'en'),
+    ];
+    zars.forEach((value) => {
+      expect(value).not.toMatch(hanRegex);
+    });
   });
 });

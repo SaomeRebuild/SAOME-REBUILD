@@ -44,9 +44,12 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import type { Sql } from '@/shared/db/client';
 import { setTestSql } from '@/shared/db/client';
 import {
+  updatePassHolderCurrentTier,
   updatePassHolderIssuance,
+  updatePassHolderPassValuesSnapshot,
   type PassHolderRow,
 } from './passHolders';
+import { emptyPassValuesMetrics } from '@saome/shared/schemas/passValues';
 
 const HOLDER_ID = '00000000-0000-0000-0000-000000000099';
 
@@ -329,5 +332,167 @@ describe('updatePassHolderIssuance — partial update conformance (regression �
     });
 
     expect(result.issuance_error).toBe('passHolder.errors.upstreamFailed');
+  });
+});
+
+/**
+ * Accumulated spend + resolved tier writes (2026-10-27, migration 030).
+ *
+ * Two contracts are pinned here:
+ *
+ *  1. `spend_amount` is written in the SAME UPDATE statement as the
+ *     runtime snapshot it is derived from. They are the same fact, so
+ *     two separate statements would leave a crash window where the
+ *     column disagrees with the blob.
+ *
+ *  2. `current_tier_name` / `current_tier_percent` are written by
+ *     their OWN function — the tier is NOT part of the snapshot
+ *     JSONB (that blob is the fold of the `pass_events` ledger, and a
+ *     tier depends on the template's mutable tier ladder, not on the
+ *     ledger alone).
+ */
+describe('updatePassHolderPassValuesSnapshot — spend_amount rides with the snapshot', () => {
+  /**
+   * A mock Sql that captures the emitted SQL text AND the bound
+   * values, so the test can assert both the statement shape and
+   * what was actually bound.
+   */
+  function createCaptureMockSql(): {
+    sql: Sql;
+    sqlCalls: string[];
+    boundValues: unknown[][];
+  } {
+    const sqlCalls: string[] = [];
+    const boundValues: unknown[][] = [];
+
+    const fn = ((strings: TemplateStringsArray, ...values: unknown[]) => {
+      let sqlText = strings[0] ?? '';
+      for (let i = 0; i < values.length; i++) {
+        sqlText += `$${i + 1}`;
+        sqlText += strings[i + 1] ?? '';
+      }
+      sqlCalls.push(sqlText);
+      boundValues.push(values);
+      return Promise.resolve([]);
+    }) as unknown as Sql;
+
+    (fn as any).json = (value: unknown) => ({ __sql_json: true, value });
+
+    return { sql: fn, sqlCalls, boundValues };
+  }
+
+  it('writes spend_amount in the SAME statement as pass_values_snapshot', async () => {
+    const { sql, sqlCalls, boundValues } = createCaptureMockSql();
+    setTestSql(sql);
+
+    await updatePassHolderPassValuesSnapshot(sql, HOLDER_ID, {
+      metrics: { ...emptyPassValuesMetrics(), spendAccumulated: 42.5 },
+      expiryDate: null,
+    });
+
+    // Exactly ONE statement — the snapshot and the spend amount are
+    // written together, so they cannot drift.
+    expect(sqlCalls).toHaveLength(1);
+    const sqlText = sqlCalls[0]!;
+    expect(sqlText).toMatch(/UPDATE public\.pass_holders/);
+    expect(sqlText).toMatch(/pass_values_snapshot\s*=\s*\$\d+/);
+    expect(sqlText).toMatch(/spend_amount\s*=\s*\$\d+/);
+
+    // The bound spend amount is the snapshot's own metric.
+    const bound = boundValues[0]!;
+    const spendIndex = sqlText.indexOf('spend_amount');
+    const placeholderMatch = sqlText
+      .slice(spendIndex)
+      .match(/spend_amount\s*=\s*\$(\d+)/);
+    expect(placeholderMatch).not.toBeNull();
+    const spendValue = bound[Number(placeholderMatch![1]) - 1];
+    expect(spendValue).toBe(42.5);
+  });
+
+  it('writes a zero spend amount for a holder who has spent nothing', async () => {
+    const { sql, boundValues, sqlCalls } = createCaptureMockSql();
+    setTestSql(sql);
+
+    await updatePassHolderPassValuesSnapshot(sql, HOLDER_ID, {
+      metrics: emptyPassValuesMetrics(),
+      expiryDate: null,
+    });
+
+    const sqlText = sqlCalls[0]!;
+    const placeholderMatch = sqlText.match(/spend_amount\s*=\s*\$(\d+)/);
+    expect(placeholderMatch).not.toBeNull();
+    expect(boundValues[0]![Number(placeholderMatch![1]) - 1]).toBe(0);
+  });
+});
+
+describe('updatePassHolderCurrentTier — the resolved discount tier', () => {
+  function createCaptureMockSql(): {
+    sql: Sql;
+    sqlCalls: string[];
+    boundValues: unknown[][];
+  } {
+    const sqlCalls: string[] = [];
+    const boundValues: unknown[][] = [];
+
+    const fn = ((strings: TemplateStringsArray, ...values: unknown[]) => {
+      let sqlText = strings[0] ?? '';
+      for (let i = 0; i < values.length; i++) {
+        sqlText += `$${i + 1}`;
+        sqlText += strings[i + 1] ?? '';
+      }
+      sqlCalls.push(sqlText);
+      boundValues.push(values);
+      return Promise.resolve([]);
+    }) as unknown as Sql;
+
+    (fn as any).json = (value: unknown) => ({ __sql_json: true, value });
+
+    return { sql: fn, sqlCalls, boundValues };
+  }
+
+  it('writes the tier name and percent', async () => {
+    const { sql, sqlCalls, boundValues } = createCaptureMockSql();
+    setTestSql(sql);
+
+    await updatePassHolderCurrentTier(sql, HOLDER_ID, {
+      name: '及八',
+      percent: 1,
+    });
+
+    expect(sqlCalls).toHaveLength(1);
+    const sqlText = sqlCalls[0]!;
+    expect(sqlText).toMatch(/UPDATE public\.pass_holders/);
+    expect(sqlText).toMatch(/current_tier_name\s*=\s*\$\d+/);
+    expect(sqlText).toMatch(/current_tier_percent\s*=\s*\$\d+/);
+
+    const bound = boundValues[0]!;
+    const nameIndex = Number(
+      sqlText.match(/current_tier_name\s*=\s*\$(\d+)/)![1],
+    ) - 1;
+    const percentIndex = Number(
+      sqlText.match(/current_tier_percent\s*=\s*\$(\d+)/)![1],
+    ) - 1;
+    expect(bound[nameIndex]).toBe('及八');
+    expect(bound[percentIndex]).toBe(1);
+  });
+
+  it('CLEARS both columns for a null tier (no stale tier survives)', async () => {
+    // A card type change (discount → cashback) must not leave the
+    // old tier behind on the holder's row.
+    const { sql, sqlCalls, boundValues } = createCaptureMockSql();
+    setTestSql(sql);
+
+    await updatePassHolderCurrentTier(sql, HOLDER_ID, null);
+
+    const sqlText = sqlCalls[0]!;
+    const bound = boundValues[0]!;
+    const nameIndex = Number(
+      sqlText.match(/current_tier_name\s*=\s*\$(\d+)/)![1],
+    ) - 1;
+    const percentIndex = Number(
+      sqlText.match(/current_tier_percent\s*=\s*\$(\d+)/)![1],
+    ) - 1;
+    expect(bound[nameIndex]).toBeNull();
+    expect(bound[percentIndex]).toBeNull();
   });
 });

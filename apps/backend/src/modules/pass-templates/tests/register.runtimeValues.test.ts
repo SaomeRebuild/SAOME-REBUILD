@@ -115,6 +115,11 @@ function makeMockSql() {
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  // 2026-10-27 — the registration service writes the resolved
+  // discount tier via this DB function. The mock `sql` is not a
+  // callable tagged template, so the real implementation cannot run
+  // against it — stub it for every test in this file.
+  vi.spyOn(passHoldersDb, 'updatePassHolderCurrentTier').mockResolvedValue(undefined);
 });
 
 describe('ensureRegistrationRuntimeState — DB-level one-registered-per-holder invariant', () => {
@@ -559,6 +564,7 @@ describe('registerService — runtime value initialization', () => {
       expect(holderArg).not.toHaveProperty('memberLevel');
     });
   });
+
   it('uses the gift card purchased points as the opening balance', async () => {
     vi.spyOn(templatesDb, 'findPublicTemplateById').mockResolvedValue(
       GIFT_TEMPLATE_ROW,
@@ -687,5 +693,292 @@ describe('registerService — runtime value initialization', () => {
     expect(result.ok).toBe(true);
     expect(result.issuance?.issuanceError).toBe('passHolder.errors.upstreamFailed');
     expect(snapshotSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * Discount card registration (2026-10-27).
+ *
+ * The discount card's four Wallet face slots were ALWAYS blank: the
+ * tier-derived slots (`memberLevel` / `discountTierBracket` /
+ * `pointsToNextTierDiscount`) were not in the formatter's metric map
+ * at all, and `accumulatedSpendDiscount` was sent as a bare number
+ * that no unit-bearing slot could display.
+ *
+ * This suite pins the fix end-to-end:
+ *   - the tier is resolved from the template's ladder + the holder's
+ *     accumulated spend (server-derived — never from the request),
+ *   - it is written to the holder's row,
+ *   - and the four slots reach Passcreator as "number + unit" strings.
+ */
+describe('registerService — discount card tier + Wallet slots', () => {
+  /**
+   * A discount template whose ladder has a free base tier and a
+   * premium tier at 35. Mirrors the shape of the production
+   * templates.
+   *
+   * A card has exactly TWO face slots (Step 3 left / right), so the
+   * four discount slots are covered across two bindings.
+   */
+  const DISCOUNT_TEMPLATE_ROW: PublicTemplateRow = {
+    id: TEMPLATE_ID,
+    name: 'Discount Card',
+    card_type: 'discount_card',
+    settings: {
+      logoText: 'Discount',
+      issuerName: 'Discount Co.',
+      currency: 'TWD',
+      language: 'zh-TW',
+      leftField: 'memberLevel',
+      rightField: 'pointsToNextTierDiscount',
+      discountTiers: [
+        { name: '基本', thresholdSpend: 0, discountPercent: 1 },
+        { name: '進階', thresholdSpend: 35, discountPercent: 5 },
+      ],
+    },
+    passcreator_template_id: 'pc-tpl-discount',
+  };
+
+  /** The same card with the other two discount slots bound. */
+  const DISCOUNT_AMOUNT_TEMPLATE_ROW: PublicTemplateRow = {
+    ...DISCOUNT_TEMPLATE_ROW,
+    settings: {
+      ...DISCOUNT_TEMPLATE_ROW.settings,
+      leftField: 'discountTierBracket',
+      rightField: 'accumulatedSpendDiscount',
+    },
+  };
+
+  /** Wire up the ledger so the registration reaches the issuance. */
+  function stubLedger(spendAccumulated = 0) {
+    const snapshot = {
+      metrics: { ...emptyPassValuesMetrics(), spendAccumulated },
+      expiryDate: null,
+    };
+    vi.spyOn(passEventsDb, 'appendPassEvent').mockResolvedValue({
+      row: {
+        id: 'event-discount',
+        pass_holder_id: HOLDER.id,
+        event_type: 'registered',
+        payload: snapshot,
+        occurred_at: '2026-10-27T08:00:00.000Z',
+        created_at: '2026-10-27T08:00:00.000Z',
+        idempotency_key: 'registered:holder-new',
+      },
+      inserted: true,
+    });
+    vi.spyOn(passEventsDb, 'listPassEvents').mockResolvedValue([
+      {
+        id: 'event-discount',
+        pass_holder_id: HOLDER.id,
+        event_type: 'registered',
+        payload: snapshot,
+        occurred_at: '2026-10-27T08:00:00.000Z',
+        created_at: '2026-10-27T08:00:00.000Z',
+        idempotency_key: 'registered:holder-new',
+      },
+    ]);
+    vi.spyOn(
+      passHoldersDb,
+      'updatePassHolderPassValuesSnapshot',
+    ).mockResolvedValue(undefined);
+    vi.spyOn(passHoldersDb, 'updatePassHolderIssuance').mockResolvedValue(HOLDER);
+  }
+
+  it('resolves the tier, writes it to the row, and sends the four slots as "number + unit" strings', async () => {
+    vi.spyOn(templatesDb, 'findPublicTemplateById').mockResolvedValue(
+      DISCOUNT_TEMPLATE_ROW,
+    );
+    vi.spyOn(passHoldersDb, 'upsertPassHolder').mockResolvedValue({
+      row: HOLDER,
+      created: true,
+    });
+    stubLedger(0);
+
+    const tierSpy = vi.spyOn(passHoldersDb, 'updatePassHolderCurrentTier');
+    const issueSpy = vi.spyOn(passcreator, 'issuePass').mockResolvedValue({
+      identifier: 'pass-discount',
+      downloadPage: 'https://app.passcreator.com/p/1',
+      iPhoneUri: 'https://app.passcreator.com/1.pkpass',
+      androidUri: 'https://passwallet.page.link/?link=1',
+      barcodeValue: null,
+    });
+
+    const { sql } = makeMockSql();
+    await registerService(
+      sql,
+      MOCK_ENV as never,
+      TEMPLATE_ID,
+      validPayload as never,
+    );
+
+    // The tier is resolved from the TEMPLATE's ladder + the holder's
+    // spend — never from the request payload.
+    expect(tierSpy).toHaveBeenCalledWith(
+      expect.anything(),
+      HOLDER.id,
+      expect.objectContaining({ name: '基本', percent: 1 }),
+    );
+
+    // The bound slots reach Passcreator as display strings.
+    // (A card has exactly TWO face slots — `memberLevel` on the left
+    // and `pointsToNextTierDiscount` on the right — so the other two
+    // discount slots are covered by the test below.)
+    const values = issueSpy.mock.calls[0]?.[3] as {
+      properties: Record<string, unknown>;
+    };
+    expect(values.properties.memberLevel).toBe('基本');
+    // A holder who has spent nothing is 35 short of the next tier.
+    expect(values.properties.pointsToNextTierDiscount).toBe('35元');
+    // The unbound slot is NOT sent.
+    expect(values.properties).not.toHaveProperty('accumulatedSpendDiscount');
+    expect(values.properties).not.toHaveProperty('discountTierBracket');
+  });
+
+  it('sends the tier bracket and the accumulated spend as display strings too', async () => {
+    // A card has only two face slots, so the other two discount slots
+    // are covered by a second binding.
+    vi.spyOn(templatesDb, 'findPublicTemplateById').mockResolvedValue(
+      DISCOUNT_AMOUNT_TEMPLATE_ROW,
+    );
+    vi.spyOn(passHoldersDb, 'upsertPassHolder').mockResolvedValue({
+      row: HOLDER,
+      created: true,
+    });
+    stubLedger(2);
+
+    const issueSpy = vi.spyOn(passcreator, 'issuePass').mockResolvedValue({
+      identifier: 'pass-discount',
+      downloadPage: 'https://app.passcreator.com/p/1',
+      iPhoneUri: 'https://app.passcreator.com/1.pkpass',
+      androidUri: 'https://passwallet.page.link/?link=1',
+      barcodeValue: null,
+    });
+
+    const { sql } = makeMockSql();
+    await registerService(
+      sql,
+      MOCK_ENV as never,
+      TEMPLATE_ID,
+      validPayload as never,
+    );
+
+    const values = issueSpy.mock.calls[0]?.[3] as {
+      properties: Record<string, unknown>;
+    };
+    // The tier's discount percentage, and the holder's accumulated
+    // spend — both as "number + unit" strings.
+    expect(values.properties.discountTierBracket).toBe('1%');
+    expect(values.properties.accumulatedSpendDiscount).toBe('2元');
+  });
+
+  it('shrinks the "amount to next tier" as the holder accumulates spend', async () => {
+    vi.spyOn(templatesDb, 'findPublicTemplateById').mockResolvedValue(
+      DISCOUNT_TEMPLATE_ROW,
+    );
+    vi.spyOn(passHoldersDb, 'upsertPassHolder').mockResolvedValue({
+      row: HOLDER,
+      created: true,
+    });
+    stubLedger(2);
+
+    const issueSpy = vi.spyOn(passcreator, 'issuePass').mockResolvedValue({
+      identifier: 'pass-discount',
+      downloadPage: 'https://app.passcreator.com/p/1',
+      iPhoneUri: 'https://app.passcreator.com/1.pkpass',
+      androidUri: 'https://passwallet.page.link/?link=1',
+      barcodeValue: null,
+    });
+
+    const { sql } = makeMockSql();
+    await registerService(
+      sql,
+      MOCK_ENV as never,
+      TEMPLATE_ID,
+      validPayload as never,
+    );
+
+    const values = issueSpy.mock.calls[0]?.[3] as {
+      properties: Record<string, unknown>;
+    };
+    // 35 - 2 = 33 left to reach the next tier.
+    expect(values.properties.pointsToNextTierDiscount).toBe('33元');
+  });
+
+  it('uses the NT$ prefix for an ENGLISH discount card', async () => {
+    vi.spyOn(templatesDb, 'findPublicTemplateById').mockResolvedValue({
+      ...DISCOUNT_TEMPLATE_ROW,
+      settings: {
+        ...DISCOUNT_TEMPLATE_ROW.settings,
+        language: 'en',
+      },
+    });
+    vi.spyOn(passHoldersDb, 'upsertPassHolder').mockResolvedValue({
+      row: HOLDER,
+      created: true,
+    });
+    stubLedger(0);
+
+    const issueSpy = vi.spyOn(passcreator, 'issuePass').mockResolvedValue({
+      identifier: 'pass-discount',
+      downloadPage: 'https://app.passcreator.com/p/1',
+      iPhoneUri: 'https://app.passcreator.com/1.pkpass',
+      androidUri: 'https://passwallet.page.link/?link=1',
+      barcodeValue: null,
+    });
+
+    const { sql } = makeMockSql();
+    await registerService(
+      sql,
+      MOCK_ENV as never,
+      TEMPLATE_ID,
+      validPayload as never,
+    );
+
+    const values = issueSpy.mock.calls[0]?.[3] as {
+      properties: Record<string, unknown>;
+    };
+    expect(values.properties.pointsToNextTierDiscount).toBe('NT$ 35');
+  });
+
+  it('does NOT write tier slots for a NON-discount card', async () => {
+    // The discount branch is gated on the card type — a stamp card
+    // must be unaffected.
+    vi.spyOn(templatesDb, 'findPublicTemplateById').mockResolvedValue(
+      TEMPLATE_ROW,
+    );
+    vi.spyOn(passHoldersDb, 'upsertPassHolder').mockResolvedValue({
+      row: HOLDER,
+      created: true,
+    });
+    stubLedger(0);
+
+    const tierSpy = vi.spyOn(passHoldersDb, 'updatePassHolderCurrentTier');
+    const issueSpy = vi.spyOn(passcreator, 'issuePass').mockResolvedValue({
+      identifier: 'pass-1',
+      downloadPage: 'https://app.passcreator.com/p/1',
+      iPhoneUri: 'https://app.passcreator.com/1.pkpass',
+      androidUri: 'https://passwallet.page.link/?link=1',
+      barcodeValue: null,
+    });
+
+    const { sql } = makeMockSql();
+    await registerService(
+      sql,
+      MOCK_ENV as never,
+      TEMPLATE_ID,
+      validPayload as never,
+    );
+
+    // The tier columns are CLEARED (not left stale) and no discount
+    // slot is sent.
+    expect(tierSpy).toHaveBeenCalledWith(expect.anything(), HOLDER.id, null);
+    const values = issueSpy.mock.calls[0]?.[3] as {
+      properties: Record<string, unknown>;
+    };
+    expect(values.properties).not.toHaveProperty('memberLevel');
+    expect(values.properties).not.toHaveProperty('discountTierBracket');
+    expect(values.properties).not.toHaveProperty('pointsToNextTierDiscount');
+    expect(values.properties).not.toHaveProperty('accumulatedSpendDiscount');
   });
 });

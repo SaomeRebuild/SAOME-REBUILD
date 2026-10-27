@@ -57,6 +57,8 @@ import type { CouponDiscountType } from '@saome/shared/constants/coupon-card';
 import type { MultipassRewardType } from '@saome/shared/constants/multipass-card';
 import { CASHBACK_PREVIEW_AMOUNTS } from '@saome/shared/constants/cashbackPreviewAmounts';
 import { DISCOUNT_PREVIEW_AMOUNTS } from '@saome/shared/constants/discountPreviewAmounts';
+import { formatTierAmount } from '@saome/shared/logic/spendTier';
+import type { PassLanguage } from '@saome/shared/i18n/fieldLabels';
 import {
   STAMPS_PER_ROW,
   type StampGridRows,
@@ -118,6 +120,18 @@ export interface ResolveSlotOptions {
   firstCouponRemainingCount?: number;
   /** Currency — drives the cashback + discount amount maps. */
   currency: Currency;
+  /**
+   * The card's display language.
+   *
+   * 2026-10-27 — drives the UNIT PLACEMENT on the discount card's
+   * amount slots. The Wallet shows `10元` (zh-TW) / `NT$ 10` (en) /
+   * `R10` (ZAR), so the preview must place the unit the same way or
+   * the editor would promise a string the issued pass does not show.
+   *
+   * Defaults to 'zh-TW' when omitted — the same default the backend
+   * formatter uses.
+   */
+  language?: PassLanguage;
   /** Multipass card only: first tier reward type (drives multipassRewardContent). */
   firstMultipassRewardType?: MultipassRewardType | null;
   /** Multipass card only: first tier reward value (interpolated into amountFormat). */
@@ -217,6 +231,7 @@ export function resolveSlot(
     couponDiscountPercent,
     firstCouponRemainingCount,
     currency,
+    language,
     firstMultipassRewardType,
     firstMultipassRewardValue,
   } = options;
@@ -434,15 +449,31 @@ export function resolveSlot(
     };
   }
 
-  // Discount amount branch (2026-09-18): the two discount-only display
-  // fields are currency-driven, NOT i18n-driven.
+  // Discount amount branch (2026-09-18, refactored 2026-10-27): the two
+  // discount-only display fields are currency- AND language-driven.
+  //
+  // 2026-10-27: the string is produced by `formatTierAmount` — the
+  // SAME shared function the backend uses to build the Wallet payload.
+  // The preview therefore shows exactly what the issued pass shows
+  // (`10元` for zh-TW TWD, `NT$ 10` for en TWD, `R234` for ZAR).
+  //
+  // NOTE — the preview's "amount to next tier" is the DEMO value, not
+  // a live calculation. The editor has no holder and therefore no
+  // accumulated spend, so it cannot resolve the real gap. The Wallet
+  // shows the holder's real gap (computed from their spend against
+  // the template's tier ladder). Both use the same FORMATTER, so the
+  // two agree on HOW an amount is written, not on WHICH amount.
   if (
     field === 'pointsToNextTierDiscount' ||
     field === 'accumulatedSpendDiscount'
   ) {
     return {
       label: t(`fieldPreview.${field}.label`),
-      value: DISCOUNT_PREVIEW_AMOUNTS[currency][field],
+      value: formatTierAmount(
+        DISCOUNT_PREVIEW_AMOUNTS[field],
+        currency,
+        language ?? 'zh-TW',
+      ),
     };
   }
 

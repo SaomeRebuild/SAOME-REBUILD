@@ -60,8 +60,16 @@ import {
   type PasscreatorPassValues,
 } from '@saome/shared/logic/passFieldFormatter';
 import { resolveExpiryRuleForCardType } from '@saome/shared/logic/passExpiry';
+import {
+  normalizeDiscountTiers,
+  resolveSpendTier,
+  type ResolvedSpendTier,
+} from '@saome/shared/logic/spendTier';
 import { listPassEvents, type PassEventRow } from '../db/passEvents';
-import { updatePassHolderPassValuesSnapshot } from '../db/passHolders';
+import {
+  updatePassHolderCurrentTier,
+  updatePassHolderPassValuesSnapshot,
+} from '../db/passHolders';
 import {
   applyPassEvent,
   isOneRegisteredPerHolderViolation,
@@ -110,6 +118,13 @@ export interface RegistrationRuntimeState {
   snapshot: PassValuesSnapshot;
   /** The Passcreator payload for the FIRST issuance. */
   values: PasscreatorPassValues;
+  /**
+   * The holder's resolved discount tier (discount card only).
+   *
+   * Null for every other card type, and for a discount template whose
+   * tier ladder is empty.
+   */
+  discountTier: ResolvedSpendTier | null;
 }
 
 /**
@@ -207,10 +222,33 @@ export async function ensureRegistrationRuntimeState(
     };
   }
 
+  // Resolve the holder's discount tier (discount card only).
+  //
+  // The tier is derived from TWO inputs: the template's tier ladder
+  // (`settings.discountTiers`) and the holder's accumulated spend
+  // (the snapshot's `spendAccumulated`). Both are available here.
+  //
+  // The resolution runs on EVERY path — the fresh-registration path
+  // AND the duplicate/replay path — so a holder who registers again
+  // gets their tier columns refreshed to match their current spend.
+  const discountTier = resolveDiscountTier(input.cardType, input.settings, applied.snapshot);
+
+  // Persist the resolved tier. A null tier (non-discount card, or a
+  // template with no ladder) CLEARS the columns, so a card type
+  // change never leaves a stale tier behind.
+  await updatePassHolderCurrentTier(
+    sql,
+    input.passHolderId,
+    discountTier ? discountTier.current : null,
+  );
+
   const values = formatPassValues({
     cardType: input.cardType,
     snapshot: applied.snapshot,
     boundFieldKeys: [input.settings?.leftField, input.settings?.rightField],
+    discountTier,
+    currency: input.settings?.currency,
+    language: input.settings?.language,
   });
 
   return {
@@ -218,5 +256,25 @@ export async function ensureRegistrationRuntimeState(
     duplicate: applied.duplicate,
     snapshot: applied.snapshot,
     values,
+    discountTier,
   };
+}
+
+/**
+ * Resolve the holder's discount tier, or null when there is none.
+ *
+ * Only the discount card has a tier ladder. The cashback card's
+ * `cashbackTiers` has the same shape but a different meaning
+ * (cashback % vs discount %), so it is deliberately NOT handled here
+ * — it gets its own resolver in a follow-up.
+ */
+function resolveDiscountTier(
+  cardType: CardType | null,
+  settings: TemplateSettings | null | undefined,
+  snapshot: PassValuesSnapshot,
+): ResolvedSpendTier | null {
+  if (cardType !== 'discount_card') return null;
+
+  const rules = normalizeDiscountTiers(settings?.discountTiers);
+  return resolveSpendTier(rules, snapshot.metrics.spendAccumulated);
 }

@@ -43,6 +43,11 @@ const aliasArray: { find: string | RegExp; replacement: string }[] = [
   { find: '@saome/shared/logic/passValueCalculator', replacement: resolve(sharedRoot, 'logic/passValueCalculator.ts') },
   { find: '@saome/shared/logic/passFieldFormatter', replacement: resolve(sharedRoot, 'logic/passFieldFormatter.ts') },
   { find: '@saome/shared/logic/passExpiry', replacement: resolve(sharedRoot, 'logic/passExpiry.ts') },
+  // 2026-10-27 - Discount tier resolution + amount formatting (shared
+  // between the Wallet payload and the editor preview). Must come
+  // BEFORE generic `@saome/shared/logic` per Rule 016 § vitest alias
+  // ordering.
+  { find: '@saome/shared/logic/spendTier', replacement: resolve(sharedRoot, 'logic/spendTier.ts') },
   { find: '@saome/shared/schemas/passValues', replacement: resolve(sharedRoot, 'schemas/passValues.ts') },
   { find: '@saome/shared/schemas', replacement: resolve(sharedRoot, 'schemas/index.ts') },
   { find: '@saome/shared/logic/member', replacement: resolve(sharedRoot, 'logic/member.ts') },

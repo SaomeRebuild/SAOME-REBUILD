@@ -87,16 +87,38 @@ describe('CARD_FIELDS — v12 schema conformance (regression — 2026-10-12)', (
     for (const f of CARD_FIELDS) {
       counts[f.semanticType] += 1;
     }
-    // phone, email, memberLevel, memberName, multipassRewardContent = 5 text
+    // 8 text: phone, email, memberLevel, memberName,
+    //         multipassRewardContent,
+    //         pointsToNextTierDiscount, discountTierBracket,
+    //         accumulatedSpendDiscount
+    //   (the three discount slots were downgraded from 'number' to
+    //    'text' on 2026-10-27 — their runtime values are display
+    //    strings like `10元`, and a `number` slot rejects them.
+    //    See packages/shared/constants/card-fields.ts for the full
+    //    rationale.)
     // birthday = 1 date
-    // 15 number (visitCount, availableRewards, totalStamps, stampsRemaining,
+    // 12 number (visitCount, availableRewards, totalStamps, stampsRemaining,
     //            pointsToNextTier, currentPoints, pointsToNextTierCashback,
-    //            accumulatedSpendCashback, pointsToNextTierDiscount,
-    //            accumulatedSpendDiscount, discountTierBracket,
+    //            accumulatedSpendCashback,
     //            couponRemainingCount, couponDiscount, multipassCompleted,
     //            multipassPointsToNextTier)
-    expect(counts.text).toBe(5);
-    expect(counts.number).toBe(15);
+    expect(counts.text).toBe(8);
+    expect(counts.number).toBe(12);
     expect(counts.date).toBe(1);
+  });
+
+  it('the three discount slots are typed "text" (their values carry a unit)', () => {
+    // Regression guard for the 2026-10-27 downgrade. A `number` slot
+    // makes Passcreator reject the "number + unit" display strings the
+    // Wallet needs, and the rejection takes the whole payload down.
+    const discountSlotKeys = [
+      'pointsToNextTierDiscount',
+      'discountTierBracket',
+      'accumulatedSpendDiscount',
+    ] as const;
+    for (const key of discountSlotKeys) {
+      const field = CARD_FIELDS.find((f) => f.key === key);
+      expect(field?.semanticType, `${key} must be a text slot`).toBe('text');
+    }
   });
 });

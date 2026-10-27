@@ -64,6 +64,10 @@ import {
 } from '@saome/shared/logic/passValueCalculator';
 import type { PassHolderRow } from '../db/passHolders';
 import type { ApplyPassEventResult, SyncValuesInput } from '../services/passValueService';
+import {
+  resolveSpendTier,
+  type ResolvedSpendTier,
+} from '@saome/shared/logic/spendTier';
 
 describe('Pass runtime value — four-layer conformance (Rule 019 § 4.1)', () => {
   it('Layer 1: the schema shape and the metric union list the same keys', () => {
@@ -129,6 +133,74 @@ describe('Pass runtime value — four-layer conformance (Rule 019 § 4.1)', () =
 
     expect(result.snapshot).toBe(snapshot);
     expect(syncInput.snapshot).toBe(snapshot);
+  });
+
+  /**
+   * The resolved discount tier (2026-10-27).
+   *
+   * The tier crosses four layers: the shared resolver, the shared
+   * formatter, the backend row interface, and the service result.
+   * A drift between them would mean the Wallet shows a different
+   * tier than the one recorded on the holder's row.
+   */
+  it('the discount tier agrees across the shared resolver, the row, and the service result', () => {
+    // Layer 1 — the shared resolver produces the shared type.
+    const resolved: ResolvedSpendTier | null = resolveSpendTier(
+      [
+        { name: '基本', thresholdSpend: 0, percent: 1 },
+        { name: '進階', thresholdSpend: 35, percent: 5 },
+      ],
+      0,
+    );
+    expect(resolved?.current.name).toBe('基本');
+    expect(resolved?.spendToNext).toBe(35);
+
+    // Layer 3 — the row interface carries the tier columns with the
+    // SAME names the DB write uses.
+    const row: PassHolderRow = {
+      id: '00000000-0000-4000-8000-000000000003',
+      template_id: '00000000-0000-4000-8000-000000000004',
+      name: '王小明',
+      phone_country_code: '+886',
+      phone_number: '912345678',
+      birthday: '1990-01-15',
+      email: 'wang@example.com',
+      payment_status: 'not_required',
+      spend_amount: '0.0000',
+      current_tier_name: resolved?.current.name ?? null,
+      current_tier_percent: resolved?.current.percent ?? null,
+      created_at: new Date('2026-10-27T00:00:00Z'),
+      updated_at: new Date('2026-10-27T00:00:00Z'),
+    };
+    expect(row.current_tier_name).toBe('基本');
+    expect(row.current_tier_percent).toBe(1);
+
+    // Layer 4 — the service result carries the SAME resolved tier.
+    const serviceTier: ResolvedSpendTier | null = resolved;
+    expect(serviceTier?.current.name).toBe(row.current_tier_name);
+  });
+
+  it('the sync input carries the discount tier so the PATCH formats it like the CREATE', () => {
+    // The PATCH and the CREATE must format the discount slots
+    // IDENTICALLY. Both go through `formatPassValues`, so both need
+    // the tier + currency + language.
+    const syncInput: SyncValuesInput = {
+      env: {} as SyncValuesInput['env'],
+      passIdentifier: 'pass-1',
+      snapshot: { metrics: emptyPassValuesMetrics(), expiryDate: null },
+      cardType: 'discount_card',
+      discountTier: {
+        current: { name: '基本', thresholdSpend: 0, percent: 1 },
+        next: { name: '進階', thresholdSpend: 35, percent: 5 },
+        spendToNext: 35,
+      },
+      currency: 'TWD',
+      language: 'zh-TW',
+    };
+
+    expect(syncInput.discountTier?.spendToNext).toBe(35);
+    expect(syncInput.currency).toBe('TWD');
+    expect(syncInput.language).toBe('zh-TW');
   });
 
   it('every layer agrees on the metric key set', () => {

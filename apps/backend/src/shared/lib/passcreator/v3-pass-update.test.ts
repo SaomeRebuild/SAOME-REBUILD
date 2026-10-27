@@ -471,3 +471,221 @@ describe('updatePassValues — the "∞" sentinel fallback', () => {
     expect(result.verified).toBe(true);
   });
 });
+
+/**
+ * The discount-slot type fallback (2026-10-27).
+ *
+ * The discount card's `pointsToNextTierDiscount` /
+ * `discountTierBracket` / `accumulatedSpendDiscount` slots carry
+ * display strings (`10元` / `NT$ 10` / `2%`), because the unit
+ * placement follows the template's language.
+ *
+ * A template pushed BEFORE the 2026-10-27 downgrade still declares
+ * those slots as `number`. Passcreator validates a per-pass value
+ * against the field type its TEMPLATE declared, so it rejects the
+ * string with a 400 — and the rejection takes the WHOLE PATCH down:
+ * the balance / points in the same payload stop syncing too.
+ *
+ * So the client retries ONCE without the offending slots and flags
+ * the result as `degraded`. The tenant's next Step 8 re-push
+ * (declaring the slots as `text`) makes the values land again.
+ */
+describe('updatePassValues — the discount-slot type fallback', () => {
+  it('retries WITHOUT the discount slots when the upstream rejects them with a 400', async () => {
+    fetchSpy
+      // 1st PATCH → 400 (the template still declares the slot as `number`).
+      .mockResolvedValueOnce(
+        makeResponse({
+          status: 400,
+          body: {
+            success: false,
+            errors: [
+              {
+                property: 'pointsToNextTierDiscount',
+                message: 'A provided field value is invalid',
+              },
+            ],
+          },
+        }),
+      )
+      // 2nd PATCH (no discount slots) → 200.
+      .mockResolvedValueOnce(makeResponse({ status: 200, body: { success: true } }))
+      // Read-back GET.
+      .mockResolvedValueOnce(
+        makeResponse({
+          status: 200,
+          body: makeGetSingleBody({ balance: 100 }),
+        }),
+      );
+
+    const result = await updatePassValues(VALID_ENV, IDENTIFIER, {
+      properties: {
+        pointsToNextTierDiscount: '10元',
+        discountTierBracket: '1%',
+        accumulatedSpendDiscount: '0元',
+        balance: 100,
+      },
+    });
+
+    // The retry went out WITHOUT the discount slots, but WITH the
+    // other fields — the balance still synced.
+    const retryInit = fetchSpy.mock.calls[1]?.[1] as RequestInit;
+    const retryBody = JSON.parse(retryInit.body as string);
+    expect(retryBody.data).not.toHaveProperty('pointsToNextTierDiscount');
+    expect(retryBody.data).not.toHaveProperty('discountTierBracket');
+    expect(retryBody.data).not.toHaveProperty('accumulatedSpendDiscount');
+    expect(retryBody.data.balance).toBe(100);
+
+    // The caller is told the update was only partially applied.
+    expect(result.degraded).toBe(true);
+    expect(result.verified).toBe(false);
+    expect(result.mismatchedFields).toContain('pointsToNextTierDiscount');
+  });
+
+  it('sends the discount slots on the FIRST attempt (no needless retry)', async () => {
+    fetchSpy
+      .mockResolvedValueOnce(makeResponse({ status: 200, body: { success: true } }))
+      .mockResolvedValueOnce(
+        makeResponse({
+          status: 200,
+          body: makeGetSingleBody({ pointsToNextTierDiscount: '10元' }),
+        }),
+      );
+
+    const result = await updatePassValues(VALID_ENV, IDENTIFIER, {
+      properties: { pointsToNextTierDiscount: '10元' },
+    });
+
+    // Exactly ONE upstream call before the verification GET.
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+
+    const init = fetchSpy.mock.calls[0]?.[1] as RequestInit;
+    const body = JSON.parse(init.body as string);
+    expect(body.data.pointsToNextTierDiscount).toBe('10元');
+    expect(result.degraded).toBe(false);
+  });
+
+  it('does NOT drop a NUMERIC value on a downgraded slot', async () => {
+    // A number would be accepted by a `number`-typed template, so
+    // dropping it would throw away a value that could have landed.
+    fetchSpy.mockResolvedValueOnce(
+      makeResponse({
+        status: 400,
+        body: {
+          success: false,
+          errors: [{ property: 'balance', message: 'must be a number' }],
+        },
+      }),
+    );
+
+    await expect(
+      updatePassValues(VALID_ENV, IDENTIFIER, {
+        properties: { accumulatedSpendDiscount: 12 },
+      }),
+    ).rejects.toBeInstanceOf(BadGatewayError);
+
+    // No retry — the payload had no droppable key.
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT drop a NON-discount string slot (e.g. memberLevel)', async () => {
+    // `memberLevel` was always a `text` slot — it can never be the
+    // cause of a type mismatch, so it must not be sacrificed.
+    fetchSpy.mockResolvedValueOnce(
+      makeResponse({
+        status: 400,
+        body: {
+          success: false,
+          errors: [{ property: 'memberLevel', message: 'invalid' }],
+        },
+      }),
+    );
+
+    await expect(
+      updatePassValues(VALID_ENV, IDENTIFIER, {
+        properties: { memberLevel: '基本' },
+      }),
+    ).rejects.toBeInstanceOf(BadGatewayError);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('drops the sentinel AND the discount slots in ONE retry', async () => {
+    // The two fallback sets are merged, so a payload that trips both
+    // conditions still costs exactly one extra round trip.
+    fetchSpy
+      .mockResolvedValueOnce(
+        makeResponse({
+          status: 400,
+          body: {
+            success: false,
+            errors: [{ property: 'memberExpiry', message: 'invalid' }],
+          },
+        }),
+      )
+      .mockResolvedValueOnce(makeResponse({ status: 200, body: { success: true } }))
+      .mockResolvedValueOnce(
+        makeResponse({ status: 200, body: makeGetSingleBody({ balance: 100 }) }),
+      );
+
+    const result = await updatePassValues(VALID_ENV, IDENTIFIER, {
+      properties: {
+        memberExpiry: '∞',
+        pointsToNextTierDiscount: '10元',
+        balance: 100,
+      },
+    });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(3); // PATCH + retry + read-back
+
+    const retryInit = fetchSpy.mock.calls[1]?.[1] as RequestInit;
+    const retryBody = JSON.parse(retryInit.body as string);
+    expect(retryBody.data).not.toHaveProperty('memberExpiry');
+    expect(retryBody.data).not.toHaveProperty('pointsToNextTierDiscount');
+    expect(retryBody.data.balance).toBe(100);
+    expect(result.degraded).toBe(true);
+  });
+
+  it('rethrows the ORIGINAL error when the retry also fails', async () => {
+    fetchSpy.mockResolvedValue(
+      makeResponse({
+        status: 400,
+        body: {
+          success: false,
+          errors: [
+            { property: 'pointsToNextTierDiscount', message: 'invalid' },
+          ],
+        },
+      }),
+    );
+
+    await expect(
+      updatePassValues(VALID_ENV, IDENTIFIER, {
+        properties: { pointsToNextTierDiscount: '10元' },
+      }),
+    ).rejects.toBeInstanceOf(BadGatewayError);
+
+    // Two attempts: the original + the retry.
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('does NOT retry on a non-400 upstream failure (500)', async () => {
+    fetchSpy.mockResolvedValueOnce(
+      makeResponse({
+        status: 500,
+        body: {
+          success: false,
+          errors: [{ property: 'pointsToNextTierDiscount', message: 'boom' }],
+        },
+      }),
+    );
+
+    await expect(
+      updatePassValues(VALID_ENV, IDENTIFIER, {
+        properties: { pointsToNextTierDiscount: '10元' },
+      }),
+    ).rejects.toBeInstanceOf(BadGatewayError);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+});

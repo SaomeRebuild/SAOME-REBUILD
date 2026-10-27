@@ -176,7 +176,11 @@ export function getFieldLabelMap(
   language: PassLanguage,
   cardType?: CardType | null,
 ): Record<CardFieldKey, string> {
-  const dict = selectLabels(language);
+  // Validate the language UP FRONT (an unsupported one throws here,
+  // before the loop) — `selectLabels` is the single place that knows
+  // which locales exist. The per-key labels themselves come from
+  // `getFieldLabel`, which resolves the same dictionary internally.
+  void selectLabels(language);
   const out: Partial<Record<CardFieldKey, string>> = {};
   for (const key of CARD_FIELD_KEYS) {
     out[key] = getFieldLabel(key, language, cardType);
@@ -403,6 +407,7 @@ function selectLabels(language: PassLanguage): FieldLabels {
       return en;
     default: {
       const _exhaustive: never = language as never;
+      void _exhaustive;
       throw new Error(`[fieldLabels] unsupported language: ${String(language)}`);
     }
   }

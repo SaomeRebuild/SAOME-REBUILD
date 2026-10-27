@@ -78,6 +78,9 @@ import { updatePassValues } from '@/shared/lib/passcreator';
 import type { PassUpdateResult } from '@/shared/lib/passcreator';
 import { formatPassValues } from '@saome/shared/logic/passFieldFormatter';
 import { reducePassValues } from '@saome/shared/logic/passValueCalculator';
+import type { ResolvedSpendTier } from '@saome/shared/logic/spendTier';
+import type { Currency } from '@saome/shared/schemas/card';
+import type { PassLanguage } from '@saome/shared/i18n/fieldLabels';
 import {
   passEventSchema,
   passValuesSnapshotSchema,
@@ -372,6 +375,19 @@ export interface SyncValuesInput {
   cardType: CardType | null | undefined;
   /** The template's BOUND face field keys. */
   boundFieldKeys?: readonly (CardFieldKey | null | undefined)[];
+  /**
+   * The holder's resolved spend tier (discount card only).
+   *
+   * 2026-10-27: the PATCH path must carry the SAME tier the initial
+   * issuance did, or the two requests would format the discount
+   * slots differently. The caller resolves it (it owns the template
+   * settings + the snapshot).
+   */
+  discountTier?: ResolvedSpendTier | null;
+  /** The template's currency (drives the unit on amount slots). */
+  currency?: Currency;
+  /** The template's display language (drives the unit placement). */
+  language?: PassLanguage;
 }
 
 /**
@@ -387,7 +403,23 @@ export interface SyncValuesInput {
 export async function syncValuesToPasscreator(
   input: SyncValuesInput,
 ): Promise<PassUpdateResult> {
-  const { env, passIdentifier, snapshot, cardType, boundFieldKeys } = input;
-  const values = formatPassValues({ cardType, snapshot, boundFieldKeys });
+  const {
+    env,
+    passIdentifier,
+    snapshot,
+    cardType,
+    boundFieldKeys,
+    discountTier,
+    currency,
+    language,
+  } = input;
+  const values = formatPassValues({
+    cardType,
+    snapshot,
+    boundFieldKeys,
+    discountTier,
+    currency,
+    language,
+  });
   return await updatePassValues(env, passIdentifier, values);
 }

@@ -81,6 +81,13 @@ export default defineWorkersConfig({
       '@saome/shared/logic/passValueCalculator': path.resolve(__dirname, '../../packages/shared/logic/passValueCalculator.ts'),
       '@saome/shared/logic/passFieldFormatter': path.resolve(__dirname, '../../packages/shared/logic/passFieldFormatter.ts'),
       '@saome/shared/logic/passExpiry': path.resolve(__dirname, '../../packages/shared/logic/passExpiry.ts'),
+      // 2026-10-27 - Discount tier resolution + amount formatting.
+      // Value imports need an EXPLICIT `.ts` entry: the generic
+      // trailing-slash alias below only resolves for `import type`
+      // (erased at compile time, never handed to Vite). Declared
+      // BEFORE the generic entries per Rule 016 (vite alias is
+      // prefix-matching, first match wins).
+      '@saome/shared/logic/spendTier': path.resolve(__dirname, '../../packages/shared/logic/spendTier.ts'),
       // 2026-10-27 — membership tier snapshot resolver. Value import
       // needs an EXPLICIT `.ts` entry for the same reason as
       // `spendTier` above: the generic trailing-slash alias only

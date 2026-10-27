@@ -150,6 +150,10 @@ function makeSql() {
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  // 2026-10-27 — the backfill path writes the resolved discount tier
+  // via this DB function. The mock `sql` is not a callable tagged
+  // template, so the real implementation cannot run against it.
+  vi.spyOn(passHoldersDb, 'updatePassHolderCurrentTier').mockResolvedValue(undefined);
 });
 
 describe('planPassRuntimeValueBackfill — dry-run report', () => {

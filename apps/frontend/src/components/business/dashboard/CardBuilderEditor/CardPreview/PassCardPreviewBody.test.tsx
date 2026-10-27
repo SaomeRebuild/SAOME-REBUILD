@@ -1655,27 +1655,35 @@ describe('PassCardPreviewBody — multipass + memberLevel → first-tier-name ov
   });
 });
 
-describe('PassCardPreviewBody — discount-only amount fields (2026-09-18)', () => {
+describe('PassCardPreviewBody — discount-only amount fields (2026-09-18, refactored 2026-10-27)', () => {
   /**
    * Discount card adds two new amount display fields accessible in Step 3:
    *   - pointsToNextTierDiscount  — 到下一級還差 / Amount to Next Tier
    *   - accumulatedSpendDiscount  — 累積消費 / Accumulated Spending
    *
    * The values are NOT stored in i18n (label-only there). They are
-   * sourced from `DISCOUNT_PREVIEW_AMOUNTS[currency]` — same
-   * currency-driven map pattern as `CASHBACK_PREVIEW_AMOUNTS`.
+   * demo NUMBERS from `DISCOUNT_PREVIEW_AMOUNTS`, rendered into a
+   * "number + unit" string by the shared `formatTierAmount`.
    *
-   *   TWD → "234元" / "556元" (Han suffix, en-locale-unsafe)
-   *   ZAR → "R234" / "R556" (no Han, locale en-ZA convention)
+   * 2026-10-27: the string is produced by the SAME shared function
+   * the backend uses to build the Wallet payload, so the editor
+   * preview and the issued pass can no longer disagree. The unit
+   * placement follows the card's LANGUAGE (Step 2), not the editor
+   * UI locale:
    *
-   * The body component NEVER routes discount amount values through t() —
-   * they're rendered as raw strings from the constant.
+   *   zh-TW + TWD → "234元" / "556元" (Han suffix)
+   *   en    + TWD → "NT$ 234" / "NT$ 556" (NT$ prefix)
+   *   any   + ZAR → "R234" / "R556" (R prefix, both languages)
+   *
+   * The body component NEVER routes discount amount values through
+   * t() — they are rendered as raw strings from the formatter.
    */
 
-  it('pointsToNextTierDiscount renders its label via i18n + value via DISCOUNT_PREVIEW_AMOUNTS (TWD)', () => {
-    // Reset currency to TWD explicitly — previous tests in this file may
-    // have flipped the store to ZAR (currency leaks across tests).
-    useCardBuilderStore.setState({ currency: 'TWD' });
+  it('pointsToNextTierDiscount renders its label via i18n + value via the tier formatter (TWD, zh-TW)', () => {
+    // Reset currency AND language explicitly — previous tests in this
+    // file may have flipped them (currency / language leak across
+    // tests).
+    useCardBuilderStore.setState({ currency: 'TWD', language: 'zh-TW' });
     const { unmount } = render(
       <PassCardPreviewBody leftField="pointsToNextTierDiscount" />,
     );
@@ -1684,8 +1692,8 @@ describe('PassCardPreviewBody — discount-only amount fields (2026-09-18)', () 
     unmount();
   });
 
-  it('accumulatedSpendDiscount renders its label via i18n + value via DISCOUNT_PREVIEW_AMOUNTS (TWD)', () => {
-    useCardBuilderStore.setState({ currency: 'TWD' });
+  it('accumulatedSpendDiscount renders its label via i18n + value via the tier formatter (TWD, zh-TW)', () => {
+    useCardBuilderStore.setState({ currency: 'TWD', language: 'zh-TW' });
     const { unmount } = render(
       <PassCardPreviewBody rightField="accumulatedSpendDiscount" />,
     );
@@ -1694,8 +1702,24 @@ describe('PassCardPreviewBody — discount-only amount fields (2026-09-18)', () 
     unmount();
   });
 
-  it('ZAR currency: discount values read from DISCOUNT_PREVIEW_AMOUNTS.ZAR', () => {
-    useCardBuilderStore.setState({ currency: 'ZAR' });
+  it('an ENGLISH discount card shows the NT$ prefix (matches the Wallet)', () => {
+    // 2026-10-27: the unit placement follows the CARD's language, so
+    // an English discount card promises "NT$ 234" — exactly what the
+    // backend sends to Passcreator.
+    useCardBuilderStore.setState({ currency: 'TWD', language: 'en' });
+    const { unmount } = render(
+      <PassCardPreviewBody
+        leftField="pointsToNextTierDiscount"
+        rightField="accumulatedSpendDiscount"
+      />,
+    );
+    expect(screen.getByText('NT$ 234')).toBeInTheDocument();
+    expect(screen.getByText('NT$ 556')).toBeInTheDocument();
+    unmount();
+  });
+
+  it('ZAR currency: discount values keep the R prefix in both languages', () => {
+    useCardBuilderStore.setState({ currency: 'ZAR', language: 'zh-TW' });
 
     const { unmount } = render(
       <PassCardPreviewBody
@@ -1708,9 +1732,9 @@ describe('PassCardPreviewBody — discount-only amount fields (2026-09-18)', () 
     unmount();
   });
 
-  it('TWD currency: discount values read from DISCOUNT_PREVIEW_AMOUNTS.TWD (Han suffix)', () => {
+  it('TWD currency: discount values carry the Han suffix for a zh-TW card', () => {
     // Reset currency to TWD in case a previous test flipped it to ZAR.
-    useCardBuilderStore.setState({ currency: 'TWD' });
+    useCardBuilderStore.setState({ currency: 'TWD', language: 'zh-TW' });
 
     const { unmount } = render(
       <PassCardPreviewBody
@@ -1721,7 +1745,8 @@ describe('PassCardPreviewBody — discount-only amount fields (2026-09-18)', () 
     expect(screen.getByText('234元')).toBeInTheDocument();
     expect(screen.getByText('556元')).toBeInTheDocument();
     // Mock t() returns i18n keys verbatim — discount amount values
-    // bypass t() entirely (currency-driven map).
+    // bypass t() entirely (they are rendered by the shared tier
+    // formatter, not by the i18n layer).
     expect(
       screen.queryByText('fieldPreview.pointsToNextTierDiscount.value'),
     ).toBeNull();

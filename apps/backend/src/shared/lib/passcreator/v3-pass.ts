@@ -6,6 +6,10 @@
 
 import { BadGatewayError } from '../saomeError';
 import { UNLIMITED_EXPIRY_VALUE } from '@saome/shared/constants/headerSlots';
+import {
+  DISCOUNT_TYPE_DOWNGRADED_FIELDS,
+  type CardFieldKey,
+} from '@saome/shared/constants/card-fields';
 import { requireEnv } from './env';
 import { passcreatorFetch } from './transport';
 import {
@@ -211,56 +215,107 @@ export async function issuePass(
     runtimeData.expirationDate = values.expirationDate;
   }
 
-  const result = await passcreatorFetch(e, '/api/v3/pass?async=false', {
-    method: 'POST',
-    body: {
-      // V3 contract: every request body field lives inside a top-level
-      // `data` object (docs § "The following properties of the `data`
-      // object can/must be submitted in the request body").
-      data: {
-        templateId: passcreatorTemplateId,
-        // 4 holder fields go DIRECTLY inside `data` — V3 does NOT
-        // distinguish primary/secondary per template; Passcreator
-        // routes the values to the V2 placeholder addresses defined
-        // on the template's `additionalProperties[]` (or, for
-        // membership-style templates, the `primaryFields[0].key`
-        // configured as `memberName` by
-        // `apps/backend/src/modules/pass-templates/services/passTemplateMapping.ts`
-        // — v12-followup, 2026-10-12).
-        //
-        // v3-fix-2026-10-19: the SAOME template mapping emits
-        // `memberName` as `primaryFields[0].key` for `membership_card`
-        // (and as the `additionalProperties[]` entry for any
-        // cardType that has a membership-style field slot). The
-        // `{memberName}` placeholder in the template resolves
-        // against THIS body field name — sending `name` previously
-        // left `memberName:` empty in Passcreator's dashboard
-        // because Passcreator couldn't match the body field to the
-        // configured placeholder key. See
-        // `apps/backend/src/modules/pass-templates/services/passTemplateMapping.ts::primaryFields`.
-        memberName: holder.name,
-        phone: holder.phone,
-        birthday: holder.birthday,
-        email: holder.email,
-        // 2026-10-27 — the holder's membership tier name. Mapped to
-        // `data.memberLevel` for the same reason `memberName` maps to
-        // `data.memberName` (see above): the template's `{memberLevel}`
-        // placeholder resolves against THIS body field name.
-        //
-        // Omitted entirely when the holder has no tier (a
-        // non-membership card) — a legacy call site therefore produces
-        // exactly the pre-2026-10-27 body.
-        ...(holder.memberLevel !== undefined
-          ? { memberLevel: holder.memberLevel }
-          : {}),
-        // The holder's OPENING runtime values (points / balance /
-        // expiry) — same names the template binds. Omitted entirely
-        // when the caller has no runtime state to send, so a legacy
-        // call site produces exactly the pre-2026-10-24 body.
-        ...runtimeData,
-      },
+  // 2026-10-27 — the CREATE-side type-fallback.
+  //
+  // The discount card's three type-downgraded slots carry display
+  // strings (`10元` / `NT$ 10` / `2%`). A template pushed BEFORE
+  // the 2026-10-27 downgrade still declares them as `number`, so
+  // Passcreator rejects the string with a 400 and NO pass is
+  // created at all — the holder ends up with no wallet pass.
+  //
+  // The PATCH path has the same hazard and already has a
+  // drop-and-retry fallback (see `updatePassValues`). The CREATE
+  // path needs the SAME treatment, but with one important
+  // difference: on PATCH, dropping a key means "keep the upstream
+  // value" — harmless. On CREATE there is no upstream value yet,
+  // so dropping the key simply means the pass is created WITHOUT
+  // that slot. The holder gets a working pass (expiry, balance and
+  // every other slot intact) with the discount tier slots left
+  // empty until the tenant re-pushes Step 8.
+  //
+  // A missing tier slot is a far better outcome than no pass.
+  const createDroppableKeys = Object.keys(runtimeData).filter(
+    (key) =>
+      DISCOUNT_TYPE_DOWNGRADED_FIELDS.has(key as CardFieldKey) &&
+      typeof runtimeData[key] === 'string',
+  );
+
+  const buildCreateBody = (
+    data: Record<string, string | number>,
+  ): Record<string, unknown> => ({
+    // V3 contract: every request body field lives inside a top-level
+    // `data` object (docs § "The following properties of the `data`
+    // object can/must be submitted in the request body").
+    data: {
+      templateId: passcreatorTemplateId,
+      // 4 holder fields go DIRECTLY inside `data` — V3 does NOT
+      // distinguish primary/secondary per template; Passcreator
+      // routes the values to the V2 placeholder addresses defined
+      // on the template's `additionalProperties[]` (or, for
+      // membership-style templates, the `primaryFields[0].key`
+      // configured as `memberName` by
+      // `apps/backend/src/modules/pass-templates/services/passTemplateMapping.ts`
+      // — v12-followup, 2026-10-12).
+      //
+      // v3-fix-2026-10-19: the SAOME template mapping emits
+      // `memberName` as `primaryFields[0].key` for `membership_card`
+      // (and as the `additionalProperties[]` entry for any
+      // cardType that has a membership-style field slot). The
+      // `{memberName}` placeholder in the template resolves
+      // against THIS body field name — sending `name` previously
+      // left `memberName:` empty in Passcreator's dashboard
+      // because Passcreator couldn't match the body field to the
+      // configured placeholder key. See
+      // `apps/backend/src/modules/pass-templates/services/passTemplateMapping.ts::primaryFields`.
+      memberName: holder.name,
+      phone: holder.phone,
+      birthday: holder.birthday,
+      email: holder.email,
+      // 2026-10-27 — the holder's membership tier name. Mapped to
+      // `data.memberLevel` for the same reason `memberName` maps to
+      // `data.memberName` (see above): the template's `{memberLevel}`
+      // placeholder resolves against THIS body field name.
+      //
+      // Omitted entirely when the holder has no tier (a
+      // non-membership card) — a legacy call site therefore produces
+      // exactly the pre-2026-10-27 body.
+      ...(holder.memberLevel !== undefined
+        ? { memberLevel: holder.memberLevel }
+        : {}),
+      // The holder's OPENING runtime values (points / balance /
+      // expiry) — same names the template binds. Omitted entirely
+      // when the caller has no runtime state to send, so a legacy
+      // call site produces exactly the pre-2026-10-24 body.
+      ...data,
     },
   });
+
+  let result: unknown;
+  try {
+    result = await passcreatorFetch(e, '/api/v3/pass?async=false', {
+      method: 'POST',
+      body: buildCreateBody(runtimeData),
+    });
+  } catch (err) {
+    const isUpstream400 =
+      err instanceof BadGatewayError && err.details?.upstreamStatus === 400;
+    if (!isUpstream400 || createDroppableKeys.length === 0) throw err;
+
+    const retryData: Record<string, string | number> = { ...runtimeData };
+    for (const key of createDroppableKeys) {
+      delete retryData[key];
+    }
+    try {
+      result = await passcreatorFetch(e, '/api/v3/pass?async=false', {
+        method: 'POST',
+        body: buildCreateBody(retryData),
+      });
+    } catch {
+      // The retry failed too — surface the ORIGINAL error, which
+      // describes the real upstream rejection.
+      throw err;
+    }
+  }
 
   const parsed = extractPassIssueData(result);
   if (parsed === null) {
@@ -602,9 +657,35 @@ export async function updatePassValues(
   // remaining fields land; the expiry slot keeps whatever it had.
   // The result is flagged `degraded` so the caller knows the expiry
   // value was NOT applied.
+  //
+  // 2026-10-27 — the SAME mechanism now covers the discount card's
+  // type-downgraded slots.
+  //
+  // Those three slots carry display strings (`10元` / `NT$ 10` /
+  // `2%`), but a template pushed BEFORE the 2026-10-27 downgrade
+  // still declares them as `number`. Passcreator rejects the string
+  // and takes the whole PATCH down with it — so the balance / points
+  // in the same payload stop syncing too.
+  //
+  // The two fallback sets are MERGED into one drop-set: when the
+  // upstream 400s, every key that is "type-risky" is dropped and the
+  // request is retried once. Merging (rather than two sequential
+  // retries) means a payload that trips BOTH conditions still costs
+  // exactly one extra round trip, and a template that trips only one
+  // of them loses only that one.
+  //
+  // Only STRING values on the downgraded slots are dropped: a number
+  // would be accepted by a `number`-typed template, so dropping it
+  // would throw away a value that could have landed.
   const sentinelKeys = Object.keys(data).filter(
     (key) => data[key] === UNLIMITED_EXPIRY_VALUE,
   );
+  const typeDowngradedKeys = Object.keys(data).filter(
+    (key) =>
+      DISCOUNT_TYPE_DOWNGRADED_FIELDS.has(key as CardFieldKey) &&
+      typeof data[key] === 'string',
+  );
+  const droppableKeys = [...sentinelKeys, ...typeDowngradedKeys];
   let degraded = false;
 
   try {
@@ -619,10 +700,10 @@ export async function updatePassValues(
   } catch (err) {
     const isUpstream400 =
       err instanceof BadGatewayError && err.details?.upstreamStatus === 400;
-    if (!isUpstream400 || sentinelKeys.length === 0) throw err;
+    if (!isUpstream400 || droppableKeys.length === 0) throw err;
 
     const retryData: Record<string, string | number> = { ...data };
-    for (const key of sentinelKeys) {
+    for (const key of droppableKeys) {
       delete retryData[key];
     }
     try {
