@@ -248,7 +248,17 @@ export const CARD_FIELDS: readonly CardFieldDefinition[] = [
   { key: 'email',       group: 'common', labelKey: 'step3.fieldsSection.fields.email',       semanticType: 'text' },
   { key: 'memberLevel', group: 'common', labelKey: 'step3.fieldsSection.fields.memberLevel', semanticType: 'text', hideOnCardTypes: ['coupon_card', 'gift_card'] },
   { key: 'birthday',    group: 'common', labelKey: 'step3.fieldsSection.fields.birthday',    semanticType: 'date' },
-  { key: 'visitCount',  group: 'common', labelKey: 'step3.fieldsSection.fields.visitCount',  semanticType: 'number' },
+  // 2026-10-27 — `visitCount` was `number` until this change. Its
+  // runtime value is a "number + unit" pack (`5 次` / `5 times`), not
+  // a bare integer, and a `number` slot makes Passcreator reject the
+  // string with a 400 that takes the WHOLE payload down.
+  //
+  // WHY: the unit follows the TEMPLATE's language (see
+  // `packages/shared/logic/visitCount.ts`), and a bare number cannot
+  // carry a unit. This is the same failure the discount slots hit on
+  // the same day — see the discount block below for the full
+  // rationale and the 400-fallback mitigation.
+  { key: 'visitCount',  group: 'common', labelKey: 'step3.fieldsSection.fields.visitCount',  semanticType: 'text' },
   {
     key: 'memberName',
     group: 'common',
@@ -336,16 +346,16 @@ export const CARD_FIELDS: readonly CardFieldDefinition[] = [
 ];
 
 /**
- * The discount-card face fields whose upstream Passcreator field type
- * was CHANGED on 2026-10-27.
+ * The face fields whose upstream Passcreator field type was CHANGED
+ * to `text` on 2026-10-27.
  *
  * WHY THIS SET EXISTS
  *
- * These three slots were declared `semanticType: 'number'` until
+ * These four slots were declared `semanticType: 'number'` until
  * 2026-10-27, which made the template push them with
  * `type: 'number'`. Their runtime values are display strings
- * (`10元` / `NT$ 10` / `R10` / `2%`), because the unit placement
- * follows the template's language.
+ * (`10元` / `NT$ 10` / `R10` / `2%` / `5 次` / `5 times`), because
+ * the unit placement follows the template's language.
  *
  * Passcreator validates a per-pass value against the field type its
  * TEMPLATE declared, so a template pushed BEFORE the change rejects
@@ -362,11 +372,19 @@ export const CARD_FIELDS: readonly CardFieldDefinition[] = [
  * `memberLevel` is NOT in this set: it was already `text`, so a
  * template declaring it as `number` never existed.
  *
+ * 2026-10-27 — renamed from `DISCOUNT_TYPE_DOWNGRADED_FIELDS`. The old
+ * name said "discount", but `visitCount` is a COMMON field (every card
+ * type can bind it), so the name became actively misleading. The
+ * current name describes WHAT the set is: the fields whose value is a
+ * text payload that a legacy `number` template would reject.
+ *
  * @see runs/decisions/2026-10-27-pass-holder-spend-and-discount-tier.md
+ * @see runs/decisions/2026-10-27-visit-count-unit-display.md
  */
-export const DISCOUNT_TYPE_DOWNGRADED_FIELDS: ReadonlySet<CardFieldKey> =
+export const TYPE_DOWNGRADED_TEXT_FIELDS: ReadonlySet<CardFieldKey> =
   new Set([
     'pointsToNextTierDiscount',
     'discountTierBracket',
     'accumulatedSpendDiscount',
+    'visitCount',
   ]);

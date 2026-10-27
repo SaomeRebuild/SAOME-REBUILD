@@ -112,6 +112,23 @@ export interface PassEventSyncTarget {
    * slots). Only keys the template binds are sent upstream.
    */
   boundFieldKeys?: readonly (CardFieldKey | null | undefined)[];
+  /**
+   * The template's currency. Drives the unit on the amount slots.
+   */
+  currency?: Currency;
+  /**
+   * The template's display language. Drives the unit PLACEMENT on the
+   * unit-carrying slots — the visit counter (`5 次` / `5 times`) and
+   * the discount amount slots (`10元` / `NT$ 10`).
+   *
+   * 2026-10-27 — this was MISSING on the event-sync path. The event
+   * PATCH therefore fell back to the formatter's `zh-TW` default, so
+   * an English card's visit counter was written as `5 次` while its
+   * initial issuance said `5 times`. The two requests must carry an
+   * identical shape — that is the whole point of sharing one
+   * formatter — so the caller now supplies the template's language.
+   */
+  language?: PassLanguage;
 }
 
 /** Input for `applyPassEvent`. */
@@ -220,6 +237,8 @@ export async function applyPassEvent(
       snapshot: committed.snapshot,
       cardType: sync.cardType,
       boundFieldKeys: sync.boundFieldKeys,
+      currency: sync.currency,
+      language: sync.language,
     });
   }
 

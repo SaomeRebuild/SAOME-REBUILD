@@ -318,11 +318,50 @@ describe('syncValuesToPasscreator', () => {
       boundFieldKeys: ['visitCount', 'phone'],
     });
 
+    // 2026-10-27: the visit counter is a "number + unit" pack, so it
+    // is a STRING (`0 次`), not a bare number.
     expect(patchSpy).toHaveBeenCalledWith(ENV, IDENTIFIER, {
       storedValue: 0,
-      properties: { balance: 0, visitCount: 0 },
+      properties: { balance: 0, visitCount: '0 次' },
     });
     expect(result.verified).toBe(true);
+  });
+
+  it('formats the visit counter in the TEMPLATE language (not the zh-TW default)', async () => {
+    // 2026-10-27 regression: the event-sync path did not carry the
+    // template's language, so an English card's visit counter was
+    // written as `5 次` while its initial issuance said `5 times`.
+    const snapshot = reducePassValues([
+      buildInitialValues({
+        cardType: 'stamp_card',
+        expiryRule: { mode: 'never' },
+        issuedOn: '2026-10-24',
+      }),
+    ]);
+    const patchSpy = vi
+      .spyOn(passcreator, 'updatePassValues')
+      .mockResolvedValue({
+        identifier: IDENTIFIER,
+        verified: true,
+        mismatchedFields: [],
+      });
+
+    await syncValuesToPasscreator({
+      env: ENV,
+      passIdentifier: IDENTIFIER,
+      snapshot,
+      cardType: 'stamp_card',
+      boundFieldKeys: ['visitCount'],
+      language: 'en',
+    });
+
+    expect(patchSpy).toHaveBeenCalledWith(
+      ENV,
+      IDENTIFIER,
+      expect.objectContaining({
+        properties: expect.objectContaining({ visitCount: '0 times' }),
+      }),
+    );
   });
 });
 

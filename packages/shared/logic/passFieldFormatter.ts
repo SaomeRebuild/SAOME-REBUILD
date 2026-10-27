@@ -71,6 +71,7 @@ import {
   formatTierPercent,
   type ResolvedSpendTier,
 } from './spendTier';
+import { formatVisitCount } from './visitCount';
 
 /**
  * The Passcreator per-pass value payload.
@@ -132,6 +133,12 @@ export interface PasscreatorPassValues {
  * and the discount branch then overwrote it with the formatted
  * string. Removing it makes the discount branch the single source.
  *
+ * 2026-10-27 (later the same day) — `visitCount` was REMOVED for the
+ * SAME reason. The Wallet shows a visit counter as `5 次` / `5 times`
+ * — a "number + unit" pack — not as a bare integer. The value is
+ * produced by the visitCount branch below via
+ * `logic/visitCount.ts::formatVisitCount`.
+ *
  * `accumulatedSpendCashback` (the CASHBACK card's slot) stays in the
  * map: the cashback card still shows a bare spend number there, and
  * changing it is out of scope for this change.
@@ -176,7 +183,6 @@ export interface PasscreatorPassValues {
  * metric" — the label and the metric must mean the same thing.
  */
 export const FACE_FIELD_METRIC: Partial<Record<CardFieldKey, PassValueMetric>> = {
-  visitCount: 'visitCount',
   currentPoints: 'pointsBalance',
   accumulatedSpendCashback: 'spendAccumulated',
 };
@@ -345,6 +351,11 @@ export function formatPassValues(input: FormatPassValuesInput): PasscreatorPassV
   const properties: Record<string, string | number> = {};
   const result: PasscreatorPassValues = { properties };
 
+  // The TEMPLATE's display language — shared by every unit-carrying
+  // slot (the discount amount slots and the visit counter). Hoisted to
+  // function scope so both branches read the SAME value.
+  const language = input.language ?? 'zh-TW';
+
   const slot = getHeaderSlot(cardType);
   // No card type → the template binds nothing yet. An empty payload is
   // the safe answer: sending nothing upstream leaves the pass as-is.
@@ -420,7 +431,6 @@ export function formatPassValues(input: FormatPassValuesInput): PasscreatorPassV
   if (cardType === 'discount_card' && input.discountTier) {
     const tier = input.discountTier;
     const currency = input.currency ?? 'TWD';
-    const language = input.language ?? 'zh-TW';
 
     for (const fieldKey of boundFieldKeys ?? []) {
       if (!fieldKey) continue;
@@ -450,6 +460,27 @@ export function formatPassValues(input: FormatPassValuesInput): PasscreatorPassV
           break;
       }
     }
+  }
+
+  // ── Visit counter (2026-10-27) ─────────────────────────────────────────
+  //
+  // The `visitCount` slot shows a "number + unit" pack (`5 次` /
+  // `5 times`), not a bare integer. The unit follows the TEMPLATE's
+  // language — the same rule the discount amount slots follow — so
+  // the value is produced by the shared formatter
+  // (`logic/visitCount.ts::formatVisitCount`) rather than by a metric
+  // read.
+  //
+  // `visitCount` is a COMMON field (every card type may bind it), so
+  // this branch is NOT gated on a card type — only on the template
+  // actually binding the slot. An unbound slot stays absent, exactly
+  // like every other field.
+  //
+  // The generic loop below MUST NOT also write this key:
+  // `visitCount` was removed from `FACE_FIELD_METRIC` for exactly
+  // this reason (a bare number would overwrite the formatted string).
+  if (boundFieldKeys?.includes('visitCount')) {
+    properties.visitCount = formatVisitCount(snapshot.metrics.visitCount, language);
   }
 
   // ── Bound face fields (the Step 3 left / right slots) ───────────────────

@@ -115,6 +115,13 @@ describe('PassCardPreviewBody — all 6 fields × 2 slots', () => {
   // (2026-09-20 review) — multipass now reuses the common `memberLevel`
   // key, which IS included in this sweep as a normal `memberLevel` test
   // case.
+  //
+  // 2026-10-27 — `visitCount` joined the excluded set: its value is no
+  // longer an i18n string but the output of the shared
+  // `formatVisitCount` formatter ("5 次" / "5 times"). The sweep
+  // asserts `${key}.value`, which the formatter-driven slot cannot
+  // satisfy. It has its own dedicated tests (ZAR pollution + the
+  // template-language case) below.
   const I18N_SOURCED_FIELD_KEYS = CARD_FIELD_KEYS.filter(
     (key) =>
       key !== 'pointsToNextTierCashback' &&
@@ -124,7 +131,8 @@ describe('PassCardPreviewBody — all 6 fields × 2 slots', () => {
       key !== 'discountTierBracket' &&
       key !== 'multipassCompleted' &&
       key !== 'multipassPointsToNextTier' &&
-      key !== 'multipassRewardContent',
+      key !== 'multipassRewardContent' &&
+      key !== 'visitCount',
   );
 
   it.each(I18N_SOURCED_FIELD_KEYS)('renders leftField="%s" → ${key}.label and .value', (key) => {
@@ -1215,12 +1223,28 @@ describe('PassCardPreviewBody — ZAR pollution regression (2026-09-13)', () => 
     unmount();
   });
 
-  it('ZAR + visitCount field: value renders as raw i18n key, NOT "R5" (regression)', () => {
-    useCardBuilderStore.setState({ currency: 'ZAR' });
+  it('ZAR + visitCount field: value renders via the shared formatter, NOT "R5" (regression)', () => {
+    // 2026-10-27: the visit counter's value no longer comes from the
+    // i18n dictionary — it comes from `formatVisitCount`, the SAME
+    // shared formatter the Wallet payload uses. The ZAR prefix must
+    // still not appear (the visit counter is not a currency amount).
+    useCardBuilderStore.setState({ currency: 'ZAR', language: 'zh-TW' });
 
     const { unmount } = render(<PassCardPreviewBody leftField="visitCount" />);
-    expect(screen.getByText('visitCount.value')).toBeInTheDocument();
+    expect(screen.getByText('5 次')).toBeInTheDocument();
     expect(screen.queryByText(/^R\d/)).toBeNull();
+    unmount();
+  });
+
+  it('visitCount renders in the TEMPLATE language (en → "5 times")', () => {
+    // 2026-10-27: the unit follows the CARD's language, not the
+    // reader's locale — the preview must promise exactly what the
+    // issued Wallet pass shows.
+    useCardBuilderStore.setState({ currency: 'TWD', language: 'en' });
+
+    const { unmount } = render(<PassCardPreviewBody leftField="visitCount" />);
+    expect(screen.getByText('5 times')).toBeInTheDocument();
+    expect(screen.queryByText('5 次')).toBeNull();
     unmount();
   });
 

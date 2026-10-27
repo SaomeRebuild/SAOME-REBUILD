@@ -211,7 +211,9 @@ describe('formatPassValues — only BOUND keys are emitted', () => {
       snapshot: snapshot({ metrics: { ...emptyPassValuesMetrics(), visitCount: 3 } }),
       boundFieldKeys: ['visitCount'],
     });
-    expect(result.properties.visitCount).toBe(3);
+    // 2026-10-27: the visit counter is a "number + unit" pack, not a
+    // bare integer (the unit follows the template's language).
+    expect(result.properties.visitCount).toBe('3 次');
   });
 
   it('does NOT emit an UNBOUND field even when the snapshot has a value', () => {
@@ -252,7 +254,7 @@ describe('formatPassValues — only BOUND keys are emitted', () => {
       snapshot: snapshot({ metrics: { ...emptyPassValuesMetrics(), visitCount: 3 } }),
       boundFieldKeys: [null, 'visitCount', undefined],
     });
-    expect(result.properties.visitCount).toBe(3);
+    expect(result.properties.visitCount).toBe('3 次');
     expect(Object.keys(result.properties)).toHaveLength(2); // balance + visitCount
   });
 
@@ -329,17 +331,20 @@ describe('formatPassValues — template-derived stamp fields are NOT emitted', (
   );
 
   it('the exact metric reads ARE still emitted', () => {
-    // Guards against over-correcting: the four fields whose label IS
+    // Guards against over-correcting: the fields whose label IS
     // the metric keep working.
     //
     // 2026-10-27: `accumulatedSpendDiscount` moved OUT of this map —
     // the discount card shows a unit-carrying display string for it,
     // not a bare number. It is emitted by the discount branch of
     // `formatPassValues` instead (see the discount-card suite below).
+    //
+    // 2026-10-27 (later the same day): `visitCount` moved OUT for the
+    // same reason — the Wallet shows `5 次` / `5 times`. It is emitted
+    // by the visit-counter branch instead.
     expect(Object.keys(FACE_FIELD_METRIC).sort()).toEqual([
       'accumulatedSpendCashback',
       'currentPoints',
-      'visitCount',
     ]);
   });
 });
@@ -352,9 +357,53 @@ describe('formatPassValues — value types', () => {
       boundFieldKeys: ['visitCount'],
     });
     expect(typeof result.properties.balance).toBe('number');
-    expect(typeof result.properties.visitCount).toBe('number');
-    expect(result.properties.visitCount).not.toContain('元');
-    expect(result.properties.visitCount).not.toContain('R');
+    // 2026-10-27: the visit counter is the ONE exception — it is a
+    // "number + unit" pack, so it is a string. Every other metric
+    // read stays a JSON number.
+    expect(typeof result.properties.visitCount).toBe('string');
+    expect(result.properties.visitCount).toBe('12 次');
+  });
+
+  it('the visit counter follows the TEMPLATE language, not the reader locale', () => {
+    const zhResult = formatPassValues({
+      cardType: 'stamp_card',
+      snapshot: snapshot({ metrics: { ...emptyPassValuesMetrics(), visitCount: 5 } }),
+      boundFieldKeys: ['visitCount'],
+      language: 'zh-TW',
+    });
+    const enResult = formatPassValues({
+      cardType: 'stamp_card',
+      snapshot: snapshot({ metrics: { ...emptyPassValuesMetrics(), visitCount: 5 } }),
+      boundFieldKeys: ['visitCount'],
+      language: 'en',
+    });
+    expect(zhResult.properties.visitCount).toBe('5 次');
+    expect(enResult.properties.visitCount).toBe('5 times');
+  });
+
+  it('the visit counter defaults to zh-TW when no language is given', () => {
+    const result = formatPassValues({
+      cardType: 'stamp_card',
+      snapshot: snapshot({ metrics: { ...emptyPassValuesMetrics(), visitCount: 7 } }),
+      boundFieldKeys: ['visitCount'],
+    });
+    expect(result.properties.visitCount).toBe('7 次');
+  });
+
+  it('the visit counter is emitted for EVERY card type that binds it', () => {
+    // `visitCount` is a COMMON field — the branch is gated on the
+    // binding, not on the card type.
+    for (const cardType of ALL_CARD_TYPES) {
+      const result = formatPassValues({
+        cardType,
+        snapshot: snapshot({ metrics: { ...emptyPassValuesMetrics(), visitCount: 2 } }),
+        boundFieldKeys: ['visitCount'],
+      });
+      expect(
+        result.properties.visitCount,
+        `${cardType} must emit the formatted visit counter`,
+      ).toBe('2 次');
+    }
   });
 
   it('a fractional spendAccumulated stays a number', () => {
@@ -554,7 +603,7 @@ describe('formatPassValues — discount card face fields', () => {
       language: 'zh-TW',
     });
     expect(result.properties).not.toHaveProperty('memberLevel');
-    expect(result.properties.visitCount).toBe(0);
+    expect(result.properties.visitCount).toBe('0 次');
   });
 
   it('keeps the cashback card\'s accumulatedSpendCashback a NUMBER', () => {

@@ -588,6 +588,44 @@ describe('updatePassValues — the discount-slot type fallback', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
+  it('retries WITHOUT the visitCount slot when a legacy template rejects it with a 400', async () => {
+    // 2026-10-27 — `visitCount` joined the downgraded set. A template
+    // pushed BEFORE the downgrade still declares the slot as
+    // `number`, so Passcreator rejects the `5 次` string with a 400
+    // that would take the whole PATCH down.
+    fetchSpy
+      .mockResolvedValueOnce(
+        makeResponse({
+          status: 400,
+          body: {
+            success: false,
+            errors: [
+              { property: 'visitCount', message: 'A provided field value is invalid' },
+            ],
+          },
+        }),
+      )
+      .mockResolvedValueOnce(makeResponse({ status: 200, body: { success: true } }))
+      .mockResolvedValueOnce(
+        makeResponse({ status: 200, body: makeGetSingleBody({ balance: 100 }) }),
+      );
+
+    const result = await updatePassValues(VALID_ENV, IDENTIFIER, {
+      properties: { visitCount: '5 次', balance: 100 },
+    });
+
+    // The retry went out WITHOUT the visit counter, but WITH the
+    // balance — the other fields still synced.
+    const retryInit = fetchSpy.mock.calls[1]?.[1] as RequestInit;
+    const retryBody = JSON.parse(retryInit.body as string);
+    expect(retryBody.data).not.toHaveProperty('visitCount');
+    expect(retryBody.data.balance).toBe(100);
+
+    expect(result.degraded).toBe(true);
+    expect(result.verified).toBe(false);
+    expect(result.mismatchedFields).toContain('visitCount');
+  });
+
   it('does NOT drop a NON-discount string slot (e.g. memberLevel)', async () => {
     // `memberLevel` was always a `text` slot — it can never be the
     // cause of a type mismatch, so it must not be sacrificed.

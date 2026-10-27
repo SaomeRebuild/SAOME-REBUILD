@@ -48,7 +48,10 @@ export default {
     email: { label: 'E-mail', value: 'hi@saome.org' },
     memberLevel: { label: '會員等級', value: '金級', stampLabel: '獎勵', discountLabel: '折扣等級' },
     birthday: { label: '生日', value: '05/11/1999' },
-    visitCount: { label: '拜訪次數', value: '5 次' },
+    // 2026-10-27 — visitCount 的 value 不存於此處，由
+    // `formatVisitCount`（與 Wallet payload 共用的「數值+單位」formatter）
+    // 產生，讓編輯器預覽不會與已發行的卡片漂移。本 locale 只保留 label。
+    visitCount: { label: '拜訪次數' },
     memberName: { label: '會員姓名', value: '王大明' },
     // 印章卡專用欄位預覽 — 僅在 stamp_card 時顯示於下拉選單（2026-09-20 與 multipass 解耦）
     // totalStamps 的 value 使用 {{rows}} 內插，由 PassCardPreviewBody 帶入 stampGridRows

@@ -61,6 +61,11 @@ const alias = [
   // BEFORE generic `@saome/shared/logic` per Rule 016 § Vite 8.x alias
   // ordering.
   { find: /^@saome\/shared\/logic\/spendTier$/, replacement: path.resolve(sharedRoot, 'logic/spendTier.ts') },
+  // 2026-10-27 - Visit count "number + unit" formatter (shared
+  // between the Wallet payload and the editor preview). Must come
+  // BEFORE generic `@saome/shared/logic` per Rule 016 § Vite 8.x alias
+  // ordering.
+  { find: /^@saome\/shared\/logic\/visitCount$/, replacement: path.resolve(sharedRoot, 'logic/visitCount.ts') },
   { find: /^@saome\/shared\/schemas\/passValues$/, replacement: path.resolve(sharedRoot, 'schemas/passValues.ts') },
   { find: /^@saome\/shared\/types\/member$/, replacement: path.resolve(sharedRoot, 'types/member.ts') },
   { find: /^@saome\/shared\/types\/order$/, replacement: path.resolve(sharedRoot, 'types/order.ts') },
@@ -84,6 +89,10 @@ const alias = [
   // Must come BEFORE generic `@saome/shared/constants` per Rule 016 §
   // Vite 8.x alias 順序.
   { find: /^@saome\/shared\/constants\/headerSlots$/, replacement: path.resolve(sharedRoot, 'constants/headerSlots.ts') },
+  // 2026-10-27 - Visit count demo value (editor + template library
+  // preview). Must come BEFORE generic `@saome/shared/constants` per
+  // Rule 016 § Vite 8.x alias 順序.
+  { find: /^@saome\/shared\/constants\/visitCountPreview$/, replacement: path.resolve(sharedRoot, 'constants/visitCountPreview.ts') },
   { find: /^@saome\/shared\/constants\/table-card$/, replacement: path.resolve(sharedRoot, 'constants/table-card.ts') },
   { find: /^@saome\/shared\/constants\/membership-card$/, replacement: path.resolve(sharedRoot, 'constants/membership-card.ts') },
   { find: /^@saome\/shared\/constants\/coupon-card$/, replacement: path.resolve(sharedRoot, 'constants/coupon-card.ts') },

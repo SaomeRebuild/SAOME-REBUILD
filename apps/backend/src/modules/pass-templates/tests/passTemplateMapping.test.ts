@@ -947,3 +947,75 @@ describe('mapTemplateToPasscreator — expiry slot field type (2026-10-26)', () 
     expect(body.fields.headerFields[0]?.type).toBe('number');
   });
 });
+
+/**
+ * Face-slot field types follow `CARD_FIELDS` (2026-10-27).
+ *
+ * The template push declares each slot's upstream type from
+ * `CARD_FIELDS[i].semanticType` (see `FACE_FIELD_TYPE_MAP` in
+ * `passTemplateMapping.ts`). Passcreator validates a per-pass value
+ * against the type the TEMPLATE declared, so a mismatch here means
+ * every value sync for that slot 400s — and the rejection takes the
+ * WHOLE payload down.
+ *
+ * 2026-10-27: `visitCount` was downgraded from `number` to `text`
+ * because its runtime value is a "number + unit" pack (`5 次` /
+ * `5 times`), not a bare integer. This suite pins the push side of
+ * that contract.
+ */
+describe('mapTemplateToPasscreator — face-slot field type follows CARD_FIELDS', () => {
+  it('pushes the visitCount slot as "text" (its value carries the 次 / times unit)', () => {
+    const row = makeRow({ card_type: 'stamp_card' });
+    row.settings = { ...row.settings, leftField: 'visitCount' };
+
+    const body = mapTemplateToPasscreator({
+      template: row,
+      language: 'zh-TW',
+      r2PublicUrl: R2_URL,
+    });
+
+    const visitSlot = body.fields.secondaryFields.find((f) => f.key === 'visitCount');
+    expect(visitSlot, 'the visitCount slot must be pushed').toBeDefined();
+    expect(visitSlot?.type).toBe('text');
+  });
+
+  it('pushes the visitCount additionalProperty as "text" too', () => {
+    const row = makeRow({ card_type: 'stamp_card' });
+    row.settings = { ...row.settings, leftField: 'visitCount' };
+
+    const body = mapTemplateToPasscreator({
+      template: row,
+      language: 'zh-TW',
+      r2PublicUrl: R2_URL,
+    });
+
+    const visitProperty = (body.additionalProperties ?? []).find(
+      (p) => p.name === 'visitCount',
+    );
+    expect(visitProperty, 'the visitCount property must be pushed').toBeDefined();
+    expect(visitProperty?.type).toBe('text');
+  });
+
+  it('every CARD_FIELDS key is pushed with its declared semanticType', () => {
+    // Data-driven drift guard: the push must read `CARD_FIELDS`, not a
+    // hand-maintained switch. A new field (or a semanticType change)
+    // therefore shows up here without anyone updating this test.
+    for (const field of CARD_FIELDS) {
+      const row = makeRow({ card_type: 'stamp_card' });
+      row.settings = { ...row.settings, leftField: field.key };
+
+      const body = mapTemplateToPasscreator({
+        template: row,
+        language: 'zh-TW',
+        r2PublicUrl: R2_URL,
+      });
+
+      const slot = body.fields.secondaryFields.find((f) => f.key === field.key);
+      expect(slot, `${field.key} must be pushed as a secondaryField`).toBeDefined();
+      expect(
+        slot?.type,
+        `${field.key} must be pushed with its CARD_FIELDS semanticType (${field.semanticType})`,
+      ).toBe(field.semanticType);
+    }
+  });
+});

@@ -48,6 +48,11 @@ const aliasArray: { find: string | RegExp; replacement: string }[] = [
   // BEFORE generic `@saome/shared/logic` per Rule 016 § vitest alias
   // ordering.
   { find: '@saome/shared/logic/spendTier', replacement: resolve(sharedRoot, 'logic/spendTier.ts') },
+  // 2026-10-27 - Visit count "number + unit" formatter (shared
+  // between the Wallet payload and the editor preview). Must come
+  // BEFORE generic `@saome/shared/logic` per Rule 016 § vitest alias
+  // ordering.
+  { find: '@saome/shared/logic/visitCount', replacement: resolve(sharedRoot, 'logic/visitCount.ts') },
   { find: '@saome/shared/schemas/passValues', replacement: resolve(sharedRoot, 'schemas/passValues.ts') },
   { find: '@saome/shared/schemas', replacement: resolve(sharedRoot, 'schemas/index.ts') },
   { find: '@saome/shared/logic/member', replacement: resolve(sharedRoot, 'logic/member.ts') },
@@ -85,6 +90,10 @@ const aliasArray: { find: string | RegExp; replacement: string }[] = [
   // Must come BEFORE generic `@saome/shared/constants` per Rule 016 §
   // vitest alias 順序.
   { find: '@saome/shared/constants/headerSlots', replacement: resolve(sharedRoot, 'constants/headerSlots.ts') },
+  // 2026-10-27 - Visit count demo value (editor + template library
+  // preview). Must come BEFORE generic `@saome/shared/constants` per
+  // Rule 016 § vitest alias 順序.
+  { find: '@saome/shared/constants/visitCountPreview', replacement: resolve(sharedRoot, 'constants/visitCountPreview.ts') },
   { find: '@saome/shared/constants/table-card', replacement: resolve(sharedRoot, 'constants/table-card.ts') },
   { find: '@saome/shared/constants/stamp-card', replacement: resolve(sharedRoot, 'constants/stamp-card.ts') },
   { find: '@saome/shared/constants/reward-card', replacement: resolve(sharedRoot, 'constants/reward-card.ts') },

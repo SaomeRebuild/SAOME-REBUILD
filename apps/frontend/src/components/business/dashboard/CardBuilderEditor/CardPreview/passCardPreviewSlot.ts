@@ -57,7 +57,9 @@ import type { CouponDiscountType } from '@saome/shared/constants/coupon-card';
 import type { MultipassRewardType } from '@saome/shared/constants/multipass-card';
 import { CASHBACK_PREVIEW_AMOUNTS } from '@saome/shared/constants/cashbackPreviewAmounts';
 import { DISCOUNT_PREVIEW_AMOUNTS } from '@saome/shared/constants/discountPreviewAmounts';
+import { VISIT_COUNT_PREVIEW_VALUE } from '@saome/shared/constants/visitCountPreview';
 import { formatTierAmount } from '@saome/shared/logic/spendTier';
+import { formatVisitCount } from '@saome/shared/logic/visitCount';
 import type { PassLanguage } from '@saome/shared/i18n/fieldLabels';
 import {
   STAMPS_PER_ROW,
@@ -191,7 +193,10 @@ export interface ResolvedSlot {
  *                                                  (currency-driven, like balance preview)
  *  16.  discount amount fields                    → DISCOUNT_PREVIEW_AMOUNTS[currency][field]
  *                                                  (currency-driven)
- *  17.  default                                 → `fieldPreview.{key}.label` + `.value`
+ *  17.  `visitCount`                              → formatVisitCount(demo, templateLanguage)
+ *                                                  ("number + unit" pack — the SAME
+ *                                                   shared formatter the Wallet uses)
+ *  18.  default                                 → `fieldPreview.{key}.label` + `.value`
  *                                                  (NO ZAR formatter — values are demo
  *                                                   data and are NOT currency-dependent)
  *
@@ -474,6 +479,25 @@ export function resolveSlot(
         currency,
         language ?? 'zh-TW',
       ),
+    };
+  }
+
+  // Visit counter branch (2026-10-27): the `visitCount` slot shows a
+  // "number + unit" pack, and the unit follows the TEMPLATE's
+  // language — the same rule the discount amount slots follow.
+  //
+  // The value is produced by `formatVisitCount` — the SAME shared
+  // function the backend uses to build the Wallet payload. The
+  // preview therefore shows exactly what the issued pass shows
+  // (`5 次` for zh-TW, `5 times` for en) instead of a stale i18n
+  // string that could drift away from the Wallet.
+  //
+  // The LABEL still comes from i18n (the label follows the APP's
+  // locale; the value follows the TEMPLATE's language).
+  if (field === 'visitCount') {
+    return {
+      label: t(`fieldPreview.${field}.label`),
+      value: formatVisitCount(VISIT_COUNT_PREVIEW_VALUE, language ?? 'zh-TW'),
     };
   }
 

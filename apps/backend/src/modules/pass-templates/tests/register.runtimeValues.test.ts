@@ -982,3 +982,133 @@ describe('registerService — discount card tier + Wallet slots', () => {
     expect(values.properties).not.toHaveProperty('accumulatedSpendDiscount');
   });
 });
+
+/**
+ * Visit counter registration (2026-10-27).
+ *
+ * The `visitCount` slot shows a "number + unit" pack (`5 次` /
+ * `5 times`), not a bare integer. The unit follows the TEMPLATE's
+ * language — the same rule the discount amount slots follow.
+ *
+ * This suite pins the end-to-end behaviour: the value that reaches
+ * Passcreator on the FIRST issuance is already the formatted string,
+ * and it follows `templates.settings.language` (not the reader's
+ * locale and not a hard-coded zh-TW).
+ */
+describe('registerService — visit counter unit display', () => {
+  /** A stamp template that binds the `visitCount` slot. */
+  const VISIT_TEMPLATE_ROW: PublicTemplateRow = {
+    id: TEMPLATE_ID,
+    name: 'Stamp Card',
+    card_type: 'stamp_card',
+    settings: {
+      logoText: 'Stamp',
+      issuerName: 'Stamp Co.',
+      currency: 'TWD',
+      language: 'zh-TW',
+      leftField: 'visitCount',
+    },
+    passcreator_template_id: 'pc-tpl-stamp',
+  };
+
+  /** Wire up the ledger so the registration reaches the issuance. */
+  function stubLedger(visitCount = 0) {
+    const snapshot = {
+      metrics: { ...emptyPassValuesMetrics(), visitCount },
+      expiryDate: null,
+    };
+    vi.spyOn(passEventsDb, 'appendPassEvent').mockResolvedValue({
+      row: {
+        id: 'event-visit',
+        pass_holder_id: HOLDER.id,
+        event_type: 'registered',
+        payload: snapshot,
+        occurred_at: '2026-10-27T08:00:00.000Z',
+        created_at: '2026-10-27T08:00:00.000Z',
+        idempotency_key: 'registered:holder-new',
+      },
+      inserted: true,
+    });
+    vi.spyOn(passEventsDb, 'listPassEvents').mockResolvedValue([
+      {
+        id: 'event-visit',
+        pass_holder_id: HOLDER.id,
+        event_type: 'registered',
+        payload: snapshot,
+        occurred_at: '2026-10-27T08:00:00.000Z',
+        created_at: '2026-10-27T08:00:00.000Z',
+        idempotency_key: 'registered:holder-new',
+      },
+    ]);
+    vi.spyOn(
+      passHoldersDb,
+      'updatePassHolderPassValuesSnapshot',
+    ).mockResolvedValue(undefined);
+    vi.spyOn(passHoldersDb, 'updatePassHolderIssuance').mockResolvedValue(HOLDER);
+  }
+
+  async function registerAndReadValues(
+    templateRow: PublicTemplateRow,
+    visitCount = 0,
+  ): Promise<Record<string, unknown>> {
+    vi.spyOn(templatesDb, 'findPublicTemplateById').mockResolvedValue(templateRow);
+    vi.spyOn(passHoldersDb, 'upsertPassHolder').mockResolvedValue({
+      row: HOLDER,
+      created: true,
+    });
+    stubLedger(visitCount);
+
+    const issueSpy = vi.spyOn(passcreator, 'issuePass').mockResolvedValue({
+      identifier: 'pass-visit',
+      downloadPage: 'https://app.passcreator.com/p/1',
+      iPhoneUri: 'https://app.passcreator.com/1.pkpass',
+      androidUri: 'https://passwallet.page.link/?link=1',
+      barcodeValue: null,
+    });
+
+    const { sql } = makeMockSql();
+    await registerService(
+      sql,
+      MOCK_ENV as never,
+      TEMPLATE_ID,
+      validPayload as never,
+    );
+
+    const values = issueSpy.mock.calls[0]?.[3] as {
+      properties: Record<string, unknown>;
+    };
+    return values.properties;
+  }
+
+  it('sends the visit counter as a "number + unit" string (zh-TW)', async () => {
+    const properties = await registerAndReadValues(VISIT_TEMPLATE_ROW, 0);
+    expect(properties.visitCount).toBe('0 次');
+  });
+
+  it('sends the visit counter in the TEMPLATE language (en)', async () => {
+    const properties = await registerAndReadValues(
+      {
+        ...VISIT_TEMPLATE_ROW,
+        settings: { ...VISIT_TEMPLATE_ROW.settings, language: 'en' },
+      },
+      0,
+    );
+    expect(properties.visitCount).toBe('0 times');
+  });
+
+  it('sends a non-zero counter with the same unit', async () => {
+    const properties = await registerAndReadValues(VISIT_TEMPLATE_ROW, 5);
+    expect(properties.visitCount).toBe('5 次');
+  });
+
+  it('does NOT send the visit counter when the template does not bind it', async () => {
+    const properties = await registerAndReadValues(
+      {
+        ...VISIT_TEMPLATE_ROW,
+        settings: { ...VISIT_TEMPLATE_ROW.settings, leftField: 'phone' },
+      },
+      5,
+    );
+    expect(properties).not.toHaveProperty('visitCount');
+  });
+});

@@ -7,7 +7,7 @@
 import { BadGatewayError } from '../saomeError';
 import { UNLIMITED_EXPIRY_VALUE } from '@saome/shared/constants/headerSlots';
 import {
-  DISCOUNT_TYPE_DOWNGRADED_FIELDS,
+  TYPE_DOWNGRADED_TEXT_FIELDS,
   type CardFieldKey,
 } from '@saome/shared/constants/card-fields';
 import { requireEnv } from './env';
@@ -236,7 +236,7 @@ export async function issuePass(
   // A missing tier slot is a far better outcome than no pass.
   const createDroppableKeys = Object.keys(runtimeData).filter(
     (key) =>
-      DISCOUNT_TYPE_DOWNGRADED_FIELDS.has(key as CardFieldKey) &&
+      TYPE_DOWNGRADED_TEXT_FIELDS.has(key as CardFieldKey) &&
       typeof runtimeData[key] === 'string',
   );
 
@@ -682,7 +682,7 @@ export async function updatePassValues(
   );
   const typeDowngradedKeys = Object.keys(data).filter(
     (key) =>
-      DISCOUNT_TYPE_DOWNGRADED_FIELDS.has(key as CardFieldKey) &&
+      TYPE_DOWNGRADED_TEXT_FIELDS.has(key as CardFieldKey) &&
       typeof data[key] === 'string',
   );
   const droppableKeys = [...sentinelKeys, ...typeDowngradedKeys];

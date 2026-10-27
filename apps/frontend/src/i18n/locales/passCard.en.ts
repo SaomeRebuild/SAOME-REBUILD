@@ -46,7 +46,12 @@ export default {
     email: { label: 'Email', value: 'hi@saome.org' },
     memberLevel: { label: 'Member Level', value: 'Gold', stampLabel: 'Reward', discountLabel: 'Discount Tier' },
     birthday: { label: 'Birthday', value: '05/11/1999' },
-    visitCount: { label: 'Visit Count', value: '5 times' },
+    // 2026-10-27 — the visitCount VALUE is not in this dictionary
+    // anymore. It is produced by `formatVisitCount` (the shared
+    // "number + unit" formatter the Wallet payload uses), so the
+    // editor preview cannot drift away from the issued pass. Only
+    // the label stays here.
+    visitCount: { label: 'Visit Count' },
     memberName: { label: 'Member Name', value: 'Thabo Mokoena' },
     // Stamp-only preview fields — only shown in the dropdown for stamp_card
     // (decoupled from multipass 2026-09-20).

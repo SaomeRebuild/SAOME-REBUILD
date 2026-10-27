@@ -23,3 +23,4 @@ export * from './passValueCalculator';
 export * from './passFieldFormatter';
 export * from './passValueErrors';
 export * from './spendTier';
+export * from './visitCount';

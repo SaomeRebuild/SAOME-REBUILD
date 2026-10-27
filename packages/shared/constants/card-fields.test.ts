@@ -28,7 +28,12 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { CARD_FIELDS, CARD_FIELD_KEYS, type FieldSemanticType } from './card-fields';
+import {
+  CARD_FIELDS,
+  CARD_FIELD_KEYS,
+  TYPE_DOWNGRADED_TEXT_FIELDS,
+  type FieldSemanticType,
+} from './card-fields';
 
 const VALID_SEMANTIC_TYPES: ReadonlySet<FieldSemanticType> = new Set([
   'text',
@@ -87,23 +92,25 @@ describe('CARD_FIELDS — v12 schema conformance (regression — 2026-10-12)', (
     for (const f of CARD_FIELDS) {
       counts[f.semanticType] += 1;
     }
-    // 8 text: phone, email, memberLevel, memberName,
+    // 9 text: phone, email, memberLevel, memberName,
     //         multipassRewardContent,
     //         pointsToNextTierDiscount, discountTierBracket,
-    //         accumulatedSpendDiscount
+    //         accumulatedSpendDiscount, visitCount
     //   (the three discount slots were downgraded from 'number' to
     //    'text' on 2026-10-27 — their runtime values are display
     //    strings like `10元`, and a `number` slot rejects them.
+    //    visitCount was downgraded the same day for the same reason:
+    //    its value is `5 次` / `5 times`, not a bare integer.
     //    See packages/shared/constants/card-fields.ts for the full
     //    rationale.)
     // birthday = 1 date
-    // 12 number (visitCount, availableRewards, totalStamps, stampsRemaining,
+    // 11 number (availableRewards, totalStamps, stampsRemaining,
     //            pointsToNextTier, currentPoints, pointsToNextTierCashback,
     //            accumulatedSpendCashback,
     //            couponRemainingCount, couponDiscount, multipassCompleted,
     //            multipassPointsToNextTier)
-    expect(counts.text).toBe(8);
-    expect(counts.number).toBe(12);
+    expect(counts.text).toBe(9);
+    expect(counts.number).toBe(11);
     expect(counts.date).toBe(1);
   });
 
@@ -119,6 +126,34 @@ describe('CARD_FIELDS — v12 schema conformance (regression — 2026-10-12)', (
     for (const key of discountSlotKeys) {
       const field = CARD_FIELDS.find((f) => f.key === key);
       expect(field?.semanticType, `${key} must be a text slot`).toBe('text');
+    }
+  });
+
+  it('the visitCount slot is typed "text" (its value carries the 次 / times unit)', () => {
+    // Regression guard for the 2026-10-27 downgrade. The Wallet shows
+    // `5 次` / `5 times`, not a bare `5` — and a `number` slot makes
+    // Passcreator reject the string with a 400 that takes the WHOLE
+    // payload down (every other field stops syncing too).
+    const field = CARD_FIELDS.find((f) => f.key === 'visitCount');
+    expect(field?.semanticType, 'visitCount must be a text slot').toBe('text');
+  });
+
+  it('TYPE_DOWNGRADED_TEXT_FIELDS covers every text slot whose value carries a unit', () => {
+    // The set drives the runtime 400 fallback (see
+    // apps/backend/src/shared/lib/passcreator/v3-pass.ts). A field that
+    // leaves the set while still sending a unit-carrying string would
+    // 400 the whole payload with no fallback.
+    const unitCarryingKeys = [
+      'pointsToNextTierDiscount',
+      'discountTierBracket',
+      'accumulatedSpendDiscount',
+      'visitCount',
+    ] as const;
+    for (const key of unitCarryingKeys) {
+      expect(
+        TYPE_DOWNGRADED_TEXT_FIELDS.has(key),
+        `${key} must be in TYPE_DOWNGRADED_TEXT_FIELDS`,
+      ).toBe(true);
     }
   });
 });

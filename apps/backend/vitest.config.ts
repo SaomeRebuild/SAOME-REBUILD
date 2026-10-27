@@ -88,6 +88,12 @@ export default defineWorkersConfig({
       // BEFORE the generic entries per Rule 016 (vite alias is
       // prefix-matching, first match wins).
       '@saome/shared/logic/spendTier': path.resolve(__dirname, '../../packages/shared/logic/spendTier.ts'),
+      // 2026-10-27 - Visit count "number + unit" formatter (shared
+      // between the Wallet payload and the editor preview). Value
+      // imports need an EXPLICIT `.ts` entry for the same reason as
+      // `spendTier` above. Declared BEFORE the generic entries per
+      // Rule 016 (vite alias is prefix-matching, first match wins).
+      '@saome/shared/logic/visitCount': path.resolve(__dirname, '../../packages/shared/logic/visitCount.ts'),
       // 2026-10-27 — membership tier snapshot resolver. Value import
       // needs an EXPLICIT `.ts` entry for the same reason as
       // `spendTier` above: the generic trailing-slash alias only
